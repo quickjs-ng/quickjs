@@ -2225,7 +2225,8 @@ static void js_free_modules(JSContext *ctx, JSFreeModuleEnum flag)
         JSModuleDef *m = list_entry(el, JSModuleDef, link);
         if (flag == JS_FREE_MODULE_ALL ||
             (flag == JS_FREE_MODULE_NOT_RESOLVED && !m->resolved) ||
-            (flag == JS_FREE_MODULE_NOT_EVALUATED && !m->evaluated)) {
+            (flag == JS_FREE_MODULE_NOT_EVALUATED && !m->evaluated
+                && !m->eval_mark)) {
             js_free_module_def(ctx, m);
         }
     }
