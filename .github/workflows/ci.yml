@@ -29,3 +29,18 @@ jobs:
       - name: test
         run: |
           make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y test
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: |
+          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y
+      - name: stats
+        run: |
+          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y qjs
+          ./qjs -qd
+      - name: test
+        run: |
+          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y test
