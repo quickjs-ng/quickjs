@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  pull_request:
+    paths:
+      - '**'
+      - '!LICENSE'
+      - '!TODO'
+      - '!doc/**'
+      - '!examples/**'
+      - '.github/workflows/ci.yml'
+  push:
+    branches:
+      - master
+
+# TODO(bnoordhuis) run test262 tests
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: |
+          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y
+      - name: stats
+        run: |
+          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y qjs
+          ./qjs -qd
+      - name: test
+        run: |
+          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y test

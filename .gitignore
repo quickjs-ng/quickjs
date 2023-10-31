@@ -1,0 +1,8 @@
+examples/point.so
+.obj/
+qjs
+qjs32
+qjsc
+qjscalc.c
+repl.c
+tests/bjson.so
