@@ -41883,8 +41883,10 @@ static JSValue js_math_imul(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (JS_ToInt32(ctx, &b, argv[1]))
         return JS_EXCEPTION;
-    /* purposely ignoring overflow */
-    return JS_NewInt32(ctx, a * b);
+    /* TODO(bnoordhuis) Signed integral narrowing has implementation-defined
+     * behavior but that's a step up from the undefined behavior it replaced.
+     */
+    return JS_NewInt32(ctx, (int64_t)a * (int64_t)b);
 }
 
 static JSValue js_math_clz32(JSContext *ctx, JSValueConst this_val,
