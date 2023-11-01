@@ -50,6 +50,8 @@ prefix=/usr/local
 #CONFIG_ASAN=y
 # use memory sanitizer
 #CONFIG_MSAN=y
+# use UB sanitizer
+#CONFIG_UBSAN=y
 # include the code for BigInt/BigFloat/BigDecimal and math mode
 CONFIG_BIGNUM=y
 
@@ -133,6 +135,10 @@ ifdef CONFIG_MSAN
 CFLAGS+=-fsanitize=memory -fno-omit-frame-pointer
 LDFLAGS+=-fsanitize=memory -fno-omit-frame-pointer
 endif
+ifdef CONFIG_UBSAN
+CFLAGS+=-fsanitize=undefined -fno-omit-frame-pointer
+LDFLAGS+=-fsanitize=undefined -fno-omit-frame-pointer
+endif
 ifdef CONFIG_WIN32
 LDEXPORT=
 else
@@ -163,9 +169,11 @@ endif
 ifeq ($(CROSS_PREFIX),)
 ifndef CONFIG_ASAN
 ifndef CONFIG_MSAN
+ifndef CONFIG_UBSAN
 PROGS+=examples/hello examples/hello_module examples/test_fib
 ifndef CONFIG_DARWIN
 PROGS+=examples/fib.so examples/point.so
+endif
 endif
 endif
 endif
