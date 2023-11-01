@@ -16,4 +16,5 @@ test262_*.txt
 test_fib.c
 tests/bjson.so
 *.a
+*.orig
 
