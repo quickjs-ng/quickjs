@@ -51683,7 +51683,35 @@ JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValueConst obj,
     }
     return JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, ta->buffer));
 }
-                               
+
+/* return NULL if exception. WARNING: any JS call can detach the
+   buffer and render the returned pointer invalid */
+uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj)
+{
+    JSObject *p;
+    JSTypedArray *ta;
+    JSArrayBuffer *abuf;
+    p = get_typed_array(ctx, obj, FALSE);
+    if (!p)
+        goto fail;
+    if (typed_array_is_detached(ctx, p)) {
+        JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
+        goto fail;
+    }
+    if (p->class_id != JS_CLASS_UINT8_ARRAY && p->class_id != JS_CLASS_UINT8C_ARRAY) {
+        JS_ThrowTypeError(ctx, "not a Uint8Array");
+        goto fail;
+    }
+    ta = p->u.typed_array;
+    abuf = ta->buffer->u.array_buffer;
+
+    *psize = ta->length;
+    return abuf->data + ta->offset;
+ fail:
+    *psize = 0;
+    return NULL;
+}
+
 static JSValue js_typed_array_get_toStringTag(JSContext *ctx,
                                               JSValueConst this_val)
 {
