@@ -1205,6 +1205,29 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
                 break;
             }
         }
+    } else if ((eval_flags & JS_EVAL_TYPE_MODULE) &&
+               !JS_IsUndefined(res_val) &&
+               !JS_IsException(res_val)) {
+        JSValue promise = res_val;
+        for(;;) {
+            JSContext *ctx1;
+            ret = JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx1);
+            if (ret < 0) {
+                res_val = JS_EXCEPTION;
+                break;
+            }
+            if (ret == 0) {
+                JSPromiseStateEnum s = JS_PromiseState(ctx, promise);
+                if (s == JS_PROMISE_FULFILLED)
+                    res_val = JS_UNDEFINED;
+                else if (s == JS_PROMISE_REJECTED)
+                    res_val = JS_Throw(ctx, JS_PromiseResult(ctx, promise));
+                else
+                    res_val = JS_EXCEPTION;
+                break;
+            }
+        }
+        JS_FreeValue(ctx, promise);
     }
 
     if (JS_IsException(res_val)) {

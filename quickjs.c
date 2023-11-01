@@ -785,6 +785,7 @@ struct JSModuleDef {
     int import_entries_count;
     int import_entries_size;
 
+    JSValue promise;
     JSValue module_ns;
     JSValue func_obj; /* only used for JS modules */
     JSModuleInitFunc *init_func; /* only used for C modules */
@@ -856,6 +857,14 @@ struct JSShape {
     JSObject *proto;
     JSShapeProperty prop[0]; /* prop_size elements */
 };
+
+typedef struct JSPromiseData {
+    JSPromiseStateEnum promise_state;
+    /* 0=fulfill, 1=reject, list of JSPromiseReactionData.link */
+    struct list_head promise_reactions[2];
+    BOOL is_handled; /* Note: only useful to debug */
+    JSValue promise_result;
+} JSPromiseData;
 
 struct JSObject {
     union {
@@ -1095,6 +1104,12 @@ static JSValue js_regexp_constructor_internal(JSContext *ctx, JSValueConst ctor,
 static void gc_decref(JSRuntime *rt);
 static int JS_NewClass1(JSRuntime *rt, JSClassID class_id,
                         const JSClassDef *class_def, JSAtom name);
+static JSValue js_promise_all(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv, int magic);
+static JSValue js_promise_then(JSContext *ctx, JSValueConst this_val,
+                               int argc, JSValueConst *argv);
+static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv, int unshift);
 
 typedef enum JSStrictEqModeEnum {
     JS_EQ_STRICT,
@@ -27033,6 +27048,7 @@ static JSModuleDef *js_new_module_def(JSContext *ctx, JSAtom name)
     }
     m->header.ref_count = 1;
     m->module_name = name;
+    m->promise = JS_UNDEFINED;
     m->module_ns = JS_UNDEFINED;
     m->func_obj = JS_UNDEFINED;
     m->eval_exception = JS_UNDEFINED;
@@ -27054,6 +27070,7 @@ static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
         }
     }
 
+    JS_MarkValue(rt, m->promise, mark_func);
     JS_MarkValue(rt, m->module_ns, mark_func);
     JS_MarkValue(rt, m->func_obj, mark_func);
     JS_MarkValue(rt, m->eval_exception, mark_func);
@@ -27089,6 +27106,7 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
     }
     js_free(ctx, m->import_entries);
 
+    JS_FreeValue(ctx, m->promise);
     JS_FreeValue(ctx, m->module_ns);
     JS_FreeValue(ctx, m->func_obj);
     JS_FreeValue(ctx, m->eval_exception);
@@ -28200,6 +28218,18 @@ JSModuleDef *JS_RunModule(JSContext *ctx, const char *basename,
     return m;
 }
 
+static JSValue js_dynamic_import_resolve(JSContext *ctx, JSValueConst this_val,
+                                         int argc, JSValueConst *argv, int magic, JSValue *func_data)
+{
+    return JS_Call(ctx, func_data[0], JS_UNDEFINED, 1, (JSValueConst *)&func_data[2]);
+}
+
+static JSValue js_dynamic_import_reject(JSContext *ctx, JSValueConst this_val,
+                                        int argc, JSValueConst *argv, int magic, JSValue *func_data)
+{
+    return JS_Call(ctx, func_data[1], JS_UNDEFINED, 1, (JSValueConst *)&argv[0]);
+}
+
 static JSValue js_dynamic_import_job(JSContext *ctx,
                                      int argc, JSValueConst *argv)
 {
@@ -28231,6 +28261,21 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     ns = js_get_module_ns(ctx, m);
     if (JS_IsException(ns))
         goto exception;
+
+    if (!JS_IsUndefined(m->promise)) {
+        JSValueConst args[] = {argv[0], argv[1], ns};
+        JSValueConst funcs[2];
+        funcs[0] = JS_NewCFunctionData(ctx, js_dynamic_import_resolve, 0, 0, 3, args);
+        funcs[1] = JS_NewCFunctionData(ctx, js_dynamic_import_reject, 0, 0, 3, args);
+        JS_FreeValue(ctx, js_promise_then(ctx, m->promise, 2, funcs));
+
+        JS_FreeValue(ctx, (JSValue)funcs[0]);
+        JS_FreeValue(ctx, (JSValue)funcs[1]);
+        JS_FreeValue(ctx, ns);
+        JS_FreeCString(ctx, basename);
+
+        return JS_UNDEFINED;
+    }
 
     ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED,
                    1, (JSValueConst *)&ns);
@@ -28283,6 +28328,12 @@ static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier)
     return promise;
 }
 
+static JSValue js_async_function_call2(JSContext *ctx, JSValueConst this_val,
+                                       int argc, JSValueConst *argv, int magic, JSValue *func_data)
+{
+    return js_async_function_call(ctx, func_data[0], this_val, argc, argv, magic);
+}
+
 /* Run the <eval> function of the module and of all its requested
    modules. */
 static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
@@ -28300,12 +28351,17 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
         if (m->eval_has_exception) {
             return JS_Throw(ctx, JS_DupValue(ctx, m->eval_exception));
         } else {
-            return JS_UNDEFINED;
+            return JS_DupValue(ctx, m->promise);
         }
     }
 
     m->eval_mark = TRUE;
 
+    JSValueConst promises = JS_NewArray(ctx);
+    if (JS_IsException(promises))
+        return JS_EXCEPTION;
+
+    BOOL async = FALSE;
     for(i = 0; i < m->req_module_entries_count; i++) {
         JSReqModuleEntry *rme = &m->req_module_entries[i];
         m1 = rme->module;
@@ -28313,10 +28369,20 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
             ret_val = js_evaluate_module(ctx, m1);
             if (JS_IsException(ret_val)) {
                 m->eval_mark = FALSE;
-                return ret_val;
+                goto clean;
             }
-            JS_FreeValue(ctx, ret_val);
+            if (!JS_IsUndefined(ret_val)) {
+                js_array_push(ctx, promises, 1, (JSValueConst *)&ret_val, 0);
+                JS_FreeValue(ctx, ret_val);
+                async = TRUE;
+            }
         }
+    }
+
+    JSValue promise = js_promise_all(ctx, ctx->promise_ctor, 1, &promises, 0);
+    if (JS_IsException(promise)) {
+        JS_FreeValue(ctx, (JSValue)promises);
+        return JS_EXCEPTION;
     }
 
     if (m->init_func) {
@@ -28325,17 +28391,40 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
             ret_val = JS_EXCEPTION;
         else
             ret_val = JS_UNDEFINED;
+    } else if (!async) {
+        ret_val = js_async_function_call(ctx, m->func_obj, JS_UNDEFINED, 0, NULL, 0);
+        JS_FreeValue(ctx, m->func_obj);
+        m->func_obj = JS_UNDEFINED;
+        JSPromiseData *s = JS_GetOpaque(ret_val, JS_CLASS_PROMISE);
+        if (s->promise_state != JS_PROMISE_PENDING) {
+            JSValue ret_val2 = ret_val;
+            if (s->promise_state == JS_PROMISE_REJECTED)
+                ret_val = JS_Throw(ctx, JS_DupValue(ctx, s->promise_result));
+            else
+                ret_val = JS_DupValue(ctx, s->promise_result);
+            JS_FreeValue(ctx, ret_val2);
+        }
     } else {
-        ret_val = JS_CallFree(ctx, m->func_obj, JS_UNDEFINED, 0, NULL);
+        JSValueConst funcs[2];
+        funcs[0] = JS_NewCFunctionData(ctx, js_async_function_call2, 0, 0, 1, (JSValueConst *)&m->func_obj);
+        funcs[1] = JS_UNDEFINED;
+        ret_val = js_promise_then(ctx, promise, 2, funcs);
+        JS_FreeValue(ctx, (JSValue)funcs[0]);
+        JS_FreeValue(ctx, m->func_obj);
         m->func_obj = JS_UNDEFINED;
     }
     if (JS_IsException(ret_val)) {
         /* save the thrown exception value */
         m->eval_has_exception = TRUE;
         m->eval_exception = JS_DupValue(ctx, ctx->rt->current_exception);
+    } else if (!JS_IsUndefined(ret_val)) {
+        m->promise = JS_DupValue(ctx, ret_val);
     }
     m->eval_mark = FALSE;
     m->evaluated = TRUE;
+clean:
+    JS_FreeValue(ctx, (JSValue)promises);
+    JS_FreeValue(ctx, promise);
     return ret_val;
 }
 
@@ -33487,7 +33576,7 @@ static __exception int js_parse_program(JSParseState *s)
 
         emit_op(s, OP_return);
     } else {
-        emit_op(s, OP_return_undef);
+        emit_return(s, FALSE);
     }
 
     return 0;
@@ -33621,6 +33710,10 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
     fd = js_new_function_def(ctx, NULL, TRUE, FALSE, filename, 1);
     if (!fd)
         goto fail1;
+    if (m != NULL) {
+        fd->in_function_body = TRUE;
+        fd->func_kind = JS_FUNC_ASYNC;
+    }
     s->cur_func = fd;
     fd->eval_type = eval_type;
     fd->has_this_binding = (eval_type != JS_EVAL_TYPE_DIRECT);
@@ -46268,20 +46361,6 @@ static const JSCFunctionListEntry js_generator_proto_funcs[] = {
 
 /* Promise */
 
-typedef enum JSPromiseStateEnum {
-    JS_PROMISE_PENDING,
-    JS_PROMISE_FULFILLED,
-    JS_PROMISE_REJECTED,
-} JSPromiseStateEnum;
-
-typedef struct JSPromiseData {
-    JSPromiseStateEnum promise_state;
-    /* 0=fulfill, 1=reject, list of JSPromiseReactionData.link */
-    struct list_head promise_reactions[2];
-    BOOL is_handled; /* Note: only useful to debug */
-    JSValue promise_result;
-} JSPromiseData;
-
 typedef struct JSPromiseFunctionDataResolved {
     int ref_count;
     BOOL already_resolved;
@@ -46297,6 +46376,22 @@ typedef struct JSPromiseReactionData {
     JSValue resolving_funcs[2];
     JSValue handler;
 } JSPromiseReactionData;
+
+JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise)
+{
+    JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
+    if (!s)
+        return -1;
+    return s->promise_state;
+}
+
+JSValue JS_PromiseResult(JSContext *ctx, JSValue promise)
+{
+    JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
+    if (!s)
+        return JS_UNDEFINED;
+    return JS_DupValue(ctx, s->promise_result);
+}
 
 static int js_create_resolving_functions(JSContext *ctx, JSValue *args,
                                          JSValueConst promise);

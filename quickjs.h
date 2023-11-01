@@ -1039,6 +1039,17 @@ int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *export_name,
 int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
                            const JSCFunctionListEntry *tab, int len);
 
+/* Promise */
+
+typedef enum JSPromiseStateEnum {
+    JS_PROMISE_PENDING,
+    JS_PROMISE_FULFILLED,
+    JS_PROMISE_REJECTED,
+} JSPromiseStateEnum;
+
+JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
+JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
+
 #undef js_unlikely
 #undef js_force_inline
 
