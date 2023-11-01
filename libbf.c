@@ -292,7 +292,8 @@ int bf_set(bf_t *r, const bf_t *a)
     }
     r->sign = a->sign;
     r->expn = a->expn;
-    memcpy(r->tab, a->tab, a->len * sizeof(limb_t));
+    if (a->len > 0)
+        memcpy(r->tab, a->tab, a->len * sizeof(limb_t));
     return 0;
 }
 
