@@ -1,7 +1,7 @@
-
 *.a
 *.orig
 .obj/
+build/
 examples/hello
 examples/hello_module
 examples/point.so

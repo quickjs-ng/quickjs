@@ -48,6 +48,20 @@ jobs:
       - name: test
         run: |
           make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y CONFIG_UBSAN=y UBSAN_OPTIONS="halt_on_error=1" test
+  linux-cmake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          cd ..
+          cmake --build build -j$(getconf _NPROCESSORS_ONLN)
+      - name: stats
+        run: |
+          ./build/qjs -qd
 
   macos:
     runs-on: macos-latest
@@ -77,6 +91,20 @@ jobs:
       - name: test
         run: |
           make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y CONFIG_UBSAN=y UBSAN_OPTIONS="halt_on_error=1" test
+  macos-cmake:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          cd ..
+          cmake --build build -j$(getconf _NPROCESSORS_ONLN)
+      - name: stats
+        run: |
+          ./build/qjs -qd
 
   windows-mingw:
     runs-on: windows-latest
@@ -112,3 +140,40 @@ jobs:
     - name: test
       run: |
         make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y CONFIG_MINGW=y test
+
+  windows-mingw-cmake:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sys:
+          - mingw64
+          - ucrt64
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: ${{matrix.sys}}
+        install: >-
+          git
+          make
+        pacboy: >-
+          cmake:p
+          ninja:p
+          toolchain:p
+    - name: build
+      run: |
+        mkdir build
+        cd build
+        cmake ..
+        cd ..
+        cmake --build build -j$(getconf _NPROCESSORS_ONLN)
+    - name: stats
+      run: |
+        ./build/qjs -qd
