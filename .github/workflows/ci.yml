@@ -79,3 +79,18 @@ jobs:
       - name: test
         run: |
           make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y CONFIG_UBSAN=y test
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: |
+          make CONFIG_WIN32=y CONFIG_WERROR=y
+      - name: stats
+        run: |
+          make CONFIG_WIN32=y CONFIG_WERROR=y qjs
+          ./qjs.exe -qd
+      - name: test
+        run: |
+          make CONFIG_WIN32=y CONFIG_WERROR=y test

@@ -45,7 +45,6 @@ if echo $release_list | grep -w -q win_binary ; then
 
 # win64
 
-dlldir=/usr/x86_64-w64-mingw32/sys-root/mingw/bin
 cross_prefix="x86_64-w64-mingw32-"
 d="quickjs-win-x86_64-${version}"
 outdir="/tmp/${d}"
@@ -56,7 +55,6 @@ mkdir -p $outdir
 make CONFIG_WIN32=y qjs.exe
 cp qjs.exe $outdir
 ${cross_prefix}strip $outdir/qjs.exe
-cp $dlldir/libwinpthread-1.dll $outdir
 
 ( cd /tmp/$d && rm -f ../${d}.zip && zip -r ../${d}.zip . )
 
@@ -64,7 +62,6 @@ make CONFIG_WIN32=y clean
 
 # win32
 
-dlldir=/usr/i686-w64-mingw32/sys-root/mingw/bin
 cross_prefix="i686-w64-mingw32-"
 d="quickjs-win-i686-${version}"
 outdir="/tmp/${d}"
@@ -78,7 +75,6 @@ make CONFIG_WIN32=y clean
 make CONFIG_WIN32=y CONFIG_M32=y qjs.exe
 cp qjs.exe $outdir
 ${cross_prefix}strip $outdir/qjs.exe
-cp $dlldir/libwinpthread-1.dll $outdir
 
 ( cd /tmp/$d && rm -f ../${d}.zip && zip -r ../${d}.zip . )
 

@@ -189,10 +189,10 @@ QJS_LIB_OBJS+=$(OBJDIR)/libbf.o
 QJS_OBJS+=$(OBJDIR)/qjscalc.o
 endif
 
-HOST_LIBS=-lm -ldl -lpthread
+HOST_LIBS=-lm -ldl
 LIBS=-lm
 ifndef CONFIG_WIN32
-LIBS+=-ldl -lpthread
+LIBS+=-ldl
 endif
 LIBS+=$(EXTRA_LIBS)
 

@@ -419,11 +419,11 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
 
 #ifdef CONFIG_AGENT
 
-#include <pthread.h>
+#include <threads.h>
 
 typedef struct {
     struct list_head link;
-    pthread_t tid;
+    thrd_t tid;
     char *script;
     JSValue broadcast_func;
     BOOL broadcast_pending;
@@ -441,16 +441,29 @@ typedef struct {
 static JSValue add_helpers1(JSContext *ctx);
 static void add_helpers(JSContext *ctx);
 
-static pthread_mutex_t agent_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t agent_cond = PTHREAD_COND_INITIALIZER;
+static once_flag agent_init_flag = ONCE_FLAG_INIT;
+static mtx_t agent_mutex;
+static cnd_t agent_cond;
 /* list of Test262Agent.link */
 static struct list_head agent_list = LIST_HEAD_INIT(agent_list);
 
-static pthread_mutex_t report_mutex = PTHREAD_MUTEX_INITIALIZER;
+static mtx_t report_mutex;
 /* list of AgentReport.link */
 static struct list_head report_list = LIST_HEAD_INIT(report_list);
 
-static void *agent_start(void *arg)
+static void agent_init(void)
+{
+    if (mtx_init(&agent_mutex, mtx_timed))
+        abort();
+
+    if (cnd_init(&agent_cond))
+        abort();
+
+    if (mtx_init(&report_mutex, mtx_timed))
+        abort();
+}
+
+static int agent_start(void *arg)
 {
     Test262Agent *agent = arg;
     JSRuntime *rt;
@@ -470,7 +483,7 @@ static void *agent_start(void *arg)
     JS_SetContextOpaque(ctx, agent);
     JS_SetRuntimeInfo(rt, "agent");
     JS_SetCanBlock(rt, TRUE);
-    
+
     add_helpers(ctx);
     ret_val = JS_Eval(ctx, agent->script, strlen(agent->script),
                       "<evalScript>", JS_EVAL_TYPE_GLOBAL);
@@ -479,7 +492,8 @@ static void *agent_start(void *arg)
     if (JS_IsException(ret_val))
         js_std_dump_error(ctx);
     JS_FreeValue(ctx, ret_val);
-    
+
+    call_once(&agent_init_flag, &agent_init);
     for(;;) {
         JSContext *ctx1;
         ret = JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx1);
@@ -492,15 +506,15 @@ static void *agent_start(void *arg)
             } else {
                 JSValue args[2];
                 
-                pthread_mutex_lock(&agent_mutex);
+                mtx_lock(&agent_mutex);
                 while (!agent->broadcast_pending) {
-                    pthread_cond_wait(&agent_cond, &agent_mutex);
+                    cnd_wait(&agent_cond, &agent_mutex);
                 }
                 
                 agent->broadcast_pending = FALSE;
-                pthread_cond_signal(&agent_cond);
+                cnd_signal(&agent_cond);
 
-                pthread_mutex_unlock(&agent_mutex);
+                mtx_unlock(&agent_mutex);
 
                 args[0] = JS_NewArrayBuffer(ctx, agent->broadcast_sab_buf,
                                             agent->broadcast_sab_size,
@@ -522,7 +536,7 @@ static void *agent_start(void *arg)
 
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
-    return NULL;
+    return 0;
 }
 
 static JSValue js_agent_start(JSContext *ctx, JSValue this_val,
@@ -544,7 +558,8 @@ static JSValue js_agent_start(JSContext *ctx, JSValue this_val,
     agent->script = strdup(script);
     JS_FreeCString(ctx, script);
     list_add_tail(&agent->link, &agent_list);
-    pthread_create(&agent->tid, NULL, agent_start, agent);
+    if (thrd_success != thrd_create(&agent->tid, agent_start, agent))
+        abort();
     return JS_UNDEFINED;
 }
 
@@ -555,7 +570,7 @@ static void js_agent_free(JSContext *ctx)
     
     list_for_each_safe(el, el1, &agent_list) {
         agent = list_entry(el, Test262Agent, link);
-        pthread_join(agent->tid, NULL);
+        thrd_join(agent->tid, NULL);
         JS_FreeValue(ctx, agent->broadcast_sab);
         list_del(&agent->link);
         free(agent);
@@ -605,7 +620,8 @@ static JSValue js_agent_broadcast(JSContext *ctx, JSValue this_val,
     
     /* broadcast the values and wait until all agents have started
        calling their callbacks */
-    pthread_mutex_lock(&agent_mutex);
+    call_once(&agent_init_flag, agent_init);
+    mtx_lock(&agent_mutex);
     list_for_each(el, &agent_list) {
         agent = list_entry(el, Test262Agent, link);
         agent->broadcast_pending = TRUE;
@@ -616,12 +632,12 @@ static JSValue js_agent_broadcast(JSContext *ctx, JSValue this_val,
         agent->broadcast_sab_size = buf_size;
         agent->broadcast_val = val;
     }
-    pthread_cond_broadcast(&agent_cond);
+    cnd_broadcast(&agent_cond);
 
     while (is_broadcast_pending()) {
-        pthread_cond_wait(&agent_cond, &agent_mutex);
+        cnd_wait(&agent_cond, &agent_mutex);
     }
-    pthread_mutex_unlock(&agent_mutex);
+    mtx_unlock(&agent_mutex);
     return JS_UNDEFINED;
 }
 
@@ -651,7 +667,11 @@ static JSValue js_agent_sleep(JSContext *ctx, JSValue this_val,
 static int64_t get_clock_ms(void)
 {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    /* TODO(bnoordhuis) Should use a monotonic clock but we'd have to
+     * be really unlucky to actually observe a backwards jump in time
+     * during a test run so I'm calling it good enough.
+     */
+    timespec_get(&ts, TIME_UTC);
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
 }
 
@@ -667,14 +687,15 @@ static JSValue js_agent_getReport(JSContext *ctx, JSValue this_val,
     AgentReport *rep;
     JSValue ret;
 
-    pthread_mutex_lock(&report_mutex);
+    call_once(&agent_init_flag, &agent_init);
+    mtx_lock(&report_mutex);
     if (list_empty(&report_list)) {
         rep = NULL;
     } else {
         rep = list_entry(report_list.next, AgentReport, link);
         list_del(&rep->link);
     }
-    pthread_mutex_unlock(&report_mutex);
+    mtx_unlock(&report_mutex);
     if (rep) {
         ret = JS_NewString(ctx, rep->str);
         free(rep->str);
@@ -697,10 +718,11 @@ static JSValue js_agent_report(JSContext *ctx, JSValue this_val,
     rep = malloc(sizeof(*rep));
     rep->str = strdup(str);
     JS_FreeCString(ctx, str);
-    
-    pthread_mutex_lock(&report_mutex);
+
+    call_once(&agent_init_flag, &agent_init);
+    mtx_lock(&report_mutex);
     list_add_tail(&rep->link, &report_list);
-    pthread_mutex_unlock(&report_mutex);
+    mtx_unlock(&report_mutex);
     return JS_UNDEFINED;
 }
 
