@@ -11,7 +11,6 @@ qjscalc
 qjscalc.c
 repl.c
 run-test262
-test262/
 test262_*.txt
 test_fib.c
 tests/bjson.so
