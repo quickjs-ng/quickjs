@@ -1895,6 +1895,8 @@ void show_progress(int force) {
             last_test_skipped = test_skipped;
             last_test_failed = test_failed;
             fputc(c, stderr);
+            if (force)
+                fputc('\n', stderr);
             fflush(stderr);
         } else {
             /* output progress indicator: erase end of line and return to col 0 */
