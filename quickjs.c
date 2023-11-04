@@ -40441,6 +40441,36 @@ static JSValue js_string___isSpace(JSContext *ctx, JSValueConst this_val,
 }
 #endif
 
+static JSValue js_string_at(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv)
+{
+    JSValue val, ret;
+    JSString *p;
+    int idx, c;
+
+    val = JS_ToStringCheckObject(ctx, this_val);
+    if (JS_IsException(val))
+        return val;
+    p = JS_VALUE_GET_STRING(val);
+    if (JS_ToInt32Sat(ctx, &idx, argv[0])) {
+        JS_FreeValue(ctx, val);
+        return JS_EXCEPTION;
+    }
+    if (idx < 0)
+        idx = p->len + idx;
+    if (idx < 0 || idx >= p->len) {
+        ret = JS_UNDEFINED;
+    } else {
+        if (p->is_wide_char)
+            c = p->u.str16[idx];
+        else
+            c = p->u.str8[idx];
+        ret = js_new_string_char(ctx, c);
+    }
+    JS_FreeValue(ctx, val);
+    return ret;
+}
+
 static JSValue js_string_charCodeAt(JSContext *ctx, JSValueConst this_val,
                                      int argc, JSValueConst *argv)
 {
@@ -41744,6 +41774,7 @@ static const JSCFunctionListEntry js_string_funcs[] = {
 
 static const JSCFunctionListEntry js_string_proto_funcs[] = {
     JS_PROP_INT32_DEF("length", 0, JS_PROP_CONFIGURABLE ),
+    JS_CFUNC_DEF("at", 1, js_string_at ),
     JS_CFUNC_DEF("charCodeAt", 1, js_string_charCodeAt ),
     JS_CFUNC_DEF("charAt", 1, js_string_charAt ),
     JS_CFUNC_DEF("concat", 1, js_string_concat ),
