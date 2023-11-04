@@ -13,22 +13,19 @@ on:
     branches:
       - master
 
-# TODO(bnoordhuis) run test262 tests
 jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: build
         run: |
-          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y
-      - name: stats
-        run: |
-          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y qjs
-          ./qjs -qd
+          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y all run-test262
       - name: test
         run: |
-          make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y test
+          make test test2
   linux-asan:
     runs-on: ubuntu-latest
     steps:

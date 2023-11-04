@@ -63,6 +63,7 @@ enum test_mode_t {
     TEST_STRICT,           /* run tests as strict, skip nostrict tests */
     TEST_ALL,              /* run tests in both strict and nostrict, unless restricted by spec */
 } test_mode = TEST_DEFAULT_NOSTRICT;
+int compact;
 int skip_async;
 int skip_module;
 int new_style;
@@ -1885,10 +1886,24 @@ void show_progress(int force) {
     clock_t t = clock();
     if (force || !last_clock || (t - last_clock) > CLOCKS_PER_SEC / 20) {
         last_clock = t;
-        /* output progress indicator: erase end of line and return to col 0 */
-        fprintf(stderr, "%d/%d/%d\033[K\r",
-                test_failed, test_count, test_skipped);
-        fflush(stderr);
+        if (compact) {
+            static int last_test_skipped;
+            static int last_test_failed;
+            char c = '.';
+            if (test_skipped > last_test_skipped) c = '-';
+            if (test_failed > last_test_failed) c = '!';
+            last_test_skipped = test_skipped;
+            last_test_failed = test_failed;
+            fputc(c, stderr);
+            if (force)
+                fputc('\n', stderr);
+            fflush(stderr);
+        } else {
+            /* output progress indicator: erase end of line and return to col 0 */
+            fprintf(stderr, "%d/%d/%d\033[K\r",
+                    test_failed, test_count, test_skipped);
+            fflush(stderr);
+        }
     }
 }
 
@@ -1968,6 +1983,7 @@ int main(int argc, char **argv)
     BOOL is_module = FALSE;
 
 #if !defined(_WIN32)
+    compact = !isatty(STDERR_FILENO);
     /* Date tests assume California local time */
     setenv("TZ", "America/Los_Angeles", 1);
 #endif
@@ -2126,5 +2142,6 @@ int main(int argc, char **argv)
     free(harness_exclude);
     free(error_file);
 
-    return 0;
+    /* Signal that the error file is out of date. */
+    return new_errors || changed_errors || fixed_errors;
 }
