@@ -51904,9 +51904,9 @@ static JSValue js_typed_array_at(JSContext *ctx, JSValueConst this_val,
     case JS_CLASS_UINT32_ARRAY:
         return JS_NewUint32(ctx, p->u.array.u.uint32_ptr[idx]);
     case JS_CLASS_FLOAT32_ARRAY:
-        return JS_NewFloat64(ctx, p->u.array.u.float_ptr[idx]);
+        return __JS_NewFloat64(ctx, p->u.array.u.float_ptr[idx]);
     case JS_CLASS_FLOAT64_ARRAY:
-        return JS_NewFloat64(ctx, p->u.array.u.double_ptr[idx]);
+        return __JS_NewFloat64(ctx, p->u.array.u.double_ptr[idx]);
 #ifdef CONFIG_BIGNUM
     case JS_CLASS_BIG_INT64_ARRAY:
         return JS_NewBigInt64(ctx, p->u.array.u.int64_ptr[idx]);
