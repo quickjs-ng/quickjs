@@ -51864,6 +51864,61 @@ fail:
     return JS_EXCEPTION;
 }
 
+static JSValue js_typed_array_at(JSContext *ctx, JSValueConst this_val,
+                                 int argc, JSValueConst *argv)
+{
+    JSObject *p;
+    int64_t idx, len;
+
+    p = get_typed_array(ctx, this_val, /*is_dataview*/0);
+    if (!p)
+        return JS_EXCEPTION;
+
+    if (typed_array_is_detached(ctx, p)) {
+        JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
+        return JS_EXCEPTION;
+    }
+
+    if (JS_ToInt64Sat(ctx, &idx, argv[0]))
+        return JS_EXCEPTION;
+
+    len = p->u.array.count;
+    if (idx < 0)
+        idx = len + idx;
+
+    if (idx < 0 || idx >= len)
+        return JS_UNDEFINED;
+
+    switch (p->class_id) {
+    case JS_CLASS_INT8_ARRAY:
+        return JS_NewInt32(ctx, p->u.array.u.int8_ptr[idx]);
+    case JS_CLASS_UINT8C_ARRAY:
+    case JS_CLASS_UINT8_ARRAY:
+        return JS_NewInt32(ctx, p->u.array.u.uint8_ptr[idx]);
+    case JS_CLASS_INT16_ARRAY:
+        return JS_NewInt32(ctx, p->u.array.u.int16_ptr[idx]);
+    case JS_CLASS_UINT16_ARRAY:
+        return JS_NewInt32(ctx, p->u.array.u.uint16_ptr[idx]);
+    case JS_CLASS_INT32_ARRAY:
+        return JS_NewInt32(ctx, p->u.array.u.int32_ptr[idx]);
+    case JS_CLASS_UINT32_ARRAY:
+        return JS_NewUint32(ctx, p->u.array.u.uint32_ptr[idx]);
+    case JS_CLASS_FLOAT32_ARRAY:
+        return __JS_NewFloat64(ctx, p->u.array.u.float_ptr[idx]);
+    case JS_CLASS_FLOAT64_ARRAY:
+        return __JS_NewFloat64(ctx, p->u.array.u.double_ptr[idx]);
+#ifdef CONFIG_BIGNUM
+    case JS_CLASS_BIG_INT64_ARRAY:
+        return JS_NewBigInt64(ctx, p->u.array.u.int64_ptr[idx]);
+    case JS_CLASS_BIG_UINT64_ARRAY:
+        return JS_NewBigUint64(ctx, p->u.array.u.uint64_ptr[idx]);
+#endif
+    }
+
+    abort(); /* unreachable */
+    return JS_UNDEFINED;
+}
+
 static JSValue js_typed_array_set(JSContext *ctx,
                                   JSValueConst this_val,
                                   int argc, JSValueConst *argv)
@@ -53054,6 +53109,7 @@ static const JSCFunctionListEntry js_typed_array_base_funcs[] = {
 
 static const JSCFunctionListEntry js_typed_array_base_proto_funcs[] = {
     JS_CGETSET_DEF("length", js_typed_array_get_length, NULL ),
+    JS_CFUNC_DEF("at", 1, js_typed_array_at ),
     JS_CGETSET_MAGIC_DEF("buffer", js_typed_array_get_buffer, NULL, 0 ),
     JS_CGETSET_MAGIC_DEF("byteLength", js_typed_array_get_byteLength, NULL, 0 ),
     JS_CGETSET_MAGIC_DEF("byteOffset", js_typed_array_get_byteOffset, NULL, 0 ),
