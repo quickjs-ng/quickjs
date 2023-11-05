@@ -1889,21 +1889,23 @@ void show_progress(int force) {
         if (compact) {
             static int last_test_skipped;
             static int last_test_failed;
+            static int dots;
             char c = '.';
             if (test_skipped > last_test_skipped) c = '-';
             if (test_failed > last_test_failed) c = '!';
             last_test_skipped = test_skipped;
             last_test_failed = test_failed;
             fputc(c, stderr);
-            if (force)
-                fputc('\n', stderr);
-            fflush(stderr);
+            if (force || ++dots % 60 == 0) {
+                fprintf(stderr, " %d/%d/%d\n",
+                        test_failed, test_count, test_skipped);
+            }
         } else {
             /* output progress indicator: erase end of line and return to col 0 */
             fprintf(stderr, "%d/%d/%d\033[K\r",
                     test_failed, test_count, test_skipped);
-            fflush(stderr);
         }
+        fflush(stderr);
     }
 }
 
