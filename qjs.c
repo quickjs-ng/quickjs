@@ -44,8 +44,6 @@
 extern const uint8_t qjsc_repl[];
 extern const uint32_t qjsc_repl_size;
 #ifdef CONFIG_BIGNUM
-extern const uint8_t qjsc_qjscalc[];
-extern const uint32_t qjsc_qjscalc_size;
 static int bignum_ext;
 #endif
 
@@ -293,7 +291,6 @@ void help(void)
            "    --std          make 'std' and 'os' available to the loaded script\n"
 #ifdef CONFIG_BIGNUM
            "    --bignum       enable the bignum extensions (BigFloat, BigDecimal)\n"
-           "    --qjscalc      load the QJSCalc runtime (default if invoked as qjscalc)\n"
 #endif
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
@@ -321,23 +318,8 @@ int main(int argc, char **argv)
     size_t memory_limit = 0;
     char *include_list[32];
     int i, include_count = 0;
-#ifdef CONFIG_BIGNUM
-    int load_jscalc;
-#endif
     size_t stack_size = 0;
-    
-#ifdef CONFIG_BIGNUM
-    /* load jscalc runtime if invoked as 'qjscalc' */
-    {
-        const char *p, *exename;
-        exename = argv[0];
-        p = strrchr(exename, '/');
-        if (p)
-            exename = p + 1;
-        load_jscalc = !strcmp(exename, "qjscalc");
-    }
-#endif
-    
+
     /* cannot use getopt because we want to pass the command line to
        the script */
     optind = 1;
@@ -420,10 +402,6 @@ int main(int argc, char **argv)
                 bignum_ext = 1;
                 continue;
             }
-            if (!strcmp(longopt, "qjscalc")) {
-                load_jscalc = 1;
-                continue;
-            }
 #endif
             if (opt == 'q' || !strcmp(longopt, "quit")) {
                 empty_run++;
@@ -453,11 +431,6 @@ int main(int argc, char **argv)
             help();
         }
     }
-
-#ifdef CONFIG_BIGNUM
-    if (load_jscalc)
-        bignum_ext = 1;
-#endif
 
     if (trace_memory) {
         js_trace_malloc_init(&trace_data);
@@ -490,11 +463,6 @@ int main(int argc, char **argv)
     }
     
     if (!empty_run) {
-#ifdef CONFIG_BIGNUM
-        if (load_jscalc) {
-            js_std_eval_binary(ctx, qjsc_qjscalc, qjsc_qjscalc_size, 0);
-        }
-#endif
         js_std_add_helpers(ctx, argc - optind, argv + optind);
 
         /* make 'std' and 'os' visible to non module code */

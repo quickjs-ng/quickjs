@@ -13,8 +13,6 @@ qjs
 qjs-debug
 qjs32
 qjsc
-qjscalc
-qjscalc.c
 repl.c
 run-test262
 run-test262-32
