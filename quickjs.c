@@ -32252,13 +32252,13 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
         goto fail;
 
 #if defined(DUMP_BYTECODE) && (DUMP_BYTECODE & 2)
-        printf("pass 2\n");
-        dump_byte_code(ctx, 2, fd->byte_code.buf, fd->byte_code.size,
-                       fd->args, fd->arg_count, fd->vars, fd->var_count,
-                       fd->closure_var, fd->closure_var_count,
-                       fd->cpool, fd->cpool_count, fd->source, fd->line_num,
-                       fd->label_slots, NULL);
-        printf("\n");
+    printf("pass 2\n");
+    dump_byte_code(ctx, 2, fd->byte_code.buf, fd->byte_code.size,
+                   fd->args, fd->arg_count, fd->vars, fd->var_count,
+                   fd->closure_var, fd->closure_var_count,
+                   fd->cpool, fd->cpool_count, fd->source, fd->line_num,
+                   fd->label_slots, NULL);
+    printf("\n");
 #endif
 
     if (resolve_labels(ctx, fd))
