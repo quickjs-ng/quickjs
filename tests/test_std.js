@@ -1,6 +1,8 @@
 import * as std from "std";
 import * as os from "os";
 
+const isWin = os.platform === 'win32';
+
 function assert(actual, expected, message) {
     if (arguments.length == 1)
         expected = true;
@@ -195,18 +197,20 @@ function test_os()
     assert(st.mode & os.S_IFMT, os.S_IFREG);
     assert(st.mtime, fdate);
 
-    err = os.symlink(fname, link_path);
-    assert(err === 0);
-    
-    [st, err] = os.lstat(link_path);
-    assert(err, 0);
-    assert(st.mode & os.S_IFMT, os.S_IFLNK);
+    if (!isWin) {
+        err = os.symlink(fname, link_path);
+        assert(err === 0);
 
-    [buf, err] = os.readlink(link_path);
-    assert(err, 0);
-    assert(buf, fname);
-    
-    assert(os.remove(link_path) === 0);
+        [st, err] = os.lstat(link_path);
+        assert(err, 0);
+        assert(st.mode & os.S_IFMT, os.S_IFLNK);
+
+        [buf, err] = os.readlink(link_path);
+        assert(err, 0);
+        assert(buf, fname);
+
+        assert(os.remove(link_path) === 0);
+    }
 
     [buf, err] = os.getcwd();
     assert(err, 0);
@@ -277,6 +281,6 @@ test_file2();
 test_getline();
 test_popen();
 test_os();
-test_os_exec();
+!isWin && test_os_exec();
 test_timer();
 test_ext_json();
