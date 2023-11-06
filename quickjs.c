@@ -10076,7 +10076,6 @@ static double js_strtod(const char *p, int radix, BOOL is_float)
 #define ATOD_TYPE_BIG_INT     (1 << 7)
 #define ATOD_TYPE_BIG_FLOAT   (2 << 7)
 #define ATOD_TYPE_BIG_DECIMAL (3 << 7)
-#define ATOD_MODE_UNUSED      (1 << 9) 
 /* accept -0x1 */
 #define ATOD_ACCEPT_PREFIX_AFTER_SIGN (1 << 10)
 
@@ -10316,7 +10315,7 @@ static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
             goto fail;
         }
     } else if ((atod_type == ATOD_TYPE_FLOAT64) && is_float && radix != 10) {
-            goto fail;
+        goto fail;
     }
 
     switch(atod_type) {
@@ -12126,7 +12125,6 @@ static bf_t *JS_ToBigIntFree(JSContext *ctx, bf_t *buf, JSValue val)
     case JS_TAG_FLOAT64:
     case JS_TAG_BIG_FLOAT:
         goto fail;
-        /* fall tru */
     case JS_TAG_BOOL:
         r = buf;
         bf_init(ctx->bf_ctx, r);
@@ -20777,27 +20775,6 @@ static __exception int next_token(JSParseState *s)
             goto def_token;
         }
         break;
-#ifdef CONFIG_BIGNUM
-        /* in math mode, '^' is the power operator. '^^' is always the
-           xor operator and '**' is always the power operator */
-    case '^':
-        if (p[1] == '=') {
-            p += 2;
-            s->token.val = TOK_XOR_ASSIGN;
-        } else if (p[1] == '^') {
-            if (p[2] == '=') {
-                p += 3;
-                s->token.val = TOK_XOR_ASSIGN;
-            } else {
-                p += 2;
-                s->token.val = '^';
-            }
-        } else {
-            p++;
-            s->token.val = '^';
-        }
-        break;
-#else
     case '^':
         if (p[1] == '=') {
             p += 2;
@@ -20806,7 +20783,6 @@ static __exception int next_token(JSParseState *s)
             goto def_token;
         }
         break;
-#endif
     case '|':
         if (p[1] == '=') {
             p += 2;
