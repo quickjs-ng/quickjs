@@ -154,9 +154,6 @@ else
 QJSC_CC=$(CC)
 QJSC=./qjsc$(EXE)
 endif
-ifndef CONFIG_WIN32
-PROGS+=qjscalc
-endif
 ifdef CONFIG_M32
 PROGS+=qjs32 qjs32_s
 endif
@@ -186,7 +183,6 @@ QJS_LIB_OBJS=$(OBJDIR)/quickjs.o $(OBJDIR)/libregexp.o $(OBJDIR)/libunicode.o $(
 QJS_OBJS=$(OBJDIR)/qjs.o $(OBJDIR)/repl.o $(QJS_LIB_OBJS)
 ifdef CONFIG_BIGNUM
 QJS_LIB_OBJS+=$(OBJDIR)/libbf.o 
-QJS_OBJS+=$(OBJDIR)/qjscalc.o
 endif
 
 HOST_LIBS=-lm -ldl -lpthread
@@ -232,9 +228,6 @@ qjs32_s: $(patsubst %.o, %.m32s.o, $(QJS_OBJS))
 	$(CC) -m32 $(LDFLAGS) -o $@ $^ $(LIBS)
 	@size $@
 
-qjscalc: qjs
-	ln -sf $< $@
-
 ifdef CONFIG_LTO
 LTOEXT=.lto
 else
@@ -251,9 +244,6 @@ endif # CONFIG_LTO
 
 repl.c: $(QJSC) repl.js
 	$(QJSC) -c -o $@ -m repl.js
-
-qjscalc.c: $(QJSC) qjscalc.js
-	$(QJSC) -fbignum -c -o $@ qjscalc.js
 
 ifneq ($(wildcard unicode/UnicodeData.txt),)
 $(OBJDIR)/libunicode.o $(OBJDIR)/libunicode.m32.o $(OBJDIR)/libunicode.m32s.o \
@@ -305,7 +295,7 @@ unicode_gen: $(OBJDIR)/unicode_gen.host.o $(OBJDIR)/cutils.host.o libunicode.c u
 	$(HOST_CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJDIR)/unicode_gen.host.o $(OBJDIR)/cutils.host.o
 
 clean:
-	rm -f repl.c qjscalc.c out.c
+	rm -f repl.c out.c
 	rm -f *.a *.o *.d *~ unicode_gen regexp_test $(PROGS)
 	rm -f hello.c test_fib.c
 	rm -f examples/*.so tests/*.so
@@ -316,7 +306,6 @@ install: all
 	mkdir -p "$(DESTDIR)$(prefix)/bin"
 	$(STRIP) qjs qjsc
 	install -m755 qjs qjsc "$(DESTDIR)$(prefix)/bin"
-	ln -sf qjs "$(DESTDIR)$(prefix)/bin/qjscalc"
 	mkdir -p "$(DESTDIR)$(prefix)/lib/quickjs"
 	install -m644 libquickjs.a "$(DESTDIR)$(prefix)/lib/quickjs"
 ifdef CONFIG_LTO
@@ -417,7 +406,6 @@ endif
 ifdef CONFIG_BIGNUM
 	./qjs --bignum tests/test_op_overloading.js
 	./qjs --bignum tests/test_bignum.js
-	./qjs --qjscalc tests/test_qjscalc.js
 endif
 ifdef CONFIG_M32
 	./qjs32 tests/test_closure.js
@@ -429,7 +417,6 @@ ifdef CONFIG_M32
 ifdef CONFIG_BIGNUM
 	./qjs32 --bignum tests/test_op_overloading.js
 	./qjs32 --bignum tests/test_bignum.js
-	./qjs32 --qjscalc tests/test_qjscalc.js
 endif
 endif
 
