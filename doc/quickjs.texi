@@ -286,8 +286,6 @@ ECMA402 (Internationalization API) is not supported.
 
 @itemize
 
-@item The directive @code{"use strip"} indicates that the debug information (including the source code of the functions) should not be retained to save memory. As @code{"use strict"}, the directive can be global to a script or local to a function.
-
 @item The first line of a script beginning with @code{#!} is ignored.
 
 @end itemize
@@ -304,10 +302,6 @@ standard Javascript. See @code{jsbignum.pdf} for more information.
 @item @code{BigFloat} support: arbitrary large floating point numbers in base 2.
 
 @item Operator overloading.
-
-@item The directive @code{"use bigint"} enables the bigint mode where integers are @code{BigInt} by default.
-
-@item The directive @code{"use math"} enables the math mode where the division and power operators on integers produce fractions. Floating point literals are @code{BigFloat} by default and integers are @code{BigInt} by default.
 
 @end itemize
 

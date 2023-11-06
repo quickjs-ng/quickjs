@@ -313,7 +313,6 @@ struct JSClass {
 };
 
 #define JS_MODE_STRICT (1 << 0)
-#define JS_MODE_STRIP  (1 << 1)
 
 typedef struct JSStackFrame {
     struct JSStackFrame *prev_frame; /* NULL if first stack frame */
@@ -22961,14 +22960,11 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
     put_u32(fd->byte_code.buf + ctor_cpool_offset, ctor_fd->parent_cpool_idx);
 
     /* store the class source code in the constructor. */
-    if (!(fd->js_mode & JS_MODE_STRIP)) {
-        js_free(ctx, ctor_fd->source);
-        ctor_fd->source_len = s->buf_ptr - class_start_ptr;
-        ctor_fd->source = js_strndup(ctx, (const char *)class_start_ptr,
-                                     ctor_fd->source_len);
-        if (!ctor_fd->source)
-            goto fail;
-    }
+    js_free(ctx, ctor_fd->source);
+    ctor_fd->source_len = s->buf_ptr - class_start_ptr;
+    ctor_fd->source = js_strndup(ctx, (const char *)class_start_ptr, ctor_fd->source_len);
+    if (!ctor_fd->source)
+        goto fail;
 
     /* consume the '}' */
     if (next_token(s))
@@ -30871,7 +30867,7 @@ static void add_pc2line_info(JSFunctionDef *s, uint32_t pc, int line_num)
 
 static void compute_pc2line_info(JSFunctionDef *s)
 {
-    if (!(s->js_mode & JS_MODE_STRIP) && s->line_number_slots) {
+    if (s->line_number_slots) {
         int last_line_num = s->line_num;
         uint32_t last_pc = 0;
         int i;
@@ -31098,7 +31094,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
     }
 #endif
     /* XXX: Should skip this phase if not generating SHORT_OPCODES */
-    if (s->line_number_size && !(s->js_mode & JS_MODE_STRIP)) {
+    if (s->line_number_size) {
         s->line_number_slots = js_mallocz(s->ctx, sizeof(*s->line_number_slots) * s->line_number_size);
         if (s->line_number_slots == NULL)
             return -1;
@@ -32243,30 +32239,26 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     }
 
 #if defined(DUMP_BYTECODE) && (DUMP_BYTECODE & 4)
-    if (!(fd->js_mode & JS_MODE_STRIP)) {
-        printf("pass 1\n");
-        dump_byte_code(ctx, 1, fd->byte_code.buf, fd->byte_code.size,
-                       fd->args, fd->arg_count, fd->vars, fd->var_count,
-                       fd->closure_var, fd->closure_var_count,
-                       fd->cpool, fd->cpool_count, fd->source, fd->line_num,
-                       fd->label_slots, NULL);
-        printf("\n");
-    }
+    printf("pass 1\n");
+    dump_byte_code(ctx, 1, fd->byte_code.buf, fd->byte_code.size,
+                    fd->args, fd->arg_count, fd->vars, fd->var_count,
+                    fd->closure_var, fd->closure_var_count,
+                    fd->cpool, fd->cpool_count, fd->source, fd->line_num,
+                    fd->label_slots, NULL);
+    printf("\n");
 #endif
 
     if (resolve_variables(ctx, fd))
         goto fail;
 
 #if defined(DUMP_BYTECODE) && (DUMP_BYTECODE & 2)
-    if (!(fd->js_mode & JS_MODE_STRIP)) {
-        printf("pass 2\n");
-        dump_byte_code(ctx, 2, fd->byte_code.buf, fd->byte_code.size,
-                       fd->args, fd->arg_count, fd->vars, fd->var_count,
-                       fd->closure_var, fd->closure_var_count,
-                       fd->cpool, fd->cpool_count, fd->source, fd->line_num,
-                       fd->label_slots, NULL);
-        printf("\n");
-    }
+    printf("pass 2\n");
+    dump_byte_code(ctx, 2, fd->byte_code.buf, fd->byte_code.size,
+                   fd->args, fd->arg_count, fd->vars, fd->var_count,
+                   fd->closure_var, fd->closure_var_count,
+                   fd->cpool, fd->cpool_count, fd->source, fd->line_num,
+                   fd->label_slots, NULL);
+    printf("\n");
 #endif
 
     if (resolve_labels(ctx, fd))
@@ -32275,17 +32267,11 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     if (compute_stack_size(ctx, fd, &stack_size) < 0)
         goto fail;
 
-    if (fd->js_mode & JS_MODE_STRIP) {
-        function_size = offsetof(JSFunctionBytecode, debug);
-    } else {
-        function_size = sizeof(*b);
-    }
+    function_size = sizeof(*b);
     cpool_offset = function_size;
     function_size += fd->cpool_count * sizeof(*fd->cpool);
     vardefs_offset = function_size;
-    if (!(fd->js_mode & JS_MODE_STRIP) || fd->has_eval_call) {
-        function_size += (fd->arg_count + fd->var_count) * sizeof(*b->vardefs);
-    }
+    function_size += (fd->arg_count + fd->var_count) * sizeof(*b->vardefs);
     closure_var_offset = function_size;
     function_size += fd->closure_var_count * sizeof(*fd->closure_var);
     byte_code_offset = function_size;
@@ -32304,26 +32290,11 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 
     b->func_name = fd->func_name;
     if (fd->arg_count + fd->var_count > 0) {
-        if ((fd->js_mode & JS_MODE_STRIP) && !fd->has_eval_call) {
-            /* Strip variable definitions not needed at runtime */
-            int i;
-            for(i = 0; i < fd->var_count; i++) {
-                JS_FreeAtom(ctx, fd->vars[i].var_name);
-            }
-            for(i = 0; i < fd->arg_count; i++) {
-                JS_FreeAtom(ctx, fd->args[i].var_name);
-            }
-            for(i = 0; i < fd->closure_var_count; i++) {
-                JS_FreeAtom(ctx, fd->closure_var[i].var_name);
-                fd->closure_var[i].var_name = JS_ATOM_NULL;
-            }
-        } else {
-            b->vardefs = (void *)((uint8_t*)b + vardefs_offset);
-            if (fd->arg_count > 0)
-                memcpy(b->vardefs, fd->args, fd->arg_count * sizeof(fd->args[0]));
-            if (fd->var_count > 0)
-                memcpy(b->vardefs + fd->arg_count, fd->vars, fd->var_count * sizeof(fd->vars[0]));
-        }
+        b->vardefs = (void *)((uint8_t*)b + vardefs_offset);
+        if (fd->arg_count > 0)
+            memcpy(b->vardefs, fd->args, fd->arg_count * sizeof(fd->args[0]));
+        if (fd->var_count > 0)
+            memcpy(b->vardefs + fd->arg_count, fd->vars, fd->var_count * sizeof(fd->vars[0]));
         b->var_count = fd->var_count;
         b->arg_count = fd->arg_count;
         b->defined_arg_count = fd->defined_arg_count;
@@ -32340,27 +32311,23 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 
     b->stack_size = stack_size;
 
-    if (fd->js_mode & JS_MODE_STRIP) {
-        JS_FreeAtom(ctx, fd->filename);
-        dbuf_free(&fd->pc2line);    // probably useless
-    } else {
-        /* XXX: source and pc2line info should be packed at the end of the
-           JSFunctionBytecode structure, avoiding allocation overhead
-         */
-        b->has_debug = 1;
-        b->debug.filename = fd->filename;
-        b->debug.line_num = fd->line_num;
+    /* XXX: source and pc2line info should be packed at the end of the
+       JSFunctionBytecode structure, avoiding allocation overhead
+     */
+    b->has_debug = 1;
+    b->debug.filename = fd->filename;
+    b->debug.line_num = fd->line_num;
 
-        //DynBuf pc2line;
-        //compute_pc2line_info(fd, &pc2line);
-        //js_free(ctx, fd->line_number_slots)
-        b->debug.pc2line_buf = js_realloc(ctx, fd->pc2line.buf, fd->pc2line.size);
-        if (!b->debug.pc2line_buf)
-            b->debug.pc2line_buf = fd->pc2line.buf;
-        b->debug.pc2line_len = fd->pc2line.size;
-        b->debug.source = fd->source;
-        b->debug.source_len = fd->source_len;
-    }
+    //DynBuf pc2line;
+    //compute_pc2line_info(fd, &pc2line);
+    //js_free(ctx, fd->line_number_slots)
+    b->debug.pc2line_buf = js_realloc(ctx, fd->pc2line.buf, fd->pc2line.size);
+    if (!b->debug.pc2line_buf)
+        b->debug.pc2line_buf = fd->pc2line.buf;
+    b->debug.pc2line_len = fd->pc2line.size;
+    b->debug.source = fd->source;
+    b->debug.source_len = fd->source_len;
+
     if (fd->scopes != fd->def_scope_array)
         js_free(ctx, fd->scopes);
 
@@ -32389,9 +32356,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     add_gc_object(ctx->rt, &b->header, JS_GC_OBJ_TYPE_FUNCTION_BYTECODE);
     
 #if defined(DUMP_BYTECODE) && (DUMP_BYTECODE & 1)
-    if (!(fd->js_mode & JS_MODE_STRIP)) {
-        js_dump_function_bytecode(ctx, b);
-    }
+    js_dump_function_bytecode(ctx, b);
 #endif
 
     if (fd->parent) {
@@ -32531,11 +32496,6 @@ static __exception int js_parse_directives(JSParseState *s)
             s->cur_func->has_use_strict = TRUE;
             s->cur_func->js_mode |= JS_MODE_STRICT;
         }
-#if !defined(DUMP_BYTECODE) || !(DUMP_BYTECODE & 8)
-        else if (!strcmp(str, "use strip")) {
-            s->cur_func->js_mode |= JS_MODE_STRIP;
-        }
-#endif
     }
     return js_parse_seek_token(s, &pos);
 }
@@ -33009,15 +32969,14 @@ static __exception int js_parse_function_decl2(JSParseState *s,
             else
                 emit_op(s, OP_return);
 
-            if (!(fd->js_mode & JS_MODE_STRIP)) {
-                /* save the function source code */
-                /* the end of the function source code is after the last
-                   token of the function source stored into s->last_ptr */
-                fd->source_len = s->last_ptr - ptr;
-                fd->source = js_strndup(ctx, (const char *)ptr, fd->source_len);
-                if (!fd->source)
-                    goto fail;
-            }
+            /* save the function source code */
+            /* the end of the function source code is after the last
+                token of the function source stored into s->last_ptr */
+            fd->source_len = s->last_ptr - ptr;
+            fd->source = js_strndup(ctx, (const char *)ptr, fd->source_len);
+            if (!fd->source)
+                goto fail;
+
             goto done;
         }
     }
@@ -33036,13 +32995,12 @@ static __exception int js_parse_function_decl2(JSParseState *s,
         if (js_parse_source_element(s))
             goto fail;
     }
-    if (!(fd->js_mode & JS_MODE_STRIP)) {
-        /* save the function source code */
-        fd->source_len = s->buf_ptr - ptr;
-        fd->source = js_strndup(ctx, (const char *)ptr, fd->source_len);
-        if (!fd->source)
-            goto fail;
-    }
+
+    /* save the function source code */
+    fd->source_len = s->buf_ptr - ptr;
+    fd->source = js_strndup(ctx, (const char *)ptr, fd->source_len);
+    if (!fd->source)
+        goto fail;
 
     if (next_token(s)) {
         /* consume the '}' */
@@ -33331,8 +33289,6 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
         js_mode = 0;
         if (flags & JS_EVAL_FLAG_STRICT)
             js_mode |= JS_MODE_STRICT;
-        if (flags & JS_EVAL_FLAG_STRIP)
-            js_mode |= JS_MODE_STRIP;
         if (eval_type == JS_EVAL_TYPE_MODULE) {
             JSAtom module_name = JS_NewAtom(ctx, filename);
             if (module_name == JS_ATOM_NULL)
