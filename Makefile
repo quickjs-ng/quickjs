@@ -27,6 +27,8 @@ CONFIG_DARWIN=y
 endif
 # Windows cross compilation from Linux
 #CONFIG_WIN32=y
+# Windows compilation with MinGW
+#CONFIG_MINGW=y
 # use link time optimization (smaller and faster executables but slower build)
 # XXX(bnoordhuis) disabled because of slow build times
 #CONFIG_LTO=y
@@ -64,6 +66,8 @@ ifdef CONFIG_WIN32
     CROSS_PREFIX=x86_64-w64-mingw32-
   endif
   EXE=.exe
+else ifdef CONFIG_MINGW
+  EXE=.exe
 else
   CROSS_PREFIX=
   EXE=
@@ -89,6 +93,12 @@ ifdef CONFIG_CLANG
       AR=$(CROSS_PREFIX)ar
     endif
   endif
+else ifdef CONFIG_MINGW
+  HOST_CC=gcc
+  CC=gcc
+  CFLAGS=-g -Wall
+  CFLAGS += -Wno-array-bounds -Wno-format-truncation
+  AR=ar
 else
   HOST_CC=gcc
   CC=$(CROSS_PREFIX)gcc
@@ -109,6 +119,9 @@ ifdef CONFIG_BIGNUM
 DEFINES+=-DCONFIG_BIGNUM
 endif
 ifdef CONFIG_WIN32
+DEFINES+=-D__USE_MINGW_ANSI_STDIO # for standard snprintf behavior
+endif
+ifdef CONFIG_MINGW
 DEFINES+=-D__USE_MINGW_ANSI_STDIO # for standard snprintf behavior
 endif
 
@@ -141,6 +154,8 @@ LDFLAGS+=-fsanitize=undefined -fno-omit-frame-pointer
 endif
 ifdef CONFIG_WIN32
 LDEXPORT=
+else ifdef CONFIG_MINGW
+LDEXPORT=
 else
 LDEXPORT=-rdynamic
 endif
@@ -167,9 +182,11 @@ ifeq ($(CROSS_PREFIX),)
 ifndef CONFIG_ASAN
 ifndef CONFIG_MSAN
 ifndef CONFIG_UBSAN
+ifndef CONFIG_MINGW
 PROGS+=examples/hello examples/hello_module examples/test_fib
 ifndef CONFIG_DARWIN
 PROGS+=examples/fib.so examples/point.so
+endif
 endif
 endif
 endif
@@ -188,7 +205,9 @@ endif
 HOST_LIBS=-lm -ldl -lpthread
 LIBS=-lm
 ifndef CONFIG_WIN32
+ifndef CONFIG_MINGW
 LIBS+=-ldl -lpthread
+endif
 endif
 LIBS+=$(EXTRA_LIBS)
 
@@ -381,8 +400,10 @@ doc/%.html: doc/%.html.pre
 ###############################################################################
 # tests
 
+ifndef CONFIG_MINGW
 ifndef CONFIG_DARWIN
 test: tests/bjson.so examples/point.so
+endif
 endif
 ifdef CONFIG_M32
 test: qjs32
@@ -394,7 +415,10 @@ test: qjs
 	./qjs tests/test_builtin.js
 	./qjs tests/test_loop.js
 	./qjs tests/test_std.js
+ifndef CONFIG_MINGW
 	./qjs tests/test_worker.js
+endif
+ifndef CONFIG_MINGW
 ifndef CONFIG_DARWIN
 ifdef CONFIG_BIGNUM
 	./qjs --bignum tests/test_bjson.js
@@ -402,6 +426,7 @@ else
 	./qjs tests/test_bjson.js
 endif
 	./qjs examples/test_point.js
+endif
 endif
 ifdef CONFIG_BIGNUM
 	./qjs --bignum tests/test_op_overloading.js
