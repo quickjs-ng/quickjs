@@ -38832,6 +38832,69 @@ static JSValue js_array_reverse(JSContext *ctx, JSValueConst this_val,
     return JS_EXCEPTION;
 }
 
+// Note: a.toReversed() is a.slice().reverse() with the twist that a.slice()
+// leaves holes in sparse arrays intact whereas a.toReversed() replaces them
+// with undefined, thus in effect creating a dense array.
+// Does not use Array[@@species], always returns a base Array.
+static JSValue js_array_toReversed(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv)
+{
+    JSValue arr, obj, ret, *arrp, *pval;
+    JSObject *p;
+    int64_t i, len;
+    uint32_t count32;
+
+    ret = JS_EXCEPTION;
+    arr = JS_UNDEFINED;
+    obj = JS_ToObject(ctx, this_val);
+    if (js_get_length64(ctx, &len, obj))
+        goto exception;
+
+    if (len > UINT32_MAX) {
+        JS_ThrowRangeError(ctx, "invalid array length");
+        goto exception;
+    }
+
+    arr = JS_NewArray(ctx);
+    if (JS_IsException(arr))
+        goto exception;
+
+    if (len > 0) {
+        p = JS_VALUE_GET_OBJ(arr);
+        if (expand_fast_array(ctx, p, len) < 0)
+            goto exception;
+        p->u.array.count = len;
+
+        i = len - 1;
+        pval = p->u.array.u.values;
+        if (js_get_fast_array(ctx, obj, &arrp, &count32) && count32 == len) {
+            for (; i >= 0; i--, pval++)
+                *pval = JS_DupValue(ctx, arrp[i]);
+        } else {
+            // Query order is observable; test262 expects descending order.
+            for (; i >= 0; i--, pval++) {
+                if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval)) {
+                    // Exception; initialize remaining elements.
+                    for (; i >= 0; i--, pval++)
+                        *pval = JS_UNDEFINED;
+                    goto exception;
+                }
+            }
+        }
+
+        if (JS_SetProperty(ctx, arr, JS_ATOM_length, JS_NewInt64(ctx, len)) < 0)
+            goto exception;
+    }
+
+    ret = arr;
+    arr = JS_UNDEFINED;
+
+exception:
+    JS_FreeValue(ctx, arr);
+    JS_FreeValue(ctx, obj);
+    return ret;
+}
+
 static JSValue js_array_slice(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv, int splice)
 {
@@ -39417,6 +39480,7 @@ static const JSCFunctionListEntry js_array_proto_funcs[] = {
     JS_CFUNC_MAGIC_DEF("shift", 0, js_array_pop, 1 ),
     JS_CFUNC_MAGIC_DEF("unshift", 1, js_array_push, 1 ),
     JS_CFUNC_DEF("reverse", 0, js_array_reverse ),
+    JS_CFUNC_DEF("toReversed", 0, js_array_toReversed ),
     JS_CFUNC_DEF("sort", 1, js_array_sort ),
     JS_CFUNC_MAGIC_DEF("slice", 2, js_array_slice, 0 ),
     JS_CFUNC_MAGIC_DEF("splice", 2, js_array_slice, 1 ),
