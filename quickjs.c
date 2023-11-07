@@ -28010,6 +28010,7 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
             ret_val = js_evaluate_module(ctx, m1);
             if (JS_IsException(ret_val)) {
                 m->eval_mark = FALSE;
+                js_free_modules(ctx, JS_FREE_MODULE_NOT_EVALUATED);
                 goto clean;
             }
             if (!JS_IsUndefined(ret_val)) {
