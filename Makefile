@@ -141,16 +141,16 @@ CFLAGS+=-p
 LDFLAGS+=-p
 endif
 ifdef CONFIG_ASAN
-CFLAGS+=-fsanitize=address -fno-omit-frame-pointer
-LDFLAGS+=-fsanitize=address -fno-omit-frame-pointer
+CFLAGS+=-fsanitize=address -fno-sanitize-recover=all -fno-omit-frame-pointer
+LDFLAGS+=-fsanitize=address -fno-sanitize-recover=all -fno-omit-frame-pointer
 endif
 ifdef CONFIG_MSAN
-CFLAGS+=-fsanitize=memory -fno-omit-frame-pointer
-LDFLAGS+=-fsanitize=memory -fno-omit-frame-pointer
+CFLAGS+=-fsanitize=memory -fno-sanitize-recover=all -fno-omit-frame-pointer
+LDFLAGS+=-fsanitize=memory -fno-sanitize-recover=all -fno-omit-frame-pointer
 endif
 ifdef CONFIG_UBSAN
-CFLAGS+=-fsanitize=undefined -fno-omit-frame-pointer
-LDFLAGS+=-fsanitize=undefined -fno-omit-frame-pointer
+CFLAGS+=-fsanitize=undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
+LDFLAGS+=-fsanitize=undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
 endif
 ifdef CONFIG_WIN32
 LDEXPORT=
