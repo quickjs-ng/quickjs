@@ -62,10 +62,8 @@
 #define MALLOC_OVERHEAD  8
 #endif
 
-#if !defined(_WIN32) || defined(__MINGW32__)
 /* define it if printf uses the RNDN rounding mode instead of RNDNA */
 #define CONFIG_PRINTF_RNDN
-#endif
 
 #if !defined(EMSCRIPTEN)
 /* enable stack limitation */
