@@ -54,7 +54,7 @@ prefix=/usr/local
 #CONFIG_MSAN=y
 # use UB sanitizer
 #CONFIG_UBSAN=y
-# include the code for BigInt/BigFloat
+# include the code for BigInt
 CONFIG_BIGNUM=y
 
 OBJDIR=.obj

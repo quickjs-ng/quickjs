@@ -633,7 +633,6 @@ int main(int argc, char **argv)
     ctx = JS_NewContext(rt);
 #ifdef CONFIG_BIGNUM
     if (bignum_ext) {
-        JS_AddIntrinsicBigFloat(ctx);
         JS_AddIntrinsicOperators(ctx);
         JS_EnableBignumExt(ctx, TRUE);
     }
@@ -689,7 +688,6 @@ int main(int argc, char **argv)
 #ifdef CONFIG_BIGNUM
         if (bignum_ext) {
             fprintf(fo,
-                    "  JS_AddIntrinsicBigFloat(ctx);\n"
                     "  JS_AddIntrinsicOperators(ctx);\n"
                     "  JS_EnableBignumExt(ctx, 1);\n");
         }
