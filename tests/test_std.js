@@ -104,7 +104,7 @@ function test_getline()
 
     f.close();
 }
- 
+
 function test_popen()
 {
     var str, f, fname = "tmp_file.txt";
@@ -125,20 +125,6 @@ function test_popen()
     assert(str, content);
 
     os.remove(fname);
-}
-
-function test_ext_json()
-{
-    var expected, input, obj;
-    expected = '{"x":false,"y":true,"z2":null,"a":[1,8,160],"s":"str"}';
-    input = `{ "x":false, /*comments are allowed */
-               "y":true,  // also a comment
-               z2:null, // unquoted property names
-               "a":[+1,0o10,0xa0,], // plus prefix, octal, hexadecimal
-               "s":"str",} // trailing comma in objects and arrays
-            `;
-    obj = std.parseExtJSON(input);
-    assert(JSON.stringify(obj), expected);
 }
 
 function test_os()
@@ -283,4 +269,3 @@ test_popen();
 test_os();
 !isWin && test_os_exec();
 test_timer();
-test_ext_json();

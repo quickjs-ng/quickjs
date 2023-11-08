@@ -19464,7 +19464,6 @@ typedef struct JSParseState {
     JSFunctionDef *cur_func;
     BOOL is_module; /* parsing a module */
     BOOL allow_html_comments;
-    BOOL ext_json; /* true if accepting JSON superset */
 } JSParseState;
 
 typedef struct JSOpCode {
@@ -20563,11 +20562,8 @@ static __exception int json_next_token(JSParseState *s)
         }
         break;
     case '\'':
-        if (!s->ext_json) {
-            /* JSON does not accept single quoted strings */
-            goto def_token;
-        }
-        /* fall through */
+        /* JSON does not accept single quoted strings */
+        goto def_token;
     case '\"':
         if (js_parse_string(s, c, TRUE, p + 1, &s->token, &p))
             goto fail;
@@ -20583,72 +20579,15 @@ static __exception int json_next_token(JSParseState *s)
         goto redo;
     case '\f':
     case '\v':
-        if (!s->ext_json) {
-            /* JSONWhitespace does not match <VT>, nor <FF> */
-            goto def_token;
-        }
-        /* fall through */
+        /* JSONWhitespace does not match <VT>, nor <FF> */
+        goto def_token;
     case ' ':
     case '\t':
         p++;
         goto redo;
     case '/':
-        if (!s->ext_json) {
-            /* JSON does not accept comments */
-            goto def_token;
-        }
-        if (p[1] == '*') {
-            /* comment */
-            p += 2;
-            for(;;) {
-                if (*p == '\0' && p >= s->buf_end) {
-                    js_parse_error(s, "unexpected end of comment");
-                    goto fail;
-                }
-                if (p[0] == '*' && p[1] == '/') {
-                    p += 2;
-                    break;
-                }
-                if (*p == '\n') {
-                    s->line_num++;
-                    p++;
-                } else if (*p == '\r') {
-                    p++;
-                } else if (*p >= 0x80) {
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-                    if (c == -1) {
-                        p++; /* skip invalid UTF-8 */
-                    }
-                } else {
-                    p++;
-                }
-            }
-            goto redo;
-        } else if (p[1] == '/') {
-            /* line comment */
-            p += 2;
-            for(;;) {
-                if (*p == '\0' && p >= s->buf_end)
-                    break;
-                if (*p == '\r' || *p == '\n')
-                    break;
-                if (*p >= 0x80) {
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-                    /* LS or PS are considered as line terminator */
-                    if (c == CP_LS || c == CP_PS) {
-                        break;
-                    } else if (c == -1) {
-                        p++; /* skip invalid UTF-8 */
-                    }
-                } else {
-                    p++;
-                }
-            }
-            goto redo;
-        } else {
-            goto def_token;
-        }
-        break;
+        /* JSON does not accept comments */
+        goto def_token;
     case 'a': case 'b': case 'c': case 'd':
     case 'e': case 'f': case 'g': case 'h':
     case 'i': case 'j': case 'k': case 'l':
@@ -20676,7 +20615,7 @@ static __exception int json_next_token(JSParseState *s)
         s->token.val = TOK_IDENT;
         break;
     case '+':
-        if (!s->ext_json || !is_digit(p[1]))
+        if (!is_digit(p[1]))
             goto def_token;
         goto parse_number;
     case '0':
@@ -20693,17 +20632,7 @@ static __exception int json_next_token(JSParseState *s)
         /* number */
     parse_number:
         {
-            JSValue ret;
-            int flags, radix;
-            if (!s->ext_json) {
-                flags = 0;
-                radix = 10;
-            } else {
-                flags = ATOD_ACCEPT_BIN_OCT;
-                radix = 0;
-            }
-            ret = js_atof(s->ctx, (const char *)p, (const char **)&p, radix,
-                          flags);
+            JSValue ret = js_atof(s->ctx, (const char *)p, (const char **)&p, 10, 0);
             if (JS_IsException(ret))
                 goto fail;
             s->token.val = TOK_NUMBER;
@@ -42935,8 +42864,6 @@ static JSValue json_parse_value(JSParseState *s)
                         prop_name = JS_ValueToAtom(ctx, s->token.u.str.str);
                         if (prop_name == JS_ATOM_NULL)
                             goto fail;
-                    } else if (s->ext_json && s->token.val == TOK_IDENT) {
-                        prop_name = JS_DupAtom(ctx, s->token.u.ident.atom);
                     } else {
                         js_parse_error(s, "expecting property name");
                         goto fail;
@@ -42961,8 +42888,6 @@ static JSValue json_parse_value(JSParseState *s)
                         break;
                     if (json_next_token(s))
                         goto fail;
-                    if (s->ext_json && s->token.val == '}')
-                        break;
                 }
             }
             if (json_parse_expect(s, '}'))
@@ -42993,8 +42918,6 @@ static JSValue json_parse_value(JSParseState *s)
                     if (json_next_token(s))
                         goto fail;
                     idx++;
-                    if (s->ext_json && s->token.val == ']')
-                        break;
                 }
             }
             if (json_parse_expect(s, ']'))
@@ -43039,14 +42962,12 @@ static JSValue json_parse_value(JSParseState *s)
     return JS_EXCEPTION;
 }
 
-JSValue JS_ParseJSON2(JSContext *ctx, const char *buf, size_t buf_len,
-                      const char *filename, int flags)
+JSValue JS_ParseJSON(JSContext *ctx, const char *buf, size_t buf_len, const char *filename)
 {
     JSParseState s1, *s = &s1;
     JSValue val = JS_UNDEFINED;
 
     js_parse_init(ctx, s, buf, buf_len, filename);
-    s->ext_json = ((flags & JS_PARSE_JSON_EXT) != 0);
     if (json_next_token(s))
         goto fail;
     val = json_parse_value(s);
@@ -43061,12 +42982,6 @@ JSValue JS_ParseJSON2(JSContext *ctx, const char *buf, size_t buf_len,
     JS_FreeValue(ctx, val);
     free_token(s, &s->token);
     return JS_EXCEPTION;
-}
-
-JSValue JS_ParseJSON(JSContext *ctx, const char *buf, size_t buf_len,
-                     const char *filename)
-{
-    return JS_ParseJSON2(ctx, buf, buf_len, filename, 0); 
 }
 
 static JSValue internalize_json_property(JSContext *ctx, JSValueConst holder,
