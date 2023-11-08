@@ -24,10 +24,6 @@ ES2020 specification
 @footnote{@url{https://tc39.es/ecma262/}}
 including modules, asynchronous generators, proxies and BigInt.
 
-It supports mathematical extensions such as big decimal float float
-numbers (BigDecimal), big binary floating point numbers (BigFloat),
-and operator overloading.
-
 @section Main Features
 
 @itemize
@@ -46,8 +42,6 @@ features from the upcoming ES2021 specification
 @item Compile Javascript sources to executables with no external dependency.
 
 @item Garbage collection using reference counting (to reduce memory usage and have deterministic behavior) with cycle removal.
-
-@item Mathematical extensions: BigDecimal, BigFloat, operator overloading, bigint mode, math mode.
 
 @item Command line interpreter with contextual colorization and completion implemented in Javascript.
 
@@ -118,10 +112,6 @@ source is @code{import}.
 @item --script
 Load as ES6 script (default=autodetect).
 
-@item --bignum
-Enable the bignum extensions: BigDecimal object, BigFloat object and
-the @code{"use math"} directive.
-
 @item -I file
 @item --include file
 Include an additional file.
@@ -187,10 +177,6 @@ when the @code{-fno-x} options are used.
 
 @item -fno-[eval|string-normalize|regexp|json|proxy|map|typedarray|promise|bigint]
 Disable selected language features to produce a smaller executable file.
-
-@item -fbignum
-Enable the bignum extensions: BigDecimal object, BigFloat object and
-the @code{"use math"} directive.
 
 @end table
 
@@ -287,21 +273,6 @@ ECMA402 (Internationalization API) is not supported.
 @itemize
 
 @item The first line of a script beginning with @code{#!} is ignored.
-
-@end itemize
-
-@subsection Mathematical extensions
-
-The mathematical extensions are fully backward compatible with
-standard Javascript. See @code{jsbignum.pdf} for more information.
-
-@itemize
-
-@item @code{BigDecimal} support: arbitrary large floating point numbers in base 10.
-
-@item @code{BigFloat} support: arbitrary large floating point numbers in base 2.
-
-@item Operator overloading.
 
 @end itemize
 
@@ -1074,9 +1045,9 @@ binary properties.
 
 The full Unicode library weights about 45 KiB (x86 code).
 
-@section BigInt, BigFloat, BigDecimal
+@section BigInt
 
-BigInt, BigFloat and BigDecimal are implemented with the @code{libbf}
+BigInt is implemented with the @code{libbf}
 library@footnote{@url{https://bellard.org/libbf}}. It weights about 90
 KiB (x86 code) and provides arbitrary precision IEEE 754 floating
 point operations and transcendental functions with exact rounding.

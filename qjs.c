@@ -110,7 +110,6 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
 #ifdef CONFIG_BIGNUM
     if (bignum_ext) {
         JS_AddIntrinsicBigFloat(ctx);
-        JS_AddIntrinsicBigDecimal(ctx);
         JS_AddIntrinsicOperators(ctx);
         JS_EnableBignumExt(ctx, TRUE);
     }
@@ -289,9 +288,6 @@ void help(void)
            "    --script       load as ES6 script (default=autodetect)\n"
            "-I  --include file include an additional file\n"
            "    --std          make 'std' and 'os' available to the loaded script\n"
-#ifdef CONFIG_BIGNUM
-           "    --bignum       enable the bignum extensions (BigFloat, BigDecimal)\n"
-#endif
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
            "    --memory-limit n       limit the memory usage to 'n' bytes\n"
