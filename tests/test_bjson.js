@@ -87,7 +87,6 @@ function toStr(a)
     case "string":
         return a.__quote();
     case "number":
-    case "bigfloat":
         if (a == 0 && 1 / a < 0)
             return "-0";
         else
@@ -154,14 +153,6 @@ function bjson_test_all()
     if (typeof BigInt !== "undefined") {
         bjson_test([BigInt("1"), -BigInt("0x123456789"),
                BigInt("0x123456789abcdef123456789abcdef")]);
-    }
-    if (typeof BigFloat !== "undefined") {
-        BigFloatEnv.setPrec(function () {
-            bjson_test([BigFloat("0.1"), BigFloat("-1e30"), BigFloat("0"),
-                   BigFloat("-0"), BigFloat("Infinity"), BigFloat("-Infinity"),
-                   0.0 / BigFloat("0"), BigFloat.MAX_VALUE,
-                   BigFloat.MIN_VALUE]);
-        }, 113, 15);
     }
 
     bjson_test([new Date(1234), new String("abc"), new Number(-12.1), new Boolean(true)]);
