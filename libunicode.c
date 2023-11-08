@@ -159,11 +159,7 @@ int lre_case_conv(uint32_t *res, uint32_t c, int conv_type)
 
 static uint32_t get_le24(const uint8_t *ptr)
 {
-#if defined(__x86__) || defined(__x86_64__)
-    return *(uint16_t *)ptr | (ptr[2] << 16);
-#else
     return ptr[0] | (ptr[1] << 8) | (ptr[2] << 16);
-#endif
 }
 
 #define UNICODE_INDEX_BLOCK_LEN 32
