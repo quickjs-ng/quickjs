@@ -163,12 +163,6 @@ function bjson_test_all()
                    BigFloat.MIN_VALUE]);
         }, 113, 15);
     }
-    if (typeof BigDecimal !== "undefined") {
-        bjson_test([BigDecimal("0"),
-                    BigDecimal("0.8"), BigDecimal("123321312321321e100"),
-                    BigDecimal("-1233213123213214332333223332e100"),
-                    BigDecimal("1.233e-1000")]);
-    }
 
     bjson_test([new Date(1234), new String("abc"), new Number(-12.1), new Boolean(true)]);
 

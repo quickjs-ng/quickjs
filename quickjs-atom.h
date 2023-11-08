@@ -220,7 +220,6 @@ DEF(DataView, "DataView")
 DEF(BigInt, "BigInt")
 DEF(BigFloat, "BigFloat")
 DEF(BigFloatEnv, "BigFloatEnv")
-DEF(BigDecimal, "BigDecimal")
 DEF(OperatorSet, "OperatorSet")
 DEF(Operators, "Operators")
 #endif
