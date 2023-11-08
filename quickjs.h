@@ -777,9 +777,6 @@ void *JS_GetOpaque2(JSContext *ctx, JSValueConst obj, JSClassID class_id);
 /* 'buf' must be zero terminated i.e. buf[buf_len] = '\0'. */
 JSValue JS_ParseJSON(JSContext *ctx, const char *buf, size_t buf_len,
                      const char *filename);
-#define JS_PARSE_JSON_EXT (1 << 0) /* allow extended JSON */
-JSValue JS_ParseJSON2(JSContext *ctx, const char *buf, size_t buf_len,
-                      const char *filename, int flags);
 JSValue JS_JSONStringify(JSContext *ctx, JSValueConst obj,
                          JSValueConst replacer, JSValueConst space0);
 

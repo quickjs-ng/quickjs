@@ -451,20 +451,6 @@ optional properties:
 
   @end table
 
-@item parseExtJSON(str)
-
-  Parse @code{str} using a superset of @code{JSON.parse}. The
-  following extensions are accepted:
-
-  @itemize
-  @item Single line and multiline comments
-  @item unquoted properties (ASCII-only Javascript identifiers)
-  @item trailing comma in array and object definitions
-  @item single quoted strings
-  @item @code{\f} and @code{\v} are accepted as space characters
-  @item leading plus in numbers
-  @item octal (@code{0o} prefix) and hexadecimal (@code{0x} prefix) numbers
-  @end itemize
 @end table
 
 FILE prototype:
