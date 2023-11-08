@@ -341,11 +341,6 @@ function test_number()
     assert(Number.isNaN(Number("-")));
     assert(Number.isNaN(Number("\x00a")));
 
-    // TODO: Fix rounding error on MinGW.
-    if (std.getenv('MSYSTEM')) {
-        return;
-    }
-
     assert((25).toExponential(0), "3e+1");
     assert((-25).toExponential(0), "-3e+1");
     assert((2.5).toPrecision(1), "3");
