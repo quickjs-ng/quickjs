@@ -10797,7 +10797,8 @@ static int JS_ToInt64Free(JSContext *ctx, int64_t *pres, JSValue val)
                 ret = v << ((e - 1023) - 52);
                 /* take the sign into account */
                 if (u.u64 >> 63)
-                    ret = -ret;
+                    if (ret != INT64_MIN)
+                        ret = -ret;
             } else {
                 ret = 0; /* also handles NaN and +inf */
             }
@@ -10872,7 +10873,8 @@ static int JS_ToInt32Free(JSContext *ctx, int32_t *pres, JSValue val)
                 ret = v >> 32;
                 /* take the sign into account */
                 if (u.u64 >> 63)
-                    ret = -ret;
+                    if (ret != INT32_MIN)
+                        ret = -ret;
             } else {
                 ret = 0; /* also handles NaN and +inf */
             }
@@ -11965,6 +11967,45 @@ static double js_pow(double a, double b)
         return JS_FLOAT64_NAN;
     } else {
         return pow(a, b);
+    }
+}
+
+// Special care is taken to not invoke UB when checking if the result fits
+// in an int32_t. Leans on the fact that the input is integral if the lower
+// 52 bits of the equation 2**e * (f + 2**52) are zero.
+static BOOL float_is_int32(double d)
+{
+    uint64_t u, m, e, f;
+    JSFloat64Union t;
+
+    t.d = d;
+    u = t.u64;
+
+    // special case -0
+    m = 1ull << 63;
+    if (u == m)
+        return FALSE;
+
+    e = (u >> 52) & 0x7FF;
+    if (e > 0)
+        e -= 1023;
+
+    // too large, nan or inf?
+    if (e > 30)
+        return FALSE;
+
+    // fractional or subnormal if low bits are non-zero
+    f = 0xFFFFFFFFFFFFFull & u;
+    m = 0xFFFFFFFFFFFFFull >> e;
+    return 0 == (f & m);
+}
+
+JSValue JS_NewFloat64(JSContext *ctx, double d)
+{
+    if (float_is_int32(d)) {
+        return JS_MKVAL(JS_TAG_INT, (int32_t)d);
+    } else {
+        return __JS_NewFloat64(ctx, d);
     }
 }
 
