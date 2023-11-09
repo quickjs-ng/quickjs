@@ -45,6 +45,7 @@ set(CMAKE_VERBOSE_MAKEFILE TRUE)
 
 set(qjs_sources
     cutils.c
+    libbf.c
     libregexp.c
     libunicode.c
     quickjs.c
@@ -54,12 +55,6 @@ list(APPEND qjs_defines _GNU_SOURCE)
 
 file(STRINGS "VERSION" QJS_VERSION_STR)
 list(APPEND qjs_defines CONFIG_VERSION="${QJS_VERSION_STR}")
-
-option(CONFIG_BIGNUM "Enable BigNum extensions" ON)
-if(CONFIG_BIGNUM)
-    list(APPEND qjs_defines CONFIG_BIGNUM=1)
-    list(APPEND qjs_sources libbf.c)
-endif()
 
 add_library(qjs STATIC ${qjs_sources})
 target_compile_definitions(qjs PUBLIC
