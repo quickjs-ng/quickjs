@@ -381,7 +381,7 @@ examples/point.so: $(OBJDIR)/examples/point.pic.o
 ###############################################################################
 # documentation
 
-DOCS=doc/quickjs.pdf doc/quickjs.html doc/jsbignum.pdf doc/jsbignum.html 
+DOCS=doc/quickjs.pdf doc/quickjs.html
 
 build_doc: $(DOCS)
 
@@ -420,17 +420,13 @@ ifndef CONFIG_MINGW
 endif
 ifndef CONFIG_MINGW
 ifndef CONFIG_DARWIN
-ifdef CONFIG_BIGNUM
-	./qjs --bignum tests/test_bjson.js
-else
 	./qjs tests/test_bjson.js
-endif
+	./qjs tests/test_bjson.js
 	./qjs examples/test_point.js
 endif
 endif
 ifdef CONFIG_BIGNUM
-	./qjs --bignum tests/test_op_overloading.js
-	./qjs --bignum tests/test_bignum.js
+	./qjs tests/test_bignum.js
 endif
 ifdef CONFIG_M32
 	./qjs32 tests/test_closure.js
@@ -440,8 +436,7 @@ ifdef CONFIG_M32
 	./qjs32 tests/test_std.js
 	./qjs32 tests/test_worker.js
 ifdef CONFIG_BIGNUM
-	./qjs32 --bignum tests/test_op_overloading.js
-	./qjs32 --bignum tests/test_bignum.js
+	./qjs32 tests/test_bignum.js
 endif
 endif
 
