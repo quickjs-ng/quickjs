@@ -269,7 +269,7 @@ static const JSMallocFunctions trace_mf = {
 
 void help(void)
 {
-    printf("QuickJS version " CONFIG_VERSION "\n"
+    printf("QuickJS version %s\n"
            "usage: " PROG_NAME " [options] [file [args]]\n"
            "-h  --help         list options\n"
            "-e  --eval EXPR    evaluate EXPR\n"
@@ -283,7 +283,7 @@ void help(void)
            "    --memory-limit n       limit the memory usage to 'n' bytes\n"
            "    --stack-size n         limit the stack size to 'n' bytes\n"
            "    --unhandled-rejection  dump unhandled promise rejections\n"
-           "-q  --quit         just instantiate the interpreter and quit\n");
+           "-q  --quit         just instantiate the interpreter and quit\n", JS_GetVersion());
     exit(1);
 }
 

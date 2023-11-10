@@ -107,6 +107,19 @@
 #include <errno.h>
 #endif
 
+#define STRINGIFY_(x) #x
+#define STRINGIFY(x)  STRINGIFY_(x)
+
+#define QJS_VERSION_STRING \
+    STRINGIFY(QJS_VERSION_MAJOR) "." STRINGIFY(QJS_VERSION_MINOR) "." STRINGIFY(QJS_VERSION_PATCH) QJS_VERSION_SUFFIX
+
+const char* JS_GetVersion(void) {
+    return QJS_VERSION_STRING;
+}
+
+#undef STRINFIGY_
+#undef STRINGIFY
+
 enum {
     /* classid tag        */    /* union usage   | properties */
     JS_CLASS_OBJECT = 1,        /* must be first */
@@ -5920,9 +5933,8 @@ void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s)
 
 void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt)
 {
-    fprintf(fp, "QuickJS memory usage -- "
-            CONFIG_VERSION " version, %d-bit, malloc limit: %"PRId64"\n\n",
-            (int)sizeof(void *) * 8, (int64_t)(ssize_t)s->malloc_limit);
+    fprintf(fp, "QuickJS memory usage -- %s version, %d-bit, malloc limit: %"PRId64"\n\n",
+        JS_GetVersion(), (int)sizeof(void *) * 8, (int64_t)(ssize_t)s->malloc_limit);
 #if 1
     if (rt) {
         static const struct {
