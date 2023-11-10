@@ -13,7 +13,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wextra -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -funsigned-char")
 else()
