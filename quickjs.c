@@ -43301,6 +43301,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     uint32_t h;
     double d;
     JSFloat64Union u;
+    bf_t *a;
 
     switch(tag) {
     case JS_TAG_BOOL:
@@ -43316,6 +43317,10 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     case JS_TAG_INT:
         d = JS_VALUE_GET_INT(key) * 3163;
         goto hash_float64;
+    case JS_TAG_BIG_INT:
+        a = JS_GetBigInt(key);
+        h = hash_string8((void *)a->tab, a->len * sizeof(*a->tab), 0);
+        break;
     case JS_TAG_FLOAT64:
         d = JS_VALUE_GET_FLOAT64(key);
         /* normalize the NaN */
@@ -43326,7 +43331,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         h = (u.u32[0] ^ u.u32[1]) * 3163;
         break;
     default:
-        h = 0; /* XXX: bigint support */
+        h = 0;
         break;
     }
     h ^= tag;

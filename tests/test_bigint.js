@@ -110,5 +110,30 @@ function test_bigint2()
     assertThrows(SyntaxError, () => { BigInt("  123  r") } );
 }
 
+function test_bigint_map()
+{
+    var m = new Map();
+    assert(m.size, 0);
+
+    for (let i = 0n; i < 1337n; i++) {
+        const r = m.set(i, i.toString());
+        assert(r, m);
+    }
+    assert(m.size, 1337);
+
+    for (let i = 0n; i < 1337n; i++) {
+        const r = m.get(i);
+        assert(r, i.toString());
+    }
+    assert(m.get(1337n), undefined);
+    assert(m.size, 1337);
+
+    for (let i = 0n; i < 1337n; i++)
+        assert(m.delete(i));
+    assert(!m.delete(1337n));
+    assert(m.size, 0);
+}
+
 test_bigint1();
 test_bigint2();
+test_bigint_map();
