@@ -60,6 +60,7 @@ if (CMAKE_BUILD_TYPE MATCHES Debug)
         DUMP_LEAKS
     )
 endif()
+target_include_directories(qjs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 
 # QuickJS bytecode compiler
