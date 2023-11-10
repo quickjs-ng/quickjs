@@ -54,9 +54,6 @@ set(qjs_sources
 list(APPEND qjs_defines _GNU_SOURCE)
 
 add_library(qjs STATIC ${qjs_sources})
-target_compile_definitions(qjs PUBLIC
-    QJS_VERSION_STR="${QJS_VERSION_STR}"
-)
 target_compile_definitions(qjs PRIVATE ${qjs_defines})
 if (CMAKE_BUILD_TYPE MATCHES Debug)
     target_compile_definitions(qjs PRIVATE
