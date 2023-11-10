@@ -18740,12 +18740,11 @@ static __exception int next_token(JSParseState *s)
         {
             JSValue ret;
             const uint8_t *p1;
-            int flags, radix;
+            int flags;
             flags = ATOD_ACCEPT_BIN_OCT | ATOD_ACCEPT_LEGACY_OCTAL |
                 ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
-            radix = 0;
             s->token.u.num.exponent = 0;
-            ret = js_atof2(s->ctx, (const char *)p, (const char **)&p, radix,
+            ret = js_atof2(s->ctx, (const char *)p, (const char **)&p, 0,
                            flags, &s->token.u.num.exponent);
             if (JS_IsException(ret))
                 goto fail;
@@ -23261,14 +23260,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
                 set_object_name(s, name);
             }
         } else {
-            static const uint8_t assign_opcodes[] = {
-                OP_mul, OP_div, OP_mod, OP_add, OP_sub,
-                OP_shl, OP_sar, OP_shr, OP_and, OP_xor, OP_or,
-                OP_pow,
-                OP_pow,
-            };
-            op = assign_opcodes[op - TOK_MUL_ASSIGN];
-            emit_op(s, op);
+            emit_op(s, op - TOK_MUL_ASSIGN + OP_mul);
         }
         put_lvalue(s, opcode, scope, name, label, PUT_LVALUE_KEEP_TOP, FALSE);
     } else if (op >= TOK_LAND_ASSIGN && op <= TOK_DOUBLE_QUESTION_MARK_ASSIGN) {
