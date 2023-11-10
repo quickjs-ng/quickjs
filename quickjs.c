@@ -147,7 +147,6 @@ enum {
     JS_CLASS_DATAVIEW,          /* u.typed_array */
 #ifdef CONFIG_BIGNUM
     JS_CLASS_BIG_INT,           /* u.object_data */
-    JS_CLASS_OPERATOR_SET,      /* u.operator_set */
 #endif
     JS_CLASS_MAP,               /* u.map_state */
     JS_CLASS_SET,               /* u.map_state */
@@ -208,22 +207,6 @@ typedef enum {
 } JSGCPhaseEnum;
 
 typedef enum OPCodeEnum OPCodeEnum;
-
-#ifdef CONFIG_BIGNUM
-/* function pointers are used for numeric operations so that it is
-   possible to remove some numeric types */
-typedef struct {
-    JSValue (*to_string)(JSContext *ctx, JSValueConst val);
-    JSValue (*from_string)(JSContext *ctx, const char *buf,
-                           int radix, int flags, slimb_t *pexponent);
-    int (*unary_arith)(JSContext *ctx,
-                       JSValue *pres, OPCodeEnum op, JSValue op1);
-    int (*binary_arith)(JSContext *ctx, OPCodeEnum op,
-                        JSValue *pres, JSValue op1, JSValue op2);
-    int (*compare)(JSContext *ctx, OPCodeEnum op,
-                   JSValue op1, JSValue op2);
-} JSNumericOperations;
-#endif
 
 struct JSRuntime {
     JSMallocFunctions mf;
@@ -287,8 +270,6 @@ struct JSRuntime {
     JSShape **shape_hash;
 #ifdef CONFIG_BIGNUM
     bf_context_t bf_ctx;
-    JSNumericOperations bigint_ops;
-    uint32_t operator_count;
 #endif
     void *user_opaque;
 };
@@ -411,8 +392,6 @@ struct JSContext {
     uint64_t random_state;
 #ifdef CONFIG_BIGNUM
     bf_context_t *bf_ctx;   /* points to rt->bf_ctx, shared by all contexts */
-    BOOL bignum_ext : 8; /* enable math mode */
-    BOOL allow_operator_overloading : 8;
 #endif
     /* when the counter reaches zero, JSRutime.interrupt_handler is called */
     int interrupt_counter;
@@ -660,53 +639,6 @@ typedef struct JSAsyncFunctionData {
     JSAsyncFunctionState func_state;
 } JSAsyncFunctionData;
 
-typedef enum {
-   /* binary operators */
-   JS_OVOP_ADD,
-   JS_OVOP_SUB,
-   JS_OVOP_MUL,
-   JS_OVOP_DIV,
-   JS_OVOP_MOD,
-   JS_OVOP_POW,
-   JS_OVOP_OR,
-   JS_OVOP_AND,
-   JS_OVOP_XOR,
-   JS_OVOP_SHL,
-   JS_OVOP_SAR,
-   JS_OVOP_SHR,
-   JS_OVOP_EQ,
-   JS_OVOP_LESS,
-
-   JS_OVOP_BINARY_COUNT,
-   /* unary operators */
-   JS_OVOP_POS = JS_OVOP_BINARY_COUNT,
-   JS_OVOP_NEG,
-   JS_OVOP_INC,
-   JS_OVOP_DEC,
-   JS_OVOP_NOT,
-
-   JS_OVOP_COUNT,
-} JSOverloadableOperatorEnum;
-
-typedef struct {
-    uint32_t operator_index;
-    JSObject *ops[JS_OVOP_BINARY_COUNT]; /* self operators */
-} JSBinaryOperatorDefEntry;
-
-typedef struct {
-    int count;
-    JSBinaryOperatorDefEntry *tab;
-} JSBinaryOperatorDef;
-
-typedef struct {
-    uint32_t operator_counter;
-    BOOL is_primitive; /* OperatorSet for a primitive type */
-    /* NULL if no operator is defined */
-    JSObject *self_ops[JS_OVOP_COUNT]; /* self operators */
-    JSBinaryOperatorDef left;
-    JSBinaryOperatorDef right;
-} JSOperatorSetData;
-
 typedef struct JSReqModuleEntry {
     JSAtom module_name;
     JSModuleDef *module; /* used using resolution */
@@ -874,9 +806,6 @@ struct JSObject {
         struct JSForInIterator *for_in_iterator; /* JS_CLASS_FOR_IN_ITERATOR */
         struct JSArrayBuffer *array_buffer; /* JS_CLASS_ARRAY_BUFFER, JS_CLASS_SHARED_ARRAY_BUFFER */
         struct JSTypedArray *typed_array; /* JS_CLASS_UINT8C_ARRAY..JS_CLASS_DATAVIEW */
-#ifdef CONFIG_BIGNUM
-        struct JSOperatorSetData *operator_set; /* JS_CLASS_OPERATOR_SET */
-#endif
         struct JSMapState *map_state;   /* JS_CLASS_MAP..JS_CLASS_WEAKSET */
         struct JSMapIteratorData *map_iterator_data; /* JS_CLASS_MAP_ITERATOR, JS_CLASS_SET_ITERATOR */
         struct JSArrayIteratorData *array_iterator_data; /* JS_CLASS_ARRAY_ITERATOR, JS_CLASS_STRING_ITERATOR */
@@ -1063,11 +992,6 @@ static void js_promise_mark(JSRuntime *rt, JSValueConst val,
 static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValue val);
 static void js_promise_resolve_function_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-#ifdef CONFIG_BIGNUM
-static void js_operator_set_finalizer(JSRuntime *rt, JSValue val);
-static void js_operator_set_mark(JSRuntime *rt, JSValueConst val,
-                                 JS_MarkFunc *mark_func);
-#endif
 static JSValue JS_ToStringFree(JSContext *ctx, JSValue val);
 static int JS_ToBoolFree(JSContext *ctx, JSValue val);
 static int JS_ToInt32Free(JSContext *ctx, int32_t *pres, JSValue val);
@@ -1446,7 +1370,6 @@ static JSClassShortDef const js_std_class_def[] = {
     { JS_ATOM_DataView, js_typed_array_finalizer, js_typed_array_mark },        /* JS_CLASS_DATAVIEW */
 #ifdef CONFIG_BIGNUM
     { JS_ATOM_BigInt, js_object_data_finalizer, js_object_data_mark },      /* JS_CLASS_BIG_INT */
-    { JS_ATOM_OperatorSet, js_operator_set_finalizer, js_operator_set_mark },    /* JS_CLASS_OPERATOR_SET */
 #endif
     { JS_ATOM_Map, js_map_finalizer, js_map_mark },             /* JS_CLASS_MAP */
     { JS_ATOM_Set, js_map_finalizer, js_map_mark },             /* JS_CLASS_SET */
@@ -1476,50 +1399,6 @@ static int init_class_range(JSRuntime *rt, JSClassShortDef const *tab,
     }
     return 0;
 }
-
-#ifdef CONFIG_BIGNUM
-static JSValue JS_ThrowUnsupportedOperation(JSContext *ctx)
-{
-    return JS_ThrowTypeError(ctx, "unsupported operation");
-}
-
-static JSValue invalid_to_string(JSContext *ctx, JSValueConst val)
-{
-    return JS_ThrowUnsupportedOperation(ctx);
-}
-
-static JSValue invalid_from_string(JSContext *ctx, const char *buf,
-                                   int radix, int flags, slimb_t *pexponent)
-{
-    return JS_NAN;
-}
-
-static int invalid_unary_arith(JSContext *ctx,
-                               JSValue *pres, OPCodeEnum op, JSValue op1)
-{
-    JS_FreeValue(ctx, op1);
-    JS_ThrowUnsupportedOperation(ctx);
-    return -1;
-}
-
-static int invalid_binary_arith(JSContext *ctx, OPCodeEnum op,
-                                JSValue *pres, JSValue op1, JSValue op2)
-{
-    JS_FreeValue(ctx, op1);
-    JS_FreeValue(ctx, op2);
-    JS_ThrowUnsupportedOperation(ctx);
-    return -1;
-}
-
-static void set_dummy_numeric_ops(JSNumericOperations *ops)
-{
-    ops->to_string = invalid_to_string;
-    ops->from_string = invalid_from_string;
-    ops->unary_arith = invalid_unary_arith;
-    ops->binary_arith = invalid_binary_arith;
-}
-
-#endif /* CONFIG_BIGNUM */
 
 #if !defined(CONFIG_STACK_CHECK)
 /* no stack limitation */
@@ -1570,7 +1449,6 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
 
 #ifdef CONFIG_BIGNUM
     bf_context_init(&rt->bf_ctx, js_bf_realloc, rt);
-    set_dummy_numeric_ops(&rt->bigint_ops);
 #endif
 
     init_list_head(&rt->context_list);
@@ -10145,7 +10023,7 @@ static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
     case ATOD_TYPE_BIG_INT:
         if (has_legacy_octal || is_float)
             goto fail;
-        val = ctx->rt->bigint_ops.from_string(ctx, buf, radix, flags, NULL);
+        val = js_string_to_bigint(ctx, buf, radix, flags, NULL);
         break;
     default:
         abort();
@@ -11176,7 +11054,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val, BOOL is_ToProperty
                        JS_DTOA_VAR_FORMAT);
 #ifdef CONFIG_BIGNUM
     case JS_TAG_BIG_INT:
-        return ctx->rt->bigint_ops.to_string(ctx, val);
+        return js_bigint_to_string(ctx, val);
 #endif
     default:
         str = "[unsupported type]";
@@ -11864,271 +11742,6 @@ static JSValue JS_CompactBigInt(JSContext *ctx, JSValue val)
     return JS_CompactBigInt1(ctx, val);
 }
 
-/* must be kept in sync with JSOverloadableOperatorEnum */
-/* XXX: use atoms ? */
-static const char js_overloadable_operator_names[JS_OVOP_COUNT][4] = {
-    "+",
-    "-",
-    "*",
-    "/",
-    "%",
-    "**",
-    "|",
-    "&",
-    "^",
-    "<<",
-    ">>",
-    ">>>",
-    "==",
-    "<",
-    "pos",
-    "neg",
-    "++",
-    "--",
-    "~",
-};
-
-static int get_ovop_from_opcode(OPCodeEnum op)
-{
-    switch(op) {
-    case OP_add:
-        return JS_OVOP_ADD;
-    case OP_sub:
-        return JS_OVOP_SUB;
-    case OP_mul:
-        return JS_OVOP_MUL;
-    case OP_div:
-        return JS_OVOP_DIV;
-    case OP_mod:
-        return JS_OVOP_MOD;
-    case OP_pow:
-        return JS_OVOP_POW;
-    case OP_or:
-        return JS_OVOP_OR;
-    case OP_and:
-        return JS_OVOP_AND;
-    case OP_xor:
-        return JS_OVOP_XOR;
-    case OP_shl:
-        return JS_OVOP_SHL;
-    case OP_sar:
-        return JS_OVOP_SAR;
-    case OP_shr:
-        return JS_OVOP_SHR;
-    case OP_eq:
-    case OP_neq:
-        return JS_OVOP_EQ;
-    case OP_lt:
-    case OP_lte:
-    case OP_gt:
-    case OP_gte:
-        return JS_OVOP_LESS;
-    case OP_plus:
-        return JS_OVOP_POS;
-    case OP_neg:
-        return JS_OVOP_NEG;
-    case OP_inc:
-        return JS_OVOP_INC;
-    case OP_dec:
-        return JS_OVOP_DEC;
-    default:
-        abort();
-    }
-}
-
-/* return NULL if not present */
-static JSObject *find_binary_op(JSBinaryOperatorDef *def,
-                                uint32_t operator_index,
-                                JSOverloadableOperatorEnum op)
-{
-    JSBinaryOperatorDefEntry *ent;
-    int i;
-    for(i = 0; i < def->count; i++) {
-        ent = &def->tab[i];
-        if (ent->operator_index == operator_index)
-            return ent->ops[op];
-    }
-    return NULL;
-}
-
-/* return -1 if exception, 0 if no operator overloading, 1 if
-   overloaded operator called */
-static __exception int js_call_binary_op_fallback(JSContext *ctx,
-                                                  JSValue *pret,
-                                                  JSValueConst op1,
-                                                  JSValueConst op2,
-                                                  OPCodeEnum op,
-                                                  BOOL is_numeric,
-                                                  int hint)
-{
-    JSValue opset1_obj, opset2_obj, method, ret, new_op1, new_op2;
-    JSOperatorSetData *opset1, *opset2;
-    JSOverloadableOperatorEnum ovop;
-    JSObject *p;
-    JSValueConst args[2];
-    
-    if (!ctx->allow_operator_overloading)
-        return 0;
-    
-    opset2_obj = JS_UNDEFINED;
-    opset1_obj = JS_GetProperty(ctx, op1, JS_ATOM_Symbol_operatorSet);
-    if (JS_IsException(opset1_obj))
-        goto exception;
-    if (JS_IsUndefined(opset1_obj))
-        return 0;
-    opset1 = JS_GetOpaque2(ctx, opset1_obj, JS_CLASS_OPERATOR_SET);
-    if (!opset1)
-        goto exception;
-
-    opset2_obj = JS_GetProperty(ctx, op2, JS_ATOM_Symbol_operatorSet);
-    if (JS_IsException(opset2_obj))
-        goto exception;
-    if (JS_IsUndefined(opset2_obj)) {
-        JS_FreeValue(ctx, opset1_obj);
-        return 0;
-    }
-    opset2 = JS_GetOpaque2(ctx, opset2_obj, JS_CLASS_OPERATOR_SET);
-    if (!opset2)
-        goto exception;
-
-    if (opset1->is_primitive && opset2->is_primitive) {
-        JS_FreeValue(ctx, opset1_obj);
-        JS_FreeValue(ctx, opset2_obj);
-        return 0;
-    }
-
-    ovop = get_ovop_from_opcode(op);
-    
-    if (opset1->operator_counter == opset2->operator_counter) {
-        p = opset1->self_ops[ovop];
-    } else if (opset1->operator_counter > opset2->operator_counter) {
-        p = find_binary_op(&opset1->left, opset2->operator_counter, ovop);
-    } else {
-        p = find_binary_op(&opset2->right, opset1->operator_counter, ovop);
-    }
-    if (!p) {
-        JS_ThrowTypeError(ctx, "operator %s: no function defined",
-                          js_overloadable_operator_names[ovop]);
-        goto exception;
-    }
-
-    if (opset1->is_primitive) {
-        if (is_numeric) {
-            new_op1 = JS_ToNumeric(ctx, op1);
-        } else {
-            new_op1 = JS_ToPrimitive(ctx, op1, hint);
-        }
-        if (JS_IsException(new_op1))
-            goto exception;
-    } else {
-        new_op1 = JS_DupValue(ctx, op1);
-    }
-    
-    if (opset2->is_primitive) {
-        if (is_numeric) {
-            new_op2 = JS_ToNumeric(ctx, op2);
-        } else {
-            new_op2 = JS_ToPrimitive(ctx, op2, hint);
-        }
-        if (JS_IsException(new_op2)) {
-            JS_FreeValue(ctx, new_op1);
-            goto exception;
-        }
-    } else {
-        new_op2 = JS_DupValue(ctx, op2);
-    }
-
-    /* XXX: could apply JS_ToPrimitive() if primitive type so that the
-       operator function does not get a value object */
-    
-    method = JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, p));
-    if (ovop == JS_OVOP_LESS && (op == OP_lte || op == OP_gt)) {
-        args[0] = new_op2;
-        args[1] = new_op1;
-    } else {
-        args[0] = new_op1;
-        args[1] = new_op2;
-    }
-    ret = JS_CallFree(ctx, method, JS_UNDEFINED, 2, args);
-    JS_FreeValue(ctx, new_op1);
-    JS_FreeValue(ctx, new_op2);
-    if (JS_IsException(ret))
-        goto exception;
-    if (ovop == JS_OVOP_EQ) {
-        BOOL res = JS_ToBoolFree(ctx, ret);
-        if (op == OP_neq)
-            res ^= 1;
-        ret = JS_NewBool(ctx, res);
-    } else if (ovop == JS_OVOP_LESS) {
-        if (JS_IsUndefined(ret)) {
-            ret = JS_FALSE;
-        } else {
-            BOOL res = JS_ToBoolFree(ctx, ret);
-            if (op == OP_lte || op == OP_gte)
-                res ^= 1;
-            ret = JS_NewBool(ctx, res);
-        }
-    }
-    JS_FreeValue(ctx, opset1_obj);
-    JS_FreeValue(ctx, opset2_obj);
-    *pret = ret;
-    return 1;
- exception:
-    JS_FreeValue(ctx, opset1_obj);
-    JS_FreeValue(ctx, opset2_obj);
-    *pret = JS_UNDEFINED;
-    return -1;
-}
-
-/* return -1 if exception, 0 if no operator overloading, 1 if
-   overloaded operator called */
-static __exception int js_call_unary_op_fallback(JSContext *ctx,
-                                                 JSValue *pret,
-                                                 JSValueConst op1,
-                                                 OPCodeEnum op)
-{
-    JSValue opset1_obj, method, ret;
-    JSOperatorSetData *opset1;
-    JSOverloadableOperatorEnum ovop;
-    JSObject *p;
-
-    if (!ctx->allow_operator_overloading)
-        return 0;
-    
-    opset1_obj = JS_GetProperty(ctx, op1, JS_ATOM_Symbol_operatorSet);
-    if (JS_IsException(opset1_obj))
-        goto exception;
-    if (JS_IsUndefined(opset1_obj))
-        return 0;
-    opset1 = JS_GetOpaque2(ctx, opset1_obj, JS_CLASS_OPERATOR_SET);
-    if (!opset1)
-        goto exception;
-    if (opset1->is_primitive) {
-        JS_FreeValue(ctx, opset1_obj);
-        return 0;
-    }
-
-    ovop = get_ovop_from_opcode(op);
-
-    p = opset1->self_ops[ovop];
-    if (!p) {
-        JS_ThrowTypeError(ctx, "no overloaded operator %s",
-                          js_overloadable_operator_names[ovop]);
-        goto exception;
-    }
-    method = JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, p));
-    ret = JS_CallFree(ctx, method, JS_UNDEFINED, 1, &op1);
-    if (JS_IsException(ret))
-        goto exception;
-    JS_FreeValue(ctx, opset1_obj);
-    *pret = ret;
-    return 1;
- exception:
-    JS_FreeValue(ctx, opset1_obj);
-    *pret = JS_UNDEFINED;
-    return -1;
-}
-
 static JSValue throw_bf_exception(JSContext *ctx, int status)
 {
     const char *str;
@@ -12200,24 +11813,14 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
                                                      JSValue *sp,
                                                      OPCodeEnum op)
 {
-    JSValue op1, val;
-    int v, ret;
+    JSValue op1;
+    int v;
     uint32_t tag;
 
     op1 = sp[-1];
     /* fast path for float64 */
     if (JS_TAG_IS_FLOAT64(JS_VALUE_GET_TAG(op1)))
         goto handle_float64;
-    if (JS_IsObject(op1)) {
-        ret = js_call_unary_op_fallback(ctx, &val, op1, op);
-        if (ret < 0)
-            return -1;
-        if (ret) {
-            JS_FreeValue(ctx, op1);
-            sp[-1] = val;
-            return 0;
-        }
-    }
 
     op1 = JS_ToNumericFree(ctx, op1);
     if (JS_IsException(op1))
@@ -12251,7 +11854,7 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
         }
         break;
     case JS_TAG_BIG_INT:
-        if (ctx->rt->bigint_ops.unary_arith(ctx, sp - 1, op, op1))
+        if (js_unary_arith_bigint(ctx, sp - 1, op, op1))
             goto exception;
         break;
     default:
@@ -12301,26 +11904,13 @@ static __exception int js_post_inc_slow(JSContext *ctx,
 
 static no_inline int js_not_slow(JSContext *ctx, JSValue *sp)
 {
-    JSValue op1, val;
-    int ret;
+    JSValue op1;
     
-    op1 = sp[-1];
-    if (JS_IsObject(op1)) {
-        ret = js_call_unary_op_fallback(ctx, &val, op1, OP_not);
-        if (ret < 0)
-            return -1;
-        if (ret) {
-            JS_FreeValue(ctx, op1);
-            sp[-1] = val;
-            return 0;
-        }
-    }
-
-    op1 = JS_ToNumericFree(ctx, op1);
+    op1 = JS_ToNumericFree(ctx, sp[-1]);
     if (JS_IsException(op1))
         goto exception;
     if (JS_VALUE_GET_TAG(op1) == JS_TAG_BIG_INT) {
-        if (ctx->rt->bigint_ops.unary_arith(ctx, sp - 1, OP_not, op1))
+        if (js_unary_arith_bigint(ctx, sp - 1, OP_not, op1))
             goto exception;
     } else {
         int32_t v1;
@@ -12440,9 +12030,8 @@ static int js_binary_arith_bigint(JSContext *ctx, OPCodeEnum op,
 static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *sp,
                                                       OPCodeEnum op)
 {
-    JSValue op1, op2, res;
+    JSValue op1, op2;
     uint32_t tag1, tag2;
-    int ret;
     double d1, d2;
 
     op1 = sp[-2];
@@ -12454,24 +12043,6 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
         d1 = JS_VALUE_GET_FLOAT64(op1);
         d2 = JS_VALUE_GET_FLOAT64(op2);
         goto handle_float64;
-    }
-
-    /* try to call an overloaded operator */
-    if ((tag1 == JS_TAG_OBJECT &&
-         (tag2 != JS_TAG_NULL && tag2 != JS_TAG_UNDEFINED)) ||
-        (tag2 == JS_TAG_OBJECT &&
-         (tag1 != JS_TAG_NULL && tag1 != JS_TAG_UNDEFINED))) {
-        ret = js_call_binary_op_fallback(ctx, &res, op1, op2, op, TRUE, 0);
-        if (ret != 0) {
-            JS_FreeValue(ctx, op1);
-            JS_FreeValue(ctx, op2);
-            if (ret < 0) {
-                goto exception;
-            } else {
-                sp[-2] = res;
-                return 0;
-            }
-        }
     }
 
     op1 = JS_ToNumericFree(ctx, op1);
@@ -12522,7 +12093,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
         }
         sp[-2] = JS_NewInt64(ctx, v);
     } else if (tag1 == JS_TAG_BIG_INT || tag2 == JS_TAG_BIG_INT) {
-        if (ctx->rt->bigint_ops.binary_arith(ctx, op, sp - 2, op1, op2))
+        if (js_binary_arith_bigint(ctx, op, sp - 2, op1, op2))
             goto exception;
     } else {
         double dr;
@@ -12564,9 +12135,8 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
 
 static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
 {
-    JSValue op1, op2, res;
+    JSValue op1, op2;
     uint32_t tag1, tag2;
-    int ret;
 
     op1 = sp[-2];
     op2 = sp[-1];
@@ -12583,27 +12153,6 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
     }
 
     if (tag1 == JS_TAG_OBJECT || tag2 == JS_TAG_OBJECT) {
-        /* try to call an overloaded operator */
-        if ((tag1 == JS_TAG_OBJECT &&
-             (tag2 != JS_TAG_NULL && tag2 != JS_TAG_UNDEFINED &&
-              tag2 != JS_TAG_STRING)) ||
-            (tag2 == JS_TAG_OBJECT &&
-             (tag1 != JS_TAG_NULL && tag1 != JS_TAG_UNDEFINED &&
-              tag1 != JS_TAG_STRING))) {
-            ret = js_call_binary_op_fallback(ctx, &res, op1, op2, OP_add,
-                                             FALSE, HINT_NONE);
-            if (ret != 0) {
-                JS_FreeValue(ctx, op1);
-                JS_FreeValue(ctx, op2);
-                if (ret < 0) {
-                    goto exception;
-                } else {
-                    sp[-2] = res;
-                    return 0;
-                }
-            }
-        }
-
         op1 = JS_ToPrimitiveFree(ctx, op1, HINT_NONE);
         if (JS_IsException(op1)) {
             JS_FreeValue(ctx, op2);
@@ -12647,7 +12196,7 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         v = (int64_t)v1 + (int64_t)v2;
         sp[-2] = JS_NewInt64(ctx, v);
     } else if (tag1 == JS_TAG_BIG_INT || tag2 == JS_TAG_BIG_INT) {
-        if (ctx->rt->bigint_ops.binary_arith(ctx, OP_add, sp - 2, op1, op2))
+        if (js_binary_arith_bigint(ctx, OP_add, sp - 2, op1, op2))
             goto exception;
     } else {
         double d1, d2;
@@ -12671,8 +12220,7 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
                                                       JSValue *sp,
                                                       OPCodeEnum op)
 {
-    JSValue op1, op2, res;
-    int ret;
+    JSValue op1, op2;
     uint32_t tag1, tag2;
     uint32_t v1, v2, r;
 
@@ -12680,24 +12228,6 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
     op2 = sp[-1];
     tag1 = JS_VALUE_GET_NORM_TAG(op1);
     tag2 = JS_VALUE_GET_NORM_TAG(op2);
-
-    /* try to call an overloaded operator */
-    if ((tag1 == JS_TAG_OBJECT &&
-         (tag2 != JS_TAG_NULL && tag2 != JS_TAG_UNDEFINED)) ||
-        (tag2 == JS_TAG_OBJECT &&
-         (tag1 != JS_TAG_NULL && tag1 != JS_TAG_UNDEFINED))) {
-        ret = js_call_binary_op_fallback(ctx, &res, op1, op2, op, TRUE, 0);
-        if (ret != 0) {
-            JS_FreeValue(ctx, op1);
-            JS_FreeValue(ctx, op2);
-            if (ret < 0) {
-                goto exception;
-            } else {
-                sp[-2] = res;
-                return 0;
-            }
-        }
-    }
 
     op1 = JS_ToNumericFree(ctx, op1);
     if (JS_IsException(op1)) {
@@ -12718,7 +12248,7 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
             JS_FreeValue(ctx, op2);
             JS_ThrowTypeError(ctx, "both operands must be bigint");
             goto exception;
-        } else if (ctx->rt->bigint_ops.binary_arith(ctx, op, sp - 2, op1, op2)) {
+        } else if (js_binary_arith_bigint(ctx, op, sp - 2, op1, op2)) {
             goto exception;
         }
     } else {
@@ -12805,7 +12335,7 @@ static int js_compare_bigint(JSContext *ctx, OPCodeEnum op,
 static no_inline int js_relational_slow(JSContext *ctx, JSValue *sp,
                                         OPCodeEnum op)
 {
-    JSValue op1, op2, ret;
+    JSValue op1, op2;
     int res;
     uint32_t tag1, tag2;
 
@@ -12813,24 +12343,7 @@ static no_inline int js_relational_slow(JSContext *ctx, JSValue *sp,
     op2 = sp[-1];
     tag1 = JS_VALUE_GET_NORM_TAG(op1);
     tag2 = JS_VALUE_GET_NORM_TAG(op2);
-    /* try to call an overloaded operator */
-    if ((tag1 == JS_TAG_OBJECT &&
-         (tag2 != JS_TAG_NULL && tag2 != JS_TAG_UNDEFINED)) ||
-        (tag2 == JS_TAG_OBJECT &&
-         (tag1 != JS_TAG_NULL && tag1 != JS_TAG_UNDEFINED))) {
-        res = js_call_binary_op_fallback(ctx, &ret, op1, op2, op,
-                                         FALSE, HINT_NUMBER);
-        if (res != 0) {
-            JS_FreeValue(ctx, op1);
-            JS_FreeValue(ctx, op2);
-            if (res < 0) {
-                goto exception;
-            } else {
-                sp[-2] = ret;
-                return 0;
-            }
-        }
-    }
+
     op1 = JS_ToPrimitiveFree(ctx, op1, HINT_NUMBER);
     if (JS_IsException(op1)) {
         JS_FreeValue(ctx, op2);
@@ -12905,7 +12418,7 @@ static no_inline int js_relational_slow(JSContext *ctx, JSValue *sp,
         tag2 = JS_VALUE_GET_NORM_TAG(op2);
 
         if (tag1 == JS_TAG_BIG_INT || tag2 == JS_TAG_BIG_INT) {
-            res = ctx->rt->bigint_ops.compare(ctx, op, op1, op2);
+            res = js_compare_bigint(ctx, op, op1, op2);
             if (res < 0)
                 goto exception;
         } else {
@@ -12958,7 +12471,7 @@ static BOOL tag_is_number(uint32_t tag)
 static no_inline __exception int js_eq_slow(JSContext *ctx, JSValue *sp,
                                             BOOL is_neq)
 {
-    JSValue op1, op2, ret;
+    JSValue op1, op2;
     int res;
     uint32_t tag1, tag2;
 
@@ -12987,27 +12500,11 @@ static no_inline __exception int js_eq_slow(JSContext *ctx, JSValue *sp,
             }
             res = (d1 == d2);
         } else {
-            res = ctx->rt->bigint_ops.compare(ctx, OP_eq, op1, op2);
+            res = js_compare_bigint(ctx, OP_eq, op1, op2);
             if (res < 0)
                 goto exception;
         }
     } else if (tag1 == tag2) {
-        if (tag1 == JS_TAG_OBJECT) {
-            /* try the fallback operator */
-            res = js_call_binary_op_fallback(ctx, &ret, op1, op2,
-                                             is_neq ? OP_neq : OP_eq,
-                                             FALSE, HINT_NONE);
-            if (res != 0) {
-                JS_FreeValue(ctx, op1);
-                JS_FreeValue(ctx, op2);
-                if (res < 0) {
-                    goto exception;
-                } else {
-                    sp[-2] = ret;
-                    return 0;
-                }
-            }
-        }
         res = js_strict_eq2(ctx, op1, op2, JS_EQ_STRICT);
     } else if ((tag1 == JS_TAG_NULL && tag2 == JS_TAG_UNDEFINED) ||
                (tag2 == JS_TAG_NULL && tag1 == JS_TAG_UNDEFINED)) {
@@ -13054,22 +12551,6 @@ static no_inline __exception int js_eq_slow(JSContext *ctx, JSValue *sp,
                 (tag_is_number(tag2) || tag2 == JS_TAG_STRING || tag2 == JS_TAG_SYMBOL)) ||
                (tag2 == JS_TAG_OBJECT &&
                 (tag_is_number(tag1) || tag1 == JS_TAG_STRING || tag1 == JS_TAG_SYMBOL))) {
-
-        /* try the fallback operator */
-        res = js_call_binary_op_fallback(ctx, &ret, op1, op2,
-                                         is_neq ? OP_neq : OP_eq,
-                                         FALSE, HINT_NONE);
-        if (res != 0) {
-            JS_FreeValue(ctx, op1);
-            JS_FreeValue(ctx, op2);
-            if (res < 0) {
-                goto exception;
-            } else {
-                sp[-2] = ret;
-                return 0;
-            }
-        }
-
         op1 = JS_ToPrimitiveFree(ctx, op1, HINT_NONE);
         if (JS_IsException(op1)) {
             JS_FreeValue(ctx, op2);
@@ -47528,302 +47009,6 @@ void JS_AddIntrinsicEval(JSContext *ctx)
 
 #ifdef CONFIG_BIGNUM
 
-/* Operators */
-
-static void js_operator_set_finalizer(JSRuntime *rt, JSValue val)
-{
-    JSOperatorSetData *opset = JS_GetOpaque(val, JS_CLASS_OPERATOR_SET);
-    int i, j;
-    JSBinaryOperatorDefEntry *ent;
-    
-    if (opset) {
-        for(i = 0; i < JS_OVOP_COUNT; i++) {
-            if (opset->self_ops[i])
-                JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, opset->self_ops[i]));
-        }
-        for(j = 0; j < opset->left.count; j++) {
-            ent = &opset->left.tab[j];
-            for(i = 0; i < JS_OVOP_BINARY_COUNT; i++) {
-                if (ent->ops[i])
-                    JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, ent->ops[i]));
-            }
-        }
-        js_free_rt(rt, opset->left.tab);
-        for(j = 0; j < opset->right.count; j++) {
-            ent = &opset->right.tab[j];
-            for(i = 0; i < JS_OVOP_BINARY_COUNT; i++) {
-                if (ent->ops[i])
-                    JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, ent->ops[i]));
-            }
-        }
-        js_free_rt(rt, opset->right.tab);
-        js_free_rt(rt, opset);
-    }
-}
-
-static void js_operator_set_mark(JSRuntime *rt, JSValueConst val,
-                                 JS_MarkFunc *mark_func)
-{
-    JSOperatorSetData *opset = JS_GetOpaque(val, JS_CLASS_OPERATOR_SET);
-    int i, j;
-    JSBinaryOperatorDefEntry *ent;
-    
-    if (opset) {
-        for(i = 0; i < JS_OVOP_COUNT; i++) {
-            if (opset->self_ops[i])
-                JS_MarkValue(rt, JS_MKPTR(JS_TAG_OBJECT, opset->self_ops[i]),
-                             mark_func);
-        }
-        for(j = 0; j < opset->left.count; j++) {
-            ent = &opset->left.tab[j];
-            for(i = 0; i < JS_OVOP_BINARY_COUNT; i++) {
-                if (ent->ops[i])
-                    JS_MarkValue(rt, JS_MKPTR(JS_TAG_OBJECT, ent->ops[i]),
-                                 mark_func);
-            }
-        }
-        for(j = 0; j < opset->right.count; j++) {
-            ent = &opset->right.tab[j];
-            for(i = 0; i < JS_OVOP_BINARY_COUNT; i++) {
-                if (ent->ops[i])
-                    JS_MarkValue(rt, JS_MKPTR(JS_TAG_OBJECT, ent->ops[i]),
-                                 mark_func);
-            }
-        }
-    }
-}
-
-
-/* create an OperatorSet object */
-static JSValue js_operators_create_internal(JSContext *ctx,
-                                            int argc, JSValueConst *argv,
-                                            BOOL is_primitive)
-{
-    JSValue opset_obj, prop, obj;
-    JSOperatorSetData *opset, *opset1;
-    JSBinaryOperatorDef *def;
-    JSValueConst arg;
-    int i, j;
-    JSBinaryOperatorDefEntry *new_tab;
-    JSBinaryOperatorDefEntry *ent;
-    uint32_t op_count;
-
-    if (ctx->rt->operator_count == UINT32_MAX) {
-        return JS_ThrowTypeError(ctx, "too many operators");
-    }
-    opset_obj = JS_NewObjectProtoClass(ctx, JS_NULL, JS_CLASS_OPERATOR_SET);
-    if (JS_IsException(opset_obj))
-        goto fail;
-    opset = js_mallocz(ctx, sizeof(*opset));
-    if (!opset)
-        goto fail;
-    JS_SetOpaque(opset_obj, opset);
-    if (argc >= 1) {
-        arg = argv[0];
-        /* self operators */
-        for(i = 0; i < JS_OVOP_COUNT; i++) {
-            prop = JS_GetPropertyStr(ctx, arg, js_overloadable_operator_names[i]);
-            if (JS_IsException(prop))
-                goto fail;
-            if (!JS_IsUndefined(prop)) {
-                if (check_function(ctx, prop)) {
-                    JS_FreeValue(ctx, prop);
-                    goto fail;
-                }
-                opset->self_ops[i] = JS_VALUE_GET_OBJ(prop);
-            }
-        }
-    }
-    /* left & right operators */
-    for(j = 1; j < argc; j++) {
-        arg = argv[j];
-        prop = JS_GetPropertyStr(ctx, arg, "left");
-        if (JS_IsException(prop))
-            goto fail;
-        def = &opset->right;
-        if (JS_IsUndefined(prop)) {
-            prop = JS_GetPropertyStr(ctx, arg, "right");
-            if (JS_IsException(prop))
-                goto fail;
-            if (JS_IsUndefined(prop)) {
-                JS_ThrowTypeError(ctx, "left or right property must be present");
-                goto fail;
-            }
-            def = &opset->left;
-        }
-        /* get the operator set */
-        obj = JS_GetProperty(ctx, prop, JS_ATOM_prototype);
-        JS_FreeValue(ctx, prop);
-        if (JS_IsException(obj))
-            goto fail;
-        prop = JS_GetProperty(ctx, obj, JS_ATOM_Symbol_operatorSet);
-        JS_FreeValue(ctx, obj);
-        if (JS_IsException(prop))
-            goto fail;
-        opset1 = JS_GetOpaque2(ctx, prop, JS_CLASS_OPERATOR_SET);
-        if (!opset1) {
-            JS_FreeValue(ctx, prop);
-            goto fail;
-        }
-        op_count = opset1->operator_counter;
-        JS_FreeValue(ctx, prop);
-        
-        /* we assume there are few entries */
-        new_tab = js_realloc(ctx, def->tab,
-                             (def->count + 1) * sizeof(def->tab[0]));
-        if (!new_tab)
-            goto fail;
-        def->tab = new_tab;
-        def->count++;
-        ent = def->tab + def->count - 1;
-        memset(ent, 0, sizeof(def->tab[0]));
-        ent->operator_index = op_count;
-        
-        for(i = 0; i < JS_OVOP_BINARY_COUNT; i++) {
-            prop = JS_GetPropertyStr(ctx, arg,
-                                     js_overloadable_operator_names[i]);
-            if (JS_IsException(prop))
-                goto fail;
-            if (!JS_IsUndefined(prop)) {
-                if (check_function(ctx, prop)) {
-                    JS_FreeValue(ctx, prop);
-                    goto fail;
-                }
-                ent->ops[i] = JS_VALUE_GET_OBJ(prop);
-            }
-        }
-    }
-    opset->is_primitive = is_primitive;
-    opset->operator_counter = ctx->rt->operator_count++;
-    return opset_obj;
- fail:
-    JS_FreeValue(ctx, opset_obj);
-    return JS_EXCEPTION;
-}
-
-static JSValue js_operators_create(JSContext *ctx, JSValueConst this_val,
-                                int argc, JSValueConst *argv)
-{
-    return js_operators_create_internal(ctx, argc, argv, FALSE);
-}
-
-static JSValue js_operators_updateBigIntOperators(JSContext *ctx, JSValueConst this_val,
-                                                  int argc, JSValueConst *argv)
-{
-    JSValue opset_obj, prop;
-    JSOperatorSetData *opset;
-    const JSOverloadableOperatorEnum ops[2] = { JS_OVOP_DIV, JS_OVOP_POW };
-    JSOverloadableOperatorEnum op;
-    int i;
-    
-    opset_obj = JS_GetProperty(ctx, ctx->class_proto[JS_CLASS_BIG_INT],
-                               JS_ATOM_Symbol_operatorSet);
-    if (JS_IsException(opset_obj))
-        goto fail;
-    opset = JS_GetOpaque2(ctx, opset_obj, JS_CLASS_OPERATOR_SET);
-    if (!opset)
-        goto fail;
-    for(i = 0; i < countof(ops); i++) {
-        op = ops[i];
-        prop = JS_GetPropertyStr(ctx, argv[0],
-                                 js_overloadable_operator_names[op]);
-        if (JS_IsException(prop))
-            goto fail;
-        if (!JS_IsUndefined(prop)) {
-            if (!JS_IsNull(prop) && check_function(ctx, prop)) {
-                JS_FreeValue(ctx, prop);
-                goto fail;
-            }
-            if (opset->self_ops[op])
-                JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, opset->self_ops[op]));
-            if (JS_IsNull(prop)) {
-                opset->self_ops[op] = NULL;
-            } else {
-                opset->self_ops[op] = JS_VALUE_GET_PTR(prop);
-            }
-        }
-    }
-    JS_FreeValue(ctx, opset_obj);
-    return JS_UNDEFINED;
- fail:
-    JS_FreeValue(ctx, opset_obj);
-    return JS_EXCEPTION;
-}
-
-static int js_operators_set_default(JSContext *ctx, JSValueConst obj)
-{
-    JSValue opset_obj;
-
-    if (!JS_IsObject(obj)) /* in case the prototype is not defined */
-        return 0;
-    opset_obj = js_operators_create_internal(ctx, 0, NULL, TRUE);
-    if (JS_IsException(opset_obj))
-        return -1;
-    /* cannot be modified by the user */
-    JS_DefinePropertyValue(ctx, obj, JS_ATOM_Symbol_operatorSet,
-                           opset_obj, 0);
-    return 0;
-}
-
-static JSValue js_dummy_operators_ctor(JSContext *ctx, JSValueConst new_target,
-                                       int argc, JSValueConst *argv)
-{
-    return js_create_from_ctor(ctx, new_target, JS_CLASS_OBJECT);
-}
-
-static JSValue js_global_operators(JSContext *ctx, JSValueConst this_val,
-                                   int argc, JSValueConst *argv)
-{
-    JSValue func_obj, proto, opset_obj;
-
-    func_obj = JS_UNDEFINED;
-    proto = JS_NewObject(ctx);
-    if (JS_IsException(proto))
-        return JS_EXCEPTION;
-    opset_obj = js_operators_create_internal(ctx, argc, argv, FALSE);
-    if (JS_IsException(opset_obj))
-        goto fail;
-    JS_DefinePropertyValue(ctx, proto, JS_ATOM_Symbol_operatorSet,
-                           opset_obj, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-    func_obj = JS_NewCFunction2(ctx, js_dummy_operators_ctor, "Operators",
-                                0, JS_CFUNC_constructor, 0);
-    if (JS_IsException(func_obj))
-        goto fail;
-    JS_SetConstructor2(ctx, func_obj, proto,
-                       0, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-    JS_FreeValue(ctx, proto);
-    return func_obj;
- fail:
-    JS_FreeValue(ctx, proto);
-    JS_FreeValue(ctx, func_obj);
-    return JS_EXCEPTION;
-}
-
-static const JSCFunctionListEntry js_operators_funcs[] = {
-    JS_CFUNC_DEF("create", 1, js_operators_create ),
-    JS_CFUNC_DEF("updateBigIntOperators", 2, js_operators_updateBigIntOperators ),
-};
-
-/* must be called after all overloadable base types are initialized */
-void JS_AddIntrinsicOperators(JSContext *ctx)
-{
-    JSValue obj;
-
-    ctx->allow_operator_overloading = TRUE;
-    obj = JS_NewCFunction(ctx, js_global_operators, "Operators", 1);
-    JS_SetPropertyFunctionList(ctx, obj,
-                               js_operators_funcs,
-                               countof(js_operators_funcs));
-    JS_DefinePropertyValue(ctx, ctx->global_obj, JS_ATOM_Operators,
-                           obj,
-                           JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-    /* add default operatorSets */
-    js_operators_set_default(ctx, ctx->class_proto[JS_CLASS_BOOLEAN]);
-    js_operators_set_default(ctx, ctx->class_proto[JS_CLASS_NUMBER]);
-    js_operators_set_default(ctx, ctx->class_proto[JS_CLASS_STRING]);
-    js_operators_set_default(ctx, ctx->class_proto[JS_CLASS_BIG_INT]);
-}
-
 /* BigInt */
 
 static JSValue JS_ToBigIntCtorFree(JSContext *ctx, JSValue val)
@@ -48140,15 +47325,8 @@ static const JSCFunctionListEntry js_bigint_proto_funcs[] = {
 
 void JS_AddIntrinsicBigInt(JSContext *ctx)
 {
-    JSRuntime *rt = ctx->rt;
     JSValueConst obj1;
 
-    rt->bigint_ops.to_string = js_bigint_to_string;
-    rt->bigint_ops.from_string = js_string_to_bigint;
-    rt->bigint_ops.unary_arith = js_unary_arith_bigint;
-    rt->bigint_ops.binary_arith = js_binary_arith_bigint;
-    rt->bigint_ops.compare = js_compare_bigint;
-    
     ctx->class_proto[JS_CLASS_BIG_INT] = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_BIG_INT],
                                js_bigint_proto_funcs,
@@ -48157,11 +47335,6 @@ void JS_AddIntrinsicBigInt(JSContext *ctx)
                                     ctx->class_proto[JS_CLASS_BIG_INT]);
     JS_SetPropertyFunctionList(ctx, obj1, js_bigint_funcs,
                                countof(js_bigint_funcs));
-}
-
-void JS_EnableBignumExt(JSContext *ctx, BOOL enable)
-{
-    ctx->bignum_ext = enable;
 }
 
 #endif /* CONFIG_BIGNUM */

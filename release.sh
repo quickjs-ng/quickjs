@@ -150,7 +150,6 @@ cp tests/*.js tests/*.patch tests/bjson.c $outdir/tests
 cp examples/*.js examples/*.c $outdir/examples
 
 cp doc/quickjs.texi doc/quickjs.pdf doc/quickjs.html \
-   doc/jsbignum.texi doc/jsbignum.html doc/jsbignum.pdf \
    $outdir/doc 
 
 ( cd /tmp && tar Jcvf /tmp/${d}.tar.xz ${d} )

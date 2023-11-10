@@ -360,7 +360,6 @@ void help(void)
     {
         int i;
         printf("-flto       use link time optimization\n");
-        printf("-fbignum    enable bignum extensions\n");
         printf("-fno-[");
         for(i = 0; i < countof(feature_list); i++) {
             if (i != 0)
@@ -493,9 +492,6 @@ int main(int argc, char **argv)
     int module;
     OutputTypeEnum output_type;
     size_t stack_size;
-#ifdef CONFIG_BIGNUM
-    BOOL bignum_ext = FALSE;
-#endif
     namelist_t dynamic_module_list;
     
     out_filename = NULL;
@@ -548,13 +544,7 @@ int main(int argc, char **argv)
                     }
                     if (i == countof(feature_list))
                         goto bad_feature;
-                } else
-#ifdef CONFIG_BIGNUM
-                if (!strcmp(optarg, "bignum")) {
-                    bignum_ext = TRUE;
-                } else
-#endif
-                {
+                } else {
                 bad_feature:
                     fprintf(stderr, "unsupported feature: %s\n", optarg);
                     exit(1);
@@ -631,12 +621,6 @@ int main(int argc, char **argv)
     
     rt = JS_NewRuntime();
     ctx = JS_NewContext(rt);
-#ifdef CONFIG_BIGNUM
-    if (bignum_ext) {
-        JS_AddIntrinsicOperators(ctx);
-        JS_EnableBignumExt(ctx, TRUE);
-    }
-#endif
     
     /* loader for ES6 modules */
     JS_SetModuleLoaderFunc(rt, NULL, jsc_module_loader, NULL);
@@ -685,13 +669,6 @@ int main(int argc, char **argv)
                         feature_list[i].init_name);
             }
         }
-#ifdef CONFIG_BIGNUM
-        if (bignum_ext) {
-            fprintf(fo,
-                    "  JS_AddIntrinsicOperators(ctx);\n"
-                    "  JS_EnableBignumExt(ctx, 1);\n");
-        }
-#endif
         /* add the precompiled modules (XXX: could modify the module
            loader instead) */
         for(i = 0; i < init_module_list.count; i++) {

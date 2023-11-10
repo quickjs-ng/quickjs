@@ -213,8 +213,6 @@ DEF(Float64Array, "Float64Array")
 DEF(DataView, "DataView")
 #ifdef CONFIG_BIGNUM
 DEF(BigInt, "BigInt")
-DEF(OperatorSet, "OperatorSet")
-DEF(Operators, "Operators")
 #endif
 DEF(Map, "Map")
 DEF(Set, "Set") /* Map + 1 */
@@ -258,8 +256,5 @@ DEF(Symbol_hasInstance, "Symbol.hasInstance")
 DEF(Symbol_species, "Symbol.species")
 DEF(Symbol_unscopables, "Symbol.unscopables")
 DEF(Symbol_asyncIterator, "Symbol.asyncIterator")
-#ifdef CONFIG_BIGNUM
-DEF(Symbol_operatorSet, "Symbol.operatorSet")
-#endif
     
 #endif /* DEF */
