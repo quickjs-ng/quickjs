@@ -2998,8 +2998,6 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
                 return JS_UNDEFINED;
         }
     }
-    /* XXX: bignum: would be better to only accept integer to avoid
-       relying on current floating point precision */
     /* this is ECMA CanonicalNumericIndexString primitive */
     num = JS_ToNumber(ctx, JS_MKPTR(JS_TAG_STRING, p));
     if (JS_IsException(num))
@@ -31844,7 +31842,7 @@ static void JS_WriteString(BCWriterState *s, JSString *p)
     }
 }
 
-static int JS_WriteBigNum(BCWriterState *s, JSValueConst obj)
+static int JS_WriteBigInt(BCWriterState *s, JSValueConst obj)
 {
     uint32_t tag, tag1;
     int64_t e;
@@ -31876,7 +31874,7 @@ static int JS_WriteBigNum(BCWriterState *s, JSValueConst obj)
         e = a->expn;
     e = (e * 2) | a->sign;
     if (e < INT32_MIN || e > INT32_MAX) {
-        JS_ThrowInternalError(s->ctx, "bignum exponent is too large");
+        JS_ThrowInternalError(s->ctx, "bigint exponent is too large");
         return -1;
     }
     bc_put_sleb128(s, e);
@@ -31896,7 +31894,7 @@ static int JS_WriteBigNum(BCWriterState *s, JSValueConst obj)
         i++;
         len = (a->len - i) * sizeof(limb_t) + n1;
         if (len > INT32_MAX) {
-            JS_ThrowInternalError(s->ctx, "bignum is too large");
+            JS_ThrowInternalError(s->ctx, "bigint is too large");
             return -1;
         }
         bc_put_leb128(s, len);
@@ -32297,7 +32295,7 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValueConst obj)
         }
         break;
     case JS_TAG_BIG_INT:
-        if (JS_WriteBigNum(s, obj))
+        if (JS_WriteBigInt(s, obj))
             goto fail;
         break;
     default:
@@ -32691,7 +32689,7 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
     return 0;
 }
 
-static JSValue JS_ReadBigNum(BCReaderState *s, int tag)
+static JSValue JS_ReadBigInt(BCReaderState *s, int tag)
 {
     JSValue obj = JS_UNDEFINED;
     uint8_t v8;
@@ -32739,7 +32737,7 @@ static JSValue JS_ReadBigNum(BCReaderState *s, int tag)
             goto fail;
         bc_read_trace(s, "len=%" PRId64 "\n", (int64_t)len);
         if (len == 0) {
-            JS_ThrowInternalError(s->ctx, "invalid bignum length");
+            JS_ThrowInternalError(s->ctx, "invalid bigint length");
             goto fail;
         }
         l = (len + sizeof(limb_t) - 1) / sizeof(limb_t);
@@ -33408,7 +33406,7 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
         obj = JS_ReadObjectValue(s);
         break;
     case BC_TAG_BIG_INT:
-        obj = JS_ReadBigNum(s, tag);
+        obj = JS_ReadBigInt(s, tag);
         break;
     case BC_TAG_OBJECT_REFERENCE:
         {
@@ -43312,7 +43310,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         h = (u.u32[0] ^ u.u32[1]) * 3163;
         break;
     default:
-        h = 0; /* XXX: bignum support */
+        h = 0; /* XXX: bigint support */
         break;
     }
     h ^= tag;
