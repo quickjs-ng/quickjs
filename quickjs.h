@@ -1009,6 +1009,16 @@ typedef enum JSPromiseStateEnum {
 JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
 JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 
+/* Version */
+
+#define QJS_VERSION_MAJOR 0
+#define QJS_VERSION_MINOR 1
+#define QJS_VERSION_PATCH 0
+#define QJS_VERSION_SUFFIX ""
+
+const char* JS_GetVersion(void);
+
+
 #undef js_unlikely
 #undef js_force_inline
 

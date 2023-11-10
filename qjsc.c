@@ -339,7 +339,7 @@ static const char main_c_template2[] =
 
 void help(void)
 {
-    printf("QuickJS Compiler version " CONFIG_VERSION "\n"
+    printf("QuickJS Compiler version %s\n"
            "usage: " PROG_NAME " [options] [files]\n"
            "\n"
            "options are:\n"
@@ -353,6 +353,7 @@ void help(void)
            "-x          byte swapped output\n"
            "-p prefix   set the prefix of the generated C names\n"
            "-S n        set the maximum stack size to 'n' bytes (default=%d)\n",
+           JS_GetVersion(),
            JS_DEFAULT_STACK_SIZE);
 #ifdef CONFIG_LTO
     {

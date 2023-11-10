@@ -53,9 +53,6 @@ set(qjs_sources
 
 list(APPEND qjs_defines _GNU_SOURCE)
 
-file(STRINGS "VERSION" QJS_VERSION_STR)
-list(APPEND qjs_defines CONFIG_VERSION="${QJS_VERSION_STR}")
-
 add_library(qjs STATIC ${qjs_sources})
 target_compile_definitions(qjs PUBLIC
     QJS_VERSION_STR="${QJS_VERSION_STR}"

@@ -1945,7 +1945,7 @@ void run_test_dir_list(namelist_t *lp, int start_index, int stop_index)
 
 void help(void)
 {
-    printf("run-test262 version " CONFIG_VERSION "\n"
+    printf("run-test262 version %s\n"
            "usage: run-test262 [options] {-f file ... | [dir_list] [index range]}\n"
            "-h             help\n"
            "-a             run tests in strict and nostrict modes\n"
@@ -1962,7 +1962,8 @@ void help(void)
            "-e file        load the known errors from 'file'\n"
            "-f file        execute single test from 'file'\n"
            "-r file        set the report file name (default=none)\n"
-           "-x file        exclude tests listed in 'file'\n");
+           "-x file        exclude tests listed in 'file'\n",
+           JS_GetVersion());
     exit(1);
 }
 
