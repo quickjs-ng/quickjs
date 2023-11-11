@@ -38212,7 +38212,7 @@ static JSValue js_string_isWellFormed(JSContext *ctx, JSValueConst this_val,
     JSValue str;
     JSValue ret;
     JSString *p;
-    uint32_t i, n, hi, lo;
+    uint32_t c, i, n;
 
     ret = JS_TRUE;
     str = JS_ToStringCheckObject(ctx, this_val);
@@ -38220,29 +38220,64 @@ static JSValue js_string_isWellFormed(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
 
     p = JS_VALUE_GET_STRING(str);
-    if (p->is_wide_char) {
-        for (i = 0, n = p->len; i < n; i++) {
-            hi = p->u.str16[i];
-            if (hi < 0xD800 || hi > 0xDFFF)
-                continue;
-            if (hi > 0xDBFF) {
-                ret = JS_FALSE;
-                break;
-            }
-            i++;
-            if (i == n) {
-                ret = JS_FALSE;
-                break;
-            }
-            lo = p->u.str16[i];
-            if (lo < 0xDC00 || lo > 0xDFFF) {
-                ret = JS_FALSE;
-                break;
-            }
-        }
+    if (!p->is_wide_char || p->len == 0)
+        goto done; // by definition well-formed
+
+    for (i = 0, n = p->len; i < n; i++) {
+        c = p->u.str16[i];
+        if (c < 0xD800 || c > 0xDFFF)
+            continue;
+        if (c > 0xDBFF || i+1 == n)
+            break;
+        c = p->u.str16[++i];
+        if (c < 0xDC00 || c > 0xDFFF)
+            break;
     }
 
+    if (i < n)
+        ret = JS_FALSE;
+
+done:
     JS_FreeValue(ctx, str);
+    return ret;
+}
+
+static JSValue js_string_toWellFormed(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv)
+{
+    JSValue str;
+    JSValue ret;
+    JSString *p;
+    uint32_t c, i, n;
+
+    str = JS_ToStringCheckObject(ctx, this_val);
+    if (JS_IsException(str))
+        return JS_EXCEPTION;
+
+    p = JS_VALUE_GET_STRING(str);
+    if (!p->is_wide_char || p->len == 0)
+        return str; // by definition well-formed
+
+    // TODO(bnoordhuis) don't clone when input is well-formed
+    ret = js_new_string16(ctx, p->u.str16, p->len);
+    JS_FreeValue(ctx, str);
+    if (JS_IsException(ret))
+        return JS_EXCEPTION;
+
+    p = JS_VALUE_GET_STRING(ret);
+    for (i = 0, n = p->len; i < n; i++) {
+        c = p->u.str16[i];
+        if (c < 0xD800 || c > 0xDFFF)
+            continue;
+        if (c > 0xDBFF || i+1 == n) {
+            p->u.str16[i] = 0xFFFD;
+            continue;
+        }
+        c = p->u.str16[++i];
+        if (c < 0xDC00 || c > 0xDFFF)
+            p->u.str16[--i] = 0xFFFD;
+    }
+
     return ret;
 }
 
@@ -39398,6 +39433,7 @@ static const JSCFunctionListEntry js_string_proto_funcs[] = {
     JS_CFUNC_DEF("concat", 1, js_string_concat ),
     JS_CFUNC_DEF("codePointAt", 1, js_string_codePointAt ),
     JS_CFUNC_DEF("isWellFormed", 0, js_string_isWellFormed ),
+    JS_CFUNC_DEF("toWellFormed", 0, js_string_toWellFormed ),
     JS_CFUNC_MAGIC_DEF("indexOf", 1, js_string_indexOf, 0 ),
     JS_CFUNC_MAGIC_DEF("lastIndexOf", 1, js_string_indexOf, 1 ),
     JS_CFUNC_MAGIC_DEF("includes", 1, js_string_includes, 0 ),
