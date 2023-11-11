@@ -13,11 +13,27 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+add_compile_options(
+    -Wall
+    -Werror
+)
 if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wextra -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable -funsigned-char")
+    add_compile_options(
+        -Wextra
+        -Wno-sign-compare
+        -Wno-missing-field-initializers
+        -Wno-unused-parameter
+        -Wno-unused-variable
+        -Wno-unused-but-set-variable
+        -funsigned-char
+    )
 else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-array-bounds -Wno-format-truncation -Wno-unused-variable -Wno-unused-but-set-variable")
+    add_compile_options(
+        -Wno-array-bounds
+        -Wno-format-truncation
+        -Wno-unused-variable
+        -Wno-unused-but-set-variable
+    )
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -25,16 +41,14 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -ggdb -O0 -fno-omit-frame-pointer")
-string(REPLACE "-O3" "-O2" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
-
 message(STATUS "Building in ${CMAKE_BUILD_TYPE} mode")
 message(STATUS "Building with ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION} on ${CMAKE_SYSTEM}")
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    message(STATUS "Building with flags ${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_DEBUG}")
-else()
-    message(STATUS "Building with flags ${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_RELEASE}")
+    add_compile_options(
+        -ggdb
+        -O0
+        -fno-omit-frame-pointer
+    )
 endif()
 
 set(CMAKE_VERBOSE_MAKEFILE TRUE)
