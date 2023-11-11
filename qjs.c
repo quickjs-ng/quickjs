@@ -489,7 +489,7 @@ int main(int argc, char **argv)
 
     if (empty_run && dump_memory) {
         clock_t t[5];
-        double best[5];
+        double best[5] = {0};
         int i, j;
         for (i = 0; i < 100; i++) {
             t[0] = clock();
