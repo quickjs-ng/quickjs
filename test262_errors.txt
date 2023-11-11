@@ -59,42 +59,6 @@ test262/test/built-ins/Array/prototype/toSpliced/this-value-boolean.js:18: TypeE
 test262/test/built-ins/Array/prototype/toSpliced/this-value-boolean.js:18: strict mode: TypeError: cannot read property 'call' of undefined
 test262/test/built-ins/Array/prototype/toSpliced/unmodified.js:13: TypeError: not a function
 test262/test/built-ins/Array/prototype/toSpliced/unmodified.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/frozen-this-value.js:13: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/frozen-this-value.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/holes-not-preserved.js:27: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/holes-not-preserved.js:27: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/ignores-species.js:21: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/ignores-species.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/immutable.js:13: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/immutable.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/index-bigger-or-eq-than-length.js:21: Test262Error: Expected a RangeError but got a TypeError
-test262/test/built-ins/Array/prototype/with/index-bigger-or-eq-than-length.js:21: strict mode: Test262Error: Expected a RangeError but got a TypeError
-test262/test/built-ins/Array/prototype/with/index-casted-to-number.js:23: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/index-casted-to-number.js:23: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/index-negative.js:23: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/index-negative.js:23: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/index-smaller-than-minus-length.js:21: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/index-smaller-than-minus-length.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/length-decreased-while-iterating.js:32: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/length-decreased-while-iterating.js:32: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/length-exceeding-array-length-limit.js:26: Test262Error: Expected a RangeError but got a TypeError
-test262/test/built-ins/Array/prototype/with/length-exceeding-array-length-limit.js:26: strict mode: Test262Error: Expected a RangeError but got a TypeError
-test262/test/built-ins/Array/prototype/with/length-increased-while-iterating.js:32: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/length-increased-while-iterating.js:32: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/length-tolength.js:19: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/with/length-tolength.js:19: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/with/metadata/length.js:30: TypeError: cannot convert to object
-test262/test/built-ins/Array/prototype/with/metadata/length.js:30: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/Array/prototype/with/metadata/name.js:28: TypeError: cannot convert to object
-test262/test/built-ins/Array/prototype/with/metadata/name.js:28: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/Array/prototype/with/metadata/property-descriptor.js:18: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Array/prototype/with/metadata/property-descriptor.js:18: strict mode: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Array/prototype/with/no-get-replaced-index.js:29: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/no-get-replaced-index.js:29: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/with/not-a-constructor.js:30: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Array/prototype/with/not-a-constructor.js:30: strict mode: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Array/prototype/with/this-value-boolean.js:22: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/with/this-value-boolean.js:22: strict mode: TypeError: cannot read property 'call' of undefined
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-state-completed-broken-promise.js:53: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-state-completed-broken-promise.js:53: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedStart-broken-promise.js:34: TypeError: $DONE() not called
