@@ -38206,6 +38206,46 @@ static int64_t string_advance_index(JSString *p, int64_t index, BOOL unicode)
     return index;
 }
 
+static JSValue js_string_isWellFormed(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv)
+{
+    JSValue str;
+    JSValue ret;
+    JSString *p;
+    uint32_t i, n, hi, lo;
+
+    ret = JS_TRUE;
+    str = JS_ToStringCheckObject(ctx, this_val);
+    if (JS_IsException(str))
+        return JS_EXCEPTION;
+
+    p = JS_VALUE_GET_STRING(str);
+    if (p->is_wide_char) {
+        for (i = 0, n = p->len; i < n; i++) {
+            hi = p->u.str16[i];
+            if (hi < 0xD800 || hi > 0xDFFF)
+                continue;
+            if (hi > 0xDBFF) {
+                ret = JS_FALSE;
+                break;
+            }
+            i++;
+            if (i == n) {
+                ret = JS_FALSE;
+                break;
+            }
+            lo = p->u.str16[i];
+            if (lo < 0xDC00 || lo > 0xDFFF) {
+                ret = JS_FALSE;
+                break;
+            }
+        }
+    }
+
+    JS_FreeValue(ctx, str);
+    return ret;
+}
+
 static JSValue js_string_indexOf(JSContext *ctx, JSValueConst this_val,
                                  int argc, JSValueConst *argv, int lastIndexOf)
 {
@@ -39357,6 +39397,7 @@ static const JSCFunctionListEntry js_string_proto_funcs[] = {
     JS_CFUNC_DEF("charAt", 1, js_string_charAt ),
     JS_CFUNC_DEF("concat", 1, js_string_concat ),
     JS_CFUNC_DEF("codePointAt", 1, js_string_codePointAt ),
+    JS_CFUNC_DEF("isWellFormed", 0, js_string_isWellFormed ),
     JS_CFUNC_MAGIC_DEF("indexOf", 1, js_string_indexOf, 0 ),
     JS_CFUNC_MAGIC_DEF("lastIndexOf", 1, js_string_indexOf, 1 ),
     JS_CFUNC_MAGIC_DEF("includes", 1, js_string_includes, 0 ),
