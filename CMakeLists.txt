@@ -5,7 +5,6 @@ project(quickjs LANGUAGES C)
 # TODO:
 #  - LTO
 #  - Support cross-compilation
-#  - ASAN / MSAN / UBSAN
 #  - Install targets
 #  - Shared library target
 
@@ -51,7 +50,49 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
     )
 endif()
 
-set(CMAKE_VERBOSE_MAKEFILE TRUE)
+option(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
+option(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
+option(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
+
+if(CONFIG_ASAN)
+message(STATUS "Building with ASan")
+add_compile_options(
+    -fsanitize=address
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+add_link_options(
+    -fsanitize=address
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+elseif(CONFIG_MSAN)
+message(STATUS "Building with MSan")
+add_compile_options(
+    -fsanitize=memory
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+add_link_options(
+    -fsanitize=memory
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+elseif(CONFIG_UBSAN)
+message(STATUS "Building with UBSan")
+add_compile_options(
+    -fsanitize=undefined
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+add_link_options(
+    -fsanitize=undefined
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+endif()
+
+set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON")
 
 
 # QuickJS library
