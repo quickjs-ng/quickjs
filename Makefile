@@ -411,7 +411,6 @@ endif
 ifndef CONFIG_MINGW
 ifndef CONFIG_DARWIN
 	./qjs tests/test_bjson.js
-	./qjs tests/test_bjson.js
 	./qjs examples/test_point.js
 endif
 endif
