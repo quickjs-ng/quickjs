@@ -302,6 +302,7 @@ DEF(       get_loc8, 2, 0, 1, loc8)
 DEF(       put_loc8, 2, 1, 0, loc8)
 DEF(       set_loc8, 2, 1, 1, loc8)
 
+DEF(  get_loc0_loc1, 1, 0, 2, none_loc)
 DEF(       get_loc0, 1, 0, 1, none_loc)
 DEF(       get_loc1, 1, 0, 1, none_loc)
 DEF(       get_loc2, 1, 0, 1, none_loc)
