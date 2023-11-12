@@ -78,6 +78,7 @@ jobs:
           ./build/qjs tests/test_std.js
           ./build/qjs tests/test_worker.js
       - name: test 262
+        if: matrix.buildType == "Release"
         run: |
           time ./build/run-test262 -m -c test262.conf -a
 
