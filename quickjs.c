@@ -14976,6 +14976,14 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         CASE(OP_put_loc8): set_value(ctx, &var_buf[*pc++], *--sp); BREAK;
         CASE(OP_set_loc8): set_value(ctx, &var_buf[*pc++], JS_DupValue(ctx, sp[-1])); BREAK;
 
+        // Observation: get_loc0 and get_loc1 are individually very
+        // frequent opcodes _and_ they are very often paired together,
+        // making them ideal candidates for opcode fusion.
+        CASE(OP_get_loc0_loc1):
+            *sp++ = JS_DupValue(ctx, var_buf[0]);
+            *sp++ = JS_DupValue(ctx, var_buf[1]);
+            BREAK;
+
         CASE(OP_get_loc0): *sp++ = JS_DupValue(ctx, var_buf[0]); BREAK;
         CASE(OP_get_loc1): *sp++ = JS_DupValue(ctx, var_buf[1]); BREAK;
         CASE(OP_get_loc2): *sp++ = JS_DupValue(ctx, var_buf[2]); BREAK;
@@ -29658,6 +29666,14 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                     put_short_code(&bc_out, cc.op, cc.idx);
                     dbuf_putc(&bc_out, OP_add_loc);
                     dbuf_putc(&bc_out, idx);
+                    pos_next = cc.pos;
+                    break;
+                }
+                /* transformation: get_loc(0) get_loc(1) -> get_loc0_loc1 */
+                if (idx == 0 && code_match(&cc, pos_next, OP_get_loc, 1, -1)) {
+                    if (cc.line_num >= 0) line_num = cc.line_num;
+                    add_pc2line_info(s, bc_out.size, line_num);
+                    dbuf_putc(&bc_out, OP_get_loc0_loc1);
                     pos_next = cc.pos;
                     break;
                 }
