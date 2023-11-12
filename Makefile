@@ -402,6 +402,7 @@ test: qjs32
 endif
 
 test: qjs
+	./qjs tests/test_bigint.js
 	./qjs tests/test_closure.js
 	./qjs tests/test_language.js
 	./qjs tests/test_builtin.js
@@ -416,7 +417,6 @@ ifndef CONFIG_DARWIN
 	./qjs examples/test_point.js
 endif
 endif
-	./qjs tests/test_bigint.js
 ifdef CONFIG_M32
 	./qjs32 tests/test_closure.js
 	./qjs32 tests/test_language.js
