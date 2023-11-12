@@ -283,7 +283,6 @@ def( set_class_name, 5, 1, 1, u32) /* emitted in phase 1, removed in phase 2 */
 
 def(       line_num, 5, 0, 0, u32) /* emitted in phase 1, removed in phase 3 */
 
-#if SHORT_OPCODES
 DEF(    push_minus1, 1, 0, 1, none_int)
 DEF(         push_0, 1, 0, 1, none_int)
 DEF(         push_1, 1, 0, 1, none_int)
@@ -356,7 +355,6 @@ DEF(   is_undefined, 1, 1, 1, none)
 DEF(        is_null, 1, 1, 1, none)
 DEF(typeof_is_undefined, 1, 1, 1, none)
 DEF( typeof_is_function, 1, 1, 1, none)
-#endif
 
 #undef DEF
 #undef def
