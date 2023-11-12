@@ -194,41 +194,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sys:
-          - mingw64
-          - ucrt64
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-    - uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: Setup MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: ${{matrix.sys}}
-        install: >-
-          git
-          make
-        pacboy: >-
-          toolchain:p
-    - name: build
-      run: |
-        make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y CONFIG_MINGW=y
-    - name: stats
-      run: |
-        make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y CONFIG_MINGW=y qjs
-        ./qjs -qd
-    - name: test
-      run: |
-        make -j$(getconf _NPROCESSORS_ONLN) CONFIG_WERROR=y CONFIG_MINGW=y test
-
-  windows-mingw-cmake:
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
         buildType: [Debug, Release]
         sys:
           - mingw64
