@@ -48,6 +48,8 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
         -O0
         -fno-omit-frame-pointer
     )
+else()
+    add_compile_options(-g)
 endif()
 
 option(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
