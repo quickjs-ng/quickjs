@@ -52,6 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: build
         run: |
           mkdir build
@@ -70,10 +72,17 @@ jobs:
           ./build/qjs tests/test_loop.js
           ./build/qjs tests/test_std.js
           ./build/qjs tests/test_worker.js
+      - name: test 262
+        env:
+          ASAN_OPTIONS: halt_on_error=1
+        run: |
+          time ./build/run-test262 -m -c test262.conf -a
   linux-msan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: build
         env:
           CC: clang
@@ -98,6 +107,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: build
         run: |
           mkdir build
@@ -116,6 +127,11 @@ jobs:
           ./build/qjs tests/test_loop.js
           ./build/qjs tests/test_std.js
           ./build/qjs tests/test_worker.js
+      - name: test 262
+        env:
+          UBSAN_OPTIONS: halt_on_error=1
+        run: |
+          time ./build/run-test262 -m -c test262.conf -a
 
   macos:
     runs-on: macos-latest
