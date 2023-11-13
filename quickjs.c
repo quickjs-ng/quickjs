@@ -43650,8 +43650,14 @@ static JSValue js_map_set(JSContext *ctx, JSValueConst this_val,
     if (!s)
         return JS_EXCEPTION;
     key = map_normalize_key(ctx, argv[0]);
-    if (s->is_weak && !JS_IsObject(key))
-        return JS_ThrowTypeErrorNotAnObject(ctx);
+    if (s->is_weak) {
+        if (magic & MAGIC_SET) {
+            if (!JS_IsObject(key))
+                return JS_ThrowTypeErrorNotAnObject(ctx);
+        } else if (!JS_IsObject(key) && !JS_IsSymbol(key)) {
+            return JS_ThrowTypeError(ctx, "key must be Objecty or Symbol");
+        }
+    }
     if (magic & MAGIC_SET)
         value = JS_UNDEFINED;
     else
