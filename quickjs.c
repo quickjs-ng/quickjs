@@ -65,7 +65,7 @@
 #define CONFIG_PRINTF_RNDN
 #endif
 
-#if !defined(EMSCRIPTEN)
+#if !defined(EMSCRIPTEN) && !defined(__ASAN__)
 /* enable stack limitation */
 #define CONFIG_STACK_CHECK
 #endif
