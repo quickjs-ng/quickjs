@@ -618,10 +618,20 @@ function test_map()
 
 function test_weak_map()
 {
-    var a, i, n, tab, o, v, n2;
+    var a, e, i, n, tab, o, v, n2;
     a = new WeakMap();
     n = 10;
     tab = [];
+    for (const k of [null, 42, "no", Symbol.for("forbidden")]) {
+        e = undefined;
+        try {
+            a.set(k, 42);
+        } catch (_e) {
+            e = _e;
+        }
+        assert(!!e);
+        assert(e.message, "invalid value used as WeakMap key");
+    }
     for(i = 0; i < n; i++) {
         v = { };
         o = { id: i };
@@ -638,6 +648,22 @@ function test_weak_map()
         tab[i][0] = null; /* should remove the object from the WeakMap too */
     }
     /* the WeakMap should be empty here */
+}
+
+function test_weak_set()
+{
+    var a, e;
+    a = new WeakSet();
+    for (const k of [null, 42, "no", Symbol.for("forbidden")]) {
+        e = undefined;
+        try {
+            a.add(k);
+        } catch (_e) {
+            e = _e;
+        }
+        assert(!!e);
+        assert(e.message, "invalid value used as WeakSet key");
+    }
 }
 
 function test_generator()
@@ -696,4 +722,5 @@ test_regexp();
 test_symbol();
 test_map();
 test_weak_map();
+test_weak_set();
 test_generator();
