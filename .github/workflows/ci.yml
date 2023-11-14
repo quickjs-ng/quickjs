@@ -48,6 +48,21 @@ jobs:
         if: ${{ matrix.buildType == 'Release' }}
         run: |
           time ./build/run-test262 -m -c test262.conf -a
+  linux-shared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake -DBUILD_SHARED_LIBS=ON ..
+          cd ..
+          cmake --build build -j$(getconf _NPROCESSORS_ONLN)
+          ldd build/qjs
+      - name: stats
+        run: |
+          ./build/qjs -qd
   linux-asan:
     runs-on: ubuntu-latest
     steps:
@@ -160,6 +175,21 @@ jobs:
           ./build/qjs tests/test_loop.js
           ./build/qjs tests/test_std.js
           ./build/qjs tests/test_worker.js
+  macos-shared:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake -DBUILD_SHARED_LIBS=ON ..
+          cd ..
+          cmake --build build -j$(getconf _NPROCESSORS_ONLN)
+          otool -L build/qjs
+      - name: stats
+        run: |
+          ./build/qjs -qd
   macos-asan:
     runs-on: macos-latest
     steps:
@@ -248,3 +278,31 @@ jobs:
         ./build/qjs tests/test_builtin.js
         ./build/qjs tests/test_loop.js
         ./build/qjs tests/test_std.js
+  windows-mingw-shared:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          install: >-
+            git
+            make
+          pacboy: >-
+            cmake:p
+            ninja:p
+            toolchain:p
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake -DBUILD_SHARED_LIBS=ON ..
+          cd ..
+          cmake --build build -j$(getconf _NPROCESSORS_ONLN)
+          ldd build/qjs
+      - name: stats
+        run: |
+          ./build/qjs -qd
