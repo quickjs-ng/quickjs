@@ -59,10 +59,10 @@ jobs:
           cmake -DBUILD_SHARED_LIBS=ON ..
           cd ..
           cmake --build build -j$(getconf _NPROCESSORS_ONLN)
-          ldd build/qjs-shared
+          ldd build/qjs
       - name: stats
         run: |
-          ./build/qjs-shared -qd
+          ./build/qjs -qd
   linux-asan:
     runs-on: ubuntu-latest
     steps:
@@ -186,10 +186,10 @@ jobs:
           cmake -DBUILD_SHARED_LIBS=ON ..
           cd ..
           cmake --build build -j$(getconf _NPROCESSORS_ONLN)
-          otool -L build/qjs-shared
+          otool -L build/qjs
       - name: stats
         run: |
-          ./build/qjs-shared -qd
+          ./build/qjs -qd
   macos-asan:
     runs-on: macos-latest
     steps:
@@ -302,7 +302,7 @@ jobs:
           cmake -DBUILD_SHARED_LIBS=ON ..
           cd ..
           cmake --build build -j$(getconf _NPROCESSORS_ONLN)
-          ldd build/qjs-shared
+          ldd build/qjs
       - name: stats
         run: |
-          ./build/qjs-shared -qd
+          ./build/qjs -qd
