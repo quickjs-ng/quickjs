@@ -3,10 +3,8 @@ cmake_minimum_required(VERSION 3.9)
 project(quickjs LANGUAGES C)
 
 # TODO:
-#  - LTO
 #  - Support cross-compilation
 #  - Install targets
-#  - Shared library target
 
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
@@ -50,6 +48,11 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
     )
 else()
     add_compile_options(-g)
+endif()
+
+option(BUILD_SHARED_LIBS "Build a shared library" OFF)
+if(BUILD_SHARED_LIBS)
+    message(STATUS "Building a shared library")
 endif()
 
 option(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
@@ -97,8 +100,6 @@ add_link_options(
 )
 endif()
 
-set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON")
-
 
 # QuickJS library
 #
@@ -113,7 +114,7 @@ set(qjs_sources
 
 list(APPEND qjs_defines _GNU_SOURCE)
 
-add_library(qjs STATIC ${qjs_sources})
+add_library(qjs ${qjs_sources})
 target_compile_definitions(qjs PRIVATE ${qjs_defines})
 if (CMAKE_BUILD_TYPE MATCHES Debug)
     target_compile_definitions(qjs PRIVATE
