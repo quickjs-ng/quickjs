@@ -2,8 +2,9 @@ cmake_minimum_required(VERSION 3.9)
 
 project(quickjs LANGUAGES C)
 
+include(CheckIPOSupported)
+
 # TODO:
-#  - LTO
 #  - Support cross-compilation
 #  - Install targets
 #  - Shared library target
@@ -94,7 +95,10 @@ add_link_options(
 )
 endif()
 
-set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON")
+option(CONFIG_LTO "Build with LTO" OFF)
+check_ipo_supported(RESULT LTO_SUPPORTED OUTPUT LTO_ERROR)
+
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 
 # QuickJS library
@@ -172,4 +176,17 @@ target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
 target_link_libraries(run-test262 qjs m pthread)
 if(NOT MINGW)
     target_link_libraries(run-test262 dl)
+endif()
+
+
+# LTO support
+#
+
+if(CONFIG_LTO)
+    if(LTO_SUPPORTED)
+        message(STATUS "Building with LTO enabled")
+        set_target_properties(qjs qjs_exe PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+        message(STATUS "Building with LTO not supported: <${LTO_ERROR}>")
+    endif()
 endif()
