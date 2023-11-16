@@ -1,64 +1,6 @@
 test262/test/annexB/language/eval-code/direct/script-decl-lex-collision-in-sloppy-mode.js:13: Test262Error: Expected a SyntaxError to be thrown but no exception was thrown at all
 test262/test/built-ins/Array/prototype/Symbol.unscopables/change-array-by-copy.js:19: Test262Error: obj should have an own property toReversed
 test262/test/built-ins/Array/prototype/Symbol.unscopables/change-array-by-copy.js:19: strict mode: Test262Error: obj should have an own property toReversed
-test262/test/built-ins/Array/prototype/toSpliced/deleteCount-clamped-between-zero-and-remaining-count.js:20: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/deleteCount-clamped-between-zero-and-remaining-count.js:20: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/deleteCount-missing.js:18: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/deleteCount-missing.js:18: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/deleteCount-undefined.js:27: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/deleteCount-undefined.js:27: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/discarded-element-not-read.js:51: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/discarded-element-not-read.js:51: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/elements-read-in-order.js:45: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/elements-read-in-order.js:45: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/frozen-this-value.js:13: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/frozen-this-value.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/holes-not-preserved.js:33: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/holes-not-preserved.js:33: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/ignores-species.js:21: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/ignores-species.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/immutable.js:13: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/immutable.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/length-casted-to-zero.js:19: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/length-casted-to-zero.js:19: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/length-clamped-to-2pow53minus1.js:31: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/length-clamped-to-2pow53minus1.js:31: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/length-decreased-while-iterating.js:44: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/length-decreased-while-iterating.js:44: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/length-exceeding-array-length-limit.js:28: Test262Error: Expected a RangeError but got a TypeError
-test262/test/built-ins/Array/prototype/toSpliced/length-exceeding-array-length-limit.js:28: strict mode: Test262Error: Expected a RangeError but got a TypeError
-test262/test/built-ins/Array/prototype/toSpliced/length-increased-while-iterating.js:37: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/length-increased-while-iterating.js:37: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/length-tolength.js:18: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/length-tolength.js:18: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/metadata/length.js:30: TypeError: cannot convert to object
-test262/test/built-ins/Array/prototype/toSpliced/metadata/length.js:30: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/Array/prototype/toSpliced/metadata/name.js:28: TypeError: cannot convert to object
-test262/test/built-ins/Array/prototype/toSpliced/metadata/name.js:28: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/Array/prototype/toSpliced/metadata/property-descriptor.js:18: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Array/prototype/toSpliced/metadata/property-descriptor.js:18: strict mode: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Array/prototype/toSpliced/mutate-while-iterating.js:50: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/mutate-while-iterating.js:50: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/not-a-constructor.js:30: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Array/prototype/toSpliced/not-a-constructor.js:30: strict mode: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Array/prototype/toSpliced/start-and-deleteCount-missing.js:23: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-and-deleteCount-missing.js:23: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-and-deleteCount-undefineds.js:25: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-and-deleteCount-undefineds.js:25: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-bigger-than-length.js:22: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-bigger-than-length.js:22: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-neg-infinity-is-zero.js:21: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-neg-infinity-is-zero.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-neg-less-than-minus-length-is-zero.js:21: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-neg-less-than-minus-length-is-zero.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-neg-subtracted-from-length.js:21: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-neg-subtracted-from-length.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-undefined-and-deleteCount-missing.js:24: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/start-undefined-and-deleteCount-missing.js:24: strict mode: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/this-value-boolean.js:18: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/this-value-boolean.js:18: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Array/prototype/toSpliced/unmodified.js:13: TypeError: not a function
-test262/test/built-ins/Array/prototype/toSpliced/unmodified.js:13: strict mode: TypeError: not a function
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-state-completed-broken-promise.js:53: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-state-completed-broken-promise.js:53: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedStart-broken-promise.js:34: TypeError: $DONE() not called
