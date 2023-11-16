@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 3.9)
 
 project(quickjs LANGUAGES C)
 
+include(GNUInstallDirs)
+
 # TODO:
 #  - Support cross-compilation
-#  - Install targets
 
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
@@ -121,7 +122,7 @@ if (CMAKE_BUILD_TYPE MATCHES Debug)
         DUMP_LEAKS
     )
 endif()
-target_include_directories(qjs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(qjs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 
 # QuickJS bytecode compiler
@@ -177,3 +178,26 @@ target_link_libraries(run-test262 qjs m pthread)
 if(NOT MINGW)
     target_link_libraries(run-test262 dl)
 endif()
+
+
+# Install target
+#
+
+file(STRINGS quickjs.h quickjs_h REGEX QJS_VERSION)
+string(REGEX MATCHALL "([0-9])" QJS_VERSION "${quickjs_h}")
+list(GET QJS_VERSION 0 QJS_VERSION_MAJOR)
+list(GET QJS_VERSION 1 QJS_VERSION_MINOR)
+list(GET QJS_VERSION 2 QJS_VERSION_PATCH)
+set_target_properties(qjs PROPERTIES
+    VERSION ${QJS_VERSION_MAJOR}.${QJS_VERSION_MINOR}.${QJS_VERSION_PATCH}
+    SOVERSION ${QJS_VERSION_MAJOR}
+)
+install(FILES quickjs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(TARGETS qjs_exe RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS qjs EXPORT qjsConfig
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(EXPORT qjsConfig DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/quickjs)
+install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(DIRECTORY examples DESTINATION ${CMAKE_INSTALL_DOCDIR})
