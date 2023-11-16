@@ -1,6 +1,4 @@
 test262/test/annexB/language/eval-code/direct/script-decl-lex-collision-in-sloppy-mode.js:13: Test262Error: Expected a SyntaxError to be thrown but no exception was thrown at all
-test262/test/built-ins/Array/prototype/Symbol.unscopables/change-array-by-copy.js:19: Test262Error: obj should have an own property toReversed
-test262/test/built-ins/Array/prototype/Symbol.unscopables/change-array-by-copy.js:19: strict mode: Test262Error: obj should have an own property toReversed
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-state-completed-broken-promise.js:53: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-state-completed-broken-promise.js:53: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedStart-broken-promise.js:34: TypeError: $DONE() not called
