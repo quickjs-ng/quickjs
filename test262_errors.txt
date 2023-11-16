@@ -336,38 +336,6 @@ test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds
 test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds.js:22: strict mode: Test262Error: Reflect.set(sample, "-1", 1) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-detached-buffer.js:39: Test262Error: Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-detached-buffer.js:39: strict mode: Test262Error: Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/WeakMap/iterable-with-symbol-keys.js:32: TypeError: not an object
-test262/test/built-ins/WeakMap/iterable-with-symbol-keys.js:32: strict mode: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/delete/delete-entry-with-symbol-key-initial-iterable.js:26: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/delete/delete-entry-with-symbol-key-initial-iterable.js:26: strict mode: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/delete/delete-entry-with-symbol-key.js:24: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/delete/delete-entry-with-symbol-key.js:24: strict mode: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/delete/returns-false-when-symbol-key-not-present.js:18: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/delete/returns-false-when-symbol-key-not-present.js:18: strict mode: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/get/returns-undefined-with-symbol-key.js:28: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/get/returns-undefined-with-symbol-key.js:28: strict mode: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/get/returns-value-with-symbol-key.js:22: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/get/returns-value-with-symbol-key.js:22: strict mode: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/has/returns-false-when-symbol-key-not-present.js:20: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/has/returns-false-when-symbol-key-not-present.js:20: strict mode: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/has/returns-true-when-symbol-key-present.js:19: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/has/returns-true-when-symbol-key-present.js:19: strict mode: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/set/adds-symbol-element.js:17: TypeError: not an object
-test262/test/built-ins/WeakMap/prototype/set/adds-symbol-element.js:17: strict mode: TypeError: not an object
-test262/test/built-ins/WeakSet/iterable-with-symbol-values.js:24: TypeError: not an object
-test262/test/built-ins/WeakSet/iterable-with-symbol-values.js:24: strict mode: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/add/adds-symbol-element.js:17: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/add/adds-symbol-element.js:17: strict mode: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/add/returns-this-symbol.js:18: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/add/returns-this-symbol.js:18: strict mode: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/add/returns-this-when-ignoring-duplicate-symbol.js:20: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/add/returns-this-when-ignoring-duplicate-symbol.js:20: strict mode: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/delete/delete-symbol-entry.js:22: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/delete/delete-symbol-entry.js:22: strict mode: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/has/returns-false-when-symbol-value-not-present.js:20: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/has/returns-false-when-symbol-value-not-present.js:20: strict mode: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/has/returns-true-when-symbol-value-present.js:17: TypeError: not an object
-test262/test/built-ins/WeakSet/prototype/has/returns-true-when-symbol-value-present.js:17: strict mode: TypeError: not an object
 test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: Test262Error: Expected a DummyError but got a TypeError
 test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: strict mode: Test262Error: Expected a DummyError but got a TypeError
 test262/test/language/expressions/assignment/target-member-computed-reference-undefined.js:32: Test262Error: Expected a DummyError but got a TypeError

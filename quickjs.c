@@ -446,6 +446,7 @@ struct JSString {
     uint32_t hash : 30;
     uint8_t atom_type : 2; /* != 0 if atom, JS_ATOM_TYPE_x */
     uint32_t hash_next; /* atom_index for JS_ATOM_TYPE_SYMBOL */
+    struct JSMapRecord *first_weak_ref;
 #ifdef DUMP_LEAKS
     struct list_head link; /* string list */
 #endif
@@ -1052,7 +1053,7 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                              JSValueConst getter, JSValueConst setter,
                              int flags);
 static int js_string_memcmp(const JSString *p1, const JSString *p2, int len);
-static void reset_weak_ref(JSRuntime *rt, JSObject *p);
+static void reset_weak_ref(JSRuntime *rt, struct JSMapRecord **first_weak_ref);
 static JSValue js_array_buffer_constructor3(JSContext *ctx,
                                             JSValueConst new_target,
                                             uint64_t len, JSClassID class_id,
@@ -2624,6 +2625,7 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
     p->hash = h;
     p->hash_next = i;   /* atom_index */
     p->atom_type = atom_type;
+    p->first_weak_ref = NULL;
 
     rt->atom_count++;
 
@@ -2718,6 +2720,9 @@ static void JS_FreeAtomStruct(JSRuntime *rt, JSAtomStruct *p)
     /* insert in free atom list */
     rt->atom_array[i] = atom_set_free(rt->atom_free_index);
     rt->atom_free_index = i;
+    if (unlikely(p->first_weak_ref)) {
+        reset_weak_ref(rt, &p->first_weak_ref);
+    }
     /* free the string structure */
 #ifdef DUMP_LEAKS
     list_del(&p->link);
@@ -5184,7 +5189,7 @@ static void free_object(JSRuntime *rt, JSObject *p)
     p->prop = NULL;
 
     if (unlikely(p->first_weak_ref)) {
-        reset_weak_ref(rt, p);
+        reset_weak_ref(rt, &p->first_weak_ref);
     }
 
     finalizer = rt->class_array[p->class_id].finalizer;
@@ -43529,11 +43534,31 @@ static void map_hash_resize(JSContext *ctx, JSMapState *s)
     s->record_count_threshold = new_hash_size * 2;
 }
 
+static JSMapRecord **get_first_weak_ref(JSValueConst key)
+{
+        switch (JS_VALUE_GET_TAG(key)) {
+        case JS_TAG_OBJECT:
+            {
+                JSObject *p = JS_VALUE_GET_OBJ(key);
+                return &p->first_weak_ref;
+            }
+            break;
+        case JS_TAG_SYMBOL:
+            {
+                JSAtomStruct *p = JS_VALUE_GET_PTR(key);
+                return &p->first_weak_ref;
+            }
+            break;
+        default:
+            abort();
+        }
+}
+
 static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
                                    JSValueConst key)
 {
     uint32_t h;
-    JSMapRecord *mr;
+    JSMapRecord *mr, **pmr;
 
     mr = js_malloc(ctx, sizeof(*mr));
     if (!mr)
@@ -43542,10 +43567,10 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
     mr->map = s;
     mr->empty = FALSE;
     if (s->is_weak) {
-        JSObject *p = JS_VALUE_GET_OBJ(key);
+        pmr = get_first_weak_ref(key);
         /* Add the weak reference */
-        mr->next_weak_ref = p->first_weak_ref;
-        p->first_weak_ref = mr;
+        mr->next_weak_ref = *pmr;
+        *pmr = mr;
     } else {
         JS_DupValue(ctx, key);
     }
@@ -43567,10 +43592,8 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
 static void delete_weak_ref(JSRuntime *rt, JSMapRecord *mr)
 {
     JSMapRecord **pmr, *mr1;
-    JSObject *p;
 
-    p = JS_VALUE_GET_OBJ(mr->key);
-    pmr = &p->first_weak_ref;
+    pmr = get_first_weak_ref(mr->key);
     for(;;) {
         mr1 = *pmr;
         assert(mr1 != NULL);
@@ -43614,14 +43637,14 @@ static void map_decref_record(JSRuntime *rt, JSMapRecord *mr)
     }
 }
 
-static void reset_weak_ref(JSRuntime *rt, JSObject *p)
+static void reset_weak_ref(JSRuntime *rt, struct JSMapRecord **first_weak_ref)
 {
     JSMapRecord *mr, *mr_next;
     JSMapState *s;
 
     /* first pass to remove the records from the WeakMap/WeakSet
        lists */
-    for(mr = p->first_weak_ref; mr != NULL; mr = mr->next_weak_ref) {
+    for(mr = *first_weak_ref; mr != NULL; mr = mr->next_weak_ref) {
         s = mr->map;
         assert(s->is_weak);
         assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
@@ -43631,13 +43654,13 @@ static void reset_weak_ref(JSRuntime *rt, JSObject *p)
 
     /* second pass to free the values to avoid modifying the weak
        reference list while traversing it. */
-    for(mr = p->first_weak_ref; mr != NULL; mr = mr_next) {
+    for(mr = *first_weak_ref; mr != NULL; mr = mr_next) {
         mr_next = mr->next_weak_ref;
         JS_FreeValueRT(rt, mr->value);
         js_free_rt(rt, mr);
     }
 
-    p->first_weak_ref = NULL; /* fail safe */
+    *first_weak_ref = NULL; /* fail safe */
 }
 
 static JSValue js_map_set(JSContext *ctx, JSValueConst this_val,
@@ -43646,13 +43669,29 @@ static JSValue js_map_set(JSContext *ctx, JSValueConst this_val,
     JSMapState *s = JS_GetOpaque2(ctx, this_val, JS_CLASS_MAP + magic);
     JSMapRecord *mr;
     JSValueConst key, value;
+    JSAtomStruct *p;
+    int is_set;
 
     if (!s)
         return JS_EXCEPTION;
+    is_set = (magic & MAGIC_SET);
     key = map_normalize_key(ctx, argv[0]);
-    if (s->is_weak && !JS_IsObject(key))
-        return JS_ThrowTypeErrorNotAnObject(ctx);
-    if (magic & MAGIC_SET)
+    if (s->is_weak) {
+        switch (JS_VALUE_GET_TAG(key)) {
+        case JS_TAG_OBJECT:
+            break;
+        case JS_TAG_SYMBOL:
+            // Per spec: prohibit symbols registered with Symbol.for()
+            p = JS_VALUE_GET_PTR(key);
+            if (p->atom_type != JS_ATOM_TYPE_GLOBAL_SYMBOL)
+                break;
+            // fallthru
+        default:
+            return JS_ThrowTypeError(ctx, "invalid value used as %s key",
+                                     is_set ? "WeakSet" : "WeakMap");
+        }
+    }
+    if (is_set)
         value = JS_UNDEFINED;
     else
         value = argv[1];
