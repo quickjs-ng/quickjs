@@ -392,6 +392,8 @@ struct JSContext {
     JSValue global_obj; /* global object */
     JSValue global_var_obj; /* contains the global let/const definitions */
 
+    uint64_t time_origin;
+
     uint64_t random_state;
     bf_context_t *bf_ctx;   /* points to rt->bf_ctx, shared by all contexts */
     /* when the counter reaches zero, JSRutime.interrupt_handler is called */
@@ -1979,6 +1981,9 @@ JSContext *JS_NewContext(JSRuntime *rt)
     JS_AddIntrinsicTypedArrays(ctx);
     JS_AddIntrinsicPromise(ctx);
     JS_AddIntrinsicBigInt(ctx);
+
+    JS_AddPerformance(ctx);
+
     return ctx;
 }
 
@@ -50218,4 +50223,38 @@ void JS_AddIntrinsicTypedArrays(JSContext *ctx)
 #ifdef CONFIG_ATOMICS
     JS_AddIntrinsicAtomics(ctx);
 #endif
+}
+
+/* Performance */
+
+static uint64_t js__now_ms(void)
+{
+    // TODO(saghul) Windows support.
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (((uint64_t) ts.tv_sec) * 1000 + ts.tv_nsec / 1e6);
+}
+
+static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    return JS_NewFloat64(ctx, js__now_ms() - ctx->time_origin);
+}
+
+static const JSCFunctionListEntry js_perf_proto_funcs[] = {
+    JS_CFUNC_DEF2("now", 0, js_perf_now, JS_PROP_ENUMERABLE),
+};
+
+void JS_AddPerformance(JSContext *ctx)
+{
+    ctx->time_origin = js__now_ms();
+
+    JSValue performance = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, performance, js_perf_proto_funcs, countof(js_perf_proto_funcs));
+    JS_DefinePropertyValueStr(ctx, performance, "timeOrigin",
+                           JS_NewFloat64(ctx, ctx->time_origin),
+                           JS_PROP_ENUMERABLE);
+    JS_DefinePropertyValueStr(ctx, ctx->global_obj, "performance",
+                           JS_DupValue(ctx, performance),
+                           JS_PROP_ENUMERABLE);
+    JS_FreeValue(ctx, performance);
 }
