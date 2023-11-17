@@ -68,10 +68,10 @@ jobs:
           ./build/hello_module
           ./build/test_fib
           cp build/fib.so examples/
-          ./build/qjs examples/test_fib.js
           cp build/point.so examples/
-          ./build/qjs examples/test_point.js
           cp build/bjson.so tests/
+          ./build/qjs examples/test_fib.js
+          ./build/qjs examples/test_point.js
           ./build/qjs tests/test_bjson.js
   linux-shared:
     runs-on: ubuntu-latest
