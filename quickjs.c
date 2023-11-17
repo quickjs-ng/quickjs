@@ -36440,13 +36440,21 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValueConst this_val,
     return JS_EXCEPTION;
 }
 
+enum {
+    ArrayFind,
+    ArrayFindIndex,
+    ArrayFindLast,
+    ArrayFindLastIndex,
+};
+
 static JSValue js_array_find(JSContext *ctx, JSValueConst this_val,
-                             int argc, JSValueConst *argv, int findIndex)
+                             int argc, JSValueConst *argv, int mode)
 {
     JSValueConst func, this_arg;
     JSValueConst args[3];
     JSValue obj, val, index_val, res;
-    int64_t len, k;
+    int64_t len, k, end;
+    int dir;
 
     index_val = JS_UNDEFINED;
     val = JS_UNDEFINED;
@@ -36462,7 +36470,17 @@ static JSValue js_array_find(JSContext *ctx, JSValueConst this_val,
     if (argc > 1)
         this_arg = argv[1];
 
-    for(k = 0; k < len; k++) {
+    k = 0;
+    dir = 1;
+    end = len;
+    if (mode == ArrayFindLast || mode == ArrayFindLastIndex) {
+        k = len - 1;
+        dir = -1;
+        end = -1;
+    }
+
+    // TODO(bnoordhuis) add fast path for fast arrays
+    for(; k != end; k += dir) {
         index_val = JS_NewInt64(ctx, k);
         if (JS_IsException(index_val))
             goto exception;
@@ -36476,7 +36494,7 @@ static JSValue js_array_find(JSContext *ctx, JSValueConst this_val,
         if (JS_IsException(res))
             goto exception;
         if (JS_ToBoolFree(ctx, res)) {
-            if (findIndex) {
+            if (mode == ArrayFindIndex || mode == ArrayFindLastIndex) {
                 JS_FreeValue(ctx, val);
                 JS_FreeValue(ctx, obj);
                 return index_val;
@@ -36490,7 +36508,7 @@ static JSValue js_array_find(JSContext *ctx, JSValueConst this_val,
         JS_FreeValue(ctx, index_val);
     }
     JS_FreeValue(ctx, obj);
-    if (findIndex)
+    if (mode == ArrayFindIndex || mode == ArrayFindLastIndex)
         return JS_NewInt32(ctx, -1);
     else
         return JS_UNDEFINED;
@@ -37542,8 +37560,10 @@ static const JSCFunctionListEntry js_array_proto_funcs[] = {
     JS_CFUNC_MAGIC_DEF("reduce", 1, js_array_reduce, special_reduce ),
     JS_CFUNC_MAGIC_DEF("reduceRight", 1, js_array_reduce, special_reduceRight ),
     JS_CFUNC_DEF("fill", 1, js_array_fill ),
-    JS_CFUNC_MAGIC_DEF("find", 1, js_array_find, 0 ),
-    JS_CFUNC_MAGIC_DEF("findIndex", 1, js_array_find, 1 ),
+    JS_CFUNC_MAGIC_DEF("find", 1, js_array_find, ArrayFind ),
+    JS_CFUNC_MAGIC_DEF("findIndex", 1, js_array_find, ArrayFindIndex ),
+    JS_CFUNC_MAGIC_DEF("findLast", 1, js_array_find, ArrayFindLast ),
+    JS_CFUNC_MAGIC_DEF("findLastIndex", 1, js_array_find, ArrayFindLastIndex ),
     JS_CFUNC_DEF("indexOf", 1, js_array_indexOf ),
     JS_CFUNC_DEF("lastIndexOf", 1, js_array_lastIndexOf ),
     JS_CFUNC_DEF("includes", 1, js_array_includes ),
@@ -47104,6 +47124,8 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
             "fill" "\0"
             "find" "\0"
             "findIndex" "\0"
+            "findLast" "\0"
+            "findLastIndex" "\0"
             "flat" "\0"
             "flatMap" "\0"
             "includes" "\0"
