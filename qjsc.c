@@ -238,7 +238,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
         /* create a dummy module */
         m = JS_NewCModule(ctx, module_name, js_module_dummy_init);
     } else if (has_suffix(module_name, ".so")) {
-        JS_ThrowReferenceError(ctx, "could not load module '%s' it's a shared library module",
+        JS_ThrowReferenceError(ctx, "%s: dynamically linking to shared libraries not supported",
         module_name);
         return NULL;
     } else {
