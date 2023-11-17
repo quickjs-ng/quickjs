@@ -206,22 +206,9 @@ target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
 #
 
 if(BUILD_EXAMPLES AND NOT MINGW)
-    list(APPEND HELLO_OPTS
-        -fno-string-normalize
-        -fno-map
-        -fno-promise
-        -fno-typedarray
-        -fno-typedarray
-        -fno-regexp
-        -fno-json
-        -fno-eval
-        -fno-proxy
-        -fno-date
-        -fno-module-loader
-    )
     add_custom_command(
         OUTPUT hello.c
-        COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -e -o ./hello.c ${HELLO_OPTS} ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello.js
+        COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -e -o hello.c ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello.js
         DEPENDS qjsc
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Compile hello.js to a C file with bytecode embeddee"
@@ -235,19 +222,9 @@ if(BUILD_EXAMPLES AND NOT MINGW)
     target_compile_definitions(hello PRIVATE ${qjs_defines})
     target_link_libraries(hello ${qjs_libs})
 
-    list(APPEND HELLO_MODULE_OPTS
-        -fno-string-normalize
-        -fno-map
-        -fno-typedarray
-        -fno-regexp
-        -fno-json
-        -fno-eval
-        -fno-proxy
-        -fno-date
-    )
     add_custom_command(
         OUTPUT hello_module.c
-        COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -e -o ./hello_module.c ${HELLO_MODULE_OPTS} -m ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello_module.js
+        COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -e -o hello_module.c -m ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello_module.js
         DEPENDS qjsc
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Compile hello_module.js to a C file with bytecode embeddee"
