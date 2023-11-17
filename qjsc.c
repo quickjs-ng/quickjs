@@ -47,35 +47,13 @@ typedef struct namelist_t {
     int size;
 } namelist_t;
 
-typedef struct {
-    const char *option_name;
-    const char *init_name;
-} FeatureEntry;
-
 static namelist_t cname_list;
 static namelist_t cmodule_list;
 static namelist_t init_module_list;
-static uint64_t feature_bitmap;
 static FILE *outfile;
 static BOOL byte_swap;
 static const char *c_ident_prefix = "qjsc_";
 
-#define FE_ALL (-1)
-
-static const FeatureEntry feature_list[] = {
-    { "date", "Date" },
-    { "eval", "Eval" },
-    { "string-normalize", "StringNormalize" },
-    { "regexp", "RegExp" },
-    { "json", "JSON" },
-    { "proxy", "Proxy" },
-    { "map", "MapSet" },
-    { "typedarray", "TypedArrays" },
-    { "promise", "Promise" },
-#define FE_MODULE_LOADER 9
-    { "module-loader", NULL },
-    { "bigint", "BigInt" },
-};
 
 void namelist_add(namelist_t *lp, const char *name, const char *short_name,
                   int flags)
@@ -349,20 +327,6 @@ void help(void)
            "-S n        set the maximum stack size to 'n' bytes (default=%d)\n",
            JS_GetVersion(),
            JS_DEFAULT_STACK_SIZE);
-#ifdef CONFIG_LTO
-    {
-        int i;
-        printf("-flto       use link time optimization\n");
-        printf("-fno-[");
-        for(i = 0; i < countof(feature_list); i++) {
-            if (i != 0)
-                printf("|");
-            printf("%s", feature_list[i].option_name);
-        }
-        printf("]\n"
-               "            disable selected language features (smaller code size)\n");
-    }
-#endif
     exit(1);
 }
 
@@ -379,7 +343,6 @@ int main(int argc, char **argv)
     FILE *fo;
     JSRuntime *rt;
     JSContext *ctx;
-    BOOL use_lto;
     int module;
     OutputTypeEnum output_type;
     size_t stack_size;
@@ -388,11 +351,9 @@ int main(int argc, char **argv)
     out_filename = NULL;
     output_type = OUTPUT_C;
     cname = NULL;
-    feature_bitmap = FE_ALL;
     module = -1;
     byte_swap = FALSE;
     verbose = 0;
-    use_lto = FALSE;
     stack_size = 0;
     memset(&dynamic_module_list, 0, sizeof(dynamic_module_list));
 
@@ -401,7 +362,7 @@ int main(int argc, char **argv)
     namelist_add(&cmodule_list, "os", "os", 0);
 
     for(;;) {
-        c = getopt(argc, argv, "ho:N:f:mxevM:p:S:D:");
+        c = getopt(argc, argv, "ho:N:mxevM:p:S:D:");
         if (c == -1)
             break;
         switch(c) {
@@ -415,29 +376,6 @@ int main(int argc, char **argv)
             break;
         case 'N':
             cname = optarg;
-            break;
-        case 'f':
-            {
-                const char *p;
-                p = optarg;
-                if (!strcmp(optarg, "lto")) {
-                    use_lto = TRUE;
-                } else if (strstart(p, "no-", &p)) {
-                    use_lto = TRUE;
-                    for(i = 0; i < countof(feature_list); i++) {
-                        if (!strcmp(p, feature_list[i].option_name)) {
-                            feature_bitmap &= ~((uint64_t)1 << i);
-                            break;
-                        }
-                    }
-                    if (i == countof(feature_list))
-                        goto bad_feature;
-                } else {
-                bad_feature:
-                    fprintf(stderr, "unsupported feature: %s\n", optarg);
-                    exit(1);
-                }
-            }
             break;
         case 'm':
             module = 1;
@@ -531,18 +469,9 @@ int main(int argc, char **argv)
         fprintf(fo,
                 "static JSContext *JS_NewCustomContext(JSRuntime *rt)\n"
                 "{\n"
-                "  JSContext *ctx = JS_NewContextRaw(rt);\n"
+                "  JSContext *ctx = JS_NewContext(rt);\n"
                 "  if (!ctx)\n"
                 "    return NULL;\n");
-        /* add the basic objects */
-        fprintf(fo, "  JS_AddIntrinsicBaseObjects(ctx);\n");
-        for(i = 0; i < countof(feature_list); i++) {
-            if ((feature_bitmap & ((uint64_t)1 << i)) &&
-                feature_list[i].init_name) {
-                fprintf(fo, "  JS_AddIntrinsic%s(ctx);\n",
-                        feature_list[i].init_name);
-            }
-        }
         /* add the precompiled modules (XXX: could modify the module
            loader instead) */
         for(i = 0; i < init_module_list.count; i++) {
@@ -574,10 +503,8 @@ int main(int argc, char **argv)
                     (unsigned int)stack_size);
         }
 
-        /* add the module loader if necessary */
-        if (feature_bitmap & (1 << FE_MODULE_LOADER)) {
-            fprintf(fo, "  JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);\n");
-        }
+        /* add the module loader */
+        fprintf(fo, "  JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);\n");
 
         fprintf(fo,
                 "  ctx = JS_NewCustomContext(rt);\n"
