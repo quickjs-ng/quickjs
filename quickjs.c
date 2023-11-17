@@ -65,7 +65,9 @@
 #define CONFIG_PRINTF_RNDN
 #endif
 
-#if !defined(EMSCRIPTEN) && !defined(__ASAN__)
+// #if !defined(EMSCRIPTEN) && !defined(__ASAN__)
+// https://github.com/quickjs-ng/quickjs/issues/79
+#if false
 /* enable stack limitation */
 #define CONFIG_STACK_CHECK
 #endif
