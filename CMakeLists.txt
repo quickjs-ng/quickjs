@@ -216,7 +216,6 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         -fno-string-normalize
         -fno-map
         -fno-typedarray
-        -fno-typedarray
         -fno-regexp
         -fno-json
         -fno-eval
