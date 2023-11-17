@@ -24,456 +24,63 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-ifeq ($(shell uname -s),Darwin)
-CONFIG_DARWIN=y
-endif
-# Windows cross compilation from Linux
-#CONFIG_WIN32=y
-# Windows compilation with MinGW
-#CONFIG_MINGW=y
-# use link time optimization (smaller and faster executables but slower build)
-# XXX(bnoordhuis) disabled because of slow build times
-#CONFIG_LTO=y
-# consider warnings as errors (for development)
-#CONFIG_WERROR=y
-# force 32 bit build for some utilities
-#CONFIG_M32=y
+BUILD_DIR=build
+BUILD_TYPE?=Release
+JOBS?=$(shell getconf _NPROCESSORS_ONLN)
 
-ifdef CONFIG_DARWIN
-# use clang instead of gcc
-CONFIG_CLANG=y
-CONFIG_DEFAULT_AR=y
-endif
+QJS=$(BUILD_DIR)/qjs
+RUN262=$(BUILD_DIR)/run-test262
 
-# installation directory
-prefix=/usr/local
 
-# use the gprof profiler
-#CONFIG_PROFILE=y
-# use address sanitizer
-#CONFIG_ASAN=y
-# use memory sanitizer
-#CONFIG_MSAN=y
-# use UB sanitizer
-#CONFIG_UBSAN=y
+all: build
 
-OBJDIR=.obj
+build: $(BUILD_DIR)/CMakeCache.txt
+	cmake --build $(BUILD_DIR) -j $(JOBS)
 
-ifdef CONFIG_WIN32
-  ifdef CONFIG_M32
-    CROSS_PREFIX=i686-w64-mingw32-
-  else
-    CROSS_PREFIX=x86_64-w64-mingw32-
-  endif
-  EXE=.exe
-else ifdef CONFIG_MINGW
-  EXE=.exe
-else
-  CROSS_PREFIX=
-  EXE=
-endif
-ifdef CONFIG_CLANG
-  HOST_CC=clang
-  CC=$(CROSS_PREFIX)clang
-  CFLAGS=-g -Wall -MMD -MF $(OBJDIR)/$(@F).d
-  CFLAGS += -Wextra
-  CFLAGS += -Wno-sign-compare
-  CFLAGS += -Wno-missing-field-initializers
-  CFLAGS += -Wundef -Wuninitialized
-  CFLAGS += -Wunused -Wno-unused-parameter
-  CFLAGS += -Wwrite-strings
-  CFLAGS += -Wchar-subscripts -funsigned-char
-  CFLAGS += -MMD -MF $(OBJDIR)/$(@F).d
-  ifdef CONFIG_DEFAULT_AR
-    AR=$(CROSS_PREFIX)ar
-  else
-    ifdef CONFIG_LTO
-      AR=$(CROSS_PREFIX)llvm-ar
-    else
-      AR=$(CROSS_PREFIX)ar
-    endif
-  endif
-else ifdef CONFIG_MINGW
-  HOST_CC=gcc
-  CC=gcc
-  CFLAGS=-g -Wall
-  CFLAGS += -Wno-array-bounds -Wno-format-truncation
-  AR=ar
-else
-  HOST_CC=gcc
-  CC=$(CROSS_PREFIX)gcc
-  CFLAGS=-g -Wall -MMD -MF $(OBJDIR)/$(@F).d
-  CFLAGS += -Wno-array-bounds -Wno-format-truncation
-  ifdef CONFIG_LTO
-    AR=$(CROSS_PREFIX)gcc-ar
-  else
-    AR=$(CROSS_PREFIX)ar
-  endif
-endif
-STRIP=$(CROSS_PREFIX)strip
-ifdef CONFIG_WERROR
-CFLAGS+=-Werror
-endif
-DEFINES:=-D_GNU_SOURCE
-ifdef CONFIG_WIN32
-DEFINES+=-D__USE_MINGW_ANSI_STDIO # for standard snprintf behavior
-endif
-ifdef CONFIG_MINGW
-DEFINES+=-D__USE_MINGW_ANSI_STDIO # for standard snprintf behavior
-endif
+$(BUILD_DIR)/CMakeCache.txt:
+	@mkdir -p $(BUILD_DIR)
+	cd $(BUILD_DIR); cmake ../ -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
 
-CFLAGS+=$(DEFINES)
-CFLAGS_DEBUG=$(CFLAGS) -O0
-CFLAGS_SMALL=$(CFLAGS) -Os
-CFLAGS_OPT=$(CFLAGS) -O2
-CFLAGS_NOLTO:=$(CFLAGS_OPT)
-LDFLAGS=-g
-ifdef CONFIG_LTO
-CFLAGS_SMALL+=-flto
-CFLAGS_OPT+=-flto
-LDFLAGS+=-flto
-endif
-ifdef CONFIG_PROFILE
-CFLAGS+=-p
-LDFLAGS+=-p
-endif
-ifdef CONFIG_ASAN
-CFLAGS+=-fsanitize=address -fno-sanitize-recover=all -fno-omit-frame-pointer
-LDFLAGS+=-fsanitize=address -fno-sanitize-recover=all -fno-omit-frame-pointer
-endif
-ifdef CONFIG_MSAN
-CFLAGS+=-fsanitize=memory -fno-sanitize-recover=all -fno-omit-frame-pointer
-LDFLAGS+=-fsanitize=memory -fno-sanitize-recover=all -fno-omit-frame-pointer
-endif
-ifdef CONFIG_UBSAN
-CFLAGS+=-fsanitize=undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
-LDFLAGS+=-fsanitize=undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
-endif
-ifdef CONFIG_WIN32
-LDEXPORT=
-else ifdef CONFIG_MINGW
-LDEXPORT=
-else
-LDEXPORT=-rdynamic
-endif
-
-PROGS=qjs$(EXE) qjsc$(EXE) run-test262
-ifneq ($(CROSS_PREFIX),)
-QJSC_CC=gcc
-QJSC=./host-qjsc
-PROGS+=$(QJSC)
-else
-QJSC_CC=$(CC)
-QJSC=./qjsc$(EXE)
-endif
-ifdef CONFIG_M32
-PROGS+=qjs32 qjs32_s
-endif
-PROGS+=libquickjs.a
-ifdef CONFIG_LTO
-PROGS+=libquickjs.lto.a
-endif
-
-# examples
-ifeq ($(CROSS_PREFIX),)
-ifndef CONFIG_ASAN
-ifndef CONFIG_MSAN
-ifndef CONFIG_UBSAN
-ifndef CONFIG_MINGW
-PROGS+=examples/hello examples/hello_module examples/test_fib
-ifndef CONFIG_DARWIN
-PROGS+=examples/fib.so examples/point.so
-endif
-endif
-endif
-endif
-endif
-endif
-
-all: $(OBJDIR) $(OBJDIR)/quickjs.check.o $(OBJDIR)/qjs.check.o $(PROGS)
-
-QJS_LIB_OBJS=$(OBJDIR)/quickjs.o $(OBJDIR)/libregexp.o $(OBJDIR)/libunicode.o $(OBJDIR)/cutils.o $(OBJDIR)/quickjs-libc.o
-
-QJS_OBJS=$(OBJDIR)/qjs.o $(OBJDIR)/repl.o $(QJS_LIB_OBJS)
-QJS_LIB_OBJS+=$(OBJDIR)/libbf.o 
-
-HOST_LIBS=-lm -ldl -lpthread
-LIBS=-lm
-ifndef CONFIG_WIN32
-ifndef CONFIG_MINGW
-LIBS+=-ldl -lpthread
-endif
-endif
-LIBS+=$(EXTRA_LIBS)
-
-$(OBJDIR):
-	mkdir -p $(OBJDIR) $(OBJDIR)/examples $(OBJDIR)/tests
-
-qjs$(EXE): $(QJS_OBJS)
-	$(CC) $(LDFLAGS) $(LDEXPORT) -o $@ $^ $(LIBS)
-
-qjs-debug$(EXE): $(patsubst %.o, %.debug.o, $(QJS_OBJS))
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
-
-qjsc$(EXE): $(OBJDIR)/qjsc.o $(QJS_LIB_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
-
-ifneq ($(CROSS_PREFIX),)
-
-$(QJSC): $(OBJDIR)/qjsc.host.o \
-    $(patsubst %.o, %.host.o, $(QJS_LIB_OBJS))
-	$(HOST_CC) $(LDFLAGS) -o $@ $^ $(HOST_LIBS)
-
-endif #CROSS_PREFIX
-
-QJSC_DEFINES:=-DCONFIG_CC=\"$(QJSC_CC)\" -DCONFIG_PREFIX=\"$(prefix)\"
-ifdef CONFIG_LTO
-QJSC_DEFINES+=-DCONFIG_LTO
-endif
-QJSC_HOST_DEFINES:=-DCONFIG_CC=\"$(HOST_CC)\" -DCONFIG_PREFIX=\"$(prefix)\"
-
-$(OBJDIR)/qjsc.o: CFLAGS+=$(QJSC_DEFINES)
-$(OBJDIR)/qjsc.host.o: CFLAGS+=$(QJSC_HOST_DEFINES)
-
-qjs32: $(patsubst %.o, %.m32.o, $(QJS_OBJS))
-	$(CC) -m32 $(LDFLAGS) $(LDEXPORT) -o $@ $^ $(LIBS)
-
-qjs32_s: $(patsubst %.o, %.m32s.o, $(QJS_OBJS))
-	$(CC) -m32 $(LDFLAGS) -o $@ $^ $(LIBS)
-	@size $@
-
-ifdef CONFIG_LTO
-LTOEXT=.lto
-else
-LTOEXT=
-endif
-
-libquickjs$(LTOEXT).a: $(QJS_LIB_OBJS)
-	$(AR) rcs $@ $^
-
-ifdef CONFIG_LTO
-libquickjs.a: $(patsubst %.o, %.nolto.o, $(QJS_LIB_OBJS))
-	$(AR) rcs $@ $^
-endif # CONFIG_LTO
-
-repl.c: $(QJSC) repl.js
-	$(QJSC) -c -o $@ -m repl.js
-
-ifneq ($(wildcard unicode/UnicodeData.txt),)
-$(OBJDIR)/libunicode.o $(OBJDIR)/libunicode.m32.o $(OBJDIR)/libunicode.m32s.o \
-    $(OBJDIR)/libunicode.nolto.o: libunicode-table.h
-
-libunicode-table.h: unicode_gen
-	./unicode_gen unicode $@
-endif
-
-run-test262: $(OBJDIR)/run-test262.o $(QJS_LIB_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
-
-run-test262-debug: $(patsubst %.o, %.debug.o, $(OBJDIR)/run-test262.o $(QJS_LIB_OBJS))
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
-
-run-test262-32: $(patsubst %.o, %.m32.o, $(OBJDIR)/run-test262.o $(QJS_LIB_OBJS))
-	$(CC) -m32 $(LDFLAGS) -o $@ $^ $(LIBS)
-
-# object suffix order: nolto, [m32|m32s]
-
-$(OBJDIR)/%.o: %.c | $(OBJDIR)
-	$(CC) $(CFLAGS_OPT) -c -o $@ $<
-
-$(OBJDIR)/%.host.o: %.c | $(OBJDIR)
-	$(HOST_CC) $(CFLAGS_OPT) -c -o $@ $<
-
-$(OBJDIR)/%.pic.o: %.c | $(OBJDIR)
-	$(CC) $(CFLAGS_OPT) -fPIC -DJS_SHARED_LIBRARY -c -o $@ $<
-
-$(OBJDIR)/%.nolto.o: %.c | $(OBJDIR)
-	$(CC) $(CFLAGS_NOLTO) -c -o $@ $<
-
-$(OBJDIR)/%.m32.o: %.c | $(OBJDIR)
-	$(CC) -m32 $(CFLAGS_OPT) -c -o $@ $<
-
-$(OBJDIR)/%.m32s.o: %.c | $(OBJDIR)
-	$(CC) -m32 $(CFLAGS_SMALL) -c -o $@ $<
-
-$(OBJDIR)/%.debug.o: %.c | $(OBJDIR)
-	$(CC) $(CFLAGS_DEBUG) -c -o $@ $<
-
-$(OBJDIR)/%.check.o: %.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -DCONFIG_CHECK_JSVALUE -c -o $@ $<
-
-regexp_test: libregexp.c libunicode.c cutils.c
-	$(CC) $(LDFLAGS) $(CFLAGS) -DTEST -o $@ libregexp.c libunicode.c cutils.c $(LIBS)
-
-unicode_gen: $(OBJDIR)/unicode_gen.host.o $(OBJDIR)/cutils.host.o libunicode.c unicode_gen_def.h
-	$(HOST_CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJDIR)/unicode_gen.host.o $(OBJDIR)/cutils.host.o
+install: build
+	cmake --build $(BUILD_DIR) --target install
 
 clean:
-	rm -f repl.c out.c
-	rm -f *.a *.o *.d *~ unicode_gen regexp_test $(PROGS)
-	rm -f hello.c test_fib.c
-	rm -f examples/*.so tests/*.so
-	rm -rf $(OBJDIR)/ *.dSYM/ qjs-debug
-	rm -rf run-test262-debug run-test262-32
+	cmake --build $(BUILD_DIR) --target clean
 
-install: all
-	mkdir -p "$(DESTDIR)$(prefix)/bin"
-	$(STRIP) qjs qjsc
-	install -m755 qjs qjsc "$(DESTDIR)$(prefix)/bin"
-	mkdir -p "$(DESTDIR)$(prefix)/lib/quickjs"
-	install -m644 libquickjs.a "$(DESTDIR)$(prefix)/lib/quickjs"
-ifdef CONFIG_LTO
-	install -m644 libquickjs.lto.a "$(DESTDIR)$(prefix)/lib/quickjs"
-endif
-	mkdir -p "$(DESTDIR)$(prefix)/include/quickjs"
-	install -m644 quickjs.h quickjs-libc.h "$(DESTDIR)$(prefix)/include/quickjs"
+debug:
+	BUILDTYPE=Debug $(MAKE)
 
-###############################################################################
-# examples
+distclean:
+	@rm -rf $(BUILD_DIR)
 
-# example of static JS compilation
-HELLO_SRCS=examples/hello.js
-HELLO_OPTS=-fno-string-normalize -fno-map -fno-promise -fno-typedarray \
-           -fno-typedarray -fno-regexp -fno-json -fno-eval -fno-proxy \
-           -fno-date -fno-module-loader
+stats: build
+	$(QJS) -qd
 
-hello.c: $(QJSC) $(HELLO_SRCS)
-	$(QJSC) -e $(HELLO_OPTS) -o $@ $(HELLO_SRCS)
+test: build
+	$(QJS) tests/test_bigint.js
+	$(QJS) tests/test_closure.js
+	$(QJS) tests/test_language.js
+	$(QJS) tests/test_builtin.js
+	$(QJS) tests/test_loop.js
+	$(QJS) tests/test_std.js
+	$(QJS) tests/test_worker.js
 
-ifdef CONFIG_M32
-examples/hello: $(OBJDIR)/hello.m32s.o $(patsubst %.o, %.m32s.o, $(QJS_LIB_OBJS))
-	$(CC) -m32 $(LDFLAGS) -o $@ $^ $(LIBS)
-else
-examples/hello: $(OBJDIR)/hello.o $(QJS_LIB_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
-endif
+test262: build
+	$(RUN262) -m -c test262.conf -a
 
-# example of static JS compilation with modules
-HELLO_MODULE_SRCS=examples/hello_module.js
-HELLO_MODULE_OPTS=-fno-string-normalize -fno-map -fno-typedarray \
-           -fno-typedarray -fno-regexp -fno-json -fno-eval -fno-proxy \
-           -fno-date -m
-examples/hello_module: $(QJSC) libquickjs$(LTOEXT).a $(HELLO_MODULE_SRCS)
-	$(QJSC) $(HELLO_MODULE_OPTS) -o $@ $(HELLO_MODULE_SRCS)
+test262-update: build
+	$(RUN262) -u -c test262.conf -a
 
-# use of an external C module (static compilation)
+test262-check: build
+	$(RUN262) -m -c test262.conf -E -a
 
-test_fib.c: $(QJSC) examples/test_fib.js
-	$(QJSC) -e -M examples/fib.so,fib -m -o $@ examples/test_fib.js
+microbench: build
+	$(QJS) tests/microbench.js
 
-examples/test_fib: $(OBJDIR)/test_fib.o $(OBJDIR)/examples/fib.o libquickjs$(LTOEXT).a
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+unicode_gen: $(BUILD_DIR)/CMakeCache.txt
+	cmake --build $(BUILD_DIR) --target unicode_gen
 
-examples/fib.so: $(OBJDIR)/examples/fib.pic.o
-	$(CC) $(LDFLAGS) -shared -o $@ $^
+libunicode-table.h: unicode_gen
+	$(BUILD_DIR)/unicode_gen unicode $@
 
-examples/point.so: $(OBJDIR)/examples/point.pic.o
-	$(CC) $(LDFLAGS) -shared -o $@ $^
-
-###############################################################################
-# documentation
-
-DOCS=doc/quickjs.pdf doc/quickjs.html
-
-build_doc: $(DOCS)
-
-clean_doc: 
-	rm -f $(DOCS)
-
-doc/%.pdf: doc/%.texi
-	texi2pdf --clean -o $@ -q $<
-
-doc/%.html.pre: doc/%.texi
-	makeinfo --html --no-headers --no-split --number-sections -o $@ $<
-
-doc/%.html: doc/%.html.pre
-	sed -e 's|</style>|</style>\n<meta name="viewport" content="width=device-width, initial-scale=1.0">|' < $< > $@
-
-###############################################################################
-# tests
-
-ifndef CONFIG_MINGW
-ifndef CONFIG_DARWIN
-test: tests/bjson.so examples/point.so
-endif
-endif
-ifdef CONFIG_M32
-test: qjs32
-endif
-
-test: qjs
-	./qjs tests/test_bigint.js
-	./qjs tests/test_closure.js
-	./qjs tests/test_language.js
-	./qjs tests/test_builtin.js
-	./qjs tests/test_loop.js
-	./qjs tests/test_std.js
-ifndef CONFIG_MINGW
-	./qjs tests/test_worker.js
-endif
-ifndef CONFIG_MINGW
-ifndef CONFIG_DARWIN
-	./qjs tests/test_bjson.js
-	./qjs examples/test_point.js
-endif
-endif
-ifdef CONFIG_M32
-	./qjs32 tests/test_closure.js
-	./qjs32 tests/test_language.js
-	./qjs32 tests/test_builtin.js
-	./qjs32 tests/test_loop.js
-	./qjs32 tests/test_std.js
-	./qjs32 tests/test_worker.js
-	./qjs32 tests/test_bigint.js
-endif
-
-stats: qjs qjs32
-	./qjs -qd
-	./qjs32 -qd
-
-microbench: qjs
-	./qjs tests/microbench.js
-
-microbench-32: qjs32
-	./qjs32 tests/microbench.js
-
-# ES5 tests (obsolete)
-test2o: run-test262
-	time ./run-test262 -m -c test262o.conf
-
-test2o-32: run-test262-32
-	time ./run-test262-32 -m -c test262o.conf
-
-test2o-update: run-test262
-	./run-test262 -u -c test262o.conf
-
-# Test262 tests
-test2-default: run-test262
-	time ./run-test262 -m -c test262.conf
-
-test2: run-test262
-	time ./run-test262 -m -c test262.conf -a
-
-test2-32: run-test262-32
-	time ./run-test262-32 -m -c test262.conf -a
-
-test2-update: run-test262
-	./run-test262 -u -c test262.conf -a
-
-test2-check: run-test262
-	time ./run-test262 -m -c test262.conf -E -a
-
-testall: all test microbench test2o test2
-
-testall-32: all test-32 microbench-32 test2o-32 test2-32
-
-testall-complete: testall testall-32
-
-bench-v8: qjs
-	make -C tests/bench-v8
-	./qjs -d tests/bench-v8/combined.js
-
-tests/bjson.so: $(OBJDIR)/tests/bjson.pic.o
-	$(CC) $(LDFLAGS) -shared -o $@ $^ $(LIBS)
-
--include $(wildcard $(OBJDIR)/*.d)
+.PHONY: all build debug install clean distclean stats test test262 test262-update test262-check microbench unicode_gen
