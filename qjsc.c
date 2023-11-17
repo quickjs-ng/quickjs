@@ -2,6 +2,8 @@
  * QuickJS command line compiler
  *
  * Copyright (c) 2018-2021 Fabrice Bellard
+ * Copyright (c) 2023 Ben Noordhuis
+ * Copyright (c) 2023 Saúl Ibarra Corretgé
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,9 +31,6 @@
 #include <assert.h>
 #include <unistd.h>
 #include <errno.h>
-#if !defined(_WIN32)
-#include <sys/wait.h>
-#endif
 
 #include "cutils.h"
 #include "quickjs-libc.h"
@@ -59,7 +58,6 @@ static namelist_t init_module_list;
 static uint64_t feature_bitmap;
 static FILE *outfile;
 static BOOL byte_swap;
-static BOOL dynamic_export;
 static const char *c_ident_prefix = "qjsc_";
 
 #define FE_ALL (-1)
@@ -240,12 +238,9 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
         /* create a dummy module */
         m = JS_NewCModule(ctx, module_name, js_module_dummy_init);
     } else if (has_suffix(module_name, ".so")) {
-        fprintf(stderr, "Warning: binary module '%s' will be dynamically loaded\n", module_name);
-        /* create a dummy module */
-        m = JS_NewCModule(ctx, module_name, js_module_dummy_init);
-        /* the resulting executable will export its symbols for the
-           dynamic library */
-        dynamic_export = TRUE;
+        JS_ThrowReferenceError(ctx, "%s: dynamically linking to shared libraries not supported",
+        module_name);
+        return NULL;
     } else {
         size_t buf_len;
         uint8_t *buf;
@@ -343,8 +338,7 @@ void help(void)
            "usage: " PROG_NAME " [options] [files]\n"
            "\n"
            "options are:\n"
-           "-c          only output bytecode in a C file\n"
-           "-e          output main() and bytecode in a C file (default = executable output)\n"
+           "-e          output main() and bytecode in a C file\n"
            "-o output   set the output filename\n"
            "-N cname    set the C name of the generated data\n"
            "-m          compile as Javascript module (default=autodetect)\n"
@@ -372,111 +366,9 @@ void help(void)
     exit(1);
 }
 
-#if defined(CONFIG_CC) && !defined(_WIN32)
-
-int exec_cmd(char **argv)
-{
-    int pid, status, ret;
-
-    pid = fork();
-    if (pid == 0) {
-        execvp(argv[0], argv);
-        exit(1);
-    }
-
-    for(;;) {
-        ret = waitpid(pid, &status, 0);
-        if (ret == pid && WIFEXITED(status))
-            break;
-    }
-    return WEXITSTATUS(status);
-}
-
-static int output_executable(const char *out_filename, const char *cfilename,
-                             BOOL use_lto, BOOL verbose, const char *exename)
-{
-    const char *argv[64];
-    const char **arg, *bn_suffix, *lto_suffix;
-    char libjsname[1024];
-    char exe_dir[1024], inc_dir[1024], lib_dir[1024], buf[1024], *p;
-    int ret;
-
-    /* get the directory of the executable */
-    pstrcpy(exe_dir, sizeof(exe_dir), exename);
-    p = strrchr(exe_dir, '/');
-    if (p) {
-        *p = '\0';
-    } else {
-        pstrcpy(exe_dir, sizeof(exe_dir), ".");
-    }
-
-    /* if 'quickjs.h' is present at the same path as the executable, we
-       use it as include and lib directory */
-    snprintf(buf, sizeof(buf), "%s/quickjs.h", exe_dir);
-    if (access(buf, R_OK) == 0) {
-        pstrcpy(inc_dir, sizeof(inc_dir), exe_dir);
-        pstrcpy(lib_dir, sizeof(lib_dir), exe_dir);
-    } else {
-        snprintf(inc_dir, sizeof(inc_dir), "%s/include/quickjs", CONFIG_PREFIX);
-        snprintf(lib_dir, sizeof(lib_dir), "%s/lib/quickjs", CONFIG_PREFIX);
-    }
-
-    lto_suffix = "";
-    bn_suffix = "";
-
-    arg = argv;
-    *arg++ = CONFIG_CC;
-    *arg++ = "-O2";
-#ifdef CONFIG_LTO
-    if (use_lto) {
-        *arg++ = "-flto";
-        lto_suffix = ".lto";
-    }
-#endif
-    /* XXX: use the executable path to find the includes files and
-       libraries */
-    *arg++ = "-D";
-    *arg++ = "_GNU_SOURCE";
-    *arg++ = "-I";
-    *arg++ = inc_dir;
-    *arg++ = "-o";
-    *arg++ = out_filename;
-    if (dynamic_export)
-        *arg++ = "-rdynamic";
-    *arg++ = cfilename;
-    snprintf(libjsname, sizeof(libjsname), "%s/libquickjs%s%s.a",
-             lib_dir, bn_suffix, lto_suffix);
-    *arg++ = libjsname;
-    *arg++ = "-lm";
-    *arg++ = "-ldl";
-    *arg++ = "-lpthread";
-    *arg = NULL;
-
-    if (verbose) {
-        for(arg = argv; *arg != NULL; arg++)
-            printf("%s ", *arg);
-        printf("\n");
-    }
-
-    ret = exec_cmd((char **)argv);
-    unlink(cfilename);
-    return ret;
-}
-#else
-static int output_executable(const char *out_filename, const char *cfilename,
-                             BOOL use_lto, BOOL verbose, const char *exename)
-{
-    fprintf(stderr, "Executable output is not supported for this target\n");
-    exit(1);
-    return 0;
-}
-#endif
-
-
 typedef enum {
     OUTPUT_C,
     OUTPUT_C_MAIN,
-    OUTPUT_EXECUTABLE,
 } OutputTypeEnum;
 
 int main(int argc, char **argv)
@@ -494,7 +386,7 @@ int main(int argc, char **argv)
     namelist_t dynamic_module_list;
 
     out_filename = NULL;
-    output_type = OUTPUT_EXECUTABLE;
+    output_type = OUTPUT_C;
     cname = NULL;
     feature_bitmap = FE_ALL;
     module = -1;
@@ -509,7 +401,7 @@ int main(int argc, char **argv)
     namelist_add(&cmodule_list, "os", "os", 0);
 
     for(;;) {
-        c = getopt(argc, argv, "ho:cN:f:mxevM:p:S:D:");
+        c = getopt(argc, argv, "ho:N:f:mxevM:p:S:D:");
         if (c == -1)
             break;
         switch(c) {
@@ -517,9 +409,6 @@ int main(int argc, char **argv)
             help();
         case 'o':
             out_filename = optarg;
-            break;
-        case 'c':
-            output_type = OUTPUT_C;
             break;
         case 'e':
             output_type = OUTPUT_C_MAIN;
@@ -592,24 +481,10 @@ int main(int argc, char **argv)
     if (optind >= argc)
         help();
 
-    if (!out_filename) {
-        if (output_type == OUTPUT_EXECUTABLE) {
-            out_filename = "a.out";
-        } else {
-            out_filename = "out.c";
-        }
-    }
+    if (!out_filename)
+        out_filename = "out.c";
 
-    if (output_type == OUTPUT_EXECUTABLE) {
-#if defined(_WIN32) || defined(__ANDROID__)
-        /* XXX: find a /tmp directory ? */
-        snprintf(cfilename, sizeof(cfilename), "out%d.c", getpid());
-#else
-        snprintf(cfilename, sizeof(cfilename), "/tmp/out%d.c", getpid());
-#endif
-    } else {
-        pstrcpy(cfilename, sizeof(cfilename), out_filename);
-    }
+    pstrcpy(cfilename, sizeof(cfilename), out_filename);
 
     fo = fopen(cfilename, "w");
     if (!fo) {
@@ -723,10 +598,6 @@ int main(int argc, char **argv)
 
     fclose(fo);
 
-    if (output_type == OUTPUT_EXECUTABLE) {
-        return output_executable(out_filename, cfilename, use_lto, verbose,
-                                 argv[0]);
-    }
     namelist_free(&cname_list);
     namelist_free(&cmodule_list);
     namelist_free(&init_module_list);
