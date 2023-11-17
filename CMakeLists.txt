@@ -158,7 +158,7 @@ target_link_libraries(qjsc ${qjs_libs})
 
 add_custom_command(
     OUTPUT repl.c
-    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -c -o ./repl.c -m ${CMAKE_CURRENT_SOURCE_DIR}/repl.js
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -o ./repl.c -m ${CMAKE_CURRENT_SOURCE_DIR}/repl.js
     DEPENDS qjsc
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Compile repl.js to bytecode"
