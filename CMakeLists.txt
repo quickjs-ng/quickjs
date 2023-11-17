@@ -191,6 +191,17 @@ target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
 target_link_libraries(run-test262 ${qjs_libs})
 
 
+# Unicode generator
+#
+
+add_executable(unicode_gen EXCLUDE_FROM_ALL
+    cutils.c
+    libunicode.c
+    unicode_gen.c
+)
+target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
+
+
 # Examples
 #
 
