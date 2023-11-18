@@ -2569,25 +2569,26 @@ void *lre_realloc(void *opaque, void *ptr, size_t size)
 
 int main(int argc, char **argv)
 {
-    int len, ret, i;
+    int len, flags, ret, i;
     uint8_t *bc;
     char error_msg[64];
     uint8_t *capture[CAPTURE_COUNT_MAX * 2];
     const char *input;
     int input_len, capture_count;
 
-    if (argc < 3) {
-        printf("usage: %s regexp input\n", argv[0]);
+    if (argc < 4) {
+        printf("usage: %s regexp flags input\n", argv[0]);
         exit(1);
     }
+    flags = atoi(argv[2]);
     bc = lre_compile(&len, error_msg, sizeof(error_msg), argv[1],
-                     strlen(argv[1]), 0, NULL);
+                     strlen(argv[1]), flags, NULL);
     if (!bc) {
         fprintf(stderr, "error: %s\n", error_msg);
         exit(1);
     }
 
-    input = argv[2];
+    input = argv[3];
     input_len = strlen(input);
 
     ret = lre_exec(capture, bc, (uint8_t *)input, 0, input_len, 0, NULL);
