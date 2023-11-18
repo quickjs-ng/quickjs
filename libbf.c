@@ -4799,11 +4799,6 @@ int bf_pow(bf_t *r, const bf_t *x, const bf_t *y, limb_t prec, bf_flags_t flags)
                 bf_t *y1;
                 if (y_emin < 0 && check_exact_power2n(r, T, -y_emin)) {
                     /* the problem is reduced to a power to an integer */
-#if 0
-                    printf("\nn=%" PRId64 "\n", -(int64_t)y_emin);
-                    bf_print_str("T", T);
-                    bf_print_str("r", r);
-#endif
                     bf_set(T, r);
                     y1 = &ytmp_s;
                     y1->tab = y->tab;
@@ -6326,34 +6321,6 @@ static limb_t get_digit(const limb_t *tab, limb_t len, slimb_t pos)
     shift = pos - i * LIMB_DIGITS;
     return fast_shr_dec(tab[i], shift) % 10;
 }
-
-#if 0
-static limb_t get_digits(const limb_t *tab, limb_t len, slimb_t pos)
-{
-    limb_t a0, a1;
-    int shift;
-    slimb_t i;
-
-    i = floor_div(pos, LIMB_DIGITS);
-    shift = pos - i * LIMB_DIGITS;
-    if (i >= 0 && i < len)
-        a0 = tab[i];
-    else
-        a0 = 0;
-    if (shift == 0) {
-        return a0;
-    } else {
-        i++;
-        if (i >= 0 && i < len)
-            a1 = tab[i];
-        else
-            a1 = 0;
-        return fast_shr_dec(a0, shift) +
-            fast_urem(a1, &mp_pow_div[LIMB_DIGITS - shift]) *
-            mp_pow_dec[shift];
-    }
-}
-#endif
 
 /* return the addend for rounding. Note that prec can be <= 0 for bf_rint() */
 static int bfdec_get_rnd_add(int *pret, const bfdec_t *r, limb_t l,
@@ -7981,12 +7948,6 @@ static no_inline void limb_to_ntt(BFNTTState *s,
     int j, shift;
     limb_t base_mask1, a0, a1, a2, r, m, m_inv;
 
-#if 0
-    for(i = 0; i < a_len; i++) {
-        printf("%" PRId64 ": " FMT_LIMB "\n",
-               (int64_t)i, taba[i]);
-    }
-#endif
     memset(tabr, 0, sizeof(NTTLimb) * fft_len * nb_mods);
     shift = dpl & (LIMB_BITS - 1);
     if (shift == 0)
@@ -8113,14 +8074,6 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
             }
             u[l] = r + carry[l];
 
-#if 0
-            printf("%" PRId64 ": ", i);
-            for(j = nb_mods - 1; j >= 0; j--) {
-                printf(" %019" PRIu64, u[j]);
-            }
-            printf("\n");
-#endif
-
             /* write the digits */
             pos = i * dpl;
             for(j = 0; j < n_limb1; j++) {
@@ -8213,14 +8166,6 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
             u[k] = t;
         }
         u[l] = r + carry[l];
-
-#if 0
-        printf("%" PRId64 ": ", (int64_t)i);
-        for(j = nb_mods - 1; j >= 0; j--) {
-            printf(" " FMT_LIMB, u[j]);
-        }
-        printf("\n");
-#endif
 
         /* write the digits */
         pos = i * dpl;

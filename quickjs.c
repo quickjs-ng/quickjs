@@ -2502,9 +2502,6 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
     JSAtomStruct *p;
     int len;
 
-#if 0
-    printf("__JS_NewAtom: ");  JS_DumpString(rt, str); printf("\n");
-#endif
     if (atom_type < JS_ATOM_TYPE_SYMBOL) {
         /* str is not NULL */
         if (str->atom_type == atom_type) {
@@ -2693,12 +2690,6 @@ static JSAtom __JS_FindAtom(JSRuntime *rt, const char *str, size_t len,
 
 static void JS_FreeAtomStruct(JSRuntime *rt, JSAtomStruct *p)
 {
-#if 0   /* JS_ATOM_NULL is not refcounted: __JS_AtomIsConst() includes 0 */
-    if (unlikely(i == JS_ATOM_NULL)) {
-        p->header.ref_count = INT32_MAX / 2;
-        return;
-    }
-#endif
     uint32_t i = p->hash_next;  /* atom_index */
     if (p->atom_type != JS_ATOM_TYPE_SYMBOL) {
         JSAtomStruct *p0, *p1;
@@ -8176,9 +8167,6 @@ int JS_SetPropertyInternal(JSContext *ctx, JSValueConst this_obj,
     uint32_t tag;
     JSPropertyDescriptor desc;
     int ret;
-#if 0
-    printf("JS_SetPropertyInternal: "); print_atom(ctx, prop); printf("\n");
-#endif
     tag = JS_VALUE_GET_TAG(this_obj);
     if (unlikely(tag != JS_TAG_OBJECT)) {
         switch(tag) {
@@ -16394,17 +16382,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 break;
             }
             BREAK;
-#if 0
-        CASE(OP_to_string):
-            if (JS_VALUE_GET_TAG(sp[-1]) != JS_TAG_STRING) {
-                ret_val = JS_ToString(ctx, sp[-1]);
-                if (JS_IsException(ret_val))
-                    goto exception;
-                JS_FreeValue(ctx, sp[-1]);
-                sp[-1] = ret_val;
-            }
-            BREAK;
-#endif
         CASE(OP_with_get_var):
         CASE(OP_with_put_var):
         CASE(OP_with_delete_var):
@@ -28471,12 +28448,6 @@ static int skip_dead_code(JSFunctionDef *s, const uint8_t *bc_buf, int bc_len,
             label = get_u32(bc_buf + pos + 1);
             if (update_label(s, label, 0) > 0)
                 break;
-#if 0
-            if (s->label_slots[label].first_reloc) {
-                printf("line %d: unreferenced label %d:%d has relocations\n",
-                       *linep, label, s->label_slots[label].pos2);
-            }
-#endif
             assert(s->label_slots[label].first_reloc == NULL);
         } else {
             /* XXX: output a warning for unreachable code? */
@@ -30344,13 +30315,6 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
 {
     int i;
 
-#if 0
-    {
-        char buf[ATOM_GET_STR_BUF_SIZE];
-        printf("freeing %s\n",
-               JS_AtomGetStrRT(rt, buf, sizeof(buf), b->func_name));
-    }
-#endif
     free_bytecode_atoms(rt, b->byte_code_buf, b->byte_code_len, TRUE);
 
     if (b->vardefs) {
@@ -34691,39 +34655,6 @@ static JSValue js_object_fromEntries(JSContext *ctx, JSValueConst this_val,
     return JS_EXCEPTION;
 }
 
-#if 0
-/* Note: corresponds to ECMA spec: CreateDataPropertyOrThrow() */
-static JSValue js_object___setOwnProperty(JSContext *ctx, JSValueConst this_val,
-                                          int argc, JSValueConst *argv)
-{
-    int ret;
-    ret = JS_DefinePropertyValueValue(ctx, argv[0], JS_DupValue(ctx, argv[1]),
-                                      JS_DupValue(ctx, argv[2]),
-                                      JS_PROP_C_W_E | JS_PROP_THROW);
-    if (ret < 0)
-        return JS_EXCEPTION;
-    else
-        return JS_NewBool(ctx, ret);
-}
-
-static JSValue js_object___toObject(JSContext *ctx, JSValueConst this_val,
-                                    int argc, JSValueConst *argv)
-{
-    return JS_ToObject(ctx, argv[0]);
-}
-
-static JSValue js_object___toPrimitive(JSContext *ctx, JSValueConst this_val,
-                                       int argc, JSValueConst *argv)
-{
-    int hint = HINT_NONE;
-
-    if (JS_VALUE_GET_TAG(argv[1]) == JS_TAG_INT)
-        hint = JS_VALUE_GET_INT(argv[1]);
-
-    return JS_ToPrimitive(ctx, argv[0], hint);
-}
-#endif
-
 /* return an empty string if not an object */
 static JSValue js_object___getClass(JSContext *ctx, JSValueConst this_val,
                                     int argc, JSValueConst *argv)
@@ -34751,46 +34682,6 @@ static JSValue js_object_is(JSContext *ctx, JSValueConst this_val,
 {
     return JS_NewBool(ctx, js_same_value(ctx, argv[0], argv[1]));
 }
-
-#if 0
-static JSValue js_object___getObjectData(JSContext *ctx, JSValueConst this_val,
-                                         int argc, JSValueConst *argv)
-{
-    return JS_GetObjectData(ctx, argv[0]);
-}
-
-static JSValue js_object___setObjectData(JSContext *ctx, JSValueConst this_val,
-                                         int argc, JSValueConst *argv)
-{
-    if (JS_SetObjectData(ctx, argv[0], JS_DupValue(ctx, argv[1])))
-        return JS_EXCEPTION;
-    return JS_DupValue(ctx, argv[1]);
-}
-
-static JSValue js_object___toPropertyKey(JSContext *ctx, JSValueConst this_val,
-                                         int argc, JSValueConst *argv)
-{
-    return JS_ToPropertyKey(ctx, argv[0]);
-}
-
-static JSValue js_object___isObject(JSContext *ctx, JSValueConst this_val,
-                                    int argc, JSValueConst *argv)
-{
-    return JS_NewBool(ctx, JS_IsObject(argv[0]));
-}
-
-static JSValue js_object___isSameValueZero(JSContext *ctx, JSValueConst this_val,
-                                           int argc, JSValueConst *argv)
-{
-    return JS_NewBool(ctx, js_same_value_zero(ctx, argv[0], argv[1]));
-}
-
-static JSValue js_object___isConstructor(JSContext *ctx, JSValueConst this_val,
-                                         int argc, JSValueConst *argv)
-{
-    return JS_NewBool(ctx, JS_IsConstructor(ctx, argv[0]));
-}
-#endif
 
 static JSValue JS_SpeciesConstructor(JSContext *ctx, JSValueConst obj,
                                      JSValueConst defaultConstructor)
@@ -34820,14 +34711,6 @@ static JSValue JS_SpeciesConstructor(JSContext *ctx, JSValueConst obj,
     }
     return species;
 }
-
-#if 0
-static JSValue js_object___speciesConstructor(JSContext *ctx, JSValueConst this_val,
-                                              int argc, JSValueConst *argv)
-{
-    return JS_SpeciesConstructor(ctx, argv[0], argv[1]);
-}
-#endif
 
 static JSValue js_object_get___proto__(JSContext *ctx, JSValueConst this_val)
 {
@@ -34992,16 +34875,6 @@ static const JSCFunctionListEntry js_object_funcs[] = {
     JS_CFUNC_MAGIC_DEF("isSealed", 1, js_object_isSealed, 0 ),
     JS_CFUNC_MAGIC_DEF("isFrozen", 1, js_object_isSealed, 1 ),
     JS_CFUNC_DEF("__getClass", 1, js_object___getClass ),
-    //JS_CFUNC_DEF("__isObject", 1, js_object___isObject ),
-    //JS_CFUNC_DEF("__isConstructor", 1, js_object___isConstructor ),
-    //JS_CFUNC_DEF("__toObject", 1, js_object___toObject ),
-    //JS_CFUNC_DEF("__setOwnProperty", 3, js_object___setOwnProperty ),
-    //JS_CFUNC_DEF("__toPrimitive", 2, js_object___toPrimitive ),
-    //JS_CFUNC_DEF("__toPropertyKey", 1, js_object___toPropertyKey ),
-    //JS_CFUNC_DEF("__speciesConstructor", 2, js_object___speciesConstructor ),
-    //JS_CFUNC_DEF("__isSameValueZero", 2, js_object___isSameValueZero ),
-    //JS_CFUNC_DEF("__getObjectData", 1, js_object___getObjectData ),
-    //JS_CFUNC_DEF("__setObjectData", 2, js_object___setObjectData ),
     JS_CFUNC_DEF("fromEntries", 1, js_object_fromEntries ),
     JS_CFUNC_DEF("hasOwn", 2, js_object_hasOwn ),
 };
@@ -37636,23 +37509,6 @@ static JSValue js_number_constructor(JSContext *ctx, JSValueConst new_target,
     }
 }
 
-#if 0
-static JSValue js_number___toInteger(JSContext *ctx, JSValueConst this_val,
-                                     int argc, JSValueConst *argv)
-{
-    return JS_ToIntegerFree(ctx, JS_DupValue(ctx, argv[0]));
-}
-
-static JSValue js_number___toLength(JSContext *ctx, JSValueConst this_val,
-                                    int argc, JSValueConst *argv)
-{
-    int64_t v;
-    if (JS_ToLengthFree(ctx, &v, JS_DupValue(ctx, argv[0])))
-        return JS_EXCEPTION;
-    return JS_NewInt64(ctx, v);
-}
-#endif
-
 static JSValue js_number_isNaN(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv)
 {
@@ -37707,8 +37563,6 @@ static const JSCFunctionListEntry js_number_funcs[] = {
     JS_PROP_DOUBLE_DEF("EPSILON", 2.220446049250313e-16, 0 ), /* ES6 */
     JS_PROP_DOUBLE_DEF("MAX_SAFE_INTEGER", 9007199254740991.0, 0 ), /* ES6 */
     JS_PROP_DOUBLE_DEF("MIN_SAFE_INTEGER", -9007199254740991.0, 0 ), /* ES6 */
-    //JS_CFUNC_DEF("__toInteger", 1, js_number___toInteger ),
-    //JS_CFUNC_DEF("__toLength", 1, js_number___toLength ),
 };
 
 static JSValue js_thisNumberValue(JSContext *ctx, JSValueConst this_val)
@@ -38206,17 +38060,6 @@ JSValue js_string_codePointRange(JSContext *ctx, JSValueConst this_val,
     }
     return string_buffer_end(b);
 }
-
-#if 0
-static JSValue js_string___isSpace(JSContext *ctx, JSValueConst this_val,
-                                   int argc, JSValueConst *argv)
-{
-    int c;
-    if (JS_ToInt32(ctx, &c, argv[0]))
-        return JS_EXCEPTION;
-    return JS_NewBool(ctx, lre_is_space(c));
-}
-#endif
 
 static JSValue js_string_at(JSContext *ctx, JSValueConst this_val,
                             int argc, JSValueConst *argv)
@@ -39463,47 +39306,6 @@ static JSValue js_string_toString(JSContext *ctx, JSValueConst this_val,
     return js_thisStringValue(ctx, this_val);
 }
 
-#if 0
-static JSValue js_string___toStringCheckObject(JSContext *ctx, JSValueConst this_val,
-                                               int argc, JSValueConst *argv)
-{
-    return JS_ToStringCheckObject(ctx, argv[0]);
-}
-
-static JSValue js_string___toString(JSContext *ctx, JSValueConst this_val,
-                                    int argc, JSValueConst *argv)
-{
-    return JS_ToString(ctx, argv[0]);
-}
-
-static JSValue js_string___advanceStringIndex(JSContext *ctx, JSValueConst
-                                              this_val,
-                                              int argc, JSValueConst *argv)
-{
-    JSValue str;
-    int idx;
-    BOOL is_unicode;
-    JSString *p;
-
-    str = JS_ToString(ctx, argv[0]);
-    if (JS_IsException(str))
-        return str;
-    if (JS_ToInt32Sat(ctx, &idx, argv[1])) {
-        JS_FreeValue(ctx, str);
-        return JS_EXCEPTION;
-    }
-    is_unicode = JS_ToBool(ctx, argv[2]);
-    p = JS_VALUE_GET_STRING(str);
-    if (!is_unicode || (unsigned)idx >= p->len || !p->is_wide_char) {
-        idx++;
-    } else {
-        string_getc(p, &idx);
-    }
-    JS_FreeValue(ctx, str);
-    return JS_NewInt32(ctx, idx);
-}
-#endif
-
 /* String Iterator */
 
 static JSValue js_string_iterator_next(JSContext *ctx, JSValueConst this_val,
@@ -39617,11 +39419,6 @@ static const JSCFunctionListEntry js_string_funcs[] = {
     JS_CFUNC_DEF("fromCharCode", 1, js_string_fromCharCode ),
     JS_CFUNC_DEF("fromCodePoint", 1, js_string_fromCodePoint ),
     JS_CFUNC_DEF("raw", 1, js_string_raw ),
-    //JS_CFUNC_DEF("__toString", 1, js_string___toString ),
-    //JS_CFUNC_DEF("__isSpace", 1, js_string___isSpace ),
-    //JS_CFUNC_DEF("__toStringCheckObject", 1, js_string___toStringCheckObject ),
-    //JS_CFUNC_DEF("__advanceStringIndex", 3, js_string___advanceStringIndex ),
-    //JS_CFUNC_DEF("__GetSubstitution", 6, js_string___GetSubstitution ),
 };
 
 static const JSCFunctionListEntry js_string_proto_funcs[] = {
@@ -39967,19 +39764,6 @@ static const JSCFunctionListEntry js_math_obj[] = {
 
 /* Date */
 
-#if 0
-/* OS dependent: return the UTC time in ms since 1970. */
-static JSValue js___date_now(JSContext *ctx, JSValueConst this_val,
-                             int argc, JSValueConst *argv)
-{
-    int64_t d;
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    d = (int64_t)tv.tv_sec * 1000 + (tv.tv_usec / 1000);
-    return JS_NewInt64(ctx, d);
-}
-#endif
-
 /* OS dependent: return the UTC time in microseconds since 1970. */
 static JSValue js___date_clock(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv)
@@ -40027,50 +39811,6 @@ static int getTimezoneOffset(int64_t time) {
     return -tm.tm_gmtoff / 60;
 #endif
 }
-
-#if 0
-static JSValue js___date_getTimezoneOffset(JSContext *ctx, JSValueConst this_val,
-                                           int argc, JSValueConst *argv)
-{
-    double dd;
-
-    if (JS_ToFloat64(ctx, &dd, argv[0]))
-        return JS_EXCEPTION;
-    if (isnan(dd))
-        return __JS_NewFloat64(ctx, dd);
-    else
-        return JS_NewInt32(ctx, getTimezoneOffset((int64_t)dd));
-}
-
-static JSValue js_get_prototype_from_ctor(JSContext *ctx, JSValueConst ctor,
-                                          JSValueConst def_proto)
-{
-    JSValue proto;
-    proto = JS_GetProperty(ctx, ctor, JS_ATOM_prototype);
-    if (JS_IsException(proto))
-        return proto;
-    if (!JS_IsObject(proto)) {
-        JS_FreeValue(ctx, proto);
-        proto = JS_DupValue(ctx, def_proto);
-    }
-    return proto;
-}
-
-/* create a new date object */
-static JSValue js___date_create(JSContext *ctx, JSValueConst this_val,
-                                int argc, JSValueConst *argv)
-{
-    JSValue obj, proto;
-    proto = js_get_prototype_from_ctor(ctx, argv[0], argv[1]);
-    if (JS_IsException(proto))
-        return proto;
-    obj = JS_NewObjectProtoClass(ctx, proto, JS_CLASS_DATE);
-    JS_FreeValue(ctx, proto);
-    if (!JS_IsException(obj))
-        JS_SetObjectData(ctx, obj, JS_DupValue(ctx, argv[2]));
-    return obj;
-}
-#endif
 
 /* RegExp */
 
@@ -40329,27 +40069,6 @@ static JSValue js_regexp_compile(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, bc);
     return JS_EXCEPTION;
 }
-
-#if 0
-static JSValue js_regexp_get___source(JSContext *ctx, JSValueConst this_val)
-{
-    JSRegExp *re = js_get_regexp(ctx, this_val, TRUE);
-    if (!re)
-        return JS_EXCEPTION;
-    return JS_DupValue(ctx, JS_MKPTR(JS_TAG_STRING, re->pattern));
-}
-
-static JSValue js_regexp_get___flags(JSContext *ctx, JSValueConst this_val)
-{
-    JSRegExp *re = js_get_regexp(ctx, this_val, TRUE);
-    int flags;
-
-    if (!re)
-        return JS_EXCEPTION;
-    flags = lre_get_flags(re->bytecode->u.str8);
-    return JS_NewInt32(ctx, flags);
-}
-#endif
 
 static JSValue js_regexp_get_source(JSContext *ctx, JSValueConst this_val)
 {
@@ -40761,19 +40480,6 @@ static JSValue JS_RegExpExec(JSContext *ctx, JSValueConst r, JSValueConst s)
     JS_FreeValue(ctx, method);
     return js_regexp_exec(ctx, r, 1, &s);
 }
-
-#if 0
-static JSValue js_regexp___RegExpExec(JSContext *ctx, JSValueConst this_val,
-                                      int argc, JSValueConst *argv)
-{
-    return JS_RegExpExec(ctx, argv[0], argv[1]);
-}
-static JSValue js_regexp___RegExpDelete(JSContext *ctx, JSValueConst this_val,
-                                        int argc, JSValueConst *argv)
-{
-    return JS_RegExpDelete(ctx, argv[0], argv[1]);
-}
-#endif
 
 static JSValue js_regexp_test(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
@@ -41466,8 +41172,6 @@ done:
 
 static const JSCFunctionListEntry js_regexp_funcs[] = {
     JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
-    //JS_CFUNC_DEF("__RegExpExec", 2, js_regexp___RegExpExec ),
-    //JS_CFUNC_DEF("__RegExpDelete", 2, js_regexp___RegExpDelete ),
 };
 
 static const JSCFunctionListEntry js_regexp_proto_funcs[] = {
@@ -41488,8 +41192,6 @@ static const JSCFunctionListEntry js_regexp_proto_funcs[] = {
     JS_CFUNC_DEF("[Symbol.matchAll]", 1, js_regexp_Symbol_matchAll ),
     JS_CFUNC_DEF("[Symbol.search]", 1, js_regexp_Symbol_search ),
     JS_CFUNC_DEF("[Symbol.split]", 2, js_regexp_Symbol_split ),
-    //JS_CGETSET_DEF("__source", js_regexp_get___source, NULL ),
-    //JS_CGETSET_DEF("__flags", js_regexp_get___flags, NULL ),
 };
 
 static const JSCFunctionListEntry js_regexp_string_iterator_proto_funcs[] = {
@@ -45856,9 +45558,6 @@ static const JSCFunctionListEntry js_global_funcs[] = {
 
     /* for the 'Date' implementation */
     JS_CFUNC_DEF("__date_clock", 0, js___date_clock ),
-    //JS_CFUNC_DEF("__date_now", 0, js___date_now ),
-    //JS_CFUNC_DEF("__date_getTimezoneOffset", 1, js___date_getTimezoneOffset ),
-    //JS_CFUNC_DEF("__date_create", 3, js___date_create ),
 };
 
 /* Date */
@@ -46257,17 +45956,9 @@ static JSValue js_date_constructor(JSContext *ctx, JSValueConst new_target,
         val = (i == n) ? set_date_fields(fields, 1) : NAN;
     }
 has_val:
-#if 0
-    JSValueConst args[3];
-    args[0] = new_target;
-    args[1] = ctx->class_proto[JS_CLASS_DATE];
-    args[2] = JS_NewFloat64(ctx, val);
-    rv = js___date_create(ctx, JS_UNDEFINED, 3, args);
-#else
     rv = js_create_from_ctor(ctx, new_target, JS_CLASS_DATE);
     if (!JS_IsException(rv))
         JS_SetObjectData(ctx, rv, JS_NewFloat64(ctx, val));
-#endif
     if (!JS_IsException(rv) && JS_IsUndefined(new_target)) {
         /* invoked as a function, return (new Date()).toString(); */
         JSValue s;
@@ -47004,16 +46695,6 @@ static void JS_AddIntrinsicBasicObjects(JSContext *ctx)
                                            ctx->class_proto[JS_CLASS_OBJECT]);
     ctx->class_proto[JS_CLASS_BYTECODE_FUNCTION] = JS_DupValue(ctx, ctx->function_proto);
     ctx->class_proto[JS_CLASS_ERROR] = JS_NewObject(ctx);
-#if 0
-    /* these are auto-initialized from js_error_proto_funcs,
-       but delaying might be a problem */
-    JS_DefinePropertyValue(ctx, ctx->class_proto[JS_CLASS_ERROR], JS_ATOM_name,
-                           JS_AtomToString(ctx, JS_ATOM_Error),
-                           JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-    JS_DefinePropertyValue(ctx, ctx->class_proto[JS_CLASS_ERROR], JS_ATOM_message,
-                           JS_AtomToString(ctx, JS_ATOM_empty_string),
-                           JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-#endif
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ERROR],
                                js_error_proto_funcs,
                                countof(js_error_proto_funcs));
@@ -47938,26 +47619,6 @@ static int js_typed_array_get_length_internal(JSContext *ctx,
     return p->u.array.count;
 }
 
-#if 0
-/* validate a typed array and return its length */
-static JSValue js_typed_array___getLength(JSContext *ctx,
-                                          JSValueConst this_val,
-                                          int argc, JSValueConst *argv)
-{
-    BOOL ignore_detached = JS_ToBool(ctx, argv[1]);
-
-    if (ignore_detached) {
-        return js_typed_array_get_length(ctx, argv[0]);
-    } else {
-        int len;
-        len = js_typed_array_get_length_internal(ctx, argv[0]);
-        if (len < 0)
-            return JS_EXCEPTION;
-        return JS_NewInt32(ctx, len);
-    }
-}
-#endif
-
 static JSValue js_typed_array_create(JSContext *ctx, JSValueConst ctor,
                                      int argc, JSValueConst *argv)
 {
@@ -47985,15 +47646,6 @@ static JSValue js_typed_array_create(JSContext *ctx, JSValueConst ctor,
     }
     return ret;
 }
-
-#if 0
-static JSValue js_typed_array___create(JSContext *ctx,
-                                       JSValueConst this_val,
-                                       int argc, JSValueConst *argv)
-{
-    return js_typed_array_create(ctx, argv[0], max_int(argc - 1, 0), argv + 1);
-}
-#endif
 
 static JSValue js_typed_array___speciesCreate(JSContext *ctx,
                                               JSValueConst this_val,
@@ -49080,9 +48732,6 @@ static const JSCFunctionListEntry js_typed_array_base_funcs[] = {
     JS_CFUNC_DEF("from", 1, js_typed_array_from ),
     JS_CFUNC_DEF("of", 0, js_typed_array_of ),
     JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
-    //JS_CFUNC_DEF("__getLength", 2, js_typed_array___getLength ),
-    //JS_CFUNC_DEF("__create", 2, js_typed_array___create ),
-    //JS_CFUNC_DEF("__speciesCreate", 2, js_typed_array___speciesCreate ),
 };
 
 static const JSCFunctionListEntry js_typed_array_base_proto_funcs[] = {

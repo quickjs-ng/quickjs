@@ -380,20 +380,6 @@ void parse_unicode_data(const char *filename)
                     break;
                 add_char(&ci->decomp_data, &size, &ci->decomp_len, strtoul(p, (char **)&p, 16));
             }
-#if 0
-            {
-                int i;
-                static int count, d_count;
-
-                printf("%05x: %c", code, ci->is_compat ? 'C': ' ');
-                for(i = 0; i < ci->decomp_len; i++)
-                    printf(" %05x", ci->decomp_data[i]);
-                printf("\n");
-                count++;
-                d_count += ci->decomp_len;
-                //                printf("%d %d\n", count, d_count);
-            }
-#endif
         }
 
         p = get_field(line, 9);
@@ -1192,12 +1178,6 @@ void build_conv_table(CCInfo *tab)
             continue;
         assert(te - conv_table < countof(conv_table));
         find_run_type(te, tab, code);
-#if 0
-        if (te->type == RUN_TYPE_TODO) {
-            printf("TODO: ");
-            dump_cc_info(ci, code);
-        }
-#endif
         assert(te->len <= 127);
         code += te->len - 1;
         te++;
@@ -1367,18 +1347,6 @@ void compute_internal_props(void)
         /* XXX: reduce table size (438 bytes) */
         set_prop(i, PROP_Changes_When_NFKC_Casefolded1,
                  get_prop(i, PROP_Changes_When_NFKC_Casefolded) ^ (ci->f_code != 0));
-#if 0
-        /* TEST */
-#define M(x) (1U << GCAT_ ## x)
-        {
-            int b;
-            b = ((M(Mn) | M(Cf) | M(Lm) | M(Sk)) >>
-                 unicode_db[i].general_category) & 1;
-            set_prop(i, PROP_Cased1,
-                     get_prop(i, PROP_Case_Ignorable) ^ b);
-        }
-#undef M
-#endif
     }
 }
 
@@ -2587,20 +2555,6 @@ void add_decomp_data(uint8_t *data_buf, int *pidx, DecompEntry *de)
     *pidx = idx;
 }
 
-#if 0
-void dump_large_char(void)
-{
-    int i, j;
-    for(i = 0; i <= CHARCODE_MAX; i++) {
-        CCInfo *ci = &unicode_db[i];
-        for(j = 0; j < ci->decomp_len; j++) {
-            if (ci->decomp_data[j] > 0xffff)
-                printf("%05x\n", ci->decomp_data[j]);
-        }
-    }
-}
-#endif
-
 void build_compose_table(FILE *f, const DecompEntry *tab_de);
 
 void build_decompose_table(FILE *f)
@@ -2768,16 +2722,6 @@ void build_compose_table(FILE *f, const DecompEntry *tab_de)
         }
     }
     qsort(tab_ce, tab_ce_len, sizeof(*tab_ce), ce_cmp);
-
-#if 0
-    {
-        printf("tab_ce_len=%d\n", tab_ce_len);
-        for(i = 0; i < tab_ce_len; i++) {
-            ce = &tab_ce[i];
-            printf("%05x %05x %05x\n", ce->c[0], ce->c[1], ce->p);
-        }
-    }
-#endif
 
     fprintf(f, "static const uint16_t unicode_comp_table[%u] = {",
             tab_ce_len);

@@ -305,32 +305,6 @@ int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp)
     return c;
 }
 
-#if 0
-
-#if defined(EMSCRIPTEN) || defined(__ANDROID__)
-
-static void *rqsort_arg;
-static int (*rqsort_cmp)(const void *, const void *, void *);
-
-static int rqsort_cmp2(const void *p1, const void *p2)
-{
-    return rqsort_cmp(p1, p2, rqsort_arg);
-}
-
-/* not reentrant, but not needed with emscripten */
-void rqsort(void *base, size_t nmemb, size_t size,
-            int (*cmp)(const void *, const void *, void *),
-            void *arg)
-{
-    rqsort_arg = arg;
-    rqsort_cmp = cmp;
-    qsort(base, nmemb, size, rqsort_cmp2);
-}
-
-#endif
-
-#else
-
 typedef void (*exchange_f)(void *a, void *b, size_t size);
 typedef int (*cmp_f)(const void *, const void *, void *opaque);
 
@@ -629,5 +603,3 @@ void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
         }
     }
 }
-
-#endif
