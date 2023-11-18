@@ -177,6 +177,7 @@ DEF(timed_out, "timed-out")
 DEF(ok, "ok")
 #endif
 DEF(toJSON, "toJSON")
+DEF(maxByteLength, "maxByteLength")
 /* class names */
 DEF(Object, "Object")
 DEF(Array, "Array")
