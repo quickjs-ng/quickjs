@@ -118,6 +118,8 @@ endif()
 # QuickJS library
 #
 
+xoption(BUILD_QJS_LIBC "Build standard library modules as part of the library" OFF)
+
 set(qjs_sources
     cutils.c
     libbf.c
@@ -126,6 +128,9 @@ set(qjs_sources
     quickjs.c
 )
 
+if(BUILD_QJS_LIBC)
+    list(APPEND qjs_sources quickjs-libc.c)
+endif()
 list(APPEND qjs_defines _GNU_SOURCE)
 list(APPEND qjs_libs qjs m pthread)
 if(NOT MINGW)
@@ -299,6 +304,9 @@ set_target_properties(qjs PROPERTIES
     SOVERSION ${QJS_VERSION_MAJOR}
 )
 install(FILES quickjs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+if(BUILD_QJS_LIBC)
+    install(FILES quickjs-libc.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
 install(TARGETS qjs_exe RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(TARGETS qjs EXPORT qjsConfig
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
