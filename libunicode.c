@@ -790,13 +790,6 @@ static void sort_cc(int *buf, int len)
                 buf[k + 1] = ch1;
                 j++;
             }
-#if 0
-            printf("cc:");
-            for(k = start; k < j; k++) {
-                printf(" %3d", unicode_get_cc(buf[k]));
-            }
-            printf("\n");
-#endif
             i = j;
         }
     }
@@ -1495,42 +1488,6 @@ int unicode_prop(CharRange *cr, const char *prop_name)
                                POP_XOR,
                                POP_END);
         break;
-#if 0
-    case UNICODE_PROP_ID_Start:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo) | M(Nl),
-                               POP_PROP, UNICODE_PROP_Other_ID_Start,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_Pattern_Syntax,
-                               POP_PROP, UNICODE_PROP_Pattern_White_Space,
-                               POP_UNION,
-                               POP_INVERT,
-                               POP_INTER,
-                               POP_END);
-        break;
-    case UNICODE_PROP_ID_Continue:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo) | M(Nl) |
-                               M(Mn) | M(Mc) | M(Nd) | M(Pc),
-                               POP_PROP, UNICODE_PROP_Other_ID_Start,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_Other_ID_Continue,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_Pattern_Syntax,
-                               POP_PROP, UNICODE_PROP_Pattern_White_Space,
-                               POP_UNION,
-                               POP_INVERT,
-                               POP_INTER,
-                               POP_END);
-        break;
-    case UNICODE_PROP_Case_Ignorable:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Mn) | M(Cf) | M(Lm) | M(Sk),
-                               POP_PROP, UNICODE_PROP_Case_Ignorable1,
-                               POP_XOR,
-                               POP_END);
-        break;
-#else
         /* we use the existing tables */
     case UNICODE_PROP_ID_Continue:
         ret = unicode_prop_ops(cr,
@@ -1539,7 +1496,6 @@ int unicode_prop(CharRange *cr, const char *prop_name)
                                POP_XOR,
                                POP_END);
         break;
-#endif
     default:
         if (prop_idx >= countof(unicode_prop_table))
             return -2;
