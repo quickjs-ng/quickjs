@@ -47158,16 +47158,14 @@ static JSValue js_array_buffer_constructor(JSContext *ctx,
     uint64_t len, max_len;
     if (JS_ToIndex(ctx, &len, argv[0]))
         return JS_EXCEPTION;
-    if (JS_VALUE_GET_TAG(argv[1]) == JS_TAG_OBJECT) {
-        JSObject *p = JS_VALUE_GET_OBJ(argv[1]);        
-        JSValue prop = JS_GetProperty(ctx, argv[1], JS_ATOM_maxByteLength);
-
-        if (!JS_IsUndefined(prop)) {
-            if (JS_ToIndex(ctx, &max_len, prop)) {
-                JS_FreeValue(ctx, prop);
+    if (argc > 1 && JS_VALUE_GET_TAG(argv[1]) == JS_TAG_OBJECT) {
+        JSValue val = argv[1];
+        val = JS_GetProperty(ctx, val, JS_ATOM_maxByteLength);
+        if (!JS_IsUndefined(val)) {
+            if (JS_IsException(val) || JS_ToIndex(ctx, &max_len, val)) {
+                JS_FreeValue(ctx, val);
                 return JS_EXCEPTION;
             }
-
             return js_array_buffer_constructor4(ctx, JS_UNDEFINED, len, max_len, TRUE,
                                         JS_CLASS_ARRAY_BUFFER, NULL, js_array_buffer_free, NULL,
                                         TRUE);
