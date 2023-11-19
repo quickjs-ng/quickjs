@@ -37,8 +37,6 @@ test262/test/built-ins/Function/internals/Construct/derived-this-uninitialized-r
 test262/test/built-ins/Function/internals/Construct/derived-this-uninitialized-realm.js:20: strict mode: Test262Error: Expected a ReferenceError but got a different error constructor with the same name
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
-test262/test/built-ins/RegExp/named-groups/non-unicode-property-names-valid.js:46: SyntaxError: invalid group name
-test262/test/built-ins/RegExp/named-groups/non-unicode-property-names-valid.js:46: strict mode: SyntaxError: invalid group name
 test262/test/built-ins/RegExp/prototype/Symbol.match/flags-tostring-error.js:22: Test262Error: Expected a CustomError but got a Test262Error
 test262/test/built-ins/RegExp/prototype/Symbol.match/flags-tostring-error.js:22: strict mode: Test262Error: Expected a CustomError but got a Test262Error
 test262/test/built-ins/RegExp/prototype/Symbol.match/get-flags-err.js:23: Test262Error: Expected a CustomError but got a Test262Error
