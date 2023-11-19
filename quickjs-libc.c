@@ -1948,21 +1948,32 @@ static JSValue js_os_signal(JSContext *ctx, JSValueConst this_val,
 }
 
 #if defined(__linux__) || defined(__APPLE__)
-static int64_t get_time_ms(void)
+static int64_t get_time_us(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+    return (int64_t)ts.tv_sec * 1000000 + (ts.tv_nsec / 1000);
 }
 #else
 /* more portable, but does not work if the date is updated */
-static int64_t get_time_ms(void)
+static int64_t get_time_us(void)
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return (int64_t)tv.tv_sec * 1000 + (tv.tv_usec / 1000);
+    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 #endif
+
+static int64_t get_time_ms(void)
+{
+    return get_time_us() / 1000;
+}
+
+static JSValue js_os_now(JSContext *ctx, JSValueConst this_val,
+                         int argc, JSValueConst *argv)
+{
+    return JS_NewInt64(ctx, get_time_us());
+}
 
 static void unlink_timer(JSRuntime *rt, JSOSTimer *th)
 {
@@ -3606,6 +3617,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     OS_FLAG(SIGTTIN),
     OS_FLAG(SIGTTOU),
 #endif
+    JS_CFUNC_DEF("now", 0, js_os_now ),
     JS_CFUNC_DEF("setTimeout", 2, js_os_setTimeout ),
     JS_CFUNC_DEF("clearTimeout", 1, js_os_clearTimeout ),
     JS_PROP_STRING_DEF("platform", OS_PLATFORM, 0 ),
