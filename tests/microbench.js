@@ -23,6 +23,7 @@
  * THE SOFTWARE.
  */
 import * as std from "std";
+import * as os from "os";
 
 function pad(str, n) {
     str += "";
@@ -97,7 +98,7 @@ var clocks_per_sec = 1000000;
 var max_iterations = 100;
 var clock_threshold = 2000;  /* favoring short measuring spans */
 var min_n_argument = 1;
-var get_clock = Date.now;
+var get_clock = os.now;
 
 function log_one(text, n, ti) {
     var ref;
