@@ -315,15 +315,15 @@ static __maybe_unused void lre_dump_bytecode(const uint8_t *buf,
         }
         printf("%s", reopcode_info[opcode].name);
         switch(opcode) {
-        case REOP_char:
+        case REOP_char8:
+            val = get_u8(buf + pos + 1);
+            goto printchar;
+        case REOP_char16:
             val = get_u16(buf + pos + 1);
-            if (val >= ' ' && val <= 126)
-                printf(" '%c'", val);
-            else
-                printf(" 0x%04x", val);
-            break;
+            goto printchar;
         case REOP_char32:
             val = get_u32(buf + pos + 1);
+        printchar:
             if (val >= ' ' && val <= 126)
                 printf(" '%c'", val);
             else
@@ -971,8 +971,9 @@ static int re_check_advance(const uint8_t *bc_buf, int bc_buf_len)
             val = get_u16(bc_buf + pos + 1);
             len += val * 8;
             goto simple_char;
-        case REOP_char:
         case REOP_char32:
+        case REOP_char16:
+        case REOP_char8:
         case REOP_dot:
         case REOP_any:
         simple_char:
@@ -1050,8 +1051,9 @@ static int re_is_simple_quantifier(const uint8_t *bc_buf, int bc_buf_len)
             val = get_u16(bc_buf + pos + 1);
             len += val * 8;
             goto simple_char;
-        case REOP_char:
         case REOP_char32:
+        case REOP_char16:
+        case REOP_char8:
         case REOP_dot:
         case REOP_any:
         simple_char:
@@ -1494,8 +1496,10 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
         } else {
             if (s->ignore_case)
                 c = lre_canonicalize(c, s->is_utf16);
-            if (c <= 0xffff)
-                re_emit_op_u16(s, REOP_char, c);
+            if (c <= 0x7f)
+                re_emit_op_u8(s, REOP_char8, c);
+            else if (c <= 0xffff)
+                re_emit_op_u16(s, REOP_char16, c);
             else
                 re_emit_op_u32(s, REOP_char32, c);
         }
@@ -2181,9 +2185,13 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
             val = get_u32(pc);
             pc += 4;
             goto test_char;
-        case REOP_char:
+        case REOP_char16:
             val = get_u16(pc);
             pc += 2;
+            goto test_char;
+        case REOP_char8:
+            val = get_u8(pc);
+            pc += 1;
         test_char:
             if (cptr >= cbuf_end)
                 goto no_match;
