@@ -25,7 +25,8 @@
 #ifdef DEF
 
 DEF(invalid, 1) /* never used */
-DEF(char, 3)
+DEF(char8, 2) /* 7 bits in fact */
+DEF(char16, 3)
 DEF(char32, 5)
 DEF(dot, 1)
 DEF(any, 1) /* same as dot but match any character including line terminator */
