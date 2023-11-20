@@ -1151,6 +1151,11 @@ static const JSClassExoticMethods js_proxy_exotic_methods;
 static const JSClassExoticMethods js_module_ns_exotic_methods;
 static JSClassID js_class_id_alloc = JS_CLASS_INIT_COUNT;
 
+static int compare_u32(uint32_t a, uint32_t b)
+{
+    return -(a < b) + (b < a); // -1, 0 or 1
+}
+
 static JSValue js_int32(int32_t v)
 {
     return JS_MKVAL(JS_TAG_INT, v);
@@ -3930,14 +3935,8 @@ static int js_string_compare(JSContext *ctx,
     int res, len;
     len = min_int(p1->len, p2->len);
     res = js_string_memcmp(p1, p2, len);
-    if (res == 0) {
-        if (p1->len == p2->len)
-            res = 0;
-        else if (p1->len < p2->len)
-            res = -1;
-        else
-            res = 1;
-    }
+    if (res == 0)
+        res = compare_u32(p1->len, p2->len);
     return res;
 }
 
@@ -39138,24 +39137,80 @@ static BOOL test_final_sigma(JSString *p, int sigma_pos)
     return !lre_is_cased(c1);
 }
 
+static int to_utf32_buf(JSContext *ctx, JSString *p, uint32_t **pbuf)
+{
+    uint32_t *b;
+    int i, j, n;
+
+    j = -1;
+    n = p->len;
+    b = js_malloc(ctx, max_int(1, n) * sizeof(*b));
+    if (b)
+        for (i = j = 0; i < n;)
+            b[j++] = string_getc(p, &i);
+    *pbuf = b;
+    return j;
+}
+
 static JSValue js_string_localeCompare(JSContext *ctx, JSValueConst this_val,
                                        int argc, JSValueConst *argv)
 {
-    JSValue a, b;
-    int cmp;
+    int i, n, an, bn, cmp;
+    uint32_t *as, *bs, *ts;
+    JSValue a, b, ret;
+
+    ret = JS_EXCEPTION;
+    as = NULL;
+    bs = NULL;
 
     a = JS_ToStringCheckObject(ctx, this_val);
     if (JS_IsException(a))
         return JS_EXCEPTION;
+
     b = JS_ToString(ctx, argv[0]);
-    if (JS_IsException(b)) {
-        JS_FreeValue(ctx, a);
-        return JS_EXCEPTION;
-    }
-    cmp = js_string_compare(ctx, JS_VALUE_GET_STRING(a), JS_VALUE_GET_STRING(b));
+    if (JS_IsException(b))
+        goto exception;
+
+    an = to_utf32_buf(ctx, JS_VALUE_GET_STRING(a), &as);
+    if (an == -1)
+        goto exception;
+
+    bn = to_utf32_buf(ctx, JS_VALUE_GET_STRING(b), &bs);
+    if (bn == -1)
+        goto exception;
+
+    // TODO(bnoordhuis) skip normalization when input is latin1
+    an = unicode_normalize(&ts, as, an, UNICODE_NFC, ctx,
+                           (DynBufReallocFunc *)js_realloc);
+    if (an == -1)
+        goto exception;
+    js_free(ctx, as);
+    as = ts;
+
+    // TODO(bnoordhuis) skip normalization when input is latin1
+    bn = unicode_normalize(&ts, bs, bn, UNICODE_NFC, ctx,
+                           (DynBufReallocFunc *)js_realloc);
+    if (bn == -1)
+        goto exception;
+    js_free(ctx, bs);
+    bs = ts;
+
+    n = min_int(an, bn);
+    for (i = 0; i < n; i++)
+        if (as[i] != bs[i])
+            break;
+    if (i < n)
+        cmp = compare_u32(as[i], bs[i]);
+    else
+        cmp = compare_u32(an, bn);
+    ret = js_int32(cmp);
+
+exception:
     JS_FreeValue(ctx, a);
     JS_FreeValue(ctx, b);
-    return JS_NewInt32(ctx, cmp);
+    js_free(ctx, as);
+    js_free(ctx, bs);
+    return ret;
 }
 
 static JSValue js_string_toLowerCase(JSContext *ctx, JSValueConst this_val,
@@ -39200,29 +39255,14 @@ static JSValue js_string_toLowerCase(JSContext *ctx, JSValueConst this_val,
 static int JS_ToUTF32String(JSContext *ctx, uint32_t **pbuf, JSValueConst val1)
 {
     JSValue val;
-    JSString *p;
-    uint32_t *buf;
-    int i, j, len;
+    int len;
 
     val = JS_ToString(ctx, val1);
     if (JS_IsException(val))
         return -1;
-    p = JS_VALUE_GET_STRING(val);
-    len = p->len;
-    /* UTF32 buffer length is len minus the number of correct surrogates pairs */
-    buf = js_malloc(ctx, sizeof(buf[0]) * max_int(len, 1));
-    if (!buf) {
-        JS_FreeValue(ctx, val);
-        goto fail;
-    }
-    for(i = j = 0; i < len;)
-        buf[j++] = string_getc(p, &i);
+    len = to_utf32_buf(ctx, JS_VALUE_GET_STRING(val), pbuf);
     JS_FreeValue(ctx, val);
-    *pbuf = buf;
-    return j;
- fail:
-    *pbuf = NULL;
-    return -1;
+    return len;
 }
 
 static JSValue JS_NewUTF32String(JSContext *ctx, const uint32_t *buf, int len)
