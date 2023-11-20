@@ -1,10 +1,138 @@
 test262/test/annexB/language/eval-code/direct/script-decl-lex-collision-in-sloppy-mode.js:13: Test262Error: Expected a SyntaxError to be thrown but no exception was thrown at all
+test262/test/built-ins/Array/prototype/concat/15.4.4.4-5-b-iii-3-b-1.js:26: TypeError: '0' is read-only
+test262/test/built-ins/Array/prototype/concat/15.4.4.4-5-b-iii-3-b-1.js:26: strict mode: TypeError: '0' is read-only
+test262/test/built-ins/Array/prototype/concat/15.4.4.4-5-c-i-1.js:28: TypeError: '0' is read-only
+test262/test/built-ins/Array/prototype/concat/15.4.4.4-5-c-i-1.js:28: strict mode: TypeError: '0' is read-only
+test262/test/built-ins/Array/prototype/copyWithin/coerced-values-start-change-start.js:20: Test262Error: Expected [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] and [1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021, 1022, 1023] to have the same contents. currArray.copyWithin(0, {valueOf: shorten}) returns array2
+test262/test/built-ins/Array/prototype/copyWithin/coerced-values-start-change-start.js:20: strict mode: Test262Error: Expected [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined] and [1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021, 1022, 1023] to have the same contents. currArray.copyWithin(0, {valueOf: shorten}) returns array2
+test262/test/built-ins/Array/prototype/every/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/every/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/filter/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/filter/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/find/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 0] and [0, 0, undefined] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/find/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 0] and [0, 0, undefined] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/findIndex/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 0] and [0, 0, undefined] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/findIndex/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 0] and [0, 0, undefined] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/findLast/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 5e-324] and [0, undefined, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/findLast/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 5e-324] and [0, undefined, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/findLastIndex/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 5e-324] and [0, undefined, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/findLastIndex/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 5e-324] and [0, undefined, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/flat/proxy-access-count.js:35: Test262Error: Expected [length, constructor, 0, 1, 2, 3, 4] and [length, constructor, 0, 1, 2, 3, length, 0, 1, 4] to have the same contents. The value of getCalls is expected to be ["length", "constructor", "0", "1", "2", "3", "length", "0", "1", "4"]
+test262/test/built-ins/Array/prototype/flat/proxy-access-count.js:35: strict mode: Test262Error: Expected [length, constructor, 0, 1, 2, 3, 4] and [length, constructor, 0, 1, 2, 3, length, 0, 1, 4] to have the same contents. The value of getCalls is expected to be ["length", "constructor", "0", "1", "2", "3", "length", "0", "1", "4"]
+test262/test/built-ins/Array/prototype/flatMap/proxy-access-count.js:27: Test262Error: Expected [length, constructor, 0, 1, 2, 3, 4] and [length, constructor, 0, 1, 2, 3, length, 0, 1, 4] to have the same contents. The value of getCalls is expected to be ["length", "constructor", "0", "1", "2", "3", "length", "0", "1", "4"]
+test262/test/built-ins/Array/prototype/flatMap/proxy-access-count.js:27: strict mode: Test262Error: Expected [length, constructor, 0, 1, 2, 3, 4] and [length, constructor, 0, 1, 2, 3, length, 0, 1, 4] to have the same contents. The value of getCalls is expected to be ["length", "constructor", "0", "1", "2", "3", "length", "0", "1", "4"]
+test262/test/built-ins/Array/prototype/forEach/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/forEach/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/indexOf/15.4.4.14-9-b-i-7.js:11: Test262Error: [, , , ].indexOf(true) Expected SameValue(«-1», «0») to be true
+test262/test/built-ins/Array/prototype/indexOf/15.4.4.14-9-b-i-7.js:11: strict mode: Test262Error: [, , , ].indexOf(true) Expected SameValue(«-1», «0») to be true
+test262/test/built-ins/Array/prototype/lastIndexOf/15.4.4.15-8-b-i-7.js:11: Test262Error: [, , , ].lastIndexOf(true) Expected SameValue(«-1», «0») to be true
+test262/test/built-ins/Array/prototype/lastIndexOf/15.4.4.15-8-b-i-7.js:11: strict mode: Test262Error: [, , , ].lastIndexOf(true) Expected SameValue(«-1», «0») to be true
+test262/test/built-ins/Array/prototype/map/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/map/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-8-b-iii-1-8.js:11: Test262Error: testResult !== true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-8-b-iii-1-8.js:11: strict mode: Test262Error: testResult !== true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-9-c-i-8.js:11: Test262Error: testResult !== true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-9-c-i-8.js:11: strict mode: Test262Error: testResult !== true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-10-3.js:9: Test262Error: f.reduce(cb) Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-10-3.js:9: strict mode: Test262Error: f.reduce(cb) Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-10-4.js:9: Test262Error: f.reduce(cb) Expected SameValue(«NaN», «10») to be true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-10-4.js:9: strict mode: Test262Error: f.reduce(cb) Expected SameValue(«NaN», «10») to be true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-10-6.js:11: Test262Error: f.reduce(cb,-1) Expected SameValue(«NaN», «9») to be true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-10-6.js:11: strict mode: Test262Error: f.reduce(cb,-1) Expected SameValue(«NaN», «9») to be true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-10-7.js:11: Test262Error: f.reduce(cb,-1) Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Array/prototype/reduce/15.4.4.21-10-7.js:11: strict mode: Test262Error: f.reduce(cb,-1) Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Array/prototype/reduce/callbackfn-resize-arraybuffer.js:10: Test262Error: Expected [262, 0, 1] and [262, 0] to have the same contents. prevs (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/reduce/callbackfn-resize-arraybuffer.js:10: strict mode: Test262Error: Expected [262, 0, 1] and [262, 0] to have the same contents. prevs (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-8-b-iii-1-8.js:11: Test262Error: testResult !== true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-8-b-iii-1-8.js:11: strict mode: Test262Error: testResult !== true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-9-c-i-8.js:11: Test262Error: testResult !== true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-9-c-i-8.js:11: strict mode: Test262Error: testResult !== true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-3.js:9: Test262Error: f.reduceRight(cb) Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-3.js:9: strict mode: Test262Error: f.reduceRight(cb) Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-4.js:11: Test262Error: f.reduceRight(cb) Expected SameValue(«NaN», «6») to be true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-4.js:11: strict mode: Test262Error: f.reduceRight(cb) Expected SameValue(«NaN», «6») to be true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-6.js:11: Test262Error: f.reduceRight(cb,"4") Expected SameValue(«4undefinedundefinedundefinedundefined», «43210») to be true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-6.js:11: strict mode: Test262Error: f.reduceRight(cb,"4") Expected SameValue(«4undefinedundefinedundefinedundefined», «43210») to be true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-7.js:11: Test262Error: f.reduceRight(cb,"4") Expected SameValue(«4undefined», «41») to be true
+test262/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-7.js:11: strict mode: Test262Error: f.reduceRight(cb,"4") Expected SameValue(«4undefined», «41») to be true
+test262/test/built-ins/Array/prototype/reduceRight/callbackfn-resize-arraybuffer.js:10: Test262Error: Expected [262, 2, 1] and [262, 2] to have the same contents. prevs (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/reduceRight/callbackfn-resize-arraybuffer.js:10: strict mode: Test262Error: Expected [262, 2, 1] and [262, 2] to have the same contents. prevs (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-8.js:11: Test262Error: [, ].some(callbackfn) !== true
+test262/test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-8.js:11: strict mode: Test262Error: [, ].some(callbackfn) !== true
+test262/test/built-ins/Array/prototype/some/callbackfn-resize-arraybuffer.js:16: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/some/callbackfn-resize-arraybuffer.js:16: strict mode: Test262Error: Expected [0, 0, 0] and [0, 0] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/Array/prototype/splice/S15.4.4.12_A4_T3.js:18: Test262Error: #2: Array.prototype[0] = -1; x = []; x.length = 1; var arr = x.splice(0,1); arr[0] === -1. Actual: undefined
+test262/test/built-ins/Array/prototype/splice/S15.4.4.12_A4_T3.js:18: strict mode: Test262Error: #2: Array.prototype[0] = -1; x = []; x.length = 1; var arr = x.splice(0,1); arr[0] === -1. Actual: undefined
+test262/test/built-ins/Array/prototype/unshift/S15.4.4.13_A4_T1.js:18: Test262Error: #4: Array.prototype[0] = -1; x = [1]; x.length = 1; x.unshift(0); delete x[0]; x[0] === -1. Actual: undefined
+test262/test/built-ins/Array/prototype/unshift/S15.4.4.13_A4_T1.js:18: strict mode: Test262Error: #4: Array.prototype[0] = -1; x = [1]; x.length = 1; x.unshift(0); delete x[0]; x[0] === -1. Actual: undefined
+test262/test/built-ins/Array/prototype/unshift/S15.4.4.13_A4_T2.js:18: Test262Error: #3: Array.prototype[0] = 1; x = []; x.length = 1; x.unshift(0); x[1] === 1. Actual: undefined
+test262/test/built-ins/Array/prototype/unshift/S15.4.4.13_A4_T2.js:18: strict mode: Test262Error: #3: Array.prototype[0] = 1; x = []; x.length = 1; x.unshift(0); x[1] === 1. Actual: undefined
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-state-completed-broken-promise.js:53: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-state-completed-broken-promise.js:53: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedStart-broken-promise.js:34: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedStart-broken-promise.js:34: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedYield-broken-promise-try-catch.js:39: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedYield-broken-promise-try-catch.js:39: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/DataView/custom-proto-access-resizes-buffer-invalid-by-length.js:21: Test262Error: Expected SameValue(«null», «function RangeError() {
+    [native code]
+}») to be true
+test262/test/built-ins/DataView/custom-proto-access-resizes-buffer-invalid-by-length.js:21: strict mode: Test262Error: Expected SameValue(«null», «function RangeError() {
+    [native code]
+}») to be true
+test262/test/built-ins/DataView/custom-proto-access-resizes-buffer-invalid-by-offset.js:20: Test262Error: Expected SameValue(«null», «function RangeError() {
+    [native code]
+}») to be true
+test262/test/built-ins/DataView/custom-proto-access-resizes-buffer-invalid-by-offset.js:20: strict mode: Test262Error: Expected SameValue(«null», «function RangeError() {
+    [native code]
+}») to be true
+test262/test/built-ins/DataView/custom-proto-access-resizes-buffer-valid-by-offset.js:20: Test262Error: Expected SameValue(«1», «0») to be true
+test262/test/built-ins/DataView/custom-proto-access-resizes-buffer-valid-by-offset.js:20: strict mode: Test262Error: Expected SameValue(«1», «0») to be true
+test262/test/built-ins/DataView/prototype/byteLength/resizable-array-buffer-auto.js:48: Test262Error: following grow Expected SameValue(«3», «4») to be true
+test262/test/built-ins/DataView/prototype/byteLength/resizable-array-buffer-auto.js:48: strict mode: Test262Error: following grow Expected SameValue(«3», «4») to be true
+test262/test/built-ins/DataView/prototype/byteLength/resizable-array-buffer-fixed.js:39: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/byteLength/resizable-array-buffer-fixed.js:39: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/byteOffset/resizable-array-buffer-fixed.js:39: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/byteOffset/resizable-array-buffer-fixed.js:39: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getBigInt64/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getBigInt64/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getBigUint64/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getBigUint64/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getFloat32/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getFloat32/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getFloat64/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getFloat64/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getInt8/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getInt8/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getInt16/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getInt16/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getInt32/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getInt32/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getUint8/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getUint8/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getUint16/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getUint16/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getUint32/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/getUint32/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setBigInt64/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setBigInt64/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setBigUint64/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setBigUint64/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setFloat32/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setFloat32/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setFloat64/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setFloat64/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setInt8/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setInt8/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setInt16/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setInt16/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setInt32/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setInt32/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setUint8/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setUint8/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setUint16/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setUint16/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setUint32/resizable-buffer.js:35: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/built-ins/DataView/prototype/setUint32/resizable-buffer.js:35: strict mode: Test262Error: Expected a TypeError but got a Test262Error
 test262/test/built-ins/Date/parse/year-zero.js:13: Test262Error: reject minus zero as extended year Expected SameValue(«-62159440500000», «NaN») to be true
 test262/test/built-ins/Date/parse/year-zero.js:13: strict mode: Test262Error: reject minus zero as extended year Expected SameValue(«-62159440500000», «NaN») to be true
 test262/test/built-ins/Date/prototype/setDate/arg-coercion-order.js:28: Test262Error: ToNumber invoked exactly once Expected SameValue(«0», «1») to be true
@@ -35,160 +163,173 @@ test262/test/built-ins/Date/year-zero.js:13: Test262Error: reject minus zero as 
 test262/test/built-ins/Date/year-zero.js:13: strict mode: Test262Error: reject minus zero as extended year Expected SameValue(«-62159440500000», «NaN») to be true
 test262/test/built-ins/Function/internals/Construct/derived-this-uninitialized-realm.js:20: Test262Error: Expected a ReferenceError but got a different error constructor with the same name
 test262/test/built-ins/Function/internals/Construct/derived-this-uninitialized-realm.js:20: strict mode: Test262Error: Expected a ReferenceError but got a different error constructor with the same name
+test262/test/built-ins/JSON/parse/reviver-array-define-prop-err.js:35: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
+test262/test/built-ins/JSON/parse/reviver-array-define-prop-err.js:35: strict mode: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
+test262/test/built-ins/JSON/parse/reviver-array-get-prop-from-prototype.js:30: Test262Error: Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/JSON/parse/reviver-array-get-prop-from-prototype.js:30: strict mode: Test262Error: Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/JSON/parse/reviver-array-non-configurable-prop-create.js:36: Test262Error: Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/JSON/parse/reviver-array-non-configurable-prop-create.js:36: strict mode: Test262Error: Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/JSON/parse/reviver-array-non-configurable-prop-delete.js:35: Test262Error: Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/JSON/parse/reviver-array-non-configurable-prop-delete.js:35: strict mode: Test262Error: Expected SameValue(«undefined», «1») to be true
+test262/test/built-ins/JSON/parse/reviver-object-define-prop-err.js:36: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
+test262/test/built-ins/JSON/parse/reviver-object-define-prop-err.js:36: strict mode: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
+test262/test/built-ins/JSON/stringify/replacer-array-proxy.js:27: Test262Error: Expected SameValue(«{}», «{"b":2}») to be true
+test262/test/built-ins/JSON/stringify/replacer-array-proxy.js:27: strict mode: Test262Error: Expected SameValue(«{}», «{"b":2}») to be true
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-206.js:21: Test262Error: Expected obj[0] to equal 101, actually undefined
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-206.js:21: strict mode: Test262Error: Expected obj[0] to equal 101, actually undefined
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-208.js:27: Test262Error: Expected obj[0] to equal 100, actually undefined
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-208.js:27: strict mode: Test262Error: Expected obj[0] to equal 100, actually undefined
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-247.js:22: Test262Error: Expected obj[0] to equal 36, actually undefined
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-247.js:22: strict mode: Test262Error: Expected obj[0] to equal 36, actually undefined
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-248.js:22: Test262Error: Expected obj[0] to be writable, but was not.
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-248.js:22: strict mode: Test262Error: Expected obj[0] to be writable, but was not.
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-249.js:22: Test262Error: Expected obj[0] to equal 12, actually undefined
+test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-249.js:22: strict mode: Test262Error: Expected obj[0] to equal 12, actually undefined
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-210.js:18: Test262Error: Expected obj[0] to equal 101, actually undefined
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-210.js:18: strict mode: Test262Error: Expected obj[0] to equal 101, actually undefined
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-212.js:25: Test262Error: Expected obj[0] to equal 100, actually undefined
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-212.js:25: strict mode: Test262Error: Expected obj[0] to equal 100, actually undefined
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-258.js:20: Test262Error: Expected obj[0] to equal 200, actually undefined
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-258.js:20: strict mode: Test262Error: Expected obj[0] to equal 200, actually undefined
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-259.js:20: Test262Error: Expected obj[0] to be writable, but was not.
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-259.js:20: strict mode: Test262Error: Expected obj[0] to be writable, but was not.
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-260.js:19: Test262Error: Expected obj[0] to equal 100, actually undefined
+test262/test/built-ins/Object/defineProperty/15.2.3.6-4-260.js:19: strict mode: Test262Error: Expected obj[0] to equal 100, actually undefined
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-42.js:11: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-42.js:11: strict mode: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-43.js:11: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-43.js:11: strict mode: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-47.js:11: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-47.js:11: strict mode: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-48.js:11: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-48.js:11: strict mode: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-b-3.js:11: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-b-3.js:11: strict mode: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-b-5.js:11: Test262Error: Property not found
+test262/test/built-ins/Object/getOwnPropertyNames/15.2.3.4-4-b-5.js:11: strict mode: Test262Error: Property not found
+test262/test/built-ins/Object/keys/15.2.3.14-5-11.js:11: Test262Error: arr[p] Expected SameValue(«undefined», «0») to be true
+test262/test/built-ins/Object/keys/15.2.3.14-5-11.js:11: strict mode: Test262Error: arr[p] Expected SameValue(«undefined», «0») to be true
+test262/test/built-ins/Object/keys/15.2.3.14-5-12.js:11: Test262Error: Property not found
+test262/test/built-ins/Object/keys/15.2.3.14-5-12.js:11: strict mode: Test262Error: Property not found
+test262/test/built-ins/Object/keys/15.2.3.14-5-14.js:11: Test262Error: Property not found
+test262/test/built-ins/Object/keys/15.2.3.14-5-14.js:11: strict mode: Test262Error: Property not found
+test262/test/built-ins/Object/keys/15.2.3.14-5-a-3.js:11: Test262Error: result !== true
+test262/test/built-ins/Object/keys/15.2.3.14-5-a-3.js:11: strict mode: Test262Error: result !== true
+test262/test/built-ins/Proxy/enumerate/removed-does-not-trigger.js:15: Test262Error: Expected [undefined, undefined, undefined] and [1, 2, 3] to have the same contents. 
+test262/test/built-ins/Proxy/enumerate/removed-does-not-trigger.js:15: strict mode: Test262Error: Expected [undefined, undefined, undefined] and [1, 2, 3] to have the same contents. 
+test262/test/built-ins/Proxy/get/trap-is-undefined-target-is-proxy.js:29: Test262Error: Expected [undefined, undefined, undefined] and [1, 2, 3] to have the same contents. 
+test262/test/built-ins/Proxy/get/trap-is-undefined-target-is-proxy.js:29: strict mode: Test262Error: Expected [undefined, undefined, undefined] and [1, 2, 3] to have the same contents. 
+test262/test/built-ins/Proxy/getOwnPropertyDescriptor/trap-is-undefined-target-is-proxy.js:21: Test262Error: object value should be 42; descriptor should be writable
+test262/test/built-ins/Proxy/getOwnPropertyDescriptor/trap-is-undefined-target-is-proxy.js:21: strict mode: Test262Error: object value should be 42; descriptor should be writable
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
+test262/test/built-ins/RegExp/match-indices/indices-array-properties.js:15: Test262Error: descriptor should be writable
+test262/test/built-ins/RegExp/match-indices/indices-array-properties.js:15: strict mode: Test262Error: descriptor should be writable
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-diminuitive.js:20: Test262Error: Expected a RangeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-diminuitive.js:20: strict mode: Test262Error: Expected a RangeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-excessive.js:25: Test262Error: Expected a RangeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-excessive.js:25: strict mode: Test262Error: Expected a RangeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-negative.js:23: Test262Error: Expected a RangeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-negative.js:23: strict mode: Test262Error: Expected a RangeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-object.js:39: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-object.js:39: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-poisoned.js:23: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-poisoned.js:23: strict mode: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-undefined.js:23: Test262Error: Expected SameValue(«undefined», «false») to be true
+test262/test/built-ins/SharedArrayBuffer/options-maxbytelength-undefined.js:23: strict mode: Test262Error: Expected SameValue(«undefined», «false») to be true
+test262/test/built-ins/SharedArrayBuffer/options-non-object.js:21: Test262Error: null Expected SameValue(«undefined», «false») to be true
+test262/test/built-ins/SharedArrayBuffer/options-non-object.js:21: strict mode: Test262Error: null Expected SameValue(«undefined», «false») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/descriptor.js:18: Test262Error: obj should have an own property grow
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/descriptor.js:18: strict mode: Test262Error: obj should have an own property grow
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/extensible.js:15: Test262Error: Expected true but got false
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/extensible.js:15: strict mode: Test262Error: Expected true but got false
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/grow-larger-size.js:25: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/grow-larger-size.js:25: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/grow-same-size.js:25: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/grow-same-size.js:25: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/grow-smaller-size.js:25: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/grow-smaller-size.js:25: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/length.js:30: TypeError: cannot convert to object
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/length.js:30: strict mode: TypeError: cannot convert to object
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/name.js:27: TypeError: cannot convert to object
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/name.js:27: strict mode: TypeError: cannot convert to object
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/new-length-excessive.js:20: Test262Error: Expected a RangeError but got a TypeError
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/new-length-excessive.js:20: strict mode: Test262Error: Expected a RangeError but got a TypeError
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/new-length-negative.js:20: Test262Error: Expected a RangeError but got a TypeError
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/new-length-negative.js:20: strict mode: Test262Error: Expected a RangeError but got a TypeError
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/new-length-non-number.js:30: Test262Error: Expected SameValue(«0», «2») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/new-length-non-number.js:30: strict mode: Test262Error: Expected SameValue(«0», «2») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/nonconstructor.js:21: Test262Error: isConstructor invoked with a non-function value
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/nonconstructor.js:21: strict mode: Test262Error: isConstructor invoked with a non-function value
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/this-is-not-arraybuffer-object.js:18: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/this-is-not-arraybuffer-object.js:18: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/this-is-not-object.js:17: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/this-is-not-object.js:17: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/this-is-not-resizable-arraybuffer-object.js:21: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/grow/this-is-not-resizable-arraybuffer-object.js:21: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/invoked-as-accessor.js:15: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/invoked-as-accessor.js:15: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/invoked-as-func.js:17: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/invoked-as-func.js:17: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/length.js:27: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/length.js:27: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/name.js:19: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/name.js:19: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/prop-desc.js:19: TypeError: cannot read property 'set' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/prop-desc.js:19: strict mode: TypeError: cannot read property 'set' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/return-growable.js:23: Test262Error: Expected SameValue(«undefined», «false») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/return-growable.js:23: strict mode: Test262Error: Expected SameValue(«undefined», «false») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/this-has-no-arraybufferdata-internal.js:19: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/this-has-no-arraybufferdata-internal.js:19: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/this-is-arraybuffer.js:20: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/this-is-arraybuffer.js:20: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/this-is-not-object.js:17: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/growable/this-is-not-object.js:17: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/invoked-as-accessor.js:15: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/invoked-as-accessor.js:15: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/invoked-as-func.js:17: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/invoked-as-func.js:17: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/length.js:27: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/length.js:27: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/name.js:19: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/name.js:19: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/prop-desc.js:19: TypeError: cannot read property 'set' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/prop-desc.js:19: strict mode: TypeError: cannot read property 'set' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/return-maxbytelength-growable.js:20: Test262Error: Expected SameValue(«undefined», «0») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/return-maxbytelength-growable.js:20: strict mode: Test262Error: Expected SameValue(«undefined», «0») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/return-maxbytelength-non-growable.js:20: Test262Error: Expected SameValue(«undefined», «0») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/return-maxbytelength-non-growable.js:20: strict mode: Test262Error: Expected SameValue(«undefined», «0») to be true
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/this-has-no-arraybufferdata-internal.js:19: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/this-has-no-arraybufferdata-internal.js:19: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/this-is-arraybuffer.js:20: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/this-is-arraybuffer.js:20: strict mode: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/this-is-not-object.js:17: TypeError: cannot read property 'get' of undefined
+test262/test/built-ins/SharedArrayBuffer/prototype/maxByteLength/this-is-not-object.js:17: strict mode: TypeError: cannot read property 'get' of undefined
 test262/test/built-ins/String/prototype/localeCompare/15.5.4.9_CE.js:62: Test262Error: String.prototype.localeCompare considers ö (\u006f\u0308) ≠ ö (\u00f6).
 test262/test/built-ins/String/prototype/localeCompare/15.5.4.9_CE.js:62: strict mode: Test262Error: String.prototype.localeCompare considers ö (\u006f\u0308) ≠ ö (\u00f6).
-test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-on-get-src-value-no-throw.js:30: TypeError: out-of-bound numeric index (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-on-get-src-value-no-throw.js:30: strict mode: TypeError: out-of-bound numeric index (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/sort/sort-tonumber.js:30: TypeError: ArrayBuffer is detached (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/sort/sort-tonumber.js:30: strict mode: TypeError: ArrayBuffer is detached (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/ignores-species.js:26: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/ignores-species.js:26: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/immutable.js:14: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/immutable.js:14: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/length-property-ignored.js:21: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/length-property-ignored.js:21: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/length.js:30: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/length.js:30: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/name.js:28: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/name.js:28: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/property-descriptor.js:18: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/property-descriptor.js:18: strict mode: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/toReversed/not-a-constructor.js:25: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/TypedArray/prototype/toReversed/not-a-constructor.js:25: strict mode: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/TypedArray/prototype/toSorted/ignores-species.js:26: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toSorted/ignores-species.js:26: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toSorted/immutable.js:14: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toSorted/immutable.js:14: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toSorted/length-property-ignored.js:21: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toSorted/length-property-ignored.js:21: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toSorted/metadata/length.js:30: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toSorted/metadata/length.js:30: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toSorted/metadata/name.js:28: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toSorted/metadata/name.js:28: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toSorted/metadata/property-descriptor.js:18: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/toSorted/metadata/property-descriptor.js:18: strict mode: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/toSorted/not-a-constructor.js:25: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/TypedArray/prototype/toSorted/not-a-constructor.js:25: strict mode: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/TypedArray/prototype/with/BigInt/early-type-coercion-bigint.js:29: TypeError: not a function (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArray/prototype/with/BigInt/early-type-coercion-bigint.js:29: strict mode: TypeError: not a function (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArray/prototype/with/early-type-coercion.js:29: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/early-type-coercion.js:29: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/ignores-species.js:26: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/ignores-species.js:26: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/immutable.js:14: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/immutable.js:14: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-bigger-or-eq-than-length.js:22: Test262Error: Expected a RangeError but got a TypeError (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-bigger-or-eq-than-length.js:22: strict mode: Test262Error: Expected a RangeError but got a TypeError (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-casted-to-number.js:24: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-casted-to-number.js:24: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-negative.js:24: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-negative.js:24: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-smaller-than-minus-length.js:22: Test262Error: Expected a RangeError but got a TypeError (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-smaller-than-minus-length.js:22: strict mode: Test262Error: Expected a RangeError but got a TypeError (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/length-property-ignored.js:21: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/length-property-ignored.js:21: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/metadata/length.js:30: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/with/metadata/length.js:30: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/with/metadata/name.js:28: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/with/metadata/name.js:28: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/with/metadata/property-descriptor.js:18: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/with/metadata/property-descriptor.js:18: strict mode: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/with/not-a-constructor.js:25: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/TypedArray/prototype/with/not-a-constructor.js:25: strict mode: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/TypedArrayConstructors/ctors/no-species.js:16: Test262Error: unreachable
-test262/test/built-ins/TypedArrayConstructors/ctors/no-species.js:16: strict mode: Test262Error: unreachable
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/detached-buffer.js:46: Test262Error:  (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/detached-buffer.js:46: strict mode: Test262Error:  (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/tonumber-value-detached-buffer.js:40: Test262Error: Reflect.defineProperty(ta, 0, {value: {valueOf() {$DETACHBUFFER(ta.buffer); return 42n;}}}) must return true Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/tonumber-value-detached-buffer.js:40: strict mode: Test262Error: Reflect.defineProperty(ta, 0, {value: {valueOf() {$DETACHBUFFER(ta.buffer); return 42n;}}}) must return true Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/detached-buffer.js:47: Test262Error:  (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/detached-buffer.js:47: strict mode: Test262Error:  (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/tonumber-value-detached-buffer.js:42: Test262Error: Reflect.defineProperty(ta, 0, {value: {valueOf() {$DETACHBUFFER(ta.buffer); return 42;}}} ) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/tonumber-value-detached-buffer.js:42: strict mode: Test262Error: Reflect.defineProperty(ta, 0, {value: {valueOf() {$DETACHBUFFER(ta.buffer); return 42;}}} ) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/detached-buffer-realm.js:37: strict mode: TypeError: out-of-bound numeric index (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/detached-buffer.js:34: TypeError: cannot convert bigint to number (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/detached-buffer.js:32: strict mode: TypeError: out-of-bound numeric index (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-minus-zero.js:20: Test262Error: Reflect.set("new TA([42n])", "-0", 1n) must return true Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-minus-zero.js:20: strict mode: Test262Error: Reflect.set("new TA([42n])", "-0", 1n) must return true Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-not-integer.js:21: Test262Error: Reflect.set("new TA([42n])", "1.1", 1n) must return true Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-not-integer.js:21: strict mode: Test262Error: Reflect.set("new TA([42n])", "1.1", 1n) must return true Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-out-of-bounds.js:27: Test262Error: Reflect.set("new TA([42n])", "-1", 1n) must return false Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-out-of-bounds.js:27: strict mode: Test262Error: Reflect.set("new TA([42n])", "-1", 1n) must return false Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/tonumber-value-detached-buffer.js:24: Test262Error: Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/tonumber-value-detached-buffer.js:24: strict mode: Test262Error: Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/detached-buffer-realm.js:37: strict mode: TypeError: out-of-bound numeric index (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/detached-buffer.js:32: strict mode: TypeError: out-of-bound numeric index (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-minus-zero.js:22: Test262Error: Reflect.set(sample, "-0", 1) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-minus-zero.js:22: strict mode: Test262Error: Reflect.set(sample, "-0", 1) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-not-integer.js:22: Test262Error: Reflect.set(sample, "1.1", 1) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-not-integer.js:22: strict mode: Test262Error: Reflect.set(sample, "1.1", 1) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds.js:22: Test262Error: Reflect.set(sample, "-1", 1) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds.js:22: strict mode: Test262Error: Reflect.set(sample, "-1", 1) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-detached-buffer.js:39: Test262Error: Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-detached-buffer.js:39: strict mode: Test262Error: Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
-test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: Test262Error: Expected a DummyError but got a TypeError
-test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: strict mode: Test262Error: Expected a DummyError but got a TypeError
-test262/test/language/expressions/assignment/target-member-computed-reference-undefined.js:32: Test262Error: Expected a DummyError but got a TypeError
-test262/test/language/expressions/assignment/target-member-computed-reference-undefined.js:32: strict mode: Test262Error: Expected a DummyError but got a TypeError
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-add.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «3») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-add.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «3») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-bitand.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «0») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-bitand.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «0») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-bitor.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «15») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-bitor.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «15») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-bitxor.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «257») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-bitxor.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «257») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-div.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «0.5») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-div.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «0.5») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-exp.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1000») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-exp.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1000») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-lshift.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «96») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-lshift.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «96») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-mod.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-mod.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-mult.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «6») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-mult.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «6») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-rshift.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «3») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-rshift.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «3») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-srshift.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «3») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-srshift.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «3») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-sub.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1») to be true
-test262/test/language/expressions/compound-assignment/left-hand-side-private-reference-accessor-property-sub.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1») to be true
-test262/test/language/expressions/delete/super-property-null-base.js:26: Test262Error: Expected a ReferenceError but got a TypeError
-test262/test/language/expressions/delete/super-property-null-base.js:26: strict mode: Test262Error: Expected a ReferenceError but got a TypeError
-test262/test/language/expressions/dynamic-import/usage-from-eval.js:26: TypeError: $DONE() not called
-test262/test/language/expressions/dynamic-import/usage-from-eval.js:26: strict mode: TypeError: $DONE() not called
-test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-and.js:60: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «false») to be true
-test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-and.js:60: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «false») to be true
-test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-nullish.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1») to be true
-test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-nullish.js:59: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1») to be true
-test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-or.js:60: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «true») to be true
-test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-or.js:60: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «true») to be true
-test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:21: TypeError: cannot read property 'c' of undefined
-test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:15: strict mode: TypeError: cannot read property '_b' of undefined
-test262/test/language/global-code/script-decl-lex-var-declared-via-eval-sloppy.js:13: Test262Error: variable Expected a SyntaxError to be thrown but no exception was thrown at all
-test262/test/language/module-code/namespace/internals/define-own-property.js:30: Test262Error: Object.freeze: 1 Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/async-generator/yield-star-promise-not-unwrapped.js:25: TypeError: $DONE() not called
-test262/test/language/statements/async-generator/yield-star-promise-not-unwrapped.js:25: strict mode: TypeError: $DONE() not called
-test262/test/language/statements/async-generator/yield-star-return-then-getter-ticks.js:131: TypeError: $DONE() not called
-test262/test/language/statements/async-generator/yield-star-return-then-getter-ticks.js:131: strict mode: TypeError: $DONE() not called
-test262/test/language/statements/class/elements/private-method-double-initialisation-get-and-set.js:33: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/class/elements/private-method-double-initialisation-get-and-set.js:33: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/class/elements/private-method-double-initialisation-get.js:32: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/class/elements/private-method-double-initialisation-get.js:32: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/class/elements/private-method-double-initialisation-set.js:32: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/class/elements/private-method-double-initialisation-set.js:32: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/class/elements/private-method-double-initialisation.js:32: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/class/elements/private-method-double-initialisation.js:32: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/language/statements/class/private-non-static-getter-static-setter-early-error.js:13: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/class/private-non-static-getter-static-setter-early-error.js:13: strict mode: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/class/private-non-static-setter-static-getter-early-error.js:13: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/class/private-non-static-setter-static-getter-early-error.js:13: strict mode: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/class/private-static-getter-non-static-setter-early-error.js:13: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/class/private-static-getter-non-static-setter-early-error.js:13: strict mode: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/class/private-static-setter-non-static-getter-early-error.js:13: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/class/private-static-setter-non-static-getter-early-error.js:13: strict mode: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/for-of/head-lhs-async-invalid.js:14: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/statements/for-of/head-lhs-async-invalid.js:14: strict mode: unexpected error type: Test262: This statement should not be evaluated.
+test262/test/built-ins/TypedArray/prototype/at/BigInt/return-abrupt-from-this-out-of-bounds.js:52: Test262Error: Expected a TypeError but got a Test262Error (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/at/BigInt/return-abrupt-from-this-out-of-bounds.js:52: strict mode: Test262Error: Expected a TypeError but got a Test262Error (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/at/return-abrupt-from-this-out-of-bounds.js:52: Test262Error: Expected a TypeError but got a Test262Error (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/at/return-abrupt-from-this-out-of-bounds.js:52: strict mode: Test262Error: Expected a TypeError but got a Test262Error (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/byteLength/BigInt/resizable-array-buffer-fixed.js:18: Test262Error: following shrink (out of bounds) Expected SameValue(«16», «0») to be true (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/byteLength/BigInt/resizable-array-buffer-fixed.js:18: strict mode: Test262Error: following shrink (out of bounds) Expected SameValue(«16», «0») to be true (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/byteLength/resizable-array-buffer-fixed.js:18: Test262Error: following shrink (out of bounds) Expected SameValue(«16», «0») to be true (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/byteLength/resizable-array-buffer-fixed.js:18: strict mode: Test262Error: following shrink (out of bounds) Expected SameValue(«16», «0») to be true (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/byteOffset/BigInt/resizable-array-buffer-fixed.js:18: Test262Error: following shrink (out of bounds) Expected SameValue(«8», «0») to be true (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/byteOffset/BigInt/resizable-array-buffer-fixed.js:18: strict mode: Test262Error: following shrink (out of bounds) Expected SameValue(«8», «0») to be true (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/byteOffset/resizable-array-buffer-fixed.js:18: Test262Error: following shrink (out of bounds) Expected SameValue(«8», «0») to be true (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/byteOffset/resizable-array-buffer-fixed.js:18: strict mode: Test262Error: following shrink (out of bounds) Expected SameValue(«8», «0») to be true (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/copyWithin/BigInt/return-abrupt-from-this-out-of-bounds.js:52: Test262Error: Expected a TypeError but got a Test262Error (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/copyWithin/BigInt/return-abrupt-from-this-out-of-bounds.js:52: strict mode: Test262Error: Expected a TypeError but got a Test262Error (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/copyWithin/return-abrupt-from-this-out-of-bounds.js:52: Test262Error: Expected a TypeError but got a Test262Error (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/copyWithin/return-abrupt-from-this-out-of-bounds.js:52: strict mode: Test262Error: Expected a TypeError but got a Test262Error (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/entries/BigInt/return-abrupt-from-this-out-of-bounds.js:52: Test262Error: Expected a TypeError but got a Test262Error (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/entries/BigInt/return-abrupt-from-this-out-of-bounds.js:52: strict mode: Test262Error: Expected a TypeError but got a Test262Error (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/entries/return-abrupt-from-this-out-of-bounds.js:52: Test262Error: Expected a TypeError but got a Test262Error (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/entries/return-abrupt-from-this-out-of-bounds.js:52: strict mode: Test262Error: Expected a TypeError but got a Test262Error (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/every/BigInt/return-abrupt-from-this-out-of-bounds.js:52: Test262Error: Expected a TypeError but got a Test262Error (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/every/BigInt/return-abrupt-from-this-out-of-bounds.js:52: strict mode: Test262Error: Expected a TypeError but got a Test262Error (Testing with BigInt64Array.)
+test262/test/built-ins/TypedArray/prototype/every/callbackfn-resize.js:16: Test262Error: Expected [0, 0, 0] and [0, 0, undefined] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/every/callbackfn-resize.js:16: strict mode: Test262Error: Expected [0, 0, 0] and [0, 0, undefined] to have the same contents. elements (shrink) (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/every/return-abrupt-from-this-out-of-bounds.js:52: Test262Error: Expected a TypeError but got a Test262Error (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/every/return-abrupt-from-this-out-of-bounds.js:52: strict mode: Test262Error: Expected a TypeError but got a Test262Error (Testing with Float64Array.)

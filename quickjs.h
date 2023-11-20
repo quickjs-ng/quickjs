@@ -610,6 +610,8 @@ static inline void JS_FreeValueRT(JSRuntime *rt, JSValue v)
 {
     if (JS_VALUE_HAS_REF_COUNT(v)) {
         JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
+        if (!p)
+            return;
         if (--p->ref_count <= 0) {
             __JS_FreeValueRT(rt, v);
         }
