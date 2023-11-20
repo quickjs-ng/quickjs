@@ -278,6 +278,21 @@ static inline void dbuf_set_error(DynBuf *s)
 int unicode_to_utf8(uint8_t *buf, unsigned int c);
 int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp);
 
+static inline BOOL is_hi_surrogate(uint32_t c)
+{
+    return 54 == (c >> 10); // 0xD800-0xDBFF
+}
+
+static inline BOOL is_lo_surrogate(uint32_t c)
+{
+    return 55 == (c >> 10); // 0xDC00-0xDFFF
+}
+
+static inline uint32_t from_surrogate(uint32_t hi, uint32_t lo)
+{
+    return 65536 + 1024 * (hi & 1023) + (lo & 1023);
+}
+
 static inline int from_hex(int c)
 {
     if (c >= '0' && c <= '9')

@@ -550,7 +550,7 @@ int lre_parse_escape(const uint8_t **pp, int allow_utf16)
                     }
                     c = (c << 4) | h;
                 }
-                if (c >= 0xd800 && c < 0xdc00 &&
+                if (is_hi_surrogate(c) &&
                     allow_utf16 == 2 && p[0] == '\\' && p[1] == 'u') {
                     /* convert an escaped surrogate pair into a
                        unicode char */
@@ -561,9 +561,9 @@ int lre_parse_escape(const uint8_t **pp, int allow_utf16)
                             break;
                         c1 = (c1 << 4) | h;
                     }
-                    if (i == 4 && c1 >= 0xdc00 && c1 < 0xe000) {
+                    if (i == 4 && is_lo_surrogate(c1)) {
                         p += 6;
-                        c = (((c & 0x3ff) << 10) | (c1 & 0x3ff)) + 0x10000;
+                        c = from_surrogate(c, c1);
                     }
                 }
             }
@@ -1092,10 +1092,10 @@ static int re_parse_group_name(char *buf, int buf_size, const uint8_t **pp)
             break;
         } else if (c >= 128) {
             c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-            if (c >= 0xD800 && c <= 0xDBFF) {
+            if (is_hi_surrogate(c)) {
                 d = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
-                if (d >= 0xDC00 && d <= 0xDFFF) {
-                    c = 0x10000 + 0x400 * (c - 0xD800) + (d - 0xDC00);
+                if (is_lo_surrogate(d)) {
+                    c = from_surrogate(c, d);
                     p = p1;
                 }
             }
@@ -1935,88 +1935,81 @@ static BOOL is_word_char(uint32_t c)
         if (cbuf_type == 0) {                                           \
             c = *cptr++;                                                \
         } else {                                                        \
-            uint32_t __c1;                                              \
-            c = *(uint16_t *)cptr;                                      \
-            cptr += 2;                                                  \
-            if (c >= 0xd800 && c < 0xdc00 &&                            \
-                cbuf_type == 2 && cptr < cbuf_end) {                    \
-                __c1 = *(uint16_t *)cptr;                               \
-                if (__c1 >= 0xdc00 && __c1 < 0xe000) {                  \
-                    c = (((c & 0x3ff) << 10) | (__c1 & 0x3ff)) + 0x10000; \
-                    cptr += 2;                                          \
-                }                                                       \
-            }                                                           \
+            const uint16_t *_p = (uint16_t *)cptr;                      \
+            const uint16_t *_end = (uint16_t *)cbuf_end;                \
+            c = *_p++;                                                  \
+            if (is_hi_surrogate(c))                                     \
+                if (cbuf_type == 2)                                     \
+                    if (_p < _end)                                      \
+                        if (is_lo_surrogate(*_p))                       \
+                            c = from_surrogate(c, *_p++);               \
+            cptr = (void *) _p;                                         \
         }                                                               \
     } while (0)
 
-#define PEEK_CHAR(c, cptr, cbuf_end)             \
-    do {                                         \
-        if (cbuf_type == 0) {                    \
-            c = cptr[0];                         \
-        } else {                                 \
-            uint32_t __c1;                                              \
-            c = ((uint16_t *)cptr)[0];                                  \
-            if (c >= 0xd800 && c < 0xdc00 &&                            \
-                cbuf_type == 2 && (cptr + 2) < cbuf_end) {              \
-                __c1 = ((uint16_t *)cptr)[1];                           \
-                if (__c1 >= 0xdc00 && __c1 < 0xe000) {                  \
-                    c = (((c & 0x3ff) << 10) | (__c1 & 0x3ff)) + 0x10000; \
-                }                                                       \
-            }                                                           \
-        }                                        \
-    } while (0)
-
-#define PEEK_PREV_CHAR(c, cptr, cbuf_start)                 \
-    do {                                         \
-        if (cbuf_type == 0) {                    \
-            c = cptr[-1];                        \
-        } else {                                 \
-            uint32_t __c1;                                              \
-            c = ((uint16_t *)cptr)[-1];                                 \
-            if (c >= 0xdc00 && c < 0xe000 &&                            \
-                cbuf_type == 2 && (cptr - 4) >= cbuf_start) {              \
-                __c1 = ((uint16_t *)cptr)[-2];                          \
-                if (__c1 >= 0xd800 && __c1 < 0xdc00 ) {                 \
-                    c = (((__c1 & 0x3ff) << 10) | (c & 0x3ff)) + 0x10000; \
-                }                                                       \
-            }                                                           \
+#define PEEK_CHAR(c, cptr, cbuf_end)                                    \
+    do {                                                                \
+        if (cbuf_type == 0) {                                           \
+            c = cptr[0];                                                \
+        } else {                                                        \
+            const uint16_t *_p = (uint16_t *)cptr;                      \
+            const uint16_t *_end = (uint16_t *)cbuf_end;                \
+            c = *_p++;                                                  \
+            if (is_hi_surrogate(c))                                     \
+                if (cbuf_type == 2)                                     \
+                    if (_p < _end)                                      \
+                        if (is_lo_surrogate(*_p))                       \
+                            c = from_surrogate(c, *_p++);               \
         }                                                               \
     } while (0)
 
-#define GET_PREV_CHAR(c, cptr, cbuf_start)       \
-    do {                                         \
-        if (cbuf_type == 0) {                    \
-            cptr--;                              \
-            c = cptr[0];                         \
-        } else {                                 \
-            uint32_t __c1;                                              \
-            cptr -= 2;                                                  \
-            c = ((uint16_t *)cptr)[0];                                 \
-            if (c >= 0xdc00 && c < 0xe000 &&                            \
-                cbuf_type == 2 && cptr > cbuf_start) {                  \
-                __c1 = ((uint16_t *)cptr)[-1];                          \
-                if (__c1 >= 0xd800 && __c1 < 0xdc00 ) {                 \
-                    cptr -= 2;                                          \
-                    c = (((__c1 & 0x3ff) << 10) | (c & 0x3ff)) + 0x10000; \
-                }                                                       \
-            }                                                           \
+#define PEEK_PREV_CHAR(c, cptr, cbuf_start)                             \
+    do {                                                                \
+        if (cbuf_type == 0) {                                           \
+            c = cptr[-1];                                               \
+        } else {                                                        \
+            const uint16_t *_p = (uint16_t *)cptr - 1;                  \
+            const uint16_t *_start = (uint16_t *)cbuf_start;            \
+            c = *_p;                                                    \
+            if (is_lo_surrogate(c))                                     \
+                if (cbuf_type == 2)                                     \
+                    if (_p > _start)                                    \
+                        if (is_hi_surrogate(*--_p))                     \
+                            c = from_surrogate(*_p, c);                 \
         }                                                               \
     } while (0)
 
-#define PREV_CHAR(cptr, cbuf_start)       \
-    do {                                  \
-        if (cbuf_type == 0) {             \
-            cptr--;                       \
-        } else {                          \
-            cptr -= 2;                          \
-            if (cbuf_type == 2) {                                       \
-                c = ((uint16_t *)cptr)[0];                              \
-                if (c >= 0xdc00 && c < 0xe000 && cptr > cbuf_start) {   \
-                    c = ((uint16_t *)cptr)[-1];                         \
-                    if (c >= 0xd800 && c < 0xdc00)                      \
-                        cptr -= 2;                                      \
-                }                                                       \
-            }                                                           \
+#define GET_PREV_CHAR(c, cptr, cbuf_start)                              \
+    do {                                                                \
+        if (cbuf_type == 0) {                                           \
+            cptr--;                                                     \
+            c = cptr[0];                                                \
+        } else {                                                        \
+            const uint16_t *_p = (uint16_t *)cptr - 1;                  \
+            const uint16_t *_start = (uint16_t *)cbuf_start;            \
+            c = *_p;                                                    \
+            if (is_lo_surrogate(c))                                     \
+                if (cbuf_type == 2)                                     \
+                    if (_p > _start)                                    \
+                        if (is_hi_surrogate(*--_p))                     \
+                            c = from_surrogate(*_p, c);                 \
+            cptr = (void *) _p;                                         \
+        }                                                               \
+    } while (0)
+
+#define PREV_CHAR(cptr, cbuf_start)                                     \
+    do {                                                                \
+        if (cbuf_type == 0) {                                           \
+            cptr--;                                                     \
+        } else {                                                        \
+            const uint16_t *_p = (uint16_t *)cptr - 1;                  \
+            const uint16_t *_start = (uint16_t *)cbuf_start;            \
+            if (is_lo_surrogate(*_p))                                   \
+                if (cbuf_type == 2)                                     \
+                    if (_p > _start)                                    \
+                        if (is_hi_surrogate(_p[-1]))                    \
+                            _p--;                                       \
+            cptr = (void *) _p;                                         \
         }                                                               \
     } while (0)
 
