@@ -1516,12 +1516,13 @@ static const JSCFunctionListEntry js_std_file_proto_funcs[] = {
 static int js_std_init(JSContext *ctx, JSModuleDef *m)
 {
     JSValue proto;
+    JSRuntime *rt = JS_GetRuntime(ctx);
 
     /* FILE class */
     /* the class ID is created once */
-    JS_NewClassID(&js_std_file_class_id);
+    JS_NewClassID(rt, &js_std_file_class_id);
     /* the class is created once per runtime */
-    JS_NewClass(JS_GetRuntime(ctx), js_std_file_class_id, &js_std_file_class);
+    JS_NewClass(rt, js_std_file_class_id, &js_std_file_class);
     proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, js_std_file_proto_funcs,
                                countof(js_std_file_proto_funcs));
@@ -3658,20 +3659,20 @@ static const JSCFunctionListEntry js_os_funcs[] = {
 
 static int js_os_init(JSContext *ctx, JSModuleDef *m)
 {
+    JSRuntime *rt = JS_GetRuntime(ctx);
     os_poll_func = js_os_poll;
 
     /* OSTimer class */
-    JS_NewClassID(&js_os_timer_class_id);
-    JS_NewClass(JS_GetRuntime(ctx), js_os_timer_class_id, &js_os_timer_class);
+    JS_NewClassID(rt, &js_os_timer_class_id);
+    JS_NewClass(rt, js_os_timer_class_id, &js_os_timer_class);
 
 #ifdef USE_WORKER
     {
-        JSRuntime *rt = JS_GetRuntime(ctx);
         JSThreadState *ts = JS_GetRuntimeOpaque(rt);
         JSValue proto, obj;
         /* Worker class */
-        JS_NewClassID(&js_worker_class_id);
-        JS_NewClass(JS_GetRuntime(ctx), js_worker_class_id, &js_worker_class);
+        JS_NewClassID(rt, &js_worker_class_id);
+        JS_NewClass(rt, js_worker_class_id, &js_worker_class);
         proto = JS_NewObject(ctx);
         JS_SetPropertyFunctionList(ctx, proto, js_worker_proto_funcs, countof(js_worker_proto_funcs));
 

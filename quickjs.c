@@ -228,6 +228,7 @@ struct JSRuntime {
     JSAtomStruct **atom_array;
     int atom_free_index; /* 0 = none */
 
+    JSClassID js_class_id_alloc; /* counter for user defined classes */
     int class_count;    /* size of class_array */
     JSClass *class_array;
 
@@ -1149,7 +1150,6 @@ static const JSClassExoticMethods js_arguments_exotic_methods;
 static const JSClassExoticMethods js_string_exotic_methods;
 static const JSClassExoticMethods js_proxy_exotic_methods;
 static const JSClassExoticMethods js_module_ns_exotic_methods;
-static JSClassID js_class_id_alloc = JS_CLASS_INIT_COUNT;
 
 static void js_trigger_gc(JSRuntime *rt, size_t size)
 {
@@ -1472,6 +1472,8 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     rt->class_array[JS_CLASS_GENERATOR_FUNCTION].call = js_generator_function_call;
     if (init_shape_hash(rt))
         goto fail;
+
+    rt->js_class_id_alloc = JS_CLASS_INIT_COUNT;
 
     rt->stack_size = JS_DEFAULT_STACK_SIZE;
     JS_UpdateStackTop(rt);
@@ -3172,13 +3174,11 @@ static inline BOOL JS_IsEmptyString(JSValueConst v)
 /* JSClass support */
 
 /* a new class ID is allocated if *pclass_id != 0 */
-JSClassID JS_NewClassID(JSClassID *pclass_id)
+JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id)
 {
-    JSClassID class_id;
-    /* XXX: make it thread safe */
-    class_id = *pclass_id;
+    JSClassID class_id = *pclass_id;
     if (class_id == 0) {
-        class_id = js_class_id_alloc++;
+        class_id = rt->js_class_id_alloc++;
         *pclass_id = class_id;
     }
     return class_id;
