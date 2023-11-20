@@ -3501,10 +3501,10 @@ static int string_getc(const JSString *p, int *pidx)
     idx = *pidx;
     if (p->is_wide_char) {
         c = p->u.str16[idx++];
-        if (c >= 0xd800 && c < 0xdc00 && idx < p->len) {
+        if (is_hi_surrogate(c) && idx < p->len) {
             c1 = p->u.str16[idx];
-            if (c1 >= 0xdc00 && c1 < 0xe000) {
-                c = (((c & 0x3ff) << 10) | (c1 & 0x3ff)) + 0x10000;
+            if (is_lo_surrogate(c1)) {
+                c = from_surrogate(c, c1);
                 idx++;
             }
         }
@@ -3842,13 +3842,12 @@ const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValueConst val1, BO
             if (c < 0x80) {
                 *q++ = c;
             } else {
-                if (c >= 0xd800 && c < 0xdc00) {
+                if (is_hi_surrogate(c)) {
                     if (pos < len && !cesu8) {
                         c1 = src[pos];
-                        if (c1 >= 0xdc00 && c1 < 0xe000) {
+                        if (is_lo_surrogate(c1)) {
                             pos++;
-                            /* surrogate pair */
-                            c = (((c & 0x3ff) << 10) | (c1 & 0x3ff)) + 0x10000;
+                            c = from_surrogate(c, c1);
                         } else {
                             /* Keep unmatched surrogate code points */
                             /* c = 0xfffd; */ /* error */
@@ -11087,7 +11086,7 @@ static JSValue JS_ToQuotedString(JSContext *ctx, JSValueConst val1)
                 goto fail;
             break;
         default:
-            if (c < 32 || (c >= 0xd800 && c < 0xe000)) {
+            if (c < 32 || is_hi_surrogate(c) || is_lo_surrogate(c)) {
                 snprintf(buf, sizeof(buf), "\\u%04x", c);
                 if (string_buffer_puts8(b, buf))
                     goto fail;
@@ -39098,10 +39097,10 @@ static int string_prevc(JSString *p, int *pidx)
     idx--;
     if (p->is_wide_char) {
         c = p->u.str16[idx];
-        if (c >= 0xdc00 && c < 0xe000 && idx > 0) {
+        if (is_lo_surrogate(c) && idx > 0) {
             c1 = p->u.str16[idx - 1];
-            if (c1 >= 0xd800 && c1 <= 0xdc00) {
-                c = (((c1 & 0x3ff) << 10) | (c & 0x3ff)) + 0x10000;
+            if (is_hi_surrogate(c1)) {
+                c = from_surrogate(c1, c);
                 idx--;
             }
         }
@@ -45453,7 +45452,7 @@ static JSValue js_global_decodeURI(JSContext *ctx, JSValueConst this_val,
                     c = (c << 6) | (c1 & 0x3f);
                 }
                 if (c < c_min || c > 0x10FFFF ||
-                    (c >= 0xd800 && c < 0xe000)) {
+                    is_hi_surrogate(c) || is_lo_surrogate(c)) {
                     js_throw_URIError(ctx, "malformed UTF-8");
                     goto fail;
                 }
@@ -45528,21 +45527,21 @@ static JSValue js_global_encodeURI(JSContext *ctx, JSValueConst this_val,
         if (isURIUnescaped(c, isComponent)) {
             string_buffer_putc16(b, c);
         } else {
-            if (c >= 0xdc00 && c <= 0xdfff) {
+            if (is_lo_surrogate(c)) {
                 js_throw_URIError(ctx, "invalid character");
                 goto fail;
-            } else if (c >= 0xd800 && c <= 0xdbff) {
+            } else if (is_hi_surrogate(c)) {
                 if (k >= p->len) {
                     js_throw_URIError(ctx, "expecting surrogate pair");
                     goto fail;
                 }
                 c1 = string_get(p, k);
                 k++;
-                if (c1 < 0xdc00 || c1 > 0xdfff) {
+                if (!is_lo_surrogate(c1)) {
                     js_throw_URIError(ctx, "expecting surrogate pair");
                     goto fail;
                 }
-                c = (((c & 0x3ff) << 10) | (c1 & 0x3ff)) + 0x10000;
+                c = from_surrogate(c, c1);
             }
             if (c < 0x80) {
                 encodeURI_hex(b, c);
