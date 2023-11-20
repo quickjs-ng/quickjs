@@ -65,11 +65,7 @@ static inline int lre_js_is_ident_first(int c)
     if ((uint32_t)c < 128) {
         return (lre_id_start_table_ascii[c >> 5] >> (c & 31)) & 1;
     } else {
-#ifdef CONFIG_ALL_UNICODE
         return lre_is_id_start(c);
-#else
-        return !lre_is_space(c);
-#endif
     }
 }
 
@@ -79,11 +75,7 @@ static inline int lre_js_is_ident_next(int c)
         return (lre_id_continue_table_ascii[c >> 5] >> (c & 31)) & 1;
     } else {
         /* ZWNJ and ZWJ are accepted in identifiers */
-#ifdef CONFIG_ALL_UNICODE
         return lre_is_id_continue(c) || c == 0x200C || c == 0x200D;
-#else
-        return !lre_is_space(c) || c == 0x200C || c == 0x200D;
-#endif
     }
 }
 

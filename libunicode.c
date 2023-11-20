@@ -426,8 +426,6 @@ int cr_invert(CharRange *cr)
     return 0;
 }
 
-#ifdef CONFIG_ALL_UNICODE
-
 BOOL lre_is_id_start(uint32_t c)
 {
     return lre_is_in_table(c, unicode_prop_ID_Start_table,
@@ -1504,5 +1502,3 @@ int unicode_prop(CharRange *cr, const char *prop_name)
     }
     return ret;
 }
-
-#endif /* CONFIG_ALL_UNICODE */

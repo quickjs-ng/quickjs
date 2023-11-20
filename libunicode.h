@@ -28,9 +28,6 @@
 
 #define LRE_BOOL  int       /* for documentation purposes */
 
-/* define it to include all the unicode tables (40KB larger) */
-#define CONFIG_ALL_UNICODE
-
 #define LRE_CC_RES_LEN_MAX 3
 
 typedef enum {
@@ -101,8 +98,6 @@ int cr_op(CharRange *cr, const uint32_t *a_pt, int a_len,
 
 int cr_invert(CharRange *cr);
 
-#ifdef CONFIG_ALL_UNICODE
-
 LRE_BOOL lre_is_id_start(uint32_t c);
 LRE_BOOL lre_is_id_continue(uint32_t c);
 
@@ -116,8 +111,6 @@ int unicode_script(CharRange *cr,
                    const char *script_name, LRE_BOOL is_ext);
 int unicode_general_category(CharRange *cr, const char *gc_name);
 int unicode_prop(CharRange *cr, const char *prop_name);
-
-#endif /* CONFIG_ALL_UNICODE */
 
 #undef LRE_BOOL
 

@@ -2987,14 +2987,12 @@ int main(int argc, char **argv)
         dump_case_conv_table(fo);
         compute_internal_props();
         build_flags_tables(fo);
-        fprintf(fo, "#ifdef CONFIG_ALL_UNICODE\n\n");
         build_cc_table(fo);
         build_decompose_table(fo);
         build_general_category_table(fo);
         build_script_table(fo);
         build_script_ext_table(fo);
         build_prop_list_table(fo);
-        fprintf(fo, "#endif /* CONFIG_ALL_UNICODE */\n");
         fclose(fo);
     }
     return 0;

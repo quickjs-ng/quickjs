@@ -600,7 +600,6 @@ int lre_parse_escape(const uint8_t **pp, int allow_utf16)
     return c;
 }
 
-#ifdef CONFIG_ALL_UNICODE
 /* XXX: we use the same chars for name and value */
 static BOOL is_unicode_char(int c)
 {
@@ -703,7 +702,6 @@ static int parse_unicode_property(REParseState *s, CharRange *cr,
  out_of_memory:
     return re_parse_out_of_memory(s);
 }
-#endif /* CONFIG_ALL_UNICODE */
 
 /* return -1 if error otherwise the character or a class range
    (CLASS_RANGE_BASE). In case of class range, 'cr' is
@@ -763,7 +761,6 @@ static int get_class_atom(REParseState *s, CharRange *cr,
                 c = '\\';
             }
             break;
-#ifdef CONFIG_ALL_UNICODE
         case 'p':
         case 'P':
             if (s->is_utf16) {
@@ -773,7 +770,6 @@ static int get_class_atom(REParseState *s, CharRange *cr,
                 break;
             }
             /* fall thru */
-#endif
         default:
             p--;
             ret = lre_parse_escape(&p, s->is_utf16 * 2);
