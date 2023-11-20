@@ -1978,7 +1978,6 @@ JSContext *JS_NewContext(JSRuntime *rt)
     JS_AddIntrinsicBaseObjects(ctx);
     JS_AddIntrinsicDate(ctx);
     JS_AddIntrinsicEval(ctx);
-    JS_AddIntrinsicStringNormalize(ctx);
     JS_AddIntrinsicRegExp(ctx);
     JS_AddIntrinsicJSON(ctx);
     JS_AddIntrinsicProxy(ctx);
@@ -39197,8 +39196,6 @@ static JSValue js_string_toLowerCase(JSContext *ctx, JSValueConst this_val,
     return JS_EXCEPTION;
 }
 
-#ifdef CONFIG_ALL_UNICODE
-
 /* return (-1, NULL) if exception, otherwise (len, buf) */
 static int JS_ToUTF32String(JSContext *ctx, uint32_t **pbuf, JSValueConst val1)
 {
@@ -39301,7 +39298,6 @@ static JSValue js_string_normalize(JSContext *ctx, JSValueConst this_val,
     js_free(ctx, out_buf);
     return val;
 }
-#endif /* CONFIG_ALL_UNICODE */
 
 /* also used for String.prototype.valueOf */
 static JSValue js_string_toString(JSContext *ctx, JSValueConst this_val,
@@ -39460,6 +39456,7 @@ static const JSCFunctionListEntry js_string_proto_funcs[] = {
     JS_CFUNC_DEF("valueOf", 0, js_string_toString ),
     JS_CFUNC_DEF("__quote", 1, js_string___quote ),
     JS_CFUNC_DEF("localeCompare", 1, js_string_localeCompare ),
+    JS_CFUNC_DEF("normalize", 0, js_string_normalize ),
     JS_CFUNC_MAGIC_DEF("toLowerCase", 0, js_string_toLowerCase, 1 ),
     JS_CFUNC_MAGIC_DEF("toUpperCase", 0, js_string_toLowerCase, 0 ),
     JS_CFUNC_MAGIC_DEF("toLocaleLowerCase", 0, js_string_toLowerCase, 1 ),
@@ -39486,19 +39483,6 @@ static const JSCFunctionListEntry js_string_iterator_proto_funcs[] = {
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "String Iterator", JS_PROP_CONFIGURABLE ),
 };
 
-#ifdef CONFIG_ALL_UNICODE
-static const JSCFunctionListEntry js_string_proto_normalize[] = {
-    JS_CFUNC_DEF("normalize", 0, js_string_normalize ),
-};
-#endif
-
-void JS_AddIntrinsicStringNormalize(JSContext *ctx)
-{
-#ifdef CONFIG_ALL_UNICODE
-    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_STRING], js_string_proto_normalize,
-                               countof(js_string_proto_normalize));
-#endif
-}
 
 /* Math */
 

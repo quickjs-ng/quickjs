@@ -557,8 +557,6 @@ static const uint8_t unicode_prop_ID_Continue1_index[63] = {
     0x41, 0xaf, 0xe2, 0x21, 0xf0, 0x01, 0x0e,
 };
 
-#ifdef CONFIG_ALL_UNICODE
-
 static const uint8_t unicode_cc_table[899] = {
     0xb2, 0xcf, 0xd4, 0x00, 0xe8, 0x03, 0xdc, 0x00,
     0xe8, 0x00, 0xd8, 0x04, 0xdc, 0x01, 0xca, 0x03,
@@ -4484,5 +4482,3 @@ static const uint16_t unicode_prop_len_table[] = {
     countof(unicode_prop_ID_Start_table),
     countof(unicode_prop_Case_Ignorable_table),
 };
-
-#endif /* CONFIG_ALL_UNICODE */

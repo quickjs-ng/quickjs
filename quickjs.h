@@ -356,7 +356,6 @@ JSContext *JS_NewContextRaw(JSRuntime *rt);
 void JS_AddIntrinsicBaseObjects(JSContext *ctx);
 void JS_AddIntrinsicDate(JSContext *ctx);
 void JS_AddIntrinsicEval(JSContext *ctx);
-void JS_AddIntrinsicStringNormalize(JSContext *ctx);
 void JS_AddIntrinsicRegExpCompiler(JSContext *ctx);
 void JS_AddIntrinsicRegExp(JSContext *ctx);
 void JS_AddIntrinsicJSON(JSContext *ctx);
