@@ -33745,6 +33745,22 @@ static JSValue js_global_isFinite(JSContext *ctx, JSValueConst this_val,
     return JS_NewBool(ctx, res);
 }
 
+static JSValue js_microtask_job(JSContext *ctx,
+                                int argc, JSValueConst *argv)
+{
+    return JS_Call(ctx, argv[0], ctx->global_obj, 0, NULL);
+}
+
+static JSValue js_global_queueMicrotask(JSContext *ctx, JSValueConst this_val,
+                                        int argc, JSValueConst *argv)
+{
+    if (check_function(ctx, argv[0]))
+        return JS_EXCEPTION;
+    if (JS_EnqueueJob(ctx, js_microtask_job, 1, &argv[0]))
+        return JS_EXCEPTION;
+    return JS_UNDEFINED;
+}
+
 /* Object class */
 
 static JSValue JS_ToObject(JSContext *ctx, JSValueConst val)
@@ -45683,6 +45699,7 @@ static const JSCFunctionListEntry js_global_funcs[] = {
     JS_CFUNC_DEF("parseFloat", 1, js_parseFloat ),
     JS_CFUNC_DEF("isNaN", 1, js_global_isNaN ),
     JS_CFUNC_DEF("isFinite", 1, js_global_isFinite ),
+    JS_CFUNC_DEF("queueMicrotask", 1, js_global_queueMicrotask ),
 
     JS_CFUNC_MAGIC_DEF("decodeURI", 1, js_global_decodeURI, 0 ),
     JS_CFUNC_MAGIC_DEF("decodeURIComponent", 1, js_global_decodeURI, 1 ),

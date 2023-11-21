@@ -64,6 +64,7 @@ test: build
 	$(QJS) tests/test_loop.js
 	$(QJS) tests/test_std.js
 	$(QJS) tests/test_worker.js
+	$(QJS) tests/test_queue_microtask.js
 
 test262: build
 	$(RUN262) -m -c test262.conf -a
