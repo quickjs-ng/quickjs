@@ -47348,8 +47348,10 @@ static JSValue js_array_buffer_transfer(JSContext *ctx,
     /* if length mismatch, realloc. Otherwise, use the same backing buffer. */
     if (new_len != old_len) {
         new_bs = js_realloc(ctx, bs, new_len);
-        if (!new_bs)
+        if (!new_bs) {
+            js_free(ctx, bs);
             return JS_EXCEPTION;
+        }
         bs = new_bs;
         if (new_len > old_len)
             memset(bs + old_len, 0, new_len - old_len);
