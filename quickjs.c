@@ -47075,6 +47075,10 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     JS_DefinePropertyValue(ctx, ctx->global_obj, JS_ATOM_globalThis,
                            JS_DupValue(ctx, ctx->global_obj),
                            JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE);
+
+    JS_DefinePropertyValue(ctx, ctx->global_obj, JS_ATOM_self,
+                           JS_DupValue(ctx, ctx->global_obj),
+                           JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE);
 }
 
 /* Typed Arrays */

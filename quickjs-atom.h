@@ -171,6 +171,7 @@ DEF(indices, "indices")
 DEF(status, "status")
 DEF(reason, "reason")
 DEF(globalThis, "globalThis")
+DEF(self, "self")
 DEF(bigint, "bigint")
 #ifdef CONFIG_ATOMICS
 DEF(not_equal, "not-equal")
