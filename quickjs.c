@@ -35282,8 +35282,10 @@ static JSValue iterator_to_array(JSContext *ctx, JSValueConst items)
 static JSValue js_error_constructor(JSContext *ctx, JSValueConst new_target,
                                     int argc, JSValueConst *argv, int magic)
 {
-    JSValue obj, msg, proto;
+    JSValue obj, msg, proto, cause;
     JSValueConst message;
+    int opts;
+    BOOL present;
 
     if (JS_IsUndefined(new_target))
         new_target = JS_GetActiveFunction(ctx);
@@ -35311,8 +35313,10 @@ static JSValue js_error_constructor(JSContext *ctx, JSValueConst new_target,
         return obj;
     if (magic == JS_AGGREGATE_ERROR) {
         message = argv[1];
+        opts = 2;
     } else {
         message = argv[0];
+        opts = 1;
     }
 
     if (!JS_IsUndefined(message)) {
@@ -35321,6 +35325,19 @@ static JSValue js_error_constructor(JSContext *ctx, JSValueConst new_target,
             goto exception;
         JS_DefinePropertyValue(ctx, obj, JS_ATOM_message, msg,
                                JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+    }
+
+    if (argc > opts && JS_VALUE_GET_TAG(argv[opts]) == JS_TAG_OBJECT) {
+        present = JS_HasProperty(ctx, argv[opts], JS_ATOM_cause);
+        if (unlikely(present < 0))
+            goto exception;
+        if (present) {
+            cause = JS_GetProperty(ctx, argv[opts], JS_ATOM_cause);
+            if (unlikely(JS_IsException(cause)))
+                goto exception;
+            JS_DefinePropertyValue(ctx, obj, JS_ATOM_cause, cause,
+                                   JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+        }
     }
 
     if (magic == JS_AGGREGATE_ERROR) {
