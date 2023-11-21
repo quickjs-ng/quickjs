@@ -15112,7 +15112,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 idx = get_u16(pc);
                 pc += 2;
                 if (unlikely(JS_IsUninitialized(var_buf[idx]))) {
-                    JS_ThrowReferenceErrorUninitialized2(ctx, b, idx, FALSE);
+                    JS_ThrowReferenceErrorUninitialized2(caller_ctx, b, idx,
+                                                         FALSE);
                     goto exception;
                 }
                 sp[0] = JS_DupValue(ctx, var_buf[idx]);
@@ -15125,7 +15126,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 idx = get_u16(pc);
                 pc += 2;
                 if (unlikely(JS_IsUninitialized(var_buf[idx]))) {
-                    JS_ThrowReferenceErrorUninitialized2(ctx, b, idx, FALSE);
+                    JS_ThrowReferenceErrorUninitialized2(caller_ctx, b, idx,
+                                                         FALSE);
                     goto exception;
                 }
                 set_value(ctx, &var_buf[idx], sp[-1]);
@@ -15138,7 +15140,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 idx = get_u16(pc);
                 pc += 2;
                 if (unlikely(!JS_IsUninitialized(var_buf[idx]))) {
-                    JS_ThrowReferenceError(ctx, "'this' can be initialized only once");
+                    JS_ThrowReferenceError(caller_ctx,
+                                           "'this' can be initialized only once");
                     goto exception;
                 }
                 set_value(ctx, &var_buf[idx], sp[-1]);
