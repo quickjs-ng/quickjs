@@ -47341,21 +47341,19 @@ static JSValue js_array_buffer_transfer(JSContext *ctx,
     }
     bs = abuf->data;
     old_len = abuf->byte_length;
-    /* neuter the backing buffer */
-    abuf->data = NULL;
-    abuf->byte_length = 0;
-    abuf->detached = TRUE;
     /* if length mismatch, realloc. Otherwise, use the same backing buffer. */
     if (new_len != old_len) {
         new_bs = js_realloc(ctx, bs, new_len);
-        if (!new_bs) {
-            js_free(ctx, bs);
+        if (!new_bs)
             return JS_EXCEPTION;
-        }
         bs = new_bs;
         if (new_len > old_len)
             memset(bs + old_len, 0, new_len - old_len);
     }
+    /* neuter the backing buffer */
+    abuf->data = NULL;
+    abuf->byte_length = 0;
+    abuf->detached = TRUE;
     return js_array_buffer_constructor3(ctx, JS_UNDEFINED, new_len,
                                         JS_CLASS_ARRAY_BUFFER,
                                         bs, abuf->free_func,
