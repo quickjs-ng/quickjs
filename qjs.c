@@ -269,7 +269,7 @@ static const JSMallocFunctions trace_mf = {
 
 void help(void)
 {
-    printf("QuickJS version %s\n"
+    printf("QuickJS-ng version %s\n"
            "usage: " PROG_NAME " [options] [file [args]]\n"
            "-h  --help         list options\n"
            "-e  --eval EXPR    evaluate EXPR\n"
