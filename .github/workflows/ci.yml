@@ -250,6 +250,7 @@ jobs:
     - name: stats
       run: |
         make stats
+        ldd build/qjs
     - name: test
       run: |
         make test
