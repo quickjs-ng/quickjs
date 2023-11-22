@@ -1075,7 +1075,7 @@ import * as os from "os";
     }
 
     function cmd_start() {
-        std.puts('QuickJS - Type "\\h" for help\n');
+        std.puts('QuickJS-ng - Type "\\h" for help\n');
         cmd_readline_start();
     }
 
