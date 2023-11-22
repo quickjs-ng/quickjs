@@ -1,0 +1,161 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  linux-x86:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: jirutka/setup-alpine@v1
+        with:
+          arch: x86
+          packages: "build-base make cmake"
+      - name: build
+        shell: alpine.sh {0}
+        run: |
+          mkdir build
+          cd build
+          cmake -DBUILD_STATIC_QJS_EXE=ON ..
+          cd ..
+          cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
+          mv build/qjs build/qjs-linux-x86
+      - name: check
+        shell: alpine.sh {0}
+        run: |
+          file build/qjs-linux-x86
+      - name: upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: qjs
+          path: build/qjs-linux-x86
+
+  linux-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: jirutka/setup-alpine@v1
+        with:
+          arch: x86_64
+          packages: "build-base make cmake"
+      - name: build
+        shell: alpine.sh {0}
+        run: |
+          mkdir build
+          cd build
+          cmake -DBUILD_STATIC_QJS_EXE=ON ..
+          cd ..
+          cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
+          mv build/qjs build/qjs-linux-x86_64
+      - name: check
+        shell: alpine.sh {0}
+        run: |
+          file build/qjs-linux-x86_64
+      - name: upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: qjs
+          path: build/qjs-linux-x86_64
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ..
+          make -j$(getconf _NPROCESSORS_ONLN)
+          mv qjs qjs-darwin
+      - name: check
+        run: |
+          lipo -info build/qjs-darwin
+      - name: upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: qjs
+          path: build/qjs-darwin
+
+  windows-x86:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw32
+          install: >-
+            git
+            make
+          pacboy: >-
+            cmake:p
+            ninja:p
+            toolchain:p
+      - name: build
+        run: |
+          make
+          mv build/qjs.exe build/qjs-windows-x86.exe
+      - name: check
+        run: |
+          ldd build/qjs-windows-x86.exe
+      - name: upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: qjs
+          path: build/qjs-windows-x86.exe
+
+  windows-x86_64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          install: >-
+            git
+            make
+          pacboy: >-
+            cmake:p
+            ninja:p
+            toolchain:p
+      - name: build
+        run: |
+          make
+          mv build/qjs.exe build/qjs-windows-x86_64.exe
+      - name: check
+        run: |
+          ldd build/qjs-windows-x86_64.exe
+      - name: upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: qjs
+          path: build/qjs-windows-x86_64.exe
+
+  upload-to-release:
+    needs: [linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64]
+    runs-on: ubuntu-latest
+    steps:
+      - name: get assets
+        uses: actions/download-artifact@v3
+        with:
+          path: build
+      - name: release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/qjs/qjs-linux-x86_64
+            build/qjs/qjs-linux-x86
+            build/qjs/qjs-windows-x86.exe
+            build/qjs/qjs-windows-x86_64.exe
+            build/qjs/qjs-darwin
