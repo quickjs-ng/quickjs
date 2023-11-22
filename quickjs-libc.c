@@ -28,19 +28,36 @@
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
+#if !defined(_MSC_VER)
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
+#if !defined(_MSC_VER)
 #include <sys/time.h>
+#endif
 #include <time.h>
 #include <signal.h>
 #include <limits.h>
 #include <sys/stat.h>
+#if defined(_MSC_VER)
+#include "dirent_compat.h"
+#else
 #include <dirent.h>
+#endif
 #if defined(_WIN32)
 #include <windows.h>
+#include <direct.h>
+#include <io.h>
 #include <conio.h>
-#include <utime.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/utime.h>
+#define popen _popen
+#define pclose _pclose
+#define rmdir _rmdir
+#define getcwd _getcwd
+#define chdir _chdir
 #else
 #include <dlfcn.h>
 #include <termios.h>
@@ -1964,32 +1981,10 @@ static JSValue js_os_cputime(JSContext *ctx, JSValueConst this_val,
 }
 #endif
 
-#if defined(__linux__) || defined(__APPLE__)
-static int64_t get_time_us(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000000 + (ts.tv_nsec / 1000);
-}
-#else
-/* more portable, but does not work if the date is updated */
-static int64_t get_time_us(void)
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
-}
-#endif
-
-static int64_t get_time_ms(void)
-{
-    return get_time_us() / 1000;
-}
-
 static JSValue js_os_now(JSContext *ctx, JSValueConst this_val,
                          int argc, JSValueConst *argv)
 {
-    return JS_NewInt64(ctx, get_time_us());
+    return JS_NewInt64(ctx, js__hrtime_ns() / 1000);
 }
 
 static void unlink_timer(JSRuntime *rt, JSOSTimer *th)
@@ -2051,7 +2046,7 @@ static JSValue js_os_setTimeout(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     }
     th->has_object = TRUE;
-    th->timeout = get_time_ms() + delay;
+    th->timeout = js__hrtime_ns() / 1e6 + delay;
     th->func = JS_DupValue(ctx, func);
     list_add_tail(&th->link, &ts->os_timers);
     JS_SetOpaque(obj, th);
@@ -2105,7 +2100,7 @@ static int js_os_poll(JSContext *ctx)
 
     /* XXX: only timers and basic console input are supported */
     if (!list_empty(&ts->os_timers)) {
-        cur_time = get_time_ms();
+        cur_time = js__hrtime_ns() / 1e6;
         min_delay = 10000;
         list_for_each(el, &ts->os_timers) {
             JSOSTimer *th = list_entry(el, JSOSTimer, link);
@@ -2274,7 +2269,7 @@ static int js_os_poll(JSContext *ctx)
         return -1; /* no more events */
 
     if (!list_empty(&ts->os_timers)) {
-        cur_time = get_time_ms();
+        cur_time = js__hrtime_ns() / 1e6;
         min_delay = 10000;
         list_for_each(el, &ts->os_timers) {
             JSOSTimer *th = list_entry(el, JSOSTimer, link);

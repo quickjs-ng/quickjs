@@ -30,7 +30,9 @@
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
+#if !defined(_MSC_VER)
 #include <sys/time.h>
+#endif
 #include <time.h>
 #include <fenv.h>
 #include <math.h>
@@ -48,7 +50,7 @@
 #include "libregexp.h"
 #include "libbf.h"
 
-#if defined(EMSCRIPTEN)
+#if defined(EMSCRIPTEN) || defined(_MSC_VER)
 #define DIRECT_DISPATCH  0
 #else
 #define DIRECT_DISPATCH  1
@@ -40334,9 +40336,7 @@ static uint64_t xorshift64star(uint64_t *pstate)
 
 static void js_random_init(JSContext *ctx)
 {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    ctx->random_state = ((int64_t)tv.tv_sec * 1000000) + tv.tv_usec;
+    ctx->random_state = js__gettimeofday_us();
     /* the state must be non zero */
     if (ctx->random_state == 0)
         ctx->random_state = 1;
@@ -46755,9 +46755,7 @@ static JSValue get_date_string(JSContext *ctx, JSValueConst this_val,
 
 /* OS dependent: return the UTC time in ms since 1970. */
 static int64_t date_now(void) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (int64_t)tv.tv_sec * 1000 + (tv.tv_usec / 1000);
+    return js__gettimeofday_us() / 1000;
 }
 
 static JSValue js_date_constructor(JSContext *ctx, JSValueConst new_target,
@@ -50854,10 +50852,7 @@ void JS_AddIntrinsicTypedArrays(JSContext *ctx)
 
 static uint64_t js__now_ms(void)
 {
-    // TODO(saghul) Windows support.
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (((uint64_t) ts.tv_sec) * 1000 + ts.tv_nsec / 1e6);
+    return js__hrtime_ns() / 1e6;
 }
 
 static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)

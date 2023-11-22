@@ -30,8 +30,10 @@ macro(xcheck_add_c_compiler_flag FLAG)
 endmacro()
 
 xcheck_add_c_compiler_flag(-Wall)
-xcheck_add_c_compiler_flag(-Werror)
-xcheck_add_c_compiler_flag(-Wextra)
+if(NOT MSVC)
+    xcheck_add_c_compiler_flag(-Werror)
+    xcheck_add_c_compiler_flag(-Wextra)
+endif()
 xcheck_add_c_compiler_flag(-Wno-implicit-fallthrough)
 xcheck_add_c_compiler_flag(-Wno-sign-compare)
 xcheck_add_c_compiler_flag(-Wno-missing-field-initializers)
@@ -41,6 +43,19 @@ xcheck_add_c_compiler_flag(-Wno-unused-but-set-variable)
 xcheck_add_c_compiler_flag(-Wno-array-bounds)
 xcheck_add_c_compiler_flag(-Wno-format-truncation)
 xcheck_add_c_compiler_flag(-funsigned-char)
+
+# ClangCL is command line compatible with MSVC, so 'MSVC' is set.
+if(MSVC)
+    xcheck_add_c_compiler_flag(-Wno-unsafe-buffer-usage)
+    xcheck_add_c_compiler_flag(-Wno-sign-conversion)
+    xcheck_add_c_compiler_flag(-Wno-nonportable-system-include-path)
+    xcheck_add_c_compiler_flag(-Wno-implicit-int-conversion)
+    xcheck_add_c_compiler_flag(-Wno-shorten-64-to-32)
+    xcheck_add_c_compiler_flag(-Wno-reserved-macro-identifier)
+    xcheck_add_c_compiler_flag(-Wno-reserved-identifier)
+    xcheck_add_c_compiler_flag(-Wdeprecated-declarations)
+    add_compile_definitions(WIN32_LEAN_AND_MEAN)
+endif()
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
     add_compile_options(-O0)
@@ -130,12 +145,12 @@ if(BUILD_QJS_LIBC)
     list(APPEND qjs_sources quickjs-libc.c)
 endif()
 list(APPEND qjs_defines _GNU_SOURCE)
-list(APPEND qjs_libs qjs m)
+list(APPEND qjs_libs qjs)
 if(NOT WIN32)
     list(APPEND qjs_libs dl)
 endif()
 if(NOT MSVC)
-    list(APPEND qjs_libs pthread)
+    list(APPEND qjs_libs m pthread)
 endif()
 
 add_library(qjs ${qjs_sources})
@@ -167,7 +182,7 @@ target_link_libraries(qjsc ${qjs_libs})
 
 add_custom_command(
     OUTPUT repl.c
-    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -o ./repl.c -m ${CMAKE_CURRENT_SOURCE_DIR}/repl.js
+    COMMAND qjsc -o ./repl.c -m ${CMAKE_CURRENT_SOURCE_DIR}/repl.js
     DEPENDS qjsc
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Compile repl.js to bytecode"
@@ -190,7 +205,7 @@ if(BUILD_STATIC_QJS_EXE OR MINGW)
         target_link_options(qjs_exe PRIVATE -static-libgcc)
     endif()
 endif()
-if(NOT MINGW)
+if(NOT WIN32)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
 
@@ -198,13 +213,15 @@ endif()
 # Test262 runner
 #
 
-add_executable(run-test262
-    quickjs-libc.c
-    run-test262.c
-)
-target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
-target_link_libraries(run-test262 ${qjs_libs})
-
+# run-test262 uses pthreads.
+if(NOT WIN32)
+    add_executable(run-test262
+        quickjs-libc.c
+        run-test262.c
+    )
+    target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
+    target_link_libraries(run-test262 ${qjs_libs})
+endif()
 
 # Unicode generator
 #
@@ -220,10 +237,10 @@ target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
 # Examples
 #
 
-if(BUILD_EXAMPLES AND NOT MINGW)
+if(BUILD_EXAMPLES AND NOT WIN32)
     add_custom_command(
         OUTPUT hello.c
-        COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -e -o hello.c ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello.js
+        COMMAND qjsc -e -o hello.c ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello.js
         DEPENDS qjsc
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Compile hello.js to a C file with bytecode embeddee"
@@ -239,7 +256,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
 
     add_custom_command(
         OUTPUT hello_module.c
-        COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -e -o hello_module.c -m ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello_module.js
+        COMMAND qjsc -e -o hello_module.c -m ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello_module.js
         DEPENDS qjsc
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Compile hello_module.js to a C file with bytecode embeddee"
@@ -253,7 +270,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
     target_compile_definitions(hello_module PRIVATE ${qjs_defines})
     target_link_libraries(hello_module ${qjs_libs})
 
-    if(NOT MINGW)
+    if(NOT WIN32)
         add_library(fib MODULE examples/fib.c)
         set_target_properties(fib PROPERTIES
             PREFIX ""
@@ -287,7 +304,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
 
     add_custom_command(
         OUTPUT test_fib.c
-        COMMAND "${CMAKE_CURRENT_BINARY_DIR}/qjsc" -e -o test_fib.c -M ${CMAKE_CURRENT_SOURCE_DIR}/examples/fib.so,fib -m ${CMAKE_CURRENT_SOURCE_DIR}/examples/test_fib.js
+        COMMAND qjsc -e -o test_fib.c -M ${CMAKE_CURRENT_SOURCE_DIR}/examples/fib.so,fib -m ${CMAKE_CURRENT_SOURCE_DIR}/examples/test_fib.js
         DEPENDS qjsc
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMENT "Compile test_fib.js to a C file with bytecode embedded"
