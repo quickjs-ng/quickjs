@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.9)
 
 project(quickjs LANGUAGES C)
 
+include(CheckCCompilerFlag)
 include(GNUInstallDirs)
 
 # TODO:
@@ -11,29 +12,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
 
-add_compile_options(
-    -Wall
-    -Werror
-)
-if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang")
-    add_compile_options(
-        -Wextra
-        -Wno-sign-compare
-        -Wno-missing-field-initializers
-        -Wno-unused-parameter
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
-        -funsigned-char
-    )
-else()
-    add_compile_options(
-        -Wno-array-bounds
-        -Wno-format-truncation
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
-    )
-endif()
-
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "No build type selected, default to Release")
     set(CMAKE_BUILD_TYPE "Release")
@@ -41,14 +19,36 @@ endif()
 
 message(STATUS "Building in ${CMAKE_BUILD_TYPE} mode")
 message(STATUS "Building with ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION} on ${CMAKE_SYSTEM}")
+
+macro(xcheck_add_c_compiler_flag FLAG)
+    string(REPLACE "-" "" FLAG_NO_HYPHEN ${FLAG})
+    check_c_compiler_flag(${FLAG} COMPILER_SUPPORTS_${FLAG_NO_HYPHEN})
+    if(COMPILER_SUPPORTS_${FLAG_NO_HYPHEN})
+        add_compile_options(${FLAG})
+    endif()
+endmacro()
+
+xcheck_add_c_compiler_flag(-Wall)
+xcheck_add_c_compiler_flag(-Werror)
+# -Wextra is too spartan on GCC
+if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang")
+    add_compile_options(-Wextra)
+endif()
+xcheck_add_c_compiler_flag(-Wno-sign-compare)
+xcheck_add_c_compiler_flag(-Wno-missing-field-initializers)
+xcheck_add_c_compiler_flag(-Wno-unused-parameter)
+xcheck_add_c_compiler_flag(-Wno-unused-variable)
+xcheck_add_c_compiler_flag(-Wno-unused-but-set-variable)
+xcheck_add_c_compiler_flag(-Wno-array-bounds)
+xcheck_add_c_compiler_flag(-Wno-format-truncation)
+xcheck_add_c_compiler_flag(-funsigned-char)
+
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    add_compile_options(
-        -ggdb
-        -O0
-        -fno-omit-frame-pointer
-    )
+    add_compile_options(-O0)
+    xcheck_add_c_compiler_flag(-ggdb)
+    xcheck_add_c_compiler_flag(-fno-omit-frame-pointer)
 else()
-    add_compile_options(-g)
+    xcheck_add_c_compiler_flag(-g)
 endif()
 
 macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
