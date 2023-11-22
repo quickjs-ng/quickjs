@@ -29,7 +29,11 @@
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
+#if defined(_MSC_VER)
+#include "getopt_compat.h"
+#else
 #include <unistd.h>
+#endif
 #include <errno.h>
 
 #include "cutils.h"

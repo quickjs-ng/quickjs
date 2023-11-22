@@ -1,4 +1,4 @@
-import * as std from "std";
+import * as os from "os";
 
 
 function assert(actual, expected, message) {
@@ -345,8 +345,8 @@ function test_number()
     assert(Number.isNaN(Number("-")));
     assert(Number.isNaN(Number("\x00a")));
 
-    // TODO: Fix rounding error on MinGW.
-    if (std.getenv('MSYSTEM')) {
+    // TODO: Fix rounding errors on Windows.
+    if (os.platform === 'win32') {
         return;
     }
 

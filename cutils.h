@@ -31,6 +31,14 @@
 /* set if CPU is big endian */
 #undef WORDS_BIGENDIAN
 
+#if defined(_MSC_VER)
+#include <windows.h>
+#include <winsock2.h>
+#include <malloc.h>
+#define alloca _alloca
+#define ssize_t ptrdiff_t
+#endif
+
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
 #define force_inline inline __attribute__((always_inline))
@@ -319,5 +327,8 @@ static inline int from_hex(int c)
 void rqsort(void *base, size_t nmemb, size_t size,
             int (*cmp)(const void *, const void *, void *),
             void *arg);
+
+int64_t js__gettimeofday_us(void);
+uint64_t js__hrtime_ns(void);
 
 #endif  /* CUTILS_H */

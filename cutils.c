@@ -22,10 +22,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <time.h>
+#if !defined(_MSC_VER)
+#include <sys/time.h>
+#endif
 
 #include "cutils.h"
 
@@ -604,6 +609,69 @@ void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
                 swap(pj, pj - size, size);
         }
     }
+}
+
+#if defined(_MSC_VER)
+ // From: https://stackoverflow.com/a/26085827
+static int gettimeofday_msvc(struct timeval *tp, struct timezone *tzp)
+{
+  static const uint64_t EPOCH = ((uint64_t)116444736000000000ULL);
+
+  SYSTEMTIME  system_time;
+  FILETIME    file_time;
+  uint64_t    time;
+
+  GetSystemTime(&system_time);
+  SystemTimeToFileTime(&system_time, &file_time);
+  time = ((uint64_t)file_time.dwLowDateTime);
+  time += ((uint64_t)file_time.dwHighDateTime) << 32;
+
+  tp->tv_sec = (long)((time - EPOCH) / 10000000L);
+  tp->tv_usec = (long)(system_time.wMilliseconds * 1000);
+
+  return 0;
+}
+
+uint64_t js__hrtime_ns(void) {
+    LARGE_INTEGER counter, frequency;
+    double scaled_freq;
+    double result;
+
+    if (!QueryPerformanceFrequency(&frequency))
+        abort();
+    assert(frequency.QuadPart != 0);
+
+    if (!QueryPerformanceCounter(&counter))
+        abort();
+    assert(counter.QuadPart != 0);
+
+  /* Because we have no guarantee about the order of magnitude of the
+   * performance counter interval, integer math could cause this computation
+   * to overflow. Therefore we resort to floating point math.
+   */
+  scaled_freq = (double) frequency.QuadPart / 1e9;
+  result = (double) counter.QuadPart / scaled_freq;
+  return (uint64_t) result;
+}
+#else
+uint64_t js__hrtime_ns(void) {
+  struct timespec t;
+
+  if (clock_gettime(CLOCK_MONOTONIC, &t))
+    abort();
+
+  return t.tv_sec * (uint64_t) 1e9 + t.tv_nsec;
+}
+#endif
+
+int64_t js__gettimeofday_us(void) {
+    struct timeval tv;
+#if defined(_MSC_VER)
+    gettimeofday_msvc(&tv, NULL);
+#else
+    gettimeofday(&tv, NULL);
+#endif
+    return ((int64_t)tv.tv_sec * 1000000) + tv.tv_usec;
 }
 
 #pragma GCC visibility pop
