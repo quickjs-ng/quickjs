@@ -26815,6 +26815,13 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
     js_free(ctx, fd->label_slots);
     js_free(ctx, fd->line_number_slots);
 
+    /* free ic if unused */
+    if (fd->ic && fd->ic->count == 0) {
+      /* we might be recovering after the ic is used
+         in that case, gc handles freeing */
+      free_ic(fd->ic);
+    }
+
     for(i = 0; i < fd->cpool_count; i++) {
         JS_FreeValue(ctx, fd->cpool[i]);
     }
