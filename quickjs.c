@@ -26815,10 +26815,8 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
     js_free(ctx, fd->label_slots);
     js_free(ctx, fd->line_number_slots);
 
-    /* free ic if unused */
-    if (fd->ic && fd->ic->count == 0) {
-      /* we might be recovering after the ic is used
-         in that case, gc handles freeing */
+    /* free ic */
+    if (fd->ic) {
       free_ic(fd->ic);
     }
 
@@ -50505,11 +50503,13 @@ int free_ic(InlineCache *ic)
     uint32_t i, j;
     InlineCacheHashSlot *ch, *ch_next;
     InlineCacheRingItem *buffer;
-    for (i = 0; i < ic->count; i++) {
-        buffer = ic->cache[i].buffer;
-        JS_FreeAtom(ic->ctx, ic->cache[i].atom);
-        for (j = 0; j < IC_CACHE_ITEM_CAPACITY; j++) {
-            js_free_shape_null(ic->ctx->rt, buffer[j].shape);
+    if (ic->cache) {
+        for (i = 0; i < ic->count; i++) {
+            buffer = ic->cache[i].buffer;
+            JS_FreeAtom(ic->ctx, ic->cache[i].atom);
+            for (j = 0; j < IC_CACHE_ITEM_CAPACITY; j++) {
+                js_free_shape_null(ic->ctx->rt, buffer[j].shape);
+            }
         }
     }
     for (i = 0; i < ic->capacity; i++) {
