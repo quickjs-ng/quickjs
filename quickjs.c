@@ -34377,6 +34377,96 @@ static JSValue js_object_getOwnPropertySymbols(JSContext *ctx, JSValueConst this
                                    JS_GPN_SYMBOL_MASK, JS_ITERATOR_KIND_KEY);
 }
 
+static JSValue js_object_groupBy(JSContext *ctx, JSValueConst this_val,
+                                 int argc, JSValueConst *argv)
+{
+    JSValue cb, res, iter, next, groups, k, v, prop;
+    JSValue args[2];
+    int64_t idx;
+    BOOL done;
+
+    // "is function?" check must be observed before argv[0] is accessed
+    cb = argv[1];
+    if (check_function(ctx, cb))
+        return JS_EXCEPTION;
+
+    // TODO(bnoordhuis) add fast path for arrays but as groupBy() is
+    // defined in terms of iterators, the fast path must check that
+    // this[Symbol.iterator] is the built-in array iterator
+    iter = JS_GetIterator(ctx, argv[0], /*is_async*/FALSE);
+    if (JS_IsException(iter))
+        return JS_EXCEPTION;
+
+    k = JS_UNDEFINED;
+    v = JS_UNDEFINED;
+    prop = JS_UNDEFINED;
+    groups = JS_UNDEFINED;
+
+    next = JS_GetProperty(ctx, iter, JS_ATOM_next);
+    if (JS_IsException(next))
+        goto exception;
+
+    groups = JS_NewObjectProto(ctx, JS_NULL);
+    if (JS_IsException(groups))
+        goto exception;
+
+    for (idx = 0; ; idx++) {
+        v = JS_IteratorNext(ctx, iter, next, 0, NULL, &done);
+        if (JS_IsException(v))
+            goto exception;
+        if (done)
+            break; // v is JS_UNDEFINED
+
+        args[0] = v;
+        args[1] = JS_NewInt64(ctx, idx);
+        k = JS_Call(ctx, cb, ctx->global_obj, 2, args);
+        if (JS_IsException(k))
+            goto exception;
+
+        k = JS_DupValue(ctx, k);
+        prop = JS_GetPropertyValue(ctx, groups, k);
+        if (JS_IsException(prop))
+            goto exception;
+
+        if (JS_IsUndefined(prop)) {
+            prop = JS_NewArray(ctx);
+            if (JS_IsException(prop))
+                goto exception;
+            k = JS_DupValue(ctx, k);
+            prop = JS_DupValue(ctx, prop);
+            if (JS_SetPropertyValue(ctx, groups, k, prop,
+                                    JS_PROP_C_W_E|JS_PROP_THROW) < 0) {
+                goto exception;
+            }
+        }
+
+        res = js_array_push(ctx, prop, 1, &v, /*unshift*/0);
+        if (JS_IsException(res))
+            goto exception;
+        // res is an int64
+
+        JS_FreeValue(ctx, prop);
+        JS_FreeValue(ctx, k);
+        JS_FreeValue(ctx, v);
+        prop = JS_UNDEFINED;
+        k = JS_UNDEFINED;
+        v = JS_UNDEFINED;
+    }
+
+    JS_FreeValue(ctx, iter);
+    JS_FreeValue(ctx, next);
+    return groups;
+
+exception:
+    JS_FreeValue(ctx, prop);
+    JS_FreeValue(ctx, k);
+    JS_FreeValue(ctx, v);
+    JS_FreeValue(ctx, groups);
+    JS_FreeValue(ctx, iter);
+    JS_FreeValue(ctx, next);
+    return JS_EXCEPTION;
+}
+
 static JSValue js_object_keys(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv, int kind)
 {
@@ -34947,6 +35037,7 @@ static const JSCFunctionListEntry js_object_funcs[] = {
     JS_CFUNC_DEF("defineProperties", 2, js_object_defineProperties ),
     JS_CFUNC_DEF("getOwnPropertyNames", 1, js_object_getOwnPropertyNames ),
     JS_CFUNC_DEF("getOwnPropertySymbols", 1, js_object_getOwnPropertySymbols ),
+    JS_CFUNC_DEF("groupBy", 2, js_object_groupBy ),
     JS_CFUNC_MAGIC_DEF("keys", 1, js_object_keys, JS_ITERATOR_KIND_KEY ),
     JS_CFUNC_MAGIC_DEF("values", 1, js_object_keys, JS_ITERATOR_KIND_VALUE ),
     JS_CFUNC_MAGIC_DEF("entries", 1, js_object_keys, JS_ITERATOR_KIND_KEY_AND_VALUE ),
