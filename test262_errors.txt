@@ -1,6 +1,50 @@
 test262/test/annexB/language/eval-code/direct/script-decl-lex-collision-in-sloppy-mode.js:13: Test262Error: Expected a SyntaxError to be thrown but no exception was thrown at all
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedYield-broken-promise-try-catch.js:39: TypeError: $DONE() not called
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedYield-broken-promise-try-catch.js:39: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/Map/groupBy/callback-arg.js:30: TypeError: not a function
+test262/test/built-ins/Map/groupBy/callback-arg.js:30: strict mode: TypeError: not a function
+test262/test/built-ins/Map/groupBy/callback-throws.js:20: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Map/groupBy/callback-throws.js:20: strict mode: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Map/groupBy/emptyList.js:24: TypeError: not a function
+test262/test/built-ins/Map/groupBy/emptyList.js:24: strict mode: TypeError: not a function
+test262/test/built-ins/Map/groupBy/evenOdd.js:18: TypeError: not a function
+test262/test/built-ins/Map/groupBy/evenOdd.js:18: strict mode: TypeError: not a function
+test262/test/built-ins/Map/groupBy/groupLength.js:17: TypeError: not a function
+test262/test/built-ins/Map/groupBy/groupLength.js:17: strict mode: TypeError: not a function
+test262/test/built-ins/Map/groupBy/iterator-next-throws.js:26: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Map/groupBy/iterator-next-throws.js:26: strict mode: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Map/groupBy/length.js:25: TypeError: cannot convert to object
+test262/test/built-ins/Map/groupBy/length.js:25: strict mode: TypeError: cannot convert to object
+test262/test/built-ins/Map/groupBy/map-instance.js:24: TypeError: not a function
+test262/test/built-ins/Map/groupBy/map-instance.js:24: strict mode: TypeError: not a function
+test262/test/built-ins/Map/groupBy/name.js:25: TypeError: cannot convert to object
+test262/test/built-ins/Map/groupBy/name.js:25: strict mode: TypeError: cannot convert to object
+test262/test/built-ins/Map/groupBy/negativeZero.js:27: TypeError: not a function
+test262/test/built-ins/Map/groupBy/negativeZero.js:27: strict mode: TypeError: not a function
+test262/test/built-ins/Map/groupBy/toPropertyKey.js:24: TypeError: not a function
+test262/test/built-ins/Map/groupBy/toPropertyKey.js:24: strict mode: TypeError: not a function
+test262/test/built-ins/Object/groupBy/callback-arg.js:30: TypeError: not a function
+test262/test/built-ins/Object/groupBy/callback-arg.js:30: strict mode: TypeError: not a function
+test262/test/built-ins/Object/groupBy/callback-throws.js:20: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Object/groupBy/callback-throws.js:20: strict mode: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Object/groupBy/emptyList.js:24: TypeError: not a function
+test262/test/built-ins/Object/groupBy/emptyList.js:24: strict mode: TypeError: not a function
+test262/test/built-ins/Object/groupBy/evenOdd.js:18: TypeError: not a function
+test262/test/built-ins/Object/groupBy/evenOdd.js:18: strict mode: TypeError: not a function
+test262/test/built-ins/Object/groupBy/groupLength.js:23: TypeError: not a function
+test262/test/built-ins/Object/groupBy/groupLength.js:23: strict mode: TypeError: not a function
+test262/test/built-ins/Object/groupBy/invalid-property-key.js:22: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Object/groupBy/invalid-property-key.js:22: strict mode: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Object/groupBy/iterator-next-throws.js:26: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Object/groupBy/iterator-next-throws.js:26: strict mode: Test262Error: Expected a Test262Error but got a TypeError
+test262/test/built-ins/Object/groupBy/length.js:25: TypeError: cannot convert to object
+test262/test/built-ins/Object/groupBy/length.js:25: strict mode: TypeError: cannot convert to object
+test262/test/built-ins/Object/groupBy/name.js:25: TypeError: cannot convert to object
+test262/test/built-ins/Object/groupBy/name.js:25: strict mode: TypeError: cannot convert to object
+test262/test/built-ins/Object/groupBy/null-prototype.js:24: TypeError: not a function
+test262/test/built-ins/Object/groupBy/null-prototype.js:24: strict mode: TypeError: not a function
+test262/test/built-ins/Object/groupBy/toPropertyKey.js:33: TypeError: not a function
+test262/test/built-ins/Object/groupBy/toPropertyKey.js:33: strict mode: TypeError: not a function
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-on-get-src-value-no-throw.js:30: TypeError: out-of-bound numeric index (Testing with Float64Array.)
