@@ -1565,6 +1565,7 @@ int run_test_buf(const char *filename, char *harness, namelist_t *ip,
 #ifdef CONFIG_AGENT
     js_agent_free(ctx);
 #endif
+    JS_RunGC(rt);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 
