@@ -20515,41 +20515,6 @@ static __exception int js_parse_left_hand_side_expr(JSParseState *s)
     return js_parse_postfix_expr(s, PF_POSTFIX_CALL);
 }
 
-/* XXX: could generate specific bytecode */
-static __exception int js_parse_class_default_ctor(JSParseState *s,
-                                                   BOOL has_super,
-                                                   JSFunctionDef **pfd)
-{
-    JSParsePos pos;
-    const char *str;
-    int ret, line_num;
-    JSParseFunctionEnum func_type;
-    const uint8_t *saved_buf_end;
-
-    js_parse_get_pos(s, &pos);
-    if (has_super) {
-        /* spec change: no argument evaluation */
-        str = "(){super(...arguments);}";
-        func_type = JS_PARSE_FUNC_DERIVED_CLASS_CONSTRUCTOR;
-    } else {
-        str = "(){}";
-        func_type = JS_PARSE_FUNC_CLASS_CONSTRUCTOR;
-    }
-    line_num = s->token.line_num;
-    saved_buf_end = s->buf_end;
-    s->buf_ptr = (uint8_t *)str;
-    s->buf_end = (uint8_t *)(str + strlen(str));
-    ret = next_token(s);
-    if (!ret) {
-        ret = js_parse_function_decl2(s, func_type, JS_FUNC_NORMAL,
-                                      JS_ATOM_NULL, (uint8_t *)str,
-                                      line_num, JS_PARSE_EXPORT_NONE, pfd);
-    }
-    s->buf_end = saved_buf_end;
-    ret |= js_parse_seek_token(s, &pos);
-    return ret;
-}
-
 /* find field in the current scope */
 static int find_private_class_field(JSContext *ctx, JSFunctionDef *fd,
                                     JSAtom name, int scope_level)
@@ -20669,6 +20634,99 @@ static void emit_class_init_end(JSParseState *s, ClassFieldsDef *cf)
     emit_op(s, OP_fclosure);
     emit_u32(s, cpool_idx);
     emit_op(s, OP_set_home_object);
+}
+
+static void emit_return(JSParseState *s, BOOL hasval);
+
+static JSFunctionDef *js_new_function_def(JSContext *ctx,
+                                          JSFunctionDef *parent,
+                                          BOOL is_eval,
+                                          BOOL is_func_expr,
+                                          const char *filename, int line_num);
+
+static __exception int js_parse_class_default_ctor(JSParseState *s,
+                                                   BOOL has_super,
+                                                   JSFunctionDef **pfd)
+{
+    JSParseFunctionEnum func_type;
+    JSFunctionDef *fd = s->cur_func;
+
+    fd = js_new_function_def(s->ctx, fd, FALSE, FALSE,
+                             s->filename, s->token.line_num);
+    if (!fd)
+        return -1;
+
+    s->cur_func = fd;
+    fd->has_home_object = TRUE;
+    fd->super_allowed = TRUE;
+    fd->has_prototype = FALSE;
+    fd->has_this_binding = TRUE;
+    fd->new_target_allowed = TRUE;
+
+    /* error if not invoked as a constructor */
+    emit_op(s, OP_check_ctor);
+
+    push_scope(s);  /* enter body scope */
+    fd->body_scope = fd->scope_level;
+    if (has_super) {
+        fd->is_derived_class_constructor = TRUE;
+        fd->super_call_allowed = TRUE;
+        fd->arguments_allowed = TRUE;
+        fd->has_arguments_binding = TRUE;
+
+        func_type = JS_PARSE_FUNC_DERIVED_CLASS_CONSTRUCTOR;
+        /* super */
+        emit_op(s, OP_scope_get_var);
+        emit_atom(s, JS_ATOM_this_active_func);
+        emit_u16(s, 0);
+
+        emit_op(s, OP_get_super);
+
+        emit_op(s, OP_scope_get_var);
+        emit_atom(s, JS_ATOM_new_target);
+        emit_u16(s, 0);
+
+        emit_op(s, OP_array_from);
+        emit_u16(s, 0);
+        emit_op(s, OP_push_i32);
+        emit_u32(s, 0);
+
+        /* arguments */
+        emit_op(s, OP_scope_get_var);
+        emit_atom(s, JS_ATOM_arguments);
+        emit_u16(s, 0);
+
+        emit_op(s, OP_append);
+        /* drop the index */
+        emit_op(s, OP_drop);
+
+        emit_op(s, OP_apply);
+        emit_u16(s, 1);
+        /* set the 'this' value */
+        emit_op(s, OP_dup);
+        emit_op(s, OP_scope_put_var_init);
+        emit_atom(s, JS_ATOM_this);
+        emit_u16(s, 0);
+        emit_class_field_init(s);
+    } else {
+        func_type = JS_PARSE_FUNC_CLASS_CONSTRUCTOR;
+        emit_class_field_init(s);
+    }
+
+    fd->func_kind = JS_FUNC_NORMAL;
+    fd->func_type = func_type;
+    emit_return(s, FALSE);
+
+    s->cur_func = fd->parent;
+    if (pfd)
+        *pfd = fd;
+
+    int idx;
+    /* the real object will be set at the end of the compilation */
+    idx = cpool_add(s, JS_NULL);
+    fd->parent_cpool_idx = idx;
+
+    return 0;
 }
 
 
@@ -23105,8 +23163,6 @@ static __exception int js_parse_cond_expr(JSParseState *s, int parse_flags)
     }
     return 0;
 }
-
-static void emit_return(JSParseState *s, BOOL hasval);
 
 /* allowed parse_flags: PF_IN_ACCEPTED */
 static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
