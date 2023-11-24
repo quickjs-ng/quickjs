@@ -583,6 +583,9 @@ import * as os from "os";
                     base = get_context_word(line, pos);
                     if (["true", "false", "null", "this"].includes(base) || !isNaN(+base))
                         return eval(base);
+                    // Check if `base` is a set of regexp flags
+                    if (pos - base.length >= 3 && line[pos - base.length - 1] === '/')
+                        return new RegExp('', base);
                     obj = get_context_object(line, pos - base.length);
                     if (obj === null || obj === void 0)
                         return obj;
