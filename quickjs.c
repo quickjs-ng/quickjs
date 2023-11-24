@@ -26363,7 +26363,7 @@ static int add_import(JSParseState *s, JSModuleDef *m,
     is_local = (import_name == JS_ATOM__star_);
     var_idx = add_closure_var(ctx, s->cur_func, is_local, FALSE,
                               m->import_entries_count,
-                              local_name, TRUE, TRUE, FALSE);
+                              local_name, TRUE, TRUE, JS_VAR_NORMAL);
     if (var_idx < 0)
         return -1;
     if (js_resize_array(ctx, (void **)&m->import_entries,
@@ -30162,7 +30162,7 @@ static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
     for(i = 0; i < fd->global_var_count; i++) {
         hf = &fd->global_vars[i];
         if (add_closure_var(ctx, fd, TRUE, FALSE, i, hf->var_name, hf->is_const,
-                            hf->is_lexical, FALSE) < 0)
+                            hf->is_lexical, JS_VAR_NORMAL) < 0)
             return -1;
     }
 
