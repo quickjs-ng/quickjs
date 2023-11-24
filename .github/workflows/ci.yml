@@ -226,6 +226,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
         sys:
+          - mingw32
           - mingw64
           - ucrt64
     defaults:
