@@ -49798,6 +49798,46 @@ static const JSCFunctionListEntry js_dataview_proto_funcs[] = {
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "DataView", JS_PROP_CONFIGURABLE ),
 };
 
+static JSValue js_new_uint8array(JSContext *ctx, JSValue buffer)
+{
+    if (JS_IsException(buffer))
+        return JS_EXCEPTION;
+    JSValue obj = js_create_from_ctor(ctx, JS_UNDEFINED, JS_CLASS_UINT8_ARRAY);
+    if (JS_IsException(obj)) {
+        JS_FreeValue(ctx, buffer);
+        return JS_EXCEPTION;
+    }
+    JSArrayBuffer *abuf = JS_GetOpaque(buffer, JS_CLASS_ARRAY_BUFFER);
+    assert(abuf != NULL);
+    if (typed_array_init(ctx, obj, buffer, 0, abuf->byte_length)) {
+        // 'buffer' is freed on error above.
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    return obj;
+}
+
+JSValue JS_NewUint8Array(JSContext *ctx, uint8_t *buf, size_t len,
+                         JSFreeArrayBufferDataFunc *free_func, void *opaque,
+                         JS_BOOL is_shared)
+{
+    JSValue buffer = js_array_buffer_constructor3(ctx, JS_UNDEFINED, len,
+                                                  is_shared ? JS_CLASS_SHARED_ARRAY_BUFFER : JS_CLASS_ARRAY_BUFFER,
+                                                  buf, free_func, opaque, FALSE);
+    return js_new_uint8array(ctx, buffer);
+}
+
+JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len)
+{
+    JSValue buffer = js_array_buffer_constructor3(ctx, JS_UNDEFINED, len,
+                                                  JS_CLASS_ARRAY_BUFFER,
+                                                  (uint8_t *)buf,
+                                                  js_array_buffer_free, NULL,
+                                                  TRUE);
+    return js_new_uint8array(ctx, buffer);
+}
+
+
 /* Atomics */
 #ifdef CONFIG_ATOMICS
 
