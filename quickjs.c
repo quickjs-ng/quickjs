@@ -49816,7 +49816,7 @@ static JSValue js_new_uint8array(JSContext *ctx, JSValue buffer)
         JS_FreeValue(ctx, buffer);
         return JS_EXCEPTION;
     }
-    JSArrayBuffer *abuf = JS_GetOpaque(buffer, JS_CLASS_ARRAY_BUFFER);
+    JSArrayBuffer *abuf = js_get_array_buffer(ctx, buffer);
     assert(abuf != NULL);
     if (typed_array_init(ctx, obj, buffer, 0, abuf->byte_length)) {
         // 'buffer' is freed on error above.
