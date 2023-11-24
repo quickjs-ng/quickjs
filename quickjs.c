@@ -46868,6 +46868,15 @@ static const JSCFunctionListEntry js_date_proto_funcs[] = {
     JS_CFUNC_DEF("toJSON", 1, js_date_toJSON ),
 };
 
+JSValue JS_NewDate(JSContext *ctx, double epoch_ms)
+{
+    JSValue obj = js_create_from_ctor(ctx, JS_UNDEFINED, JS_CLASS_DATE);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    JS_SetObjectData(ctx, obj, JS_NewFloat64(ctx, time_clip(epoch_ms)));
+    return obj;
+}
+
 void JS_AddIntrinsicDate(JSContext *ctx)
 {
     JSValueConst obj;
