@@ -40,6 +40,9 @@ jobs:
           time make test262
   linux-32bits:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: alpine.sh {0}
     steps:
       - uses: actions/checkout@v3
       - uses: jirutka/setup-alpine@v1
@@ -47,15 +50,12 @@ jobs:
           arch: x86
           packages: "build-base make cmake"
       - name: build
-        shell: alpine.sh {0}
         run: |
           make
       - name: stats
-        shell: alpine.sh {0}
         run: |
           make stats
       - name: test
-        shell: alpine.sh {0}
         run: |
           make test
   linux-examples:
