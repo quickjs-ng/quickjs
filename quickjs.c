@@ -20972,6 +20972,14 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
             emit_atom(s, JS_ATOM_this);
             emit_u16(s, 0);
 
+            // expose class name to static initializers
+            if (is_static && class_name != JS_ATOM_NULL) {
+                emit_op(s, OP_dup);
+                emit_op(s, OP_scope_put_var_init);
+                emit_atom(s, class_name);
+                emit_u16(s, s->cur_func->scope_level);
+            }
+
             if (name == JS_ATOM_NULL) {
                 emit_op(s, OP_scope_get_var);
                 emit_atom(s, field_var_name);
