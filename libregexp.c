@@ -1201,6 +1201,7 @@ static int find_group_name(REParseState *s, const char *name)
 
     name_len = strlen(name);
     p = (char *)s->group_names.buf;
+    if (!p) return -1;
     buf_end = (char *)s->group_names.buf + s->group_names.size;
     capture_index = 1;
     while (p < buf_end) {
