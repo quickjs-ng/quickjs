@@ -30,10 +30,7 @@ endmacro()
 
 xcheck_add_c_compiler_flag(-Wall)
 xcheck_add_c_compiler_flag(-Werror)
-# -Wextra is too spartan on GCC
-if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang")
-    add_compile_options(-Wextra)
-endif()
+xcheck_add_c_compiler_flag(-Wextra)
 xcheck_add_c_compiler_flag(-Wno-sign-compare)
 xcheck_add_c_compiler_flag(-Wno-missing-field-initializers)
 xcheck_add_c_compiler_flag(-Wno-unused-parameter)
