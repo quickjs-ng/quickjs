@@ -8,6 +8,7 @@ include(GNUInstallDirs)
 # TODO:
 #  - Support cross-compilation
 
+set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
@@ -45,8 +46,6 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
     add_compile_options(-O0)
     xcheck_add_c_compiler_flag(-ggdb)
     xcheck_add_c_compiler_flag(-fno-omit-frame-pointer)
-else()
-    xcheck_add_c_compiler_flag(-g)
 endif()
 
 macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
@@ -255,6 +254,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(fib MODULE examples/fib.c)
         set_target_properties(fib PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
@@ -264,6 +264,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(point MODULE examples/point.c)
         set_target_properties(point PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
@@ -273,6 +274,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(bjson MODULE tests/bjson.c)
         set_target_properties(bjson PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(bjson PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)

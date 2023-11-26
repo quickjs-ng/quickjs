@@ -29,6 +29,8 @@
 
 #include "cutils.h"
 
+#pragma GCC visibility push(default)
+
 void pstrcpy(char *buf, int buf_size, const char *str)
 {
     int c;
@@ -603,3 +605,5 @@ void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
         }
     }
 }
+
+#pragma GCC visibility pop
