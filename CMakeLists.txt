@@ -256,6 +256,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(fib MODULE examples/fib.c)
         set_target_properties(fib PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
@@ -265,6 +266,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(point MODULE examples/point.c)
         set_target_properties(point PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
@@ -274,6 +276,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(bjson MODULE tests/bjson.c)
         set_target_properties(bjson PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(bjson PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
