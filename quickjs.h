@@ -1024,7 +1024,7 @@ JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 
 JS_EXTERN const char* JS_GetVersion(void);
 
-
+#undef JS_EXTERN
 #undef js_unlikely
 #undef js_force_inline
 
