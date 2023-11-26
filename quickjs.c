@@ -29675,6 +29675,15 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             }
             goto no_change;
 
+        case OP_swap:
+            // transformation: swap swap -> nothing!
+            if (code_match(&cc, pos_next, OP_swap, -1, -1)) {
+                if (cc.line_num >= 0) line_num = cc.line_num;
+                pos_next = cc.pos;
+                break;
+            }
+            goto no_change;
+
         case OP_get_loc:
             {
                 /* transformation:
