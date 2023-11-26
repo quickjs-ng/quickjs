@@ -911,7 +911,7 @@ void update_exclude_dirs(void)
     lp->count = count;
 }
 
-void load_config(const char *filename)
+void load_config(const char *filename, const char *ignore)
 {
     char buf[1024];
     FILE *f;
@@ -964,6 +964,10 @@ void load_config(const char *filename)
         case SECTION_CONFIG:
             if (!q) {
                 printf("%s:%d: syntax error\n", filename, lineno);
+                continue;
+            }
+            if (strstr(ignore, p)) {
+                printf("%s:%d: ignoring %s=%s\n", filename, lineno, p, q);
                 continue;
             }
             if (str_equal(p, "style")) {
@@ -1981,6 +1985,8 @@ int main(int argc, char **argv)
     BOOL is_dir_list;
     BOOL only_check_errors = FALSE;
     const char *filename;
+    const char *config = NULL;
+    const char *ignore = "";
     BOOL is_test262_harness = FALSE;
     BOOL is_module = FALSE;
 
@@ -2014,14 +2020,16 @@ int main(int argc, char **argv)
         } else if (str_equal(arg, "-v")) {
             verbose++;
         } else if (str_equal(arg, "-c")) {
-            load_config(get_opt_arg(arg, argv[optind++]));
+            config = get_opt_arg(arg, argv[optind++]);
         } else if (str_equal(arg, "-d")) {
+            ignore = "testdir"; // don't run all tests, just the ones from -d
             enumerate_tests(get_opt_arg(arg, argv[optind++]));
         } else if (str_equal(arg, "-e")) {
             error_filename = get_opt_arg(arg, argv[optind++]);
         } else if (str_equal(arg, "-x")) {
             namelist_load(&exclude_list, get_opt_arg(arg, argv[optind++]));
         } else if (str_equal(arg, "-f")) {
+            ignore = "testdir"; // don't run all tests, just the one from -f
             is_dir_list = FALSE;
         } else if (str_equal(arg, "-r")) {
             report_filename = get_opt_arg(arg, argv[optind++]);
@@ -2038,6 +2046,9 @@ int main(int argc, char **argv)
             break;
         }
     }
+
+    if (config)
+        load_config(config, ignore);
 
     if (optind >= argc && !test_list.count)
         help();
