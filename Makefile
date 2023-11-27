@@ -48,7 +48,7 @@ clean:
 	cmake --build $(BUILD_DIR) --target clean
 
 debug:
-	BUILDTYPE=Debug $(MAKE)
+	BUILD_TYPE=Debug $(MAKE)
 
 distclean:
 	@rm -rf $(BUILD_DIR)
