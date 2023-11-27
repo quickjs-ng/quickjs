@@ -175,6 +175,7 @@ enum {
     JS_CLASS_ASYNC_FROM_SYNC_ITERATOR,  /* u.async_from_sync_iterator_data */
     JS_CLASS_ASYNC_GENERATOR_FUNCTION,  /* u.func */
     JS_CLASS_ASYNC_GENERATOR,   /* u.async_generator_data */
+    JS_CLASS_WEAK_REF,
 
     JS_CLASS_INIT_COUNT, /* last entry for predefined classes */
 };
@@ -419,8 +420,14 @@ typedef union JSFloat64Union {
     uint32_t u32[2];
 } JSFloat64Union;
 
+typedef struct JSWeakRefData {
+    JSValue target;
+    JSValue obj;
+} JSWeakRefData;
+
 typedef enum {
     JS_WEAK_REF_KIND_MAP,
+    JS_WEAK_REF_KIND_WEAK_REF,
 } JSWeakRefKindEnum;
 
 typedef struct JSWeakRefRecord {
@@ -428,6 +435,7 @@ typedef struct JSWeakRefRecord {
     struct JSWeakRefRecord *next_weak_ref;
     union {
         struct JSMapRecord *map_record;
+        JSWeakRefData *weak_ref_data;
     } u;
 } JSWeakRefRecord;
 
@@ -1009,6 +1017,8 @@ static void js_promise_mark(JSRuntime *rt, JSValueConst val,
 static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValue val);
 static void js_promise_resolve_function_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
+static void js_weakref_finalizer(JSRuntime *rt, JSValue val);
+
 static JSValue JS_ToStringFree(JSContext *ctx, JSValue val);
 static int JS_ToBoolFree(JSContext *ctx, JSValue val);
 static int JS_ToInt32Free(JSContext *ctx, int32_t *pres, JSValue val);
@@ -2004,6 +2014,7 @@ JSContext *JS_NewContext(JSRuntime *rt)
     JS_AddIntrinsicTypedArrays(ctx);
     JS_AddIntrinsicPromise(ctx);
     JS_AddIntrinsicBigInt(ctx);
+    JS_AddIntrinsicWeakRef(ctx);
 
     JS_AddPerformance(ctx);
 
@@ -43880,6 +43891,7 @@ static void map_decref_record(JSRuntime *rt, JSMapRecord *mr)
 static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
 {
     JSWeakRefRecord *wr, *wr_next;
+    JSWeakRefData *wrd;
     JSMapRecord *mr;
     JSMapState *s;
 
@@ -43887,7 +43899,7 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
        lists */
     for(wr = *first_weak_ref; wr != NULL; wr = wr->next_weak_ref) {
         switch(wr->kind) {
-            case JS_WEAK_REF_KIND_MAP: {
+            case JS_WEAK_REF_KIND_MAP:
                 mr = wr->u.map_record;
                 s = mr->map;
                 assert(s->is_weak);
@@ -43895,7 +43907,10 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
                 list_del(&mr->hash_link);
                 list_del(&mr->link);
                 break;
-            }
+            case JS_WEAK_REF_KIND_WEAK_REF:
+                wrd = wr->u.weak_ref_data;
+                wrd->target = JS_UNDEFINED;
+                break;
             default:
                 abort();
         }
@@ -43906,12 +43921,16 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
     for(wr = *first_weak_ref; wr != NULL; wr = wr_next) {
         wr_next = wr->next_weak_ref;
         switch(wr->kind) {
-            case JS_WEAK_REF_KIND_MAP: {
+            case JS_WEAK_REF_KIND_MAP:
                 mr = wr->u.map_record;
                 JS_FreeValueRT(rt, mr->value);
                 js_free_rt(rt, mr);
                 break;
-            }
+            case JS_WEAK_REF_KIND_WEAK_REF:
+                wrd = wr->u.weak_ref_data;
+                JS_SetOpaque(wrd->obj, NULL);
+                js_free_rt(rt, wrd);
+                break;
             default:
                 abort();
         }
@@ -50541,4 +50560,107 @@ void JS_AddPerformance(JSContext *ctx)
                            JS_DupValue(ctx, performance),
                            JS_PROP_ENUMERABLE);
     JS_FreeValue(ctx, performance);
+}
+
+/* WeakRef */
+
+static void js_weakref_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSWeakRefData *wrd = JS_GetOpaque(val, JS_CLASS_WEAK_REF);
+    if (!wrd)
+        return;
+
+    /* Delete weak ref */
+    JSWeakRefRecord **pwr, *wr;
+
+    pwr = get_first_weak_ref(wrd->target);
+    for(;;) {
+        wr = *pwr;
+        assert(wr != NULL);
+        if (wr->kind == JS_WEAK_REF_KIND_WEAK_REF && wr->u.weak_ref_data == wrd)
+            break;
+        pwr = &wr->next_weak_ref;
+    }
+    *pwr = wr->next_weak_ref;
+    js_free_rt(rt, wrd);
+    js_free_rt(rt, wr);
+}
+
+static JSValue js_weakref_constructor(JSContext *ctx, JSValueConst new_target, int argc, JSValueConst *argv)
+{
+    if (JS_IsUndefined(new_target))
+        return JS_ThrowTypeError(ctx, "constructor requires 'new'");
+    JSValue arg = argv[0];
+    switch (JS_VALUE_GET_TAG(arg)) {
+        case JS_TAG_OBJECT:
+            break;
+        case JS_TAG_SYMBOL: {
+            // Per spec: prohibit symbols registered with Symbol.for()
+            JSAtomStruct *p = JS_VALUE_GET_PTR(arg);
+            if (p->atom_type != JS_ATOM_TYPE_GLOBAL_SYMBOL)
+                break;
+            // fallthru
+        }
+        default:
+            return JS_ThrowTypeError(ctx, "invalid target");
+    }
+    // TODO(saghul): short-circuit if the refcount is 1?
+    JSValue obj = js_create_from_ctor(ctx, new_target, JS_CLASS_WEAK_REF);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    JSWeakRefData *wrd = js_malloc(ctx, sizeof(*wrd));
+    if (!wrd) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    JSWeakRefRecord *wr, **pwr;
+    wr = js_malloc(ctx, sizeof(*wr));
+    if (!wr) {
+        JS_FreeValue(ctx, obj);
+        js_free(ctx, wrd);
+        return JS_EXCEPTION;
+    }
+    wrd->target = arg;
+    wrd->obj = obj;
+    wr->kind = JS_WEAK_REF_KIND_WEAK_REF;
+    wr->u.weak_ref_data = wrd;
+    pwr = get_first_weak_ref(arg);
+    /* Add the weak reference */
+    wr->next_weak_ref = *pwr;
+    *pwr = wr;
+    JS_SetOpaque(obj, wrd);
+    return obj;
+}
+
+static JSValue js_weakref_deref(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    JSWeakRefData *wrd = JS_GetOpaque2(ctx, this_val, JS_CLASS_WEAK_REF);
+    if (!wrd)
+        return JS_EXCEPTION;
+    return JS_DupValue(ctx, wrd->target);
+}
+
+static const JSCFunctionListEntry js_weakref_proto_funcs[] = {
+    JS_CFUNC_DEF("deref", 0, js_weakref_deref ),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "WeakRef", JS_PROP_CONFIGURABLE ),
+};
+
+static const JSClassShortDef js_weakref_class_def[] = {
+    { JS_ATOM_WeakRef, js_weakref_finalizer, NULL }, /* JS_CLASS_WEAK_REF */
+};
+
+void JS_AddIntrinsicWeakRef(JSContext *ctx)
+{
+    JSRuntime *rt = ctx->rt;
+
+    if (!JS_IsRegisteredClass(rt, JS_CLASS_WEAK_REF)) {
+        init_class_range(rt, js_weakref_class_def, JS_CLASS_WEAK_REF,
+                         countof(js_weakref_class_def));
+    }
+
+    ctx->class_proto[JS_CLASS_WEAK_REF] = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_WEAK_REF],
+                               js_weakref_proto_funcs,
+                               countof(js_weakref_proto_funcs));
+    JS_NewGlobalCConstructor(ctx, "WeakRef", js_weakref_constructor, 1, ctx->class_proto[JS_CLASS_WEAK_REF]);
 }

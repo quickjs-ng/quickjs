@@ -364,6 +364,7 @@ JS_EXTERN void JS_AddIntrinsicMapSet(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicTypedArrays(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicPromise(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicBigInt(JSContext *ctx);
+JS_EXTERN void JS_AddIntrinsicWeakRef(JSContext *ctx);
 JS_EXTERN void JS_AddPerformance(JSContext *ctx);
 
 /* Only used for running 262 tests. TODO(saghul) add build time flag. */
