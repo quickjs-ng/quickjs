@@ -419,6 +419,18 @@ typedef union JSFloat64Union {
     uint32_t u32[2];
 } JSFloat64Union;
 
+typedef enum {
+    JS_WEAK_REF_KIND_MAP,
+} JSWeakRefKindEnum;
+
+typedef struct JSWeakRefRecord {
+    JSWeakRefKindEnum kind;
+    struct JSWeakRefRecord *next_weak_ref;
+    union {
+        struct JSMapRecord *map_record;
+    } u;
+} JSWeakRefRecord;
+
 enum {
     JS_ATOM_TYPE_STRING = 1,
     JS_ATOM_TYPE_GLOBAL_SYMBOL,
@@ -449,7 +461,7 @@ struct JSString {
     uint32_t hash : 30;
     uint8_t atom_type : 2; /* != 0 if atom, JS_ATOM_TYPE_x */
     uint32_t hash_next; /* atom_index for JS_ATOM_TYPE_SYMBOL */
-    struct JSMapRecord *first_weak_ref;
+    JSWeakRefRecord *first_weak_ref;
 #ifdef DUMP_LEAKS
     struct list_head link; /* string list */
 #endif
@@ -802,7 +814,7 @@ struct JSObject {
     JSShape *shape; /* prototype and property names + flag */
     JSProperty *prop; /* array of properties */
     /* byte offsets: 24/40 */
-    struct JSMapRecord *first_weak_ref; /* XXX: use a bit and an external hash table? */
+    JSWeakRefRecord *first_weak_ref;
     /* byte offsets: 28/48 */
     union {
         void *opaque;
@@ -1056,7 +1068,7 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                              JSValueConst getter, JSValueConst setter,
                              int flags);
 static int js_string_memcmp(const JSString *p1, const JSString *p2, int len);
-static void reset_weak_ref(JSRuntime *rt, struct JSMapRecord **first_weak_ref);
+static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref);
 static JSValue js_array_buffer_constructor3(JSContext *ctx,
                                             JSValueConst new_target,
                                             uint64_t len, JSClassID class_id,
@@ -43521,7 +43533,6 @@ typedef struct JSMapRecord {
     int ref_count; /* used during enumeration to avoid freeing the record */
     BOOL empty; /* TRUE if the record is deleted */
     struct JSMapState *map;
-    struct JSMapRecord *next_weak_ref;
     struct list_head link;
     struct list_head hash_link;
     JSValue key;
@@ -43754,7 +43765,7 @@ static void map_hash_resize(JSContext *ctx, JSMapState *s)
     s->record_count_threshold = new_hash_size * 2;
 }
 
-static JSMapRecord **get_first_weak_ref(JSValueConst key)
+static JSWeakRefRecord **get_first_weak_ref(JSValueConst key)
 {
         switch (JS_VALUE_GET_TAG(key)) {
         case JS_TAG_OBJECT:
@@ -43778,7 +43789,7 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
                                    JSValueConst key)
 {
     uint32_t h;
-    JSMapRecord *mr, **pmr;
+    JSMapRecord *mr;
 
     mr = js_malloc(ctx, sizeof(*mr));
     if (!mr)
@@ -43787,10 +43798,18 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
     mr->map = s;
     mr->empty = FALSE;
     if (s->is_weak) {
-        pmr = get_first_weak_ref(key);
+        JSWeakRefRecord *wr, **pwr;
+        wr = js_malloc(ctx, sizeof(*wr));
+        if (!wr) {
+            js_free(ctx, mr);
+            return NULL;
+        }
+        wr->kind = JS_WEAK_REF_KIND_MAP;
+        wr->u.map_record = mr;
+        pwr = get_first_weak_ref(key);
         /* Add the weak reference */
-        mr->next_weak_ref = *pmr;
-        *pmr = mr;
+        wr->next_weak_ref = *pwr;
+        *pwr = wr;
     } else {
         JS_DupValue(ctx, key);
     }
@@ -43809,19 +43828,20 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
    reference list. we don't use a doubly linked list to
    save space, assuming a given object has few weak
        references to it */
-static void delete_weak_ref(JSRuntime *rt, JSMapRecord *mr)
+static void delete_map_weak_ref(JSRuntime *rt, JSMapRecord *mr)
 {
-    JSMapRecord **pmr, *mr1;
+    JSWeakRefRecord **pwr, *wr;
 
-    pmr = get_first_weak_ref(mr->key);
+    pwr = get_first_weak_ref(mr->key);
     for(;;) {
-        mr1 = *pmr;
-        assert(mr1 != NULL);
-        if (mr1 == mr)
+        wr = *pwr;
+        assert(wr != NULL);
+        if (wr->kind == JS_WEAK_REF_KIND_MAP && wr->u.map_record == mr)
             break;
-        pmr = &mr1->next_weak_ref;
+        pwr = &wr->next_weak_ref;
     }
-    *pmr = mr1->next_weak_ref;
+    *pwr = wr->next_weak_ref;
+    js_free_rt(rt, wr);
 }
 
 static void map_delete_record(JSRuntime *rt, JSMapState *s, JSMapRecord *mr)
@@ -43830,7 +43850,7 @@ static void map_delete_record(JSRuntime *rt, JSMapState *s, JSMapRecord *mr)
         return;
     list_del(&mr->hash_link);
     if (s->is_weak) {
-        delete_weak_ref(rt, mr);
+        delete_map_weak_ref(rt, mr);
     } else {
         JS_FreeValueRT(rt, mr->key);
     }
@@ -43857,27 +43877,45 @@ static void map_decref_record(JSRuntime *rt, JSMapRecord *mr)
     }
 }
 
-static void reset_weak_ref(JSRuntime *rt, struct JSMapRecord **first_weak_ref)
+static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
 {
-    JSMapRecord *mr, *mr_next;
+    JSWeakRefRecord *wr, *wr_next;
+    JSMapRecord *mr;
     JSMapState *s;
 
     /* first pass to remove the records from the WeakMap/WeakSet
        lists */
-    for(mr = *first_weak_ref; mr != NULL; mr = mr->next_weak_ref) {
-        s = mr->map;
-        assert(s->is_weak);
-        assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
-        list_del(&mr->hash_link);
-        list_del(&mr->link);
+    for(wr = *first_weak_ref; wr != NULL; wr = wr->next_weak_ref) {
+        switch(wr->kind) {
+            case JS_WEAK_REF_KIND_MAP: {
+                mr = wr->u.map_record;
+                s = mr->map;
+                assert(s->is_weak);
+                assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
+                list_del(&mr->hash_link);
+                list_del(&mr->link);
+                break;
+            }
+            default:
+                abort();
+        }
     }
 
     /* second pass to free the values to avoid modifying the weak
        reference list while traversing it. */
-    for(mr = *first_weak_ref; mr != NULL; mr = mr_next) {
-        mr_next = mr->next_weak_ref;
-        JS_FreeValueRT(rt, mr->value);
-        js_free_rt(rt, mr);
+    for(wr = *first_weak_ref; wr != NULL; wr = wr_next) {
+        wr_next = wr->next_weak_ref;
+        switch(wr->kind) {
+            case JS_WEAK_REF_KIND_MAP: {
+                mr = wr->u.map_record;
+                JS_FreeValueRT(rt, mr->value);
+                js_free_rt(rt, mr);
+                break;
+            }
+            default:
+                abort();
+        }
+        js_free_rt(rt, wr);
     }
 
     *first_weak_ref = NULL; /* fail safe */
@@ -44149,7 +44187,7 @@ static void js_map_finalizer(JSRuntime *rt, JSValue val)
             mr = list_entry(el, JSMapRecord, link);
             if (!mr->empty) {
                 if (s->is_weak)
-                    delete_weak_ref(rt, mr);
+                    delete_map_weak_ref(rt, mr);
                 else
                     JS_FreeValueRT(rt, mr->key);
                 JS_FreeValueRT(rt, mr->value);
