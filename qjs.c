@@ -144,7 +144,7 @@ static inline size_t js_trace_malloc_usable_size(void *ptr)
 }
 
 static void
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__clang__)
 /* mingw printf is used */
 __attribute__((format(gnu_printf, 2, 3)))
 #else
