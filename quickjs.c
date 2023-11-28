@@ -549,7 +549,6 @@ typedef struct JSVarDef {
 #define PC2LINE_RANGE    5
 #define PC2LINE_OP_FIRST 1
 #define PC2LINE_DIFF_PC_MAX ((255 - PC2LINE_OP_FIRST) / PC2LINE_RANGE)
-#define IC_CACHE_ITEM_CAPACITY 4
 
 typedef enum JSFunctionKindEnum {
     JS_FUNC_NORMAL = 0,
@@ -558,14 +557,13 @@ typedef enum JSFunctionKindEnum {
     JS_FUNC_ASYNC_GENERATOR = (JS_FUNC_GENERATOR | JS_FUNC_ASYNC),
 } JSFunctionKindEnum;
 
-typedef struct JSInlineCacheRingItem {
-    JSShape* shape;
-    uint32_t prop_offset;
-} JSInlineCacheRingItem;
+#define IC_CACHE_ITEM_CAPACITY 4
 
 typedef struct JSInlineCacheRingSlot {
+    /* SoA for space optimization: 56 bytes */
+    JSShape* shape[IC_CACHE_ITEM_CAPACITY];
+    uint32_t prop_offset[IC_CACHE_ITEM_CAPACITY];
     JSAtom atom;
-    JSInlineCacheRingItem buffer[IC_CACHE_ITEM_CAPACITY];
     uint8_t index;
 } JSInlineCacheRingSlot;
 
@@ -599,18 +597,18 @@ static force_inline int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache
 {
     uint32_t i;
     JSInlineCacheRingSlot *cr;
-    JSInlineCacheRingItem *buffer;
+    JSShape *shape_slot;
     assert(cache_offset < ic->capacity);
     cr = ic->cache + cache_offset;
     i = cr->index;
     for (;;) {
-        buffer = cr->buffer + i;
-        if (likely(buffer->shape == shape)) {
+        shape_slot = *(cr->shape + i);
+        if (likely(shape_slot == shape)) {
             cr->index = i;
-            return buffer->prop_offset;
+            return cr->prop_offset[i];
         }
 
-        i = (i + 1) % IC_CACHE_ITEM_CAPACITY;
+        i = (i + 1) % countof(cr->shape);
         if (unlikely(i == cr->index)) {
             break;
         }
@@ -5506,7 +5504,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
     case JS_GC_OBJ_TYPE_FUNCTION_BYTECODE:
         /* the template objects can be part of a cycle */
         {
-            JSInlineCacheRingItem *buffer, (*buffers)[IC_CACHE_ITEM_CAPACITY];
+            JSShape **shape, *(*shapes)[IC_CACHE_ITEM_CAPACITY];
             JSFunctionBytecode *b = (JSFunctionBytecode *)gp;
             int i, j;
             for(i = 0; i < b->cpool_count; i++) {
@@ -5516,10 +5514,10 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                 mark_func(rt, &b->realm->header);
             if (b->ic) {
                 for (i = 0; i < b->ic->count; i++) {
-                    buffers = &b->ic->cache[i].buffer;
-                    for (buffer = *buffers; buffer != endof(*buffers); buffer++)
-                        if (buffer->shape) 
-                            mark_func(rt, &buffer->shape->header);
+                    shapes = &b->ic->cache[i].shape;
+                    for (shape = *shapes; shape != endof(*shapes); shape++)
+                        if (*shape) 
+                            mark_func(rt, &(*shape)->header);
                 }
             }
         }
@@ -51032,13 +51030,13 @@ int free_ic(JSInlineCache *ic)
 {
     uint32_t i, j;
     JSInlineCacheHashSlot *ch, *ch_next;
-    JSInlineCacheRingItem *buffer, (*buffers)[IC_CACHE_ITEM_CAPACITY];
+    JSShape **shape, *(*shapes)[IC_CACHE_ITEM_CAPACITY];
     if (ic->cache) {
         for (i = 0; i < ic->count; i++) {
-            buffers = &ic->cache[i].buffer;
+            shapes = &ic->cache[i].shape;
             JS_FreeAtom(ic->ctx, ic->cache[i].atom);
-            for (buffer = *buffers; buffer != endof(*buffers); buffer++)
-                js_free_shape_null(ic->ctx->rt, buffer->shape);
+            for (shape = *shapes; shape != endof(*shapes); shape++)
+                js_free_shape_null(ic->ctx->rt, *shape);
         }
     }
     for (i = 0; i < ic->capacity; i++) {
@@ -51075,18 +51073,18 @@ uint32_t add_ic_slot(JSInlineCache *ic, JSAtom atom, JSObject *object,
     assert(cr != NULL);
     i = cr->index;
     for (;;) {
-        if (object->shape == cr->buffer[i].shape) {
-            cr->buffer[i].prop_offset = prop_offset;
+        if (object->shape == cr->shape[i]) {
+            cr->prop_offset[i] = prop_offset;
             goto end;
         }
-        i = (i + 1) % countof(cr->buffer);
+        i = (i + 1) % countof(cr->shape);
         if (unlikely(i == cr->index))
             break;
     }
-    sh = cr->buffer[i].shape;
-    cr->buffer[i].shape = js_dup_shape(object->shape);
+    sh = cr->shape[i];
+    cr->shape[i] = js_dup_shape(object->shape);
     js_free_shape_null(ic->ctx->rt, sh);
-    cr->buffer[i].prop_offset = prop_offset;
+    cr->prop_offset[i] = prop_offset;
 end:
     return ch->index;
 }
