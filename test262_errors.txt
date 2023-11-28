@@ -92,6 +92,8 @@ test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds
 test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds.js:22: strict mode: Test262Error: Reflect.set(sample, "-1", 1) must return true Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-detached-buffer.js:39: Test262Error: Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-detached-buffer.js:39: strict mode: Test262Error: Expected SameValue(«false», «true») to be true (Testing with Float64Array.)
+test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: unexpected error type: Test262: This statement should not be evaluated.
+test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: Test262Error: Expected a DummyError but got a TypeError
 test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: strict mode: Test262Error: Expected a DummyError but got a TypeError
 test262/test/language/expressions/assignment/target-member-computed-reference-undefined.js:32: Test262Error: Expected a DummyError but got a TypeError
@@ -124,6 +126,10 @@ test262/test/language/expressions/delete/super-property-null-base.js:26: Test262
 test262/test/language/expressions/delete/super-property-null-base.js:26: strict mode: Test262Error: Expected a ReferenceError but got a TypeError
 test262/test/language/expressions/dynamic-import/usage-from-eval.js:26: TypeError: $DONE() not called
 test262/test/language/expressions/dynamic-import/usage-from-eval.js:26: strict mode: TypeError: $DONE() not called
+test262/test/language/expressions/function/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
+test262/test/language/expressions/function/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
+test262/test/language/expressions/generators/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
+test262/test/language/expressions/generators/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-and.js:60: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «false») to be true
 test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-and.js:60: strict mode: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «false») to be true
 test262/test/language/expressions/logical-assignment/left-hand-side-private-reference-accessor-property-nullish.js:59: Test262Error: The expression should evaluate to the result Expected SameValue(«undefined», «1») to be true

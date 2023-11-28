@@ -312,7 +312,7 @@ static const char main_c_template2[] =
 
 void help(void)
 {
-    printf("QuickJS Compiler version %s\n"
+    printf("QuickJS-ng Compiler version %s\n"
            "usage: " PROG_NAME " [options] [files]\n"
            "\n"
            "options are:\n"
@@ -437,7 +437,7 @@ int main(int argc, char **argv)
     /* loader for ES6 modules */
     JS_SetModuleLoaderFunc(rt, NULL, jsc_module_loader, NULL);
 
-    fprintf(fo, "/* File generated automatically by the QuickJS compiler. */\n"
+    fprintf(fo, "/* File generated automatically by the QuickJS-ng compiler. */\n"
             "\n"
             );
 

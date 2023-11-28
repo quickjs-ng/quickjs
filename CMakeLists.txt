@@ -2,37 +2,16 @@ cmake_minimum_required(VERSION 3.9)
 
 project(quickjs LANGUAGES C)
 
+include(CheckCCompilerFlag)
 include(GNUInstallDirs)
 
 # TODO:
 #  - Support cross-compilation
 
+set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
-
-add_compile_options(
-    -Wall
-    -Werror
-)
-if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang")
-    add_compile_options(
-        -Wextra
-        -Wno-sign-compare
-        -Wno-missing-field-initializers
-        -Wno-unused-parameter
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
-        -funsigned-char
-    )
-else()
-    add_compile_options(
-        -Wno-array-bounds
-        -Wno-format-truncation
-        -Wno-unused-variable
-        -Wno-unused-but-set-variable
-    )
-endif()
 
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "No build type selected, default to Release")
@@ -41,14 +20,32 @@ endif()
 
 message(STATUS "Building in ${CMAKE_BUILD_TYPE} mode")
 message(STATUS "Building with ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION} on ${CMAKE_SYSTEM}")
+
+macro(xcheck_add_c_compiler_flag FLAG)
+    string(REPLACE "-" "" FLAG_NO_HYPHEN ${FLAG})
+    check_c_compiler_flag(${FLAG} COMPILER_SUPPORTS_${FLAG_NO_HYPHEN})
+    if(COMPILER_SUPPORTS_${FLAG_NO_HYPHEN})
+        add_compile_options(${FLAG})
+    endif()
+endmacro()
+
+xcheck_add_c_compiler_flag(-Wall)
+xcheck_add_c_compiler_flag(-Werror)
+xcheck_add_c_compiler_flag(-Wextra)
+xcheck_add_c_compiler_flag(-Wno-implicit-fallthrough)
+xcheck_add_c_compiler_flag(-Wno-sign-compare)
+xcheck_add_c_compiler_flag(-Wno-missing-field-initializers)
+xcheck_add_c_compiler_flag(-Wno-unused-parameter)
+xcheck_add_c_compiler_flag(-Wno-unused-variable)
+xcheck_add_c_compiler_flag(-Wno-unused-but-set-variable)
+xcheck_add_c_compiler_flag(-Wno-array-bounds)
+xcheck_add_c_compiler_flag(-Wno-format-truncation)
+xcheck_add_c_compiler_flag(-funsigned-char)
+
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    add_compile_options(
-        -ggdb
-        -O0
-        -fno-omit-frame-pointer
-    )
-else()
-    add_compile_options(-g)
+    add_compile_options(-O0)
+    xcheck_add_c_compiler_flag(-ggdb)
+    xcheck_add_c_compiler_flag(-fno-omit-frame-pointer)
 endif()
 
 macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
@@ -69,6 +66,7 @@ if(BUILD_SHARED_LIBS)
 endif()
 
 xoption(BUILD_EXAMPLES "Build examples" OFF)
+xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
 xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
 xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
@@ -132,9 +130,12 @@ if(BUILD_QJS_LIBC)
     list(APPEND qjs_sources quickjs-libc.c)
 endif()
 list(APPEND qjs_defines _GNU_SOURCE)
-list(APPEND qjs_libs qjs m pthread)
-if(NOT MINGW)
+list(APPEND qjs_libs qjs m)
+if(NOT WIN32)
     list(APPEND qjs_libs dl)
+endif()
+if(NOT MSVC)
+    list(APPEND qjs_libs pthread)
 endif()
 
 add_library(qjs ${qjs_sources})
@@ -144,7 +145,10 @@ if (CMAKE_BUILD_TYPE MATCHES Debug)
         DUMP_LEAKS
     )
 endif()
-target_include_directories(qjs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(qjs PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>  
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
 
 # QuickJS bytecode compiler
@@ -180,6 +184,12 @@ set_target_properties(qjs_exe PROPERTIES
 )
 target_compile_definitions(qjs_exe PRIVATE ${qjs_defines})
 target_link_libraries(qjs_exe ${qjs_libs})
+if(BUILD_STATIC_QJS_EXE OR MINGW)
+    target_link_options(qjs_exe PRIVATE -static)
+    if(MINGW)
+        target_link_options(qjs_exe PRIVATE -static-libgcc)
+    endif()
+endif()
 if(NOT MINGW)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
@@ -247,6 +257,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(fib MODULE examples/fib.c)
         set_target_properties(fib PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
@@ -256,6 +267,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(point MODULE examples/point.c)
         set_target_properties(point PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
@@ -265,6 +277,7 @@ if(BUILD_EXAMPLES AND NOT MINGW)
         add_library(bjson MODULE tests/bjson.c)
         set_target_properties(bjson PROPERTIES
             PREFIX ""
+            C_VISIBILITY_PRESET default
         )
         target_compile_definitions(bjson PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)

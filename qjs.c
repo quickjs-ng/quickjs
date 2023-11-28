@@ -144,7 +144,7 @@ static inline size_t js_trace_malloc_usable_size(void *ptr)
 }
 
 static void
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__clang__)
 /* mingw printf is used */
 __attribute__((format(gnu_printf, 2, 3)))
 #else
@@ -269,7 +269,7 @@ static const JSMallocFunctions trace_mf = {
 
 void help(void)
 {
-    printf("QuickJS version %s\n"
+    printf("QuickJS-ng version %s\n"
            "usage: " PROG_NAME " [options] [file [args]]\n"
            "-h  --help         list options\n"
            "-e  --eval EXPR    evaluate EXPR\n"
