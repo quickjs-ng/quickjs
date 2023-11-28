@@ -680,8 +680,6 @@ JS_EXTERN int JS_IsArray(JSContext *ctx, JSValueConst val);
 
 JS_EXTERN JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
 
-typedef struct JSInlineCache JSInlineCache;
-
 JS_EXTERN JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
                                          JSAtom prop, JSValueConst receiver,
                                          JS_BOOL throw_ref_error);
