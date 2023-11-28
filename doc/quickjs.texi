@@ -167,9 +167,6 @@ find the name of the dynamically loaded modules.
 Add initialization code for an external C module. See the
 @code{c_module} example.
 
-@item -x
-Byte swapped output (only used for cross compilation).
-
 @item -flto
 Use link time optimization. The compilation is slower but the
 executable is smaller and faster. This option is automatically set

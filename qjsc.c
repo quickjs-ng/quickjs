@@ -51,7 +51,6 @@ static namelist_t cname_list;
 static namelist_t cmodule_list;
 static namelist_t init_module_list;
 static FILE *outfile;
-static BOOL byte_swap;
 static const char *c_ident_prefix = "qjsc_";
 
 
@@ -152,11 +151,8 @@ static void output_object_code(JSContext *ctx,
 {
     uint8_t *out_buf;
     size_t out_buf_len;
-    int flags;
-    flags = JS_WRITE_OBJ_BYTECODE;
-    if (byte_swap)
-        flags |= JS_WRITE_OBJ_BSWAP;
-    out_buf = JS_WriteObject(ctx, &out_buf_len, obj, flags);
+
+    out_buf = JS_WriteObject(ctx, &out_buf_len, obj, JS_WRITE_OBJ_BYTECODE);
     if (!out_buf) {
         js_std_dump_error(ctx);
         exit(1);
@@ -322,7 +318,6 @@ void help(void)
            "-m          compile as Javascript module (default=autodetect)\n"
            "-D module_name         compile a dynamically loaded module or worker\n"
            "-M module_name[,cname] add initialization code for an external C module\n"
-           "-x          byte swapped output\n"
            "-p prefix   set the prefix of the generated C names\n"
            "-S n        set the maximum stack size to 'n' bytes (default=%d)\n",
            JS_GetVersion(),
@@ -352,7 +347,6 @@ int main(int argc, char **argv)
     output_type = OUTPUT_C;
     cname = NULL;
     module = -1;
-    byte_swap = FALSE;
     verbose = 0;
     stack_size = 0;
     memset(&dynamic_module_list, 0, sizeof(dynamic_module_list));
@@ -398,9 +392,6 @@ int main(int argc, char **argv)
             break;
         case 'D':
             namelist_add(&dynamic_module_list, optarg, NULL, 0);
-            break;
-        case 'x':
-            byte_swap = TRUE;
             break;
         case 'v':
             verbose++;

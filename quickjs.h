@@ -838,7 +838,7 @@ JS_EXTERN int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx);
 
 /* Object Writer/Reader (currently only used to handle precompiled code) */
 #define JS_WRITE_OBJ_BYTECODE  (1 << 0) /* allow function/module */
-#define JS_WRITE_OBJ_BSWAP     (1 << 1) /* byte swapped output */
+#define JS_WRITE_OBJ_BSWAP     (0)      /* byte swapped output (obsolete, handled transparently) */
 #define JS_WRITE_OBJ_SAB       (1 << 2) /* allow SharedArrayBuffer */
 #define JS_WRITE_OBJ_REFERENCE (1 << 3) /* allow object references to
                                            encode arbitrary object
