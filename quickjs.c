@@ -538,48 +538,48 @@ typedef enum JSFunctionKindEnum {
     JS_FUNC_ASYNC_GENERATOR = (JS_FUNC_GENERATOR | JS_FUNC_ASYNC),
 } JSFunctionKindEnum;
 
-typedef struct InlineCacheRingItem {
+typedef struct JSInlineCacheRingItem {
     JSShape* shape;
     uint32_t prop_offset;
-} InlineCacheRingItem;
+} JSInlineCacheRingItem;
 
-typedef struct InlineCacheRingSlot {
+typedef struct JSInlineCacheRingSlot {
     JSAtom atom;
-    InlineCacheRingItem buffer[IC_CACHE_ITEM_CAPACITY];
+    JSInlineCacheRingItem buffer[IC_CACHE_ITEM_CAPACITY];
     uint8_t index;
-} InlineCacheRingSlot;
+} JSInlineCacheRingSlot;
 
-typedef struct InlineCacheHashSlot {
+typedef struct JSInlineCacheHashSlot {
     JSAtom atom;
     uint32_t index;
-    struct InlineCacheHashSlot *next;
-} InlineCacheHashSlot;
+    struct JSInlineCacheHashSlot *next;
+} JSInlineCacheHashSlot;
 
-typedef struct InlineCache {
+typedef struct JSInlineCache {
     uint32_t count;
     uint32_t capacity;
     uint32_t hash_bits;
     JSContext* ctx;
-    InlineCacheHashSlot **hash;
-    InlineCacheRingSlot *cache;
+    JSInlineCacheHashSlot **hash;
+    JSInlineCacheRingSlot *cache;
     uint32_t updated_offset;
     BOOL updated;
-} InlineCache;
+} JSInlineCache;
 
-InlineCache *init_ic(JSContext *ctx);
-int rebuild_ic(InlineCache *ic);
-int resize_ic_hash(InlineCache *ic);
-int free_ic(InlineCache *ic);
-uint32_t add_ic_slot(InlineCache *ic, JSAtom atom, JSObject *object,
+static JSInlineCache *init_ic(JSContext *ctx);
+static int rebuild_ic(JSInlineCache *ic);
+static int resize_ic_hash(JSInlineCache *ic);
+static int free_ic(JSInlineCache *ic);
+static uint32_t add_ic_slot(JSInlineCache *ic, JSAtom atom, JSObject *object,
                      uint32_t prop_offset);
-uint32_t add_ic_slot1(InlineCache *ic, JSAtom atom);
+static uint32_t add_ic_slot1(JSInlineCache *ic, JSAtom atom);
 
-force_inline int32_t get_ic_prop_offset(InlineCache *ic, uint32_t cache_offset,
+static force_inline int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
                                         JSShape *shape)
 {
     uint32_t i;
-    InlineCacheRingSlot *cr;
-    InlineCacheRingItem *buffer;
+    JSInlineCacheRingSlot *cr;
+    JSInlineCacheRingItem *buffer;
     assert(cache_offset < ic->capacity);
     cr = ic->cache + cache_offset;
     i = cr->index;
@@ -599,7 +599,7 @@ force_inline int32_t get_ic_prop_offset(InlineCache *ic, uint32_t cache_offset,
   return -1;
 }
 
-force_inline JSAtom get_ic_atom(InlineCache *ic, uint32_t cache_offset)
+static force_inline JSAtom get_ic_atom(JSInlineCache *ic, uint32_t cache_offset)
 {
     assert(cache_offset < ic->capacity);
     return ic->cache[cache_offset].atom;
@@ -635,7 +635,7 @@ typedef struct JSFunctionBytecode {
     JSValue *cpool; /* constant pool (self pointer) */
     int cpool_count;
     int closure_var_count;
-    InlineCache *ic;
+    JSInlineCache *ic;
     struct {
         /* debug info, move to separate structure to save memory? */
         JSAtom filename;
@@ -5068,16 +5068,17 @@ static force_inline JSShapeProperty* find_own_property_ic(JSProperty** ppr, JSOb
 {
     JSShape* sh;
     JSShapeProperty *pr, *prop;
-    intptr_t h;
+    intptr_t h, i;
     sh = p->shape;
     h = (uintptr_t)atom & sh->prop_hash_mask;
     h = prop_hash_end(sh)[-h - 1];
     prop = get_shape_prop(sh);
     while (h) {
-        pr = &prop[h - 1];
+        i = h - 1;
+        pr = &prop[i];
         if (likely(pr->atom == atom)) {
-            *ppr = &p->prop[h - 1];
-            *offset = h - 1;
+            *ppr = &p->prop[i];
+            *offset = i;
             /* the compiler should be able to assume that pr != NULL here */
             return pr;
         }
@@ -5482,7 +5483,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
     case JS_GC_OBJ_TYPE_FUNCTION_BYTECODE:
         /* the template objects can be part of a cycle */
         {
-            InlineCacheRingItem *buffer;
+            JSInlineCacheRingItem *buffer, (*buffers)[IC_CACHE_ITEM_CAPACITY];
             JSFunctionBytecode *b = (JSFunctionBytecode *)gp;
             int i, j;
             for(i = 0; i < b->cpool_count; i++) {
@@ -5492,10 +5493,10 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                 mark_func(rt, &b->realm->header);
             if (b->ic) {
                 for (i = 0; i < b->ic->count; i++) {
-                    buffer = b->ic->cache[i].buffer;
-                    for (j = 0; j < IC_CACHE_ITEM_CAPACITY; j++)
-                        if (buffer[j].shape) 
-                            mark_func(rt, &buffer[j].shape->header);
+                    buffers = &b->ic->cache[i].buffer;
+                    for (buffer = *buffers; buffer != endof(*buffers); buffer++)
+                        if (buffer->shape) 
+                            mark_func(rt, &buffer->shape->header);
                 }
             }
         }
@@ -6909,7 +6910,7 @@ static int JS_AutoInitProperty(JSContext *ctx, JSObject *p, JSAtom prop,
 
 JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
                                JSAtom prop, JSValueConst this_obj,
-                               InlineCache* ic, BOOL throw_ref_error)
+                               JSInlineCache* ic, BOOL throw_ref_error)
 {
     JSObject *p;
     JSProperty *pr;
@@ -7061,7 +7062,7 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
 
 force_inline JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValueConst obj,
                                                   JSAtom prop, JSValueConst this_obj,
-                                                  InlineCache *ic, int32_t offset, 
+                                                  JSInlineCache *ic, int32_t offset, 
                                                   BOOL throw_ref_error) 
 {
     uint32_t tag;
@@ -7073,8 +7074,8 @@ force_inline JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValueConst o
     offset = get_ic_prop_offset(ic, offset, p->shape);
     if (likely(offset >= 0))
         return JS_DupValue(ctx, p->prop[offset].u.value);
-    slow_path:
-        return JS_GetPropertyInternal(ctx, obj, prop, this_obj, ic, throw_ref_error);      
+slow_path:
+    return JS_GetPropertyInternal(ctx, obj, prop, this_obj, ic, throw_ref_error);      
 }
 
 static JSValue JS_ThrowTypeErrorPrivateNotFound(JSContext *ctx, JSAtom atom)
@@ -8288,7 +8289,7 @@ static int JS_SetPropertyGeneric(JSContext *ctx,
    the new property is not added and an error is raised. */
 int JS_SetPropertyInternal(JSContext *ctx, JSValueConst this_obj,
                            JSAtom prop, JSValue val, int flags,
-                           InlineCache *ic)
+                           JSInlineCache *ic)
 {
     JSObject *p, *p1;
     JSShapeProperty *prs;
@@ -8512,7 +8513,7 @@ retry:
 
 force_inline int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueConst this_obj,
                            JSAtom prop, JSValue val, int flags,
-                           InlineCache *ic, int32_t offset) {
+                           JSInlineCache *ic, int32_t offset) {
     uint32_t tag;
     JSObject *p;
     tag = JS_VALUE_GET_TAG(this_obj);
@@ -8524,8 +8525,8 @@ force_inline int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueConst this_
         set_value(ctx, &p->prop[offset].u.value, val);
         return TRUE;
     }
-    slow_path:
-        return JS_SetPropertyInternal(ctx, this_obj, prop, val, flags, ic);
+slow_path:
+    return JS_SetPropertyInternal(ctx, this_obj, prop, val, flags, ic);
 }
 
 /* flags can be JS_PROP_THROW or JS_PROP_THROW_STRICT */
@@ -14303,7 +14304,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     JSValue *local_buf, *stack_buf, *var_buf, *arg_buf, *sp, ret_val, *pval;
     JSVarRef **var_refs;
     size_t alloca_size;
-    InlineCache *ic;
+    JSInlineCache *ic;
 
 #if !DIRECT_DISPATCH
 #define SWITCH(pc)      switch (opcode = *pc++)
@@ -18151,7 +18152,7 @@ typedef struct JSFunctionDef {
     int source_len;
 
     JSModuleDef *module; /* != NULL when parsing a module */
-    InlineCache *ic; /* inline cache for field op */
+    JSInlineCache *ic; /* inline cache for field op */
 } JSFunctionDef;
 
 typedef struct JSToken {
@@ -26816,9 +26817,8 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
     js_free(ctx, fd->line_number_slots);
 
     /* free ic */
-    if (fd->ic) {
-      free_ic(fd->ic);
-    }
+    if (fd->ic)
+        free_ic(fd->ic);
 
     for(i = 0; i < fd->cpool_count; i++) {
         JS_FreeValue(ctx, fd->cpool[i]);
@@ -30580,7 +30580,7 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
 
     free_bytecode_atoms(rt, b->byte_code_buf, b->byte_code_len, TRUE);
 
-    if (b->ic != NULL)
+    if (b->ic)
         free_ic(b->ic);
 
     if (b->vardefs) {
@@ -50425,39 +50425,38 @@ static force_inline uint32_t get_index_hash(JSAtom atom, int hash_bits)
     return (atom * 0x9e370001) >> (32 - hash_bits);
 }
 
-InlineCache *init_ic(JSContext *ctx)
+JSInlineCache *init_ic(JSContext *ctx)
 {
-    InlineCache *ic;
-    ic = js_malloc(ctx, sizeof(InlineCache));
+    JSInlineCache *ic;
+    ic = js_malloc(ctx, sizeof(JSInlineCache));
     if (unlikely(!ic))
         goto fail;
     ic->count = 0;
     ic->hash_bits = 2;
     ic->capacity = 1 << ic->hash_bits;
     ic->ctx = ctx;
-    ic->hash = js_malloc(ctx, sizeof(ic->hash[0]) * ic->capacity);
+    ic->hash = js_mallocz(ctx, sizeof(ic->hash[0]) * ic->capacity);
     if (unlikely(!ic->hash))
         goto fail;
-    memset(ic->hash, 0, sizeof(ic->hash[0]) * ic->capacity);
     ic->cache = NULL;
     ic->updated = FALSE;
     ic->updated_offset = 0;
     return ic;
 fail:
+    js_free(ctx, ic);
     return NULL;
 }
 
-int rebuild_ic(InlineCache *ic)
+int rebuild_ic(JSInlineCache *ic)
 {
     uint32_t i, count;
-    InlineCacheHashSlot *ch;
+    JSInlineCacheHashSlot *ch;
     if (ic->count == 0)
         goto end;
     count = 0;
-    ic->cache = js_malloc(ic->ctx, sizeof(InlineCacheRingSlot) * ic->count);
+    ic->cache = js_mallocz(ic->ctx, sizeof(JSInlineCacheRingSlot) * ic->count);
     if (unlikely(!ic->cache))
         goto fail;
-    memset(ic->cache, 0, sizeof(InlineCacheRingSlot) * ic->count);
     for (i = 0; i < ic->capacity; i++) {
         for (ch = ic->hash[i]; ch != NULL; ch = ch->next) {
             ch->index = count++;
@@ -50471,17 +50470,16 @@ fail:
     return -1;
 }
 
-int resize_ic_hash(InlineCache *ic)
+int resize_ic_hash(JSInlineCache *ic)
 {
     uint32_t new_capacity, i, h;
-    InlineCacheHashSlot *ch, *ch_next;
-    InlineCacheHashSlot **new_hash;
-    ic->hash_bits += 1;
-    new_capacity = 1 << ic->hash_bits;
-    new_hash = js_malloc(ic->ctx, sizeof(ic->hash[0]) * new_capacity);
+    JSInlineCacheHashSlot *ch, *ch_next;
+    JSInlineCacheHashSlot **new_hash;
+    new_capacity = 1 << (ic->hash_bits + 1);
+    new_hash = js_mallocz(ic->ctx, sizeof(ic->hash[0]) * new_capacity);
     if (unlikely(!new_hash))
         goto fail;
-    memset(new_hash, 0, sizeof(ic->hash[0]) * new_capacity);
+    ic->hash_bits += 1;
     for (i = 0; i < ic->capacity; i++) {
         for (ch = ic->hash[i]; ch != NULL; ch = ch_next) {
             h = get_index_hash(ch->atom, ic->hash_bits);
@@ -50498,11 +50496,11 @@ fail:
     return -1;
 }
 
-int free_ic(InlineCache *ic)
+int free_ic(JSInlineCache *ic)
 {
     uint32_t i, j;
-    InlineCacheHashSlot *ch, *ch_next;
-    InlineCacheRingItem *buffer;
+    JSInlineCacheHashSlot *ch, *ch_next;
+    JSInlineCacheRingItem *buffer;
     if (ic->cache) {
         for (i = 0; i < ic->count; i++) {
             buffer = ic->cache[i].buffer;
@@ -50526,21 +50524,22 @@ int free_ic(InlineCache *ic)
     return 0;
 }
 
-uint32_t add_ic_slot(InlineCache *ic, JSAtom atom, JSObject *object,
+uint32_t add_ic_slot(JSInlineCache *ic, JSAtom atom, JSObject *object,
                      uint32_t prop_offset)
 {
     int32_t i;
     uint32_t h;
-    InlineCacheHashSlot *ch;
-    InlineCacheRingSlot *cr;
+    JSInlineCacheHashSlot *ch;
+    JSInlineCacheRingSlot *cr;
     JSShape *sh;
     cr = NULL;
     h = get_index_hash(atom, ic->hash_bits);
-    for (ch = ic->hash[h]; ch != NULL; ch = ch->next)
+    for (ch = ic->hash[h]; ch != NULL; ch = ch->next) {
         if (ch->atom == atom) {
             cr = ic->cache + ch->index;
             break;
         }
+    }
 
     assert(cr != NULL);
     i = cr->index;
@@ -50561,17 +50560,17 @@ end:
     return ch->index;
 }
 
-uint32_t add_ic_slot1(InlineCache *ic, JSAtom atom)
+uint32_t add_ic_slot1(JSInlineCache *ic, JSAtom atom)
 {
     uint32_t h;
-    InlineCacheHashSlot *ch;
+    JSInlineCacheHashSlot *ch;
     if (ic->count + 1 >= ic->capacity && resize_ic_hash(ic))
         goto end;
     h = get_index_hash(atom, ic->hash_bits);
     for (ch = ic->hash[h]; ch != NULL; ch = ch->next)
         if (ch->atom == atom)
             goto end;
-    ch = js_malloc(ic->ctx, sizeof(InlineCacheHashSlot));
+    ch = js_malloc(ic->ctx, sizeof(JSInlineCacheHashSlot));
     if (unlikely(!ch))
         goto end;
     ch->atom = JS_DupAtom(ic->ctx, atom);

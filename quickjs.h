@@ -676,16 +676,11 @@ JS_BOOL JS_SetConstructorBit(JSContext *ctx, JSValueConst func_obj, JS_BOOL val)
 JSValue JS_NewArray(JSContext *ctx);
 int JS_IsArray(JSContext *ctx, JSValueConst val);
 
-typedef struct InlineCache InlineCache;
+typedef struct JSInlineCache JSInlineCache;
 
 JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
                                JSAtom prop, JSValueConst receiver,
-                               InlineCache *ic, JS_BOOL throw_ref_error);
-JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValueConst obj,
-                                     JSAtom prop, JSValueConst receiver,
-                                     InlineCache *ic, int32_t offset,
-                                     JS_BOOL throw_ref_error);
-
+                               JSInlineCache *ic, JS_BOOL throw_ref_error);
 static js_force_inline JSValue JS_GetProperty(JSContext *ctx, JSValueConst this_obj,
                                               JSAtom prop)
 {
@@ -698,11 +693,7 @@ JSValue JS_GetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
 
 int JS_SetPropertyInternal(JSContext *ctx, JSValueConst this_obj,
                            JSAtom prop, JSValue val,
-                           int flags, InlineCache *ic);
-int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueConst this_obj,
-                                 JSAtom prop, JSValue val,
-                                 int flags, InlineCache *ic, 
-                                 int32_t offset);
+                           int flags, JSInlineCache *ic);
 static inline int JS_SetProperty(JSContext *ctx, JSValueConst this_obj,
                                  JSAtom prop, JSValue val)
 {
