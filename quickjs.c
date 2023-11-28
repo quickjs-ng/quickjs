@@ -7083,7 +7083,7 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
     }
 }
 
-force_inline JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValueConst obj,
+static force_inline JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValueConst obj,
                                                   JSAtom prop, JSValueConst this_obj,
                                                   JSInlineCache *ic, int32_t offset, 
                                                   BOOL throw_ref_error) 
@@ -8534,7 +8534,7 @@ retry:
     return TRUE;
 }
 
-force_inline int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueConst this_obj,
+static force_inline int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueConst this_obj,
                            JSAtom prop, JSValue val, int flags,
                            JSInlineCache *ic, int32_t offset) {
     uint32_t tag;
@@ -51032,14 +51032,13 @@ int free_ic(JSInlineCache *ic)
 {
     uint32_t i, j;
     JSInlineCacheHashSlot *ch, *ch_next;
-    JSInlineCacheRingItem *buffer;
+    JSInlineCacheRingItem *buffer, (*buffers)[IC_CACHE_ITEM_CAPACITY];
     if (ic->cache) {
         for (i = 0; i < ic->count; i++) {
-            buffer = ic->cache[i].buffer;
+            buffers = &ic->cache[i].buffer;
             JS_FreeAtom(ic->ctx, ic->cache[i].atom);
-            for (j = 0; j < IC_CACHE_ITEM_CAPACITY; j++) {
-                js_free_shape_null(ic->ctx->rt, buffer[j].shape);
-            }
+            for (buffer = *buffers; buffer != endof(*buffers); buffer++)
+                js_free_shape_null(ic->ctx->rt, buffer->shape);
         }
     }
     for (i = 0; i < ic->capacity; i++) {
@@ -51080,7 +51079,7 @@ uint32_t add_ic_slot(JSInlineCache *ic, JSAtom atom, JSObject *object,
             cr->buffer[i].prop_offset = prop_offset;
             goto end;
         }
-        i = (i + 1) % IC_CACHE_ITEM_CAPACITY;
+        i = (i + 1) % countof(cr->buffer);
         if (unlikely(i == cr->index))
             break;
     }
