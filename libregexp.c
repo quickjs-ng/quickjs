@@ -2557,6 +2557,71 @@ const char *lre_get_groupnames(const uint8_t *bc_buf)
     return (const char *)(bc_buf + 7 + re_bytecode_len);
 }
 
+void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
+{
+    uint8_t *p, *pe;
+    uint32_t n, r;
+
+    p = buf;
+    if (len < RE_HEADER_LEN)
+        abort();
+
+    // format is:
+    //  <header>
+    //  <bytecode>
+    //  <capture group name 1>
+    //  <capture group name 2>
+    //  etc.
+    n = get_u32(&p[3]); // bytecode size
+    inplace_bswap32(&p[3]);
+    if (is_byte_swapped)
+        n = bswap32(n);
+    if (n > len - RE_HEADER_LEN)
+        abort();
+
+    p = &buf[RE_HEADER_LEN];
+    pe = &p[n];
+
+    while (p < pe) {
+        n = reopcode_info[*p].size;
+        switch (n) {
+        case 1:
+        case 2:
+            break;
+        case 3:
+            switch (*p) {
+            case REOP_save_reset: // has two 8 bit arguments
+                break;
+            case REOP_range32: // variable length
+                for (r = 3 + 4 * get_u16(&p[1]); n < r; n += 4)
+                    inplace_bswap32(&p[n]);
+                goto doswap16;
+            case REOP_range: // variable length
+                for (r = 3 + 2 * get_u16(&p[1]); n < r; n += 2)
+                    inplace_bswap16(&p[n]);
+                goto doswap16;
+            default:
+            doswap16:
+                inplace_bswap16(&p[1]);
+            }
+            break;
+        case 5:
+            inplace_bswap32(&p[1]);
+            break;
+        case 17:
+            assert(*p == REOP_simple_greedy_quant);
+            inplace_bswap32(&p[1]);
+            inplace_bswap32(&p[5]);
+            inplace_bswap32(&p[9]);
+            inplace_bswap32(&p[13]);
+            break;
+        default:
+            abort();
+        }
+        p = &p[n];
+    }
+}
+
 #ifdef TEST
 
 BOOL lre_check_stack_overflow(void *opaque, size_t alloca_size)
