@@ -684,11 +684,11 @@ typedef struct JSInlineCache JSInlineCache;
 
 JS_EXTERN JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
                                JSAtom prop, JSValueConst receiver,
-                               JSInlineCache *ic, JS_BOOL throw_ref_error);
+                               JS_BOOL throw_ref_error);
 static js_force_inline JSValue JS_GetProperty(JSContext *ctx, JSValueConst this_obj,
                                               JSAtom prop)
 {
-    return JS_GetPropertyInternal(ctx, this_obj, prop, this_obj, NULL, 0);
+    return JS_GetPropertyInternal(ctx, this_obj, prop, this_obj, 0);
 }
 JS_EXTERN JSValue JS_GetPropertyStr(JSContext *ctx, JSValueConst this_obj,
                                     const char *prop);
@@ -697,11 +697,11 @@ JS_EXTERN JSValue JS_GetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
 
 int JS_SetPropertyInternal(JSContext *ctx, JSValueConst this_obj,
                            JSAtom prop, JSValue val,
-                           int flags, JSInlineCache *ic);
+                           int flags);
 static inline int JS_SetProperty(JSContext *ctx, JSValueConst this_obj,
                                  JSAtom prop, JSValue val)
 {
-    return JS_SetPropertyInternal(ctx, this_obj, prop, val, JS_PROP_THROW, NULL);
+    return JS_SetPropertyInternal(ctx, this_obj, prop, val, JS_PROP_THROW);
 }
 JS_EXTERN int JS_SetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
                                    uint32_t idx, JSValue val);

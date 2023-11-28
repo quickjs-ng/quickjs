@@ -6928,7 +6928,7 @@ static int JS_AutoInitProperty(JSContext *ctx, JSObject *p, JSAtom prop,
     return 0;
 }
 
-JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
+JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValueConst obj,
                                JSAtom prop, JSValueConst this_obj,
                                JSInlineCache* ic, BOOL throw_ref_error)
 {
@@ -7080,6 +7080,14 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
     }
 }
 
+JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
+                               JSAtom prop, JSValueConst this_obj,
+                               BOOL throw_ref_error)
+{
+    return JS_GetPropertyInternal2(ctx, obj, prop, this_obj, NULL, throw_ref_error);
+}
+
+
 static force_inline JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValueConst obj,
                                                   JSAtom prop, JSValueConst this_obj,
                                                   JSInlineCache *ic, int32_t offset, 
@@ -7095,7 +7103,7 @@ static force_inline JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue
     if (likely(offset >= 0))
         return JS_DupValue(ctx, p->prop[offset].u.value);
 slow_path:
-    return JS_GetPropertyInternal(ctx, obj, prop, this_obj, ic, throw_ref_error);      
+    return JS_GetPropertyInternal2(ctx, obj, prop, this_obj, ic, throw_ref_error);      
 }
 
 static JSValue JS_ThrowTypeErrorPrivateNotFound(JSContext *ctx, JSAtom atom)
@@ -8307,9 +8315,9 @@ static int JS_SetPropertyGeneric(JSContext *ctx,
    freed by the function. 'flags' is a bitmask of JS_PROP_NO_ADD,
    JS_PROP_THROW or JS_PROP_THROW_STRICT. If JS_PROP_NO_ADD is set,
    the new property is not added and an error is raised. */
-int JS_SetPropertyInternal(JSContext *ctx, JSValueConst this_obj,
-                           JSAtom prop, JSValue val, int flags,
-                           JSInlineCache *ic)
+int JS_SetPropertyInternal2(JSContext *ctx, JSValueConst this_obj,
+                            JSAtom prop, JSValue val, int flags,
+                            JSInlineCache *ic)
 {
     JSObject *p, *p1;
     JSShapeProperty *prs;
@@ -8531,6 +8539,12 @@ retry:
     return TRUE;
 }
 
+int JS_SetPropertyInternal(JSContext *ctx, JSValueConst this_obj,
+                            JSAtom prop, JSValue val, int flags)
+{
+    return JS_SetPropertyInternal2(ctx, this_obj, prop, val, flags, NULL);
+}
+
 static force_inline int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueConst this_obj,
                            JSAtom prop, JSValue val, int flags,
                            JSInlineCache *ic, int32_t offset) {
@@ -8546,7 +8560,7 @@ static force_inline int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueCons
         return TRUE;
     }
 slow_path:
-    return JS_SetPropertyInternal(ctx, this_obj, prop, val, flags, ic);
+    return JS_SetPropertyInternal2(ctx, this_obj, prop, val, flags, ic);
 }
 
 /* flags can be JS_PROP_THROW or JS_PROP_THROW_STRICT */
@@ -8673,7 +8687,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
             JS_FreeValue(ctx, val);
             return -1;
         }
-        ret = JS_SetPropertyInternal(ctx, this_obj, atom, val, flags, NULL);
+        ret = JS_SetPropertyInternal(ctx, this_obj, atom, val, flags);
         JS_FreeAtom(ctx, atom);
         return ret;
     }
@@ -8713,7 +8727,7 @@ int JS_SetPropertyStr(JSContext *ctx, JSValueConst this_obj,
     JSAtom atom;
     int ret;
     atom = JS_NewAtom(ctx, prop);
-    ret = JS_SetPropertyInternal(ctx, this_obj, atom, val, JS_PROP_THROW, NULL);
+    ret = JS_SetPropertyInternal(ctx, this_obj, atom, val, JS_PROP_THROW);
     JS_FreeAtom(ctx, atom);
     return ret;
 }
@@ -9470,7 +9484,7 @@ static JSValue JS_GetGlobalVar(JSContext *ctx, JSAtom prop,
         return JS_DupValue(ctx, pr->u.value);
     }
     return JS_GetPropertyInternal(ctx, ctx->global_obj, prop,
-                                 ctx->global_obj, NULL, throw_ref_error);
+                                 ctx->global_obj, throw_ref_error);
 }
 
 /* construct a reference to a global variable */
@@ -9564,7 +9578,7 @@ static int JS_SetGlobalVar(JSContext *ctx, JSAtom prop, JSValue val,
     flags = JS_PROP_THROW_STRICT;
     if (is_strict_mode(ctx))
         flags |= JS_PROP_NO_ADD;
-    return JS_SetPropertyInternal(ctx, ctx->global_obj, prop, val, flags, NULL);
+    return JS_SetPropertyInternal(ctx, ctx->global_obj, prop, val, flags);
 }
 
 /* return -1, FALSE or TRUE. return FALSE if not configurable or
@@ -13270,7 +13284,7 @@ static JSValue build_for_in_iterator(JSContext *ctx, JSValue obj)
                                    JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY))
             goto fail;
         for(i = 0; i < tab_atom_count; i++) {
-            JS_SetPropertyInternal(ctx, enum_obj, tab_atom[i].atom, JS_NULL, 0, NULL);
+            JS_SetPropertyInternal(ctx, enum_obj, tab_atom[i].atom, JS_NULL, 0);
         }
         js_free_prop_enum(ctx, tab_atom, tab_atom_count);
     }
@@ -15655,7 +15669,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
-                val = JS_GetPropertyInternal(ctx, sp[-1], atom, sp[-1], ic, FALSE);
+                val = JS_GetPropertyInternal2(ctx, sp[-1], atom, sp[-1], ic, FALSE);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
                 if (ic && ic->updated == TRUE) {
@@ -15691,7 +15705,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
-                val = JS_GetPropertyInternal(ctx, sp[-1], atom, sp[-1], NULL, FALSE);
+                val = JS_GetPropertyInternal2(ctx, sp[-1], atom, sp[-1], NULL, FALSE);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
                 if (ic != NULL && ic->updated == TRUE) {
@@ -15726,7 +15740,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
-                ret = JS_SetPropertyInternal(ctx, sp[-2], atom, sp[-1], JS_PROP_THROW_STRICT, ic);
+                ret = JS_SetPropertyInternal2(ctx, sp[-2], atom, sp[-1], JS_PROP_THROW_STRICT, ic);
                 JS_FreeValue(ctx, sp[-2]);
                 sp -= 2;
                 if (unlikely(ret < 0))
@@ -15985,7 +15999,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 atom = JS_ValueToAtom(ctx, sp[-1]);
                 if (unlikely(atom == JS_ATOM_NULL))
                     goto exception;
-                val = JS_GetPropertyInternal(ctx, sp[-2], atom, sp[-3], NULL, FALSE);
+                val = JS_GetPropertyInternal2(ctx, sp[-2], atom, sp[-3], NULL, FALSE);
                 JS_FreeAtom(ctx, atom);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
@@ -16666,7 +16680,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     case OP_with_put_var:
                         /* XXX: check if strict mode */
                         ret = JS_SetPropertyInternal(ctx, obj, atom, sp[-2],
-                                                     JS_PROP_THROW_STRICT, NULL);
+                                                     JS_PROP_THROW_STRICT);
                         JS_FreeValue(ctx, sp[-1]);
                         sp -= 2;
                         if (unlikely(ret < 0))
@@ -42660,7 +42674,7 @@ static JSValue js_reflect_get(JSContext *ctx, JSValueConst this_val,
     atom = JS_ValueToAtom(ctx, prop);
     if (unlikely(atom == JS_ATOM_NULL))
         return JS_EXCEPTION;
-    ret = JS_GetPropertyInternal(ctx, obj, atom, receiver, NULL, FALSE);
+    ret = JS_GetPropertyInternal(ctx, obj, atom, receiver, FALSE);
     JS_FreeAtom(ctx, atom);
     return ret;
 }
@@ -43008,7 +43022,7 @@ static JSValue js_proxy_get(JSContext *ctx, JSValueConst obj, JSAtom atom,
         return JS_EXCEPTION;
     /* Note: recursion is possible thru the prototype of s->target */
     if (JS_IsUndefined(method))
-        return JS_GetPropertyInternal(ctx, s->target, atom, receiver, NULL, FALSE);
+        return JS_GetPropertyInternal(ctx, s->target, atom, receiver, FALSE);
     atom_val = JS_AtomToValue(ctx, atom);
     if (JS_IsException(atom_val)) {
         JS_FreeValue(ctx, method);
