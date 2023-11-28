@@ -577,7 +577,6 @@ typedef struct JSInlineCache {
     uint32_t count;
     uint32_t capacity;
     uint32_t hash_bits;
-    JSContext* ctx;
     JSInlineCacheHashSlot **hash;
     JSInlineCacheRingSlot *cache;
     uint32_t updated_offset;
@@ -585,12 +584,12 @@ typedef struct JSInlineCache {
 } JSInlineCache;
 
 static JSInlineCache *init_ic(JSContext *ctx);
-static int rebuild_ic(JSInlineCache *ic);
-static int resize_ic_hash(JSInlineCache *ic);
-static int free_ic(JSInlineCache *ic);
-static uint32_t add_ic_slot(JSInlineCache *ic, JSAtom atom, JSObject *object,
-                     uint32_t prop_offset);
-static uint32_t add_ic_slot1(JSInlineCache *ic, JSAtom atom);
+static int rebuild_ic(JSContext *ctx, JSInlineCache *ic);
+static int resize_ic_hash(JSContext *ctx, JSInlineCache *ic);
+static int free_ic(JSRuntime *rt, JSInlineCache *ic);
+static uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *object,
+                            uint32_t prop_offset);
+static uint32_t add_ic_slot1(JSContext *ctx, JSInlineCache *ic, JSAtom atom);
 
 static force_inline int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
                                         JSShape *shape)
@@ -7005,7 +7004,7 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
             } else {
                 if (ic && proto_depth == 0 && p->shape->is_hashed) {
                     ic->updated = TRUE;
-                    ic->updated_offset = add_ic_slot(ic, prop, p, offset);
+                    ic->updated_offset = add_ic_slot(ctx, ic, prop, p, offset);
                 }
                 return JS_DupValue(ctx, pr->u.value);
             }
@@ -8346,7 +8345,7 @@ retry:
             /* fast case */
             if (ic && p->shape->is_hashed) {
                 ic->updated = TRUE;
-                ic->updated_offset = add_ic_slot(ic, prop, p, offset);
+                ic->updated_offset = add_ic_slot(ctx, ic, prop, p, offset);
             }
             set_value(ctx, &pr->u.value, val);
             return TRUE;
@@ -15663,7 +15662,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     ic->updated = FALSE;
                     put_u8(pc - 5, OP_get_field_ic);
                     put_u32(pc - 4, ic->updated_offset);
-                    JS_FreeAtom(ic->ctx, atom);
+                    JS_FreeAtom(ctx, atom);
                 }
                 JS_FreeValue(ctx, sp[-1]);
                 sp[-1] = val;
@@ -15699,7 +15698,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     ic->updated = FALSE;
                     put_u8(pc - 5, OP_get_field2_ic);
                     put_u32(pc - 4, ic->updated_offset);
-                    JS_FreeAtom(ic->ctx, atom);
+                    JS_FreeAtom(ctx, atom);
                 }
                 *sp++ = val;
           }
@@ -15736,7 +15735,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     ic->updated = FALSE;
                     put_u8(pc - 5, OP_put_field_ic);
                     put_u32(pc - 4, ic->updated_offset);
-                    JS_FreeAtom(ic->ctx, atom);
+                    JS_FreeAtom(ctx, atom);
                 }
             }
             BREAK;
@@ -19577,7 +19576,7 @@ static void emit_atom(JSParseState *s, JSAtom name)
 }
 
 static void emit_ic(JSParseState *s, JSAtom atom) {
-  add_ic_slot1(s->cur_func->ic, atom);
+  add_ic_slot1(s->ctx, s->cur_func->ic, atom);
 }
 
 static int update_label(JSFunctionDef *s, int label, int delta)
@@ -26956,7 +26955,7 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
 
     /* free ic */
     if (fd->ic)
-        free_ic(fd->ic);
+        free_ic(ctx->rt, fd->ic);
 
     for(i = 0; i < fd->cpool_count; i++) {
         JS_FreeValue(ctx, fd->cpool[i]);
@@ -30698,9 +30697,9 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     b->realm = JS_DupContext(ctx);
     b->ic = fd->ic;
     fd->ic = NULL;
-    rebuild_ic(b->ic);
+    rebuild_ic(ctx, b->ic);
     if (b->ic->count == 0) {
-      free_ic(b->ic);
+      free_ic(ctx->rt, b->ic);
       b->ic = NULL;
     }
 
@@ -30729,7 +30728,7 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
     free_bytecode_atoms(rt, b->byte_code_buf, b->byte_code_len, TRUE);
 
     if (b->ic)
-        free_ic(b->ic);
+        free_ic(rt, b->ic);
 
     if (b->vardefs) {
         for(i = 0; i < b->arg_count + b->var_count; i++) {
@@ -33336,10 +33335,10 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
                     goto fail;
                 for (i = 0; i < ic_len; i++) {
                     bc_get_atom(s, &atom);
-                    add_ic_slot1(b->ic, atom);
+                    add_ic_slot1(ctx, b->ic, atom);
                     JS_FreeAtom(ctx, atom);
                 }
-                rebuild_ic(b->ic);
+                rebuild_ic(ctx, b->ic);
             }
         }
 #ifdef DUMP_READ_OBJECT
@@ -50965,7 +50964,6 @@ JSInlineCache *init_ic(JSContext *ctx)
     ic->count = 0;
     ic->hash_bits = 2;
     ic->capacity = 1 << ic->hash_bits;
-    ic->ctx = ctx;
     ic->hash = js_mallocz(ctx, sizeof(ic->hash[0]) * ic->capacity);
     if (unlikely(!ic->hash))
         goto fail;
@@ -50978,20 +50976,20 @@ fail:
     return NULL;
 }
 
-int rebuild_ic(JSInlineCache *ic)
+int rebuild_ic(JSContext *ctx, JSInlineCache *ic)
 {
     uint32_t i, count;
     JSInlineCacheHashSlot *ch;
     if (ic->count == 0)
         goto end;
     count = 0;
-    ic->cache = js_mallocz(ic->ctx, sizeof(JSInlineCacheRingSlot) * ic->count);
+    ic->cache = js_mallocz(ctx, sizeof(JSInlineCacheRingSlot) * ic->count);
     if (unlikely(!ic->cache))
         goto fail;
     for (i = 0; i < ic->capacity; i++) {
         for (ch = ic->hash[i]; ch != NULL; ch = ch->next) {
             ch->index = count++;
-            ic->cache[ch->index].atom = JS_DupAtom(ic->ctx, ch->atom);
+            ic->cache[ch->index].atom = JS_DupAtom(ctx, ch->atom);
             ic->cache[ch->index].index = 0;
         }
     }
@@ -51001,13 +50999,13 @@ fail:
     return -1;
 }
 
-int resize_ic_hash(JSInlineCache *ic)
+int resize_ic_hash(JSContext *ctx, JSInlineCache *ic)
 {
     uint32_t new_capacity, i, h;
     JSInlineCacheHashSlot *ch, *ch_next;
     JSInlineCacheHashSlot **new_hash;
     new_capacity = 1 << (ic->hash_bits + 1);
-    new_hash = js_mallocz(ic->ctx, sizeof(ic->hash[0]) * new_capacity);
+    new_hash = js_mallocz(ctx, sizeof(ic->hash[0]) * new_capacity);
     if (unlikely(!new_hash))
         goto fail;
     ic->hash_bits += 1;
@@ -51019,7 +51017,7 @@ int resize_ic_hash(JSInlineCache *ic)
             new_hash[h] = ch;
         }
     }
-    js_free(ic->ctx, ic->hash);
+    js_free(ctx, ic->hash);
     ic->hash = new_hash;
     ic->capacity = new_capacity;
     return 0;
@@ -51027,7 +51025,7 @@ fail:
     return -1;
 }
 
-int free_ic(JSInlineCache *ic)
+int free_ic(JSRuntime* rt, JSInlineCache *ic)
 {
     uint32_t i, j;
     JSInlineCacheHashSlot *ch, *ch_next;
@@ -51035,26 +51033,26 @@ int free_ic(JSInlineCache *ic)
     if (ic->cache) {
         for (i = 0; i < ic->count; i++) {
             shapes = &ic->cache[i].shape;
-            JS_FreeAtom(ic->ctx, ic->cache[i].atom);
+            JS_FreeAtomRT(rt, ic->cache[i].atom);
             for (shape = *shapes; shape != endof(*shapes); shape++)
-                js_free_shape_null(ic->ctx->rt, *shape);
+                js_free_shape_null(rt, *shape);
         }
     }
     for (i = 0; i < ic->capacity; i++) {
         for (ch = ic->hash[i]; ch != NULL; ch = ch_next) {
             ch_next = ch->next;
-            JS_FreeAtom(ic->ctx, ch->atom);
-            js_free(ic->ctx, ch);
+            JS_FreeAtomRT(rt, ch->atom);
+            js_free_rt(rt, ch);
         }
     }
     if (ic->count > 0)
-        js_free(ic->ctx, ic->cache);
-    js_free(ic->ctx, ic->hash);
-    js_free(ic->ctx, ic);
+        js_free_rt(rt, ic->cache);
+    js_free_rt(rt, ic->hash);
+    js_free_rt(rt, ic);
     return 0;
 }
 
-uint32_t add_ic_slot(JSInlineCache *ic, JSAtom atom, JSObject *object,
+uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *object,
                      uint32_t prop_offset)
 {
     int32_t i;
@@ -51084,26 +51082,26 @@ uint32_t add_ic_slot(JSInlineCache *ic, JSAtom atom, JSObject *object,
     }
     sh = cr->shape[i];
     cr->shape[i] = js_dup_shape(object->shape);
-    js_free_shape_null(ic->ctx->rt, sh);
+    js_free_shape_null(ctx->rt, sh);
     cr->prop_offset[i] = prop_offset;
 end:
     return ch->index;
 }
 
-uint32_t add_ic_slot1(JSInlineCache *ic, JSAtom atom)
+uint32_t add_ic_slot1(JSContext *ctx, JSInlineCache *ic, JSAtom atom)
 {
     uint32_t h;
     JSInlineCacheHashSlot *ch;
-    if (ic->count + 1 >= ic->capacity && resize_ic_hash(ic))
+    if (ic->count + 1 >= ic->capacity && resize_ic_hash(ctx, ic))
         goto end;
     h = get_index_hash(atom, ic->hash_bits);
     for (ch = ic->hash[h]; ch != NULL; ch = ch->next)
         if (ch->atom == atom)
             goto end;
-    ch = js_malloc(ic->ctx, sizeof(JSInlineCacheHashSlot));
+    ch = js_malloc(ctx, sizeof(JSInlineCacheHashSlot));
     if (unlikely(!ch))
         goto end;
-    ch->atom = JS_DupAtom(ic->ctx, atom);
+    ch->atom = JS_DupAtom(ctx, atom);
     ch->index = 0;
     ch->next = ic->hash[h];
     ic->hash[h] = ch;
