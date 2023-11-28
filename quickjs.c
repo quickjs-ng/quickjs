@@ -30697,6 +30697,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     b->backtrace_barrier = fd->backtrace_barrier;
     b->realm = JS_DupContext(ctx);
     b->ic = fd->ic;
+    fd->ic = NULL;
     rebuild_ic(b->ic);
     if (b->ic->count == 0) {
       free_ic(b->ic);
