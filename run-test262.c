@@ -1985,7 +1985,6 @@ int main(int argc, char **argv)
     BOOL is_dir_list;
     BOOL only_check_errors = FALSE;
     const char *filename;
-    const char *config = NULL;
     const char *ignore = "";
     BOOL is_test262_harness = FALSE;
     BOOL is_module = FALSE;
@@ -1995,6 +1994,18 @@ int main(int argc, char **argv)
     /* Date tests assume California local time */
     setenv("TZ", "America/Los_Angeles", 1);
 #endif
+
+    optind = 1;
+    while (optind < argc) {
+        char *arg = argv[optind];
+        if (*arg != '-')
+            break;
+        optind++;
+        if (strstr("-c -d -e -x -f -r -E -T", arg))
+            optind++;
+        if (strstr("-d -f", arg))
+            ignore = "testdir"; // run only the tests from -d or -f
+    }
 
     /* cannot use getopt because we want to pass the command line to
        the script */
@@ -2020,16 +2031,14 @@ int main(int argc, char **argv)
         } else if (str_equal(arg, "-v")) {
             verbose++;
         } else if (str_equal(arg, "-c")) {
-            config = get_opt_arg(arg, argv[optind++]);
+            load_config(get_opt_arg(arg, argv[optind++]), ignore);
         } else if (str_equal(arg, "-d")) {
-            ignore = "testdir"; // don't run all tests, just the ones from -d
             enumerate_tests(get_opt_arg(arg, argv[optind++]));
         } else if (str_equal(arg, "-e")) {
             error_filename = get_opt_arg(arg, argv[optind++]);
         } else if (str_equal(arg, "-x")) {
             namelist_load(&exclude_list, get_opt_arg(arg, argv[optind++]));
         } else if (str_equal(arg, "-f")) {
-            ignore = "testdir"; // don't run all tests, just the one from -f
             is_dir_list = FALSE;
         } else if (str_equal(arg, "-r")) {
             report_filename = get_opt_arg(arg, argv[optind++]);
@@ -2046,9 +2055,6 @@ int main(int argc, char **argv)
             break;
         }
     }
-
-    if (config)
-        load_config(config, ignore);
 
     if (optind >= argc && !test_list.count)
         help();
