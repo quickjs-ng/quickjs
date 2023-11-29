@@ -81,6 +81,7 @@
    8: dump stdlib functions
   16: dump bytecode in hex
   32: dump line number table
+  64: dump executed bytecode
  */
 //#define DUMP_BYTECODE  (1)
 /* dump the occurence of the automatic GC */
@@ -14325,6 +14326,12 @@ typedef enum {
 #define FUNC_RET_YIELD      1
 #define FUNC_RET_YIELD_STAR 2
 
+#ifdef DUMP_BYTECODE
+static void dump_single_byte_code(JSContext *ctx, const uint8_t *pc,
+                                  JSFunctionBytecode *b);
+static void print_func_name(JSFunctionBytecode *b);
+#endif
+
 /* argv[] is modified if (flags & JS_CALL_FLAG_COPY_ARGV) = 0. */
 static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                                JSValueConst this_obj, JSValueConst new_target,
@@ -14342,8 +14349,14 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     size_t alloca_size;
     JSInlineCache *ic;
 
+#if defined(DUMP_BYTECODE) && (DUMP_BYTECODE & 64)
+#define DUMP_BYTECODE_OR_DONT(pc) dump_single_byte_code(ctx, pc, b);
+#else
+#define DUMP_BYTECODE_OR_DONT(pc)
+#endif
+
 #if !DIRECT_DISPATCH
-#define SWITCH(pc)      switch (opcode = *pc++)
+#define SWITCH(pc)      DUMP_BYTECODE_OR_DONT(pc) switch (opcode = *pc++)
 #define CASE(op)        case op
 #define DEFAULT         default
 #define BREAK           break
@@ -14354,7 +14367,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 #include "quickjs-opcode.h"
         [ OP_COUNT ... 255 ] = &&case_default
     };
-#define SWITCH(pc)      goto *dispatch_table[opcode = *pc++];
+#define SWITCH(pc)      DUMP_BYTECODE_OR_DONT(pc) goto *dispatch_table[opcode = *pc++];
 #define CASE(op)        case_ ## op
 #define DEFAULT         case_default
 #define BREAK           SWITCH(pc)
@@ -14444,6 +14457,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     rt->current_stack_frame = sf;
     ctx = b->realm; /* set the current realm */
     ic = b->ic;
+
+#if defined(DUMP_BYTECODE) && (DUMP_BYTECODE & 64)
+    print_func_name(b);
+#endif
 
  restart:
     for(;;) {
@@ -27239,6 +27256,38 @@ static void dump_byte_code(JSContext *ctx, int pass,
         print_lines(source, line, INT32_MAX);
     }
     js_free(ctx, bits);
+}
+
+// caveat emptor: intended to be called during execution of bytecode
+// and only works for pass3 bytecode
+static __maybe_unused void dump_single_byte_code(JSContext *ctx,
+                                                 const uint8_t *pc,
+                                                 JSFunctionBytecode *b)
+{
+    JSVarDef *args, *vars;
+    int line_num;
+
+    args = vars = b->vardefs;
+    if (vars)
+        vars = &vars[b->arg_count];
+
+    line_num = -1;
+    if (b->has_debug)
+        line_num = b->debug.line_num;
+
+    dump_byte_code(ctx, /*pass*/3, pc, short_opcode_info(*pc).size,
+                   args, b->arg_count, vars, b->var_count,
+                   b->closure_var, b->closure_var_count,
+                   b->cpool, b->cpool_count,
+                   NULL, line_num,
+                   NULL, b);
+}
+
+static __maybe_unused void print_func_name(JSFunctionBytecode *b)
+{
+    if (b->has_debug)
+        if (b->debug.source)
+            print_lines(b->debug.source, 0, 1);
 }
 
 static __maybe_unused void dump_pc2line(JSContext *ctx, const uint8_t *buf, int len,
