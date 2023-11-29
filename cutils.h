@@ -47,6 +47,9 @@
 #endif
 #ifndef countof
 #define countof(x) (sizeof(x) / sizeof((x)[0]))
+#ifndef endof
+#define endof(x) ((x) + countof(x))
+#endif
 #endif
 
 typedef int BOOL;
