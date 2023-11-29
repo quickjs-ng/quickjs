@@ -111,7 +111,7 @@ typedef const struct __JSValue *JSValueConst;
 
 #define JS_NAN JS_MKVAL(JS_TAG_FLOAT64, 1)
 
-static inline JSValue __JS_NewFloat64(JSContext *ctx, double d)
+static inline JSValue __JS_NewFloat64(double d)
 {
     return JS_MKVAL(JS_TAG_FLOAT64, (int)d);
 }
@@ -150,7 +150,7 @@ static inline double JS_VALUE_GET_FLOAT64(JSValue v)
 
 #define JS_NAN (0x7ff8000000000000 - ((uint64_t)JS_FLOAT64_TAG_ADDEND << 32))
 
-static inline JSValue __JS_NewFloat64(JSContext *ctx, double d)
+static inline JSValue __JS_NewFloat64(double d)
 {
     union {
         double d;
@@ -216,7 +216,7 @@ typedef struct JSValue {
 
 #define JS_NAN (JSValue){ .u.float64 = JS_FLOAT64_NAN, JS_TAG_FLOAT64 }
 
-static inline JSValue __JS_NewFloat64(JSContext *ctx, double d)
+static inline JSValue __JS_NewFloat64(double d)
 {
     JSValue v;
     v.tag = JS_TAG_FLOAT64;
@@ -513,7 +513,7 @@ static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
     if (val == (int32_t)val) {
         v = JS_NewInt32(ctx, val);
     } else {
-        v = __JS_NewFloat64(ctx, val);
+        v = __JS_NewFloat64(val);
     }
     return v;
 }
@@ -524,7 +524,7 @@ static js_force_inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
     if (val <= 0x7fffffff) {
         v = JS_NewInt32(ctx, val);
     } else {
-        v = __JS_NewFloat64(ctx, val);
+        v = __JS_NewFloat64(val);
     }
     return v;
 }
