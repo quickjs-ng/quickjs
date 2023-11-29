@@ -28983,29 +28983,6 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
                 }
             }
             goto no_change;
-        case OP_drop:
-            if (0) {
-                /* remove drops before return_undef */
-                /* do not perform this optimization in pass2 because
-                   it breaks patterns recognised in resolve_labels */
-                int pos1 = pos_next;
-                int line1 = line_num;
-                while (code_match(&cc, pos1, OP_drop, -1)) {
-                    if (cc.line_num >= 0) line1 = cc.line_num;
-                    pos1 = cc.pos;
-                }
-                if (code_match(&cc, pos1, OP_return_undef, -1)) {
-                    pos_next = pos1;
-                    if (line1 != -1 && line1 != line_num) {
-                        line_num = line1;
-                        s->line_number_size++;
-                        dbuf_putc(&bc_out, OP_line_num);
-                        dbuf_put_u32(&bc_out, line_num);
-                    }
-                    break;
-                }
-            }
-            goto no_change;
         case OP_insert3:
             /* Transformation: insert3 put_array_el|put_ref_value drop -> put_array_el|put_ref_value */
             if (code_match(&cc, pos_next, M2(OP_put_array_el, OP_put_ref_value), OP_drop, -1)) {
