@@ -64,7 +64,7 @@ typedef sig_t sighandler_t;
 
 #ifdef USE_WORKER
 #include <pthread.h>
-#include <stdatomic.h>
+#include "quickjs-c-atomics.h"
 #endif
 
 #include "cutils.h"
@@ -3142,7 +3142,7 @@ static JSContext *(*js_worker_new_context_func)(JSRuntime *rt);
 
 static int atomic_add_int(int *ptr, int v)
 {
-    return atomic_fetch_add((_Atomic(uint32_t) *)ptr, v) + v;
+    return atomic_fetch_add((_Atomic uint32_t*)ptr, v) + v;
 }
 
 /* shared array buffer allocator */
