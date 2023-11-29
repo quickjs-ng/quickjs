@@ -35101,6 +35101,12 @@ static JSValue js_object_seal(JSContext *ctx, JSValueConst this_val,
     if (!JS_IsObject(obj))
         return js_dup(obj);
 
+    p = JS_VALUE_GET_OBJ(obj);
+    if (p->class_id == JS_CLASS_MODULE_NS) {
+        return JS_ThrowTypeError(ctx, "cannot %s module namespace",
+                                 freeze_flag ? "freeze" : "seal");
+    }
+
     res = JS_PreventExtensions(ctx, obj);
     if (res < 0)
         return JS_EXCEPTION;
@@ -35108,7 +35114,6 @@ static JSValue js_object_seal(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowTypeError(ctx, "proxy preventExtensions handler returned false");
     }
 
-    p = JS_VALUE_GET_OBJ(obj);
     flags = JS_GPN_STRING_MASK | JS_GPN_SYMBOL_MASK;
     if (JS_GetOwnPropertyNamesInternal(ctx, &props, &len, p, flags))
         return JS_EXCEPTION;
