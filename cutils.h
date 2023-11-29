@@ -230,6 +230,14 @@ static inline uint64_t bswap64(uint64_t v)
         ((v & ((uint64_t)0xff << (0 * 8))) << (7 * 8));
 }
 
+static inline void inplace_bswap16(uint8_t *tab) {
+    put_u16(tab, bswap16(get_u16(tab)));
+}
+
+static inline void inplace_bswap32(uint8_t *tab) {
+    put_u32(tab, bswap32(get_u32(tab)));
+}
+
 /* XXX: should take an extra argument to pass slack information to the caller */
 typedef void *DynBufReallocFunc(void *opaque, void *ptr, size_t size);
 

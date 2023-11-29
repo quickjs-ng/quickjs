@@ -31659,6 +31659,7 @@ typedef enum BCTagEnum {
     BC_TAG_TYPED_ARRAY,
     BC_TAG_ARRAY_BUFFER,
     BC_TAG_SHARED_ARRAY_BUFFER,
+    BC_TAG_REGEXP,
     BC_TAG_DATE,
     BC_TAG_OBJECT_VALUE,
     BC_TAG_OBJECT_REFERENCE,
@@ -32272,6 +32273,24 @@ static int JS_WriteSharedArrayBuffer(BCWriterState *s, JSValueConst obj)
     return 0;
 }
 
+static int JS_WriteRegExp(BCWriterState *s, JSRegExp regexp)
+{
+    JSString *bc = regexp.bytecode;
+    assert(!bc->is_wide_char);
+
+    JS_WriteString(s, regexp.pattern);
+
+    if (is_be())
+        lre_byte_swap(bc->u.str8, bc->len, /*is_byte_swapped*/FALSE);
+
+    JS_WriteString(s, bc);
+
+    if (is_be())
+        lre_byte_swap(bc->u.str8, bc->len, /*is_byte_swapped*/TRUE);
+
+    return 0;
+}
+
 static int JS_WriteObjectRec(BCWriterState *s, JSValueConst obj)
 {
     uint32_t tag;
@@ -32359,6 +32378,10 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValueConst obj)
                 if (!s->allow_sab)
                     goto invalid_tag;
                 ret = JS_WriteSharedArrayBuffer(s, obj);
+                break;
+            case JS_CLASS_REGEXP:
+                bc_put_u8(s, BC_TAG_REGEXP);
+                ret = JS_WriteRegExp(s, p->u.regexp);
                 break;
             case JS_CLASS_DATE:
                 bc_put_u8(s, BC_TAG_DATE);
@@ -33357,6 +33380,31 @@ static JSValue JS_ReadSharedArrayBuffer(BCReaderState *s)
     return JS_EXCEPTION;
 }
 
+static JSValue JS_ReadRegExp(BCReaderState *s)
+{
+    JSContext *ctx = s->ctx;
+    JSString *pattern;
+    JSString *bc;
+
+    pattern = JS_ReadString(s);
+    if (!pattern)
+        return JS_EXCEPTION;
+
+    bc = JS_ReadString(s);
+    if (!bc) {
+        js_free_string(ctx->rt, pattern);
+        return JS_EXCEPTION;
+    }
+
+    assert(!bc->is_wide_char);
+    if (is_be())
+        lre_byte_swap(bc->u.str8, bc->len, /*is_byte_swapped*/TRUE);
+
+    return js_regexp_constructor_internal(ctx, JS_UNDEFINED,
+                                          JS_MKPTR(JS_TAG_STRING, pattern),
+                                          JS_MKPTR(JS_TAG_STRING, bc));
+}
+
 static JSValue JS_ReadDate(BCReaderState *s)
 {
     JSContext *ctx = s->ctx;
@@ -33483,6 +33531,9 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
         if (!s->allow_sab || !ctx->rt->sab_funcs.sab_dup)
             goto invalid_tag;
         obj = JS_ReadSharedArrayBuffer(s);
+        break;
+    case BC_TAG_REGEXP:
+        obj = JS_ReadRegExp(s);
         break;
     case BC_TAG_DATE:
         obj = JS_ReadDate(s);
