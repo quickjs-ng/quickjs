@@ -591,7 +591,7 @@ static uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSOb
                             uint32_t prop_offset);
 static uint32_t add_ic_slot1(JSContext *ctx, JSInlineCache *ic, JSAtom atom);
 
-static force_inline int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
+static int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
                                         JSShape *shape)
 {
     uint32_t i;
@@ -7088,7 +7088,7 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
 }
 
 
-static force_inline JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValueConst obj,
+static JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValueConst obj,
                                                   JSAtom prop, JSValueConst this_obj,
                                                   JSInlineCache *ic, int32_t offset, 
                                                   BOOL throw_ref_error) 
@@ -8545,7 +8545,7 @@ int JS_SetPropertyInternal(JSContext *ctx, JSValueConst this_obj,
     return JS_SetPropertyInternal2(ctx, this_obj, prop, val, flags, NULL);
 }
 
-static force_inline int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueConst this_obj,
+static int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValueConst this_obj,
                            JSAtom prop, JSValue val, int flags,
                            JSInlineCache *ic, int32_t offset) {
     uint32_t tag;
@@ -51112,7 +51112,7 @@ uint32_t add_ic_slot1(JSContext *ctx, JSInlineCache *ic, JSAtom atom)
     for (ch = ic->hash[h]; ch != NULL; ch = ch->next)
         if (ch->atom == atom)
             goto end;
-    ch = js_malloc(ctx, sizeof(JSInlineCacheHashSlot));
+    ch = js_malloc(ctx, sizeof(*ch));
     if (unlikely(!ch))
         goto end;
     ch->atom = JS_DupAtom(ctx, atom);
