@@ -45,6 +45,7 @@
 #include <dlfcn.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 
 #if defined(__APPLE__)
@@ -1948,6 +1949,21 @@ static JSValue js_os_signal(JSContext *ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
+#ifndef _WIN32
+static JSValue js_os_cputime(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    struct rusage ru;
+    int64_t cputime;
+
+    cputime = 0;
+    if (!getrusage(RUSAGE_SELF, &ru))
+        cputime = (int64_t)ru.ru_utime.tv_sec * 1000000 + ru.ru_utime.tv_usec;
+
+    return JS_NewInt64(ctx, cputime);
+}
+#endif
+
 #if defined(__linux__) || defined(__APPLE__)
 static int64_t get_time_us(void)
 {
@@ -3617,6 +3633,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     OS_FLAG(SIGTSTP),
     OS_FLAG(SIGTTIN),
     OS_FLAG(SIGTTOU),
+    JS_CFUNC_DEF("cputime", 0, js_os_cputime ),
 #endif
     JS_CFUNC_DEF("now", 0, js_os_now ),
     JS_CFUNC_DEF("setTimeout", 2, js_os_setTimeout ),
