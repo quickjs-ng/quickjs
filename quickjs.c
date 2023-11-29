@@ -103,7 +103,7 @@
 
 #ifdef CONFIG_ATOMICS
 #include <pthread.h>
-#include <stdatomic.h>
+#include "quickjs-c-atomics.h"
 #include <errno.h>
 #endif
 
@@ -50454,16 +50454,16 @@ static JSValue js_atomics_op(JSContext *ctx,
 
 #define OP(op_name, func_name)                          \
     case ATOMICS_OP_ ## op_name | (0 << 3):             \
-       a = func_name((_Atomic(uint8_t) *)ptr, v);       \
+       a = func_name((_Atomic uint8_t *)ptr, v);        \
        break;                                           \
     case ATOMICS_OP_ ## op_name | (1 << 3):             \
-        a = func_name((_Atomic(uint16_t) *)ptr, v);     \
+        a = func_name((_Atomic uint16_t *)ptr, v);      \
         break;                                          \
     case ATOMICS_OP_ ## op_name | (2 << 3):             \
-        a = func_name((_Atomic(uint32_t) *)ptr, v);     \
+        a = func_name((_Atomic uint32_t *)ptr, v);      \
         break;                                          \
     case ATOMICS_OP_ ## op_name | (3 << 3):             \
-        a = func_name((_Atomic(uint64_t) *)ptr, v);     \
+        a = func_name((_Atomic uint64_t *)ptr, v);      \
         break;
         OP(ADD, atomic_fetch_add)
         OP(AND, atomic_fetch_and)
@@ -50474,42 +50474,42 @@ static JSValue js_atomics_op(JSContext *ctx,
 #undef OP
 
     case ATOMICS_OP_LOAD | (0 << 3):
-        a = atomic_load((_Atomic(uint8_t) *)ptr);
+        a = atomic_load((_Atomic uint8_t *)ptr);
         break;
     case ATOMICS_OP_LOAD | (1 << 3):
-        a = atomic_load((_Atomic(uint16_t) *)ptr);
+        a = atomic_load((_Atomic uint16_t *)ptr);
         break;
     case ATOMICS_OP_LOAD | (2 << 3):
-        a = atomic_load((_Atomic(uint32_t) *)ptr);
+        a = atomic_load((_Atomic uint32_t *)ptr);
         break;
     case ATOMICS_OP_LOAD | (3 << 3):
-        a = atomic_load((_Atomic(uint64_t) *)ptr);
+        a = atomic_load((_Atomic uint64_t *)ptr);
         break;
     case ATOMICS_OP_COMPARE_EXCHANGE | (0 << 3):
         {
             uint8_t v1 = v;
-            atomic_compare_exchange_strong((_Atomic(uint8_t) *)ptr, &v1, rep_val);
+            atomic_compare_exchange_strong((_Atomic uint8_t *)ptr, &v1, rep_val);
             a = v1;
         }
         break;
     case ATOMICS_OP_COMPARE_EXCHANGE | (1 << 3):
         {
             uint16_t v1 = v;
-            atomic_compare_exchange_strong((_Atomic(uint16_t) *)ptr, &v1, rep_val);
+            atomic_compare_exchange_strong((_Atomic uint16_t *)ptr, &v1, rep_val);
             a = v1;
         }
         break;
     case ATOMICS_OP_COMPARE_EXCHANGE | (2 << 3):
         {
             uint32_t v1 = v;
-            atomic_compare_exchange_strong((_Atomic(uint32_t) *)ptr, &v1, rep_val);
+            atomic_compare_exchange_strong((_Atomic uint32_t *)ptr, &v1, rep_val);
             a = v1;
         }
         break;
     case ATOMICS_OP_COMPARE_EXCHANGE | (3 << 3):
         {
             uint64_t v1 = v;
-            atomic_compare_exchange_strong((_Atomic(uint64_t) *)ptr, &v1, rep_val);
+            atomic_compare_exchange_strong((_Atomic uint64_t *)ptr, &v1, rep_val);
             a = v1;
         }
         break;
@@ -50573,7 +50573,7 @@ static JSValue js_atomics_store(JSContext *ctx,
         }
         if (abuf->detached)
             return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
-        atomic_store((_Atomic(uint64_t) *)ptr, v64);
+        atomic_store((_Atomic uint64_t *)ptr, v64);
     } else {
         uint32_t v;
         /* XXX: spec, would be simpler to return the written value */
@@ -50588,13 +50588,13 @@ static JSValue js_atomics_store(JSContext *ctx,
             return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
         switch(size_log2) {
         case 0:
-            atomic_store((_Atomic(uint8_t) *)ptr, v);
+            atomic_store((_Atomic uint8_t *)ptr, v);
             break;
         case 1:
-            atomic_store((_Atomic(uint16_t) *)ptr, v);
+            atomic_store((_Atomic uint16_t *)ptr, v);
             break;
         case 2:
-            atomic_store((_Atomic(uint32_t) *)ptr, v);
+            atomic_store((_Atomic uint32_t *)ptr, v);
             break;
         default:
             abort();
