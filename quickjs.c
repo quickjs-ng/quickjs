@@ -1286,6 +1286,13 @@ static JSValue js_int32(int32_t v)
     return JS_MKVAL(JS_TAG_INT, v);
 }
 
+static JSValue js_uint32(uint32_t v)
+{
+    if (v <= INT32_MAX)
+        return js_int32(v);
+    return js_float64(v);
+}
+
 static void js_trigger_gc(JSRuntime *rt, size_t size)
 {
     BOOL force_gc;
@@ -7803,7 +7810,7 @@ static JSValue JS_GetPropertyValue(JSContext *ctx, JSValueConst this_obj,
             return js_int32(p->u.array.u.int32_ptr[idx]);
         case JS_CLASS_UINT32_ARRAY:
             if (unlikely(idx >= p->u.array.count)) goto slow_path;
-            return JS_NewUint32(ctx, p->u.array.u.uint32_ptr[idx]);
+            return js_uint32(p->u.array.u.uint32_ptr[idx]);
         case JS_CLASS_BIG_INT64_ARRAY:
             if (unlikely(idx >= p->u.array.count)) goto slow_path;
             return JS_NewBigInt64(ctx, p->u.array.u.int64_ptr[idx]);
@@ -7834,7 +7841,7 @@ static JSValue JS_GetPropertyValue(JSContext *ctx, JSValueConst this_obj,
 JSValue JS_GetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
                              uint32_t idx)
 {
-    return JS_GetPropertyValue(ctx, this_obj, JS_NewUint32(ctx, idx));
+    return JS_GetPropertyValue(ctx, this_obj, js_uint32(idx));
 }
 
 /* Check if an object has a generalized numeric property. Return value:
@@ -8115,7 +8122,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
             }
             p->u.array.count = len;
         }
-        p->prop[0].u.value = JS_NewUint32(ctx, len);
+        p->prop[0].u.value = js_uint32(len);
     } else {
         /* Note: length is always a uint32 because the object is an
            array */
@@ -8175,7 +8182,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
         } else {
             cur_len = len;
         }
-        set_value(ctx, &p->prop[0].u.value, JS_NewUint32(ctx, cur_len));
+        set_value(ctx, &p->prop[0].u.value, js_uint32(cur_len));
         if (unlikely(cur_len > len)) {
             return JS_ThrowTypeErrorOrFalse(ctx, flags, "not configurable");
         }
@@ -8731,7 +8738,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
 int JS_SetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
                          uint32_t idx, JSValue val)
 {
-    return JS_SetPropertyValue(ctx, this_obj, JS_NewUint32(ctx, idx), val,
+    return JS_SetPropertyValue(ctx, this_obj, js_uint32(idx), val,
                                JS_PROP_THROW);
 }
 
@@ -8828,7 +8835,7 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                     /* XXX: should update the length after defining
                        the property */
                     len = idx + 1;
-                    set_value(ctx, &plen->u.value, JS_NewUint32(ctx, len));
+                    set_value(ctx, &plen->u.value, js_uint32(len));
                 }
             }
         } else if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
@@ -8997,7 +9004,7 @@ int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
                 return -1;
             }
             /* this code relies on the fact that Uint32 are never allocated */
-            val = (JSValueConst)JS_NewUint32(ctx, array_length);
+            val = (JSValueConst)js_uint32(array_length);
             /* prs may have been modified */
             prs = find_own_property(&pr, p, prop);
             assert(prs != NULL);
@@ -9299,7 +9306,7 @@ int JS_DefinePropertyValueValue(JSContext *ctx, JSValueConst this_obj,
 int JS_DefinePropertyValueUint32(JSContext *ctx, JSValueConst this_obj,
                                  uint32_t idx, JSValue val, int flags)
 {
-    return JS_DefinePropertyValueValue(ctx, this_obj, JS_NewUint32(ctx, idx),
+    return JS_DefinePropertyValueValue(ctx, this_obj, js_uint32(idx),
                                        val, flags);
 }
 
@@ -12735,7 +12742,7 @@ static no_inline int js_shr_slow(JSContext *ctx, JSValue *sp)
     JS_ToUint32Free(ctx, &v1, op1);
     JS_ToUint32Free(ctx, &v2, op2);
     r = v1 >> (v2 & 0x1f);
-    sp[-2] = JS_NewUint32(ctx, r);
+    sp[-2] = js_uint32(r);
     return 0;
  exception:
     sp[-2] = JS_UNDEFINED;
@@ -16445,9 +16452,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     uint32_t v2;
                     v2 = JS_VALUE_GET_INT(op2);
                     v2 &= 0x1f;
-                    sp[-2] = JS_NewUint32(ctx,
-                                          (uint32_t)JS_VALUE_GET_INT(op1) >>
-                                          v2);
+                    sp[-2] = js_uint32((uint32_t)JS_VALUE_GET_INT(op1) >> v2);
                     sp--;
                 } else {
                     if (js_shr_slow(ctx, sp))
@@ -36026,7 +36031,7 @@ static JSValue js_array_constructor(JSContext *ctx, JSValueConst new_target,
         uint32_t len;
         if (JS_ToArrayLengthFree(ctx, &len, JS_DupValue(ctx, argv[0]), TRUE))
             goto fail;
-        if (JS_SetProperty(ctx, obj, JS_ATOM_length, JS_NewUint32(ctx, len)) < 0)
+        if (JS_SetProperty(ctx, obj, JS_ATOM_length, js_uint32(len)) < 0)
             goto fail;
     } else {
         for(i = 0; i < argc; i++) {
@@ -36136,7 +36141,7 @@ static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
                 goto exception;
         }
     }
-    if (JS_SetProperty(ctx, r, JS_ATOM_length, JS_NewUint32(ctx, k)) < 0)
+    if (JS_SetProperty(ctx, r, JS_ATOM_length, js_uint32(k)) < 0)
         goto exception;
     goto done;
 
@@ -36173,7 +36178,7 @@ static JSValue js_array_of(JSContext *ctx, JSValueConst this_val,
             goto fail;
         }
     }
-    if (JS_SetProperty(ctx, obj, JS_ATOM_length, JS_NewUint32(ctx, argc)) < 0) {
+    if (JS_SetProperty(ctx, obj, JS_ATOM_length, js_uint32(argc)) < 0) {
     fail:
         JS_FreeValue(ctx, obj);
         return JS_EXCEPTION;
@@ -37946,7 +37951,7 @@ static JSValue js_array_iterator_next(JSContext *ctx, JSValueConst this_val,
     it->idx = idx + 1;
     *pdone = FALSE;
     if (it->kind == JS_ITERATOR_KIND_KEY) {
-        return JS_NewUint32(ctx, idx);
+        return js_uint32(idx);
     } else {
         val = JS_GetPropertyUint32(ctx, it->obj, idx);
         if (JS_IsException(val))
@@ -37956,7 +37961,7 @@ static JSValue js_array_iterator_next(JSContext *ctx, JSValueConst this_val,
         } else {
             JSValueConst args[2];
             JSValue num;
-            num = JS_NewUint32(ctx, idx);
+            num = js_uint32(idx);
             args[0] = num;
             args[1] = val;
             obj = js_create_array(ctx, 2, args);
@@ -44307,7 +44312,7 @@ static JSValue js_map_get_size(JSContext *ctx, JSValueConst this_val, int magic)
     JSMapState *s = JS_GetOpaque2(ctx, this_val, JS_CLASS_MAP + magic);
     if (!s)
         return JS_EXCEPTION;
-    return JS_NewUint32(ctx, s->record_count);
+    return js_uint32(s->record_count);
 }
 
 static JSValue js_map_forEach(JSContext *ctx, JSValueConst this_val,
@@ -47940,7 +47945,7 @@ static JSValue js_array_buffer_get_byteLength(JSContext *ctx,
     if (!abuf)
         return JS_EXCEPTION;
     /* return 0 if detached */
-    return JS_NewUint32(ctx, abuf->byte_length);
+    return js_uint32(abuf->byte_length);
 }
 
 void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj)
@@ -48436,7 +48441,7 @@ static JSValue js_typed_array_at(JSContext *ctx, JSValueConst this_val,
     case JS_CLASS_INT32_ARRAY:
         return js_int32(p->u.array.u.int32_ptr[idx]);
     case JS_CLASS_UINT32_ARRAY:
-        return JS_NewUint32(ctx, p->u.array.u.uint32_ptr[idx]);
+        return js_uint32(p->u.array.u.uint32_ptr[idx]);
     case JS_CLASS_FLOAT32_ARRAY:
         return __JS_NewFloat64(p->u.array.u.float_ptr[idx]);
     case JS_CLASS_FLOAT64_ARRAY:
@@ -49385,7 +49390,7 @@ static JSValue js_TA_get_int32(JSContext *ctx, const void *a) {
 }
 
 static JSValue js_TA_get_uint32(JSContext *ctx, const void *a) {
-    return JS_NewUint32(ctx, *(const uint32_t *)a);
+    return js_uint32(*(const uint32_t *)a);
 }
 
 static JSValue js_TA_get_int64(JSContext *ctx, const void *a) {
@@ -50041,7 +50046,7 @@ static JSValue js_dataview_getValue(JSContext *ctx,
         v = get_u32(ptr);
         if (is_swap)
             v = bswap32(v);
-        return JS_NewUint32(ctx, v);
+        return js_uint32(v);
     case JS_CLASS_BIG_INT64_ARRAY:
         {
             uint64_t v;
@@ -50447,7 +50452,7 @@ static JSValue js_atomics_op(JSContext *ctx,
         ret = js_int32(a);
         break;
     case JS_CLASS_UINT32_ARRAY:
-        ret = JS_NewUint32(ctx, a);
+        ret = js_uint32(a);
         break;
     case JS_CLASS_BIG_INT64_ARRAY:
         ret = JS_NewBigInt64(ctx, a);
