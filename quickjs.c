@@ -6061,7 +6061,6 @@ void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt)
 {
     fprintf(fp, "QuickJS-ng memory usage -- %s version, %d-bit, malloc limit: %"PRId64"\n\n",
         JS_GetVersion(), (int)sizeof(void *) * 8, (int64_t)(ssize_t)s->malloc_limit);
-#if 1
     if (rt) {
         static const struct {
             const char *name;
@@ -6117,7 +6116,6 @@ void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt)
         }
         fprintf(fp, "\n");
     }
-#endif
     fprintf(fp, "%-20s %8s %8s\n", "NAME", "COUNT", "SIZE");
 
     if (s->malloc_count) {
@@ -21557,33 +21555,7 @@ static __exception int js_parse_array_literal(JSParseState *s)
                 return -1;
             if (js_parse_assign_expr(s))
                 return -1;
-#if 1
             emit_op(s, OP_append);
-#else
-            int label_next, label_done;
-            label_next = new_label(s);
-            label_done = new_label(s);
-            /* enumerate object */
-            emit_op(s, OP_for_of_start);
-            emit_op(s, OP_rot5l);
-            emit_op(s, OP_rot5l);
-            emit_label(s, label_next);
-            /* on stack: enum_rec array idx */
-            emit_op(s, OP_for_of_next);
-            emit_u8(s, 2);
-            emit_goto(s, OP_if_true, label_done);
-            /* append element */
-            /* enum_rec array idx val -> enum_rec array new_idx */
-            emit_op(s, OP_define_array_el);
-            emit_op(s, OP_inc);
-            emit_goto(s, OP_goto, label_next);
-            emit_label(s, label_done);
-            /* close enumeration */
-            emit_op(s, OP_drop); /* drop undef val */
-            emit_op(s, OP_nip1); /* drop enum_rec */
-            emit_op(s, OP_nip1);
-            emit_op(s, OP_nip1);
-#endif
         } else {
             need_length = TRUE;
             if (s->token.val != ',') {
@@ -22861,34 +22833,8 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                             return -1;
                         if (js_parse_assign_expr(s))
                             return -1;
-#if 1
                         /* XXX: could pass is_last indicator? */
                         emit_op(s, OP_append);
-#else
-                        int label_next, label_done;
-                        label_next = new_label(s);
-                        label_done = new_label(s);
-                        /* push enumerate object below array/idx pair */
-                        emit_op(s, OP_for_of_start);
-                        emit_op(s, OP_rot5l);
-                        emit_op(s, OP_rot5l);
-                        emit_label(s, label_next);
-                        /* on stack: enum_rec array idx */
-                        emit_op(s, OP_for_of_next);
-                        emit_u8(s, 2);
-                        emit_goto(s, OP_if_true, label_done);
-                        /* append element */
-                        /* enum_rec array idx val -> enum_rec array new_idx */
-                        emit_op(s, OP_define_array_el);
-                        emit_op(s, OP_inc);
-                        emit_goto(s, OP_goto, label_next);
-                        emit_label(s, label_done);
-                        /* close enumeration, drop enum_rec and idx */
-                        emit_op(s, OP_drop); /* drop undef */
-                        emit_op(s, OP_nip1); /* drop enum_rec */
-                        emit_op(s, OP_nip1);
-                        emit_op(s, OP_nip1);
-#endif
                     } else {
                         if (js_parse_assign_expr(s))
                             return -1;
@@ -24066,7 +24012,6 @@ static int is_let(JSParseState *s, int decl_mask)
     int res = FALSE;
 
     if (token_is_pseudo_keyword(s, JS_ATOM_let)) {
-#if 1
         JSParsePos pos;
         js_parse_get_pos(s, &pos);
         for (;;) {
@@ -24099,12 +24044,6 @@ static int is_let(JSParseState *s, int decl_mask)
         if (js_parse_seek_token(s, &pos)) {
             res = -1;
         }
-#else
-        int tok = peek_token(s, TRUE);
-        if (tok == '{' || tok == TOK_IDENT || peek_token(s, FALSE) == '[') {
-            res = TRUE;
-        }
-#endif
     }
     return res;
 }
