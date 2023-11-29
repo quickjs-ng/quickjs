@@ -1199,10 +1199,10 @@ static int find_group_name(REParseState *s, const char *name)
     size_t len, name_len;
     int capture_index;
 
-    name_len = strlen(name);
     p = (char *)s->group_names.buf;
     if (!p) return -1;
     buf_end = (char *)s->group_names.buf + s->group_names.size;
+    name_len = strlen(name);
     capture_index = 1;
     while (p < buf_end) {
         len = strlen(p);
