@@ -336,3 +336,17 @@ jobs:
       - name: stats
         run: |
           make stats
+
+  emscripten:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: mymindstorm/setup-emsdk@v13
+      - name: check emsdk
+        run: emcc -v
+      - name: build
+        run: |
+          emcmake cmake -B build
+          emmake make -C build qjs_wasm -j$(getconf _NPROCESSORS_ONLN)
+      - name: result
+        run: ls -lh build
