@@ -251,11 +251,15 @@ jobs:
 
   windows-clang:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        buildType: [Debug, Release]
     steps:
       - uses: actions/checkout@v3
       - name: build
         run: |
-          cmake -B build -G "Visual Studio 17 2022" -T ClangCL
+          cmake -B build -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Visual Studio 17 2022" -T ClangCL
           cmake --build build --target qjs_exe
       - name: stats
         run: |
