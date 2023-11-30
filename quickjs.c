@@ -67,7 +67,7 @@
 #define CONFIG_PRINTF_RNDN
 #endif
 
-#if !defined(EMSCRIPTEN) && !defined(__ASAN__)
+#if !defined(EMSCRIPTEN)
 /* enable stack limitation */
 #define CONFIG_STACK_CHECK
 #endif
@@ -1635,6 +1635,9 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     rt->js_class_id_alloc = JS_CLASS_INIT_COUNT;
 
     rt->stack_size = JS_DEFAULT_STACK_SIZE;
+#ifdef __ASAN__
+    rt->stack_size *= 2; // stack frames are bigger under AddressSanitizer
+#endif
     JS_UpdateStackTop(rt);
 
     rt->current_exception = JS_NULL;
