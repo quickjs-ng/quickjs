@@ -165,6 +165,12 @@ target_include_directories(qjs PUBLIC
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+if(EMSCRIPTEN)
+    add_executable(qjs_wasm ${qjs_sources})
+    target_compile_definitions(qjs_wasm PRIVATE ${qjs_defines})
+    target_link_libraries(qjs_wasm m)
+endif()
+
 
 # QuickJS bytecode compiler
 #
