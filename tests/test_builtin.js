@@ -707,6 +707,25 @@ function test_generator()
     assert(v.value === undefined && v.done === true);
 }
 
+/* CVE-2023-31922 */
+function test_proxy_is_array()
+{
+  for (var r = new Proxy([], {}), y = 0; y < 331072; y++)
+      r = new Proxy(r, {});
+
+  try {
+    /* Without ASAN */
+    assert(Array.isArray(r));
+  } catch(e) {
+    /* With ASAN expect InternalError "stack overflow" to be raised */
+    if (e instanceof InternalError) {
+      assert(e.message, "stack overflow", "Stack overflow error was not raised")
+    } else {
+      throw e;
+    }
+  }
+}
+
 test();
 test_function();
 test_enum();
@@ -724,3 +743,4 @@ test_map();
 test_weak_map();
 test_weak_set();
 test_generator();
+test_proxy_is_array();
