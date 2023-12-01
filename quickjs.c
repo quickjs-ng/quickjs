@@ -67,12 +67,6 @@
 #define CONFIG_PRINTF_RNDN
 #endif
 
-#if !defined(EMSCRIPTEN)
-/* enable stack limitation */
-#define CONFIG_STACK_CHECK
-#endif
-
-
 /* dump object free */
 //#define DUMP_FREE
 //#define DUMP_CLOSURE
@@ -1555,18 +1549,6 @@ static int init_class_range(JSRuntime *rt, JSClassShortDef const *tab,
     return 0;
 }
 
-#if !defined(CONFIG_STACK_CHECK)
-/* no stack limitation */
-static inline uintptr_t js_get_stack_pointer(void)
-{
-    return 0;
-}
-
-static inline BOOL js_check_stack_overflow(JSRuntime *rt, size_t alloca_size)
-{
-    return FALSE;
-}
-#else
 /* Note: OS and CPU dependent */
 static inline uintptr_t js_get_stack_pointer(void)
 {
@@ -1579,7 +1561,6 @@ static inline BOOL js_check_stack_overflow(JSRuntime *rt, size_t alloca_size)
     sp = js_get_stack_pointer() - alloca_size;
     return unlikely(sp < rt->stack_limit);
 }
-#endif
 
 JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
 {
