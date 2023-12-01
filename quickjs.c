@@ -166,6 +166,7 @@ enum {
     JS_CLASS_ASYNC_GENERATOR_FUNCTION,  /* u.func */
     JS_CLASS_ASYNC_GENERATOR,   /* u.async_generator_data */
     JS_CLASS_WEAK_REF,
+    JS_CLASS_FINALIZATION_REGISTRY,
 
     JS_CLASS_INIT_COUNT, /* last entry for predefined classes */
 };
@@ -410,14 +411,10 @@ typedef union JSFloat64Union {
     uint32_t u32[2];
 } JSFloat64Union;
 
-typedef struct JSWeakRefData {
-    JSValue target;
-    JSValue obj;
-} JSWeakRefData;
-
 typedef enum {
     JS_WEAK_REF_KIND_MAP,
     JS_WEAK_REF_KIND_WEAK_REF,
+    JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY,
 } JSWeakRefKindEnum;
 
 typedef struct JSWeakRefRecord {
@@ -425,7 +422,8 @@ typedef struct JSWeakRefRecord {
     struct JSWeakRefRecord *next_weak_ref;
     union {
         struct JSMapRecord *map_record;
-        JSWeakRefData *weak_ref_data;
+        struct JSWeakRefData *weak_ref_data;
+        struct JSFinRecEntry *fin_rec_entry;
     } u;
 } JSWeakRefRecord;
 
@@ -1073,7 +1071,6 @@ static void js_promise_mark(JSRuntime *rt, JSValueConst val,
 static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValue val);
 static void js_promise_resolve_function_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_weakref_finalizer(JSRuntime *rt, JSValue val);
 
 static JSValue JS_ToStringFree(JSContext *ctx, JSValue val);
 static int JS_ToBoolFree(JSContext *ctx, JSValue val);
@@ -1135,6 +1132,8 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                              int flags);
 static int js_string_memcmp(const JSString *p1, const JSString *p2, int len);
 static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref);
+static BOOL is_valid_weakref_target(JSValue val);
+static void insert_weakref_record(JSValue target, struct JSWeakRefRecord *wr);
 static JSValue js_array_buffer_constructor3(JSContext *ctx,
                                             JSValueConst new_target,
                                             uint64_t len, JSClassID class_id,
@@ -44096,18 +44095,14 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
     mr->map = s;
     mr->empty = FALSE;
     if (s->is_weak) {
-        JSWeakRefRecord *wr, **pwr;
-        wr = js_malloc(ctx, sizeof(*wr));
+        JSWeakRefRecord *wr = js_malloc(ctx, sizeof(*wr));
         if (!wr) {
             js_free(ctx, mr);
             return NULL;
         }
         wr->kind = JS_WEAK_REF_KIND_MAP;
         wr->u.map_record = mr;
-        pwr = get_first_weak_ref(key);
-        /* Add the weak reference */
-        wr->next_weak_ref = *pwr;
-        *pwr = wr;
+        insert_weakref_record(key, wr);
     } else {
         js_dup(key);
     }
@@ -44175,86 +44170,20 @@ static void map_decref_record(JSRuntime *rt, JSMapRecord *mr)
     }
 }
 
-static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
-{
-    JSWeakRefRecord *wr, *wr_next;
-    JSWeakRefData *wrd;
-    JSMapRecord *mr;
-    JSMapState *s;
-
-    /* first pass to remove the records from the WeakMap/WeakSet
-       lists */
-    for(wr = *first_weak_ref; wr != NULL; wr = wr->next_weak_ref) {
-        switch(wr->kind) {
-            case JS_WEAK_REF_KIND_MAP:
-                mr = wr->u.map_record;
-                s = mr->map;
-                assert(s->is_weak);
-                assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
-                list_del(&mr->hash_link);
-                list_del(&mr->link);
-                break;
-            case JS_WEAK_REF_KIND_WEAK_REF:
-                wrd = wr->u.weak_ref_data;
-                wrd->target = JS_UNDEFINED;
-                break;
-            default:
-                abort();
-        }
-    }
-
-    /* second pass to free the values to avoid modifying the weak
-       reference list while traversing it. */
-    for(wr = *first_weak_ref; wr != NULL; wr = wr_next) {
-        wr_next = wr->next_weak_ref;
-        switch(wr->kind) {
-            case JS_WEAK_REF_KIND_MAP:
-                mr = wr->u.map_record;
-                JS_FreeValueRT(rt, mr->value);
-                js_free_rt(rt, mr);
-                break;
-            case JS_WEAK_REF_KIND_WEAK_REF:
-                wrd = wr->u.weak_ref_data;
-                JS_SetOpaque(wrd->obj, NULL);
-                js_free_rt(rt, wrd);
-                break;
-            default:
-                abort();
-        }
-        js_free_rt(rt, wr);
-    }
-
-    *first_weak_ref = NULL; /* fail safe */
-}
-
 static JSValue js_map_set(JSContext *ctx, JSValueConst this_val,
                           int argc, JSValueConst *argv, int magic)
 {
     JSMapState *s = JS_GetOpaque2(ctx, this_val, JS_CLASS_MAP + magic);
     JSMapRecord *mr;
     JSValueConst key, value;
-    JSAtomStruct *p;
     int is_set;
 
     if (!s)
         return JS_EXCEPTION;
     is_set = (magic & MAGIC_SET);
     key = map_normalize_key(ctx, argv[0]);
-    if (s->is_weak) {
-        switch (JS_VALUE_GET_TAG(key)) {
-        case JS_TAG_OBJECT:
-            break;
-        case JS_TAG_SYMBOL:
-            // Per spec: prohibit symbols registered with Symbol.for()
-            p = JS_VALUE_GET_PTR(key);
-            if (p->atom_type != JS_ATOM_TYPE_GLOBAL_SYMBOL)
-                break;
-            // fallthru
-        default:
-            return JS_ThrowTypeError(ctx, "invalid value used as %s key",
-                                     is_set ? "WeakSet" : "WeakMap");
-        }
-    }
+    if (s->is_weak && !is_valid_weakref_target(key))
+        return JS_ThrowTypeError(ctx, "invalid value used as %s key", is_set ? "WeakSet" : "WeakMap");
     if (is_set)
         value = JS_UNDEFINED;
     else
@@ -50847,6 +50776,11 @@ void JS_AddPerformance(JSContext *ctx)
 
 /* WeakRef */
 
+typedef struct JSWeakRefData {
+    JSValue target;
+    JSValue obj;
+} JSWeakRefData;
+
 static void js_weakref_finalizer(JSRuntime *rt, JSValue val)
 {
     JSWeakRefData *wrd = JS_GetOpaque(val, JS_CLASS_WEAK_REF);
@@ -50874,19 +50808,8 @@ static JSValue js_weakref_constructor(JSContext *ctx, JSValueConst new_target, i
     if (JS_IsUndefined(new_target))
         return JS_ThrowTypeError(ctx, "constructor requires 'new'");
     JSValue arg = argv[0];
-    switch (JS_VALUE_GET_TAG(arg)) {
-        case JS_TAG_OBJECT:
-            break;
-        case JS_TAG_SYMBOL: {
-            // Per spec: prohibit symbols registered with Symbol.for()
-            JSAtomStruct *p = JS_VALUE_GET_PTR(arg);
-            if (p->atom_type != JS_ATOM_TYPE_GLOBAL_SYMBOL)
-                break;
-            // fallthru
-        }
-        default:
-            return JS_ThrowTypeError(ctx, "invalid target");
-    }
+    if (!is_valid_weakref_target(arg))
+        return JS_ThrowTypeError(ctx, "invalid target");
     // TODO(saghul): short-circuit if the refcount is 1?
     JSValue obj = js_create_from_ctor(ctx, new_target, JS_CLASS_WEAK_REF);
     if (JS_IsException(obj))
@@ -50896,8 +50819,7 @@ static JSValue js_weakref_constructor(JSContext *ctx, JSValueConst new_target, i
         JS_FreeValue(ctx, obj);
         return JS_EXCEPTION;
     }
-    JSWeakRefRecord *wr, **pwr;
-    wr = js_malloc(ctx, sizeof(*wr));
+    JSWeakRefRecord *wr = js_malloc(ctx, sizeof(*wr));
     if (!wr) {
         JS_FreeValue(ctx, obj);
         js_free(ctx, wrd);
@@ -50907,10 +50829,8 @@ static JSValue js_weakref_constructor(JSContext *ctx, JSValueConst new_target, i
     wrd->obj = obj;
     wr->kind = JS_WEAK_REF_KIND_WEAK_REF;
     wr->u.weak_ref_data = wrd;
-    pwr = get_first_weak_ref(arg);
-    /* Add the weak reference */
-    wr->next_weak_ref = *pwr;
-    *pwr = wr;
+    insert_weakref_record(arg, wr);
+
     JS_SetOpaque(obj, wrd);
     return obj;
 }
@@ -50932,20 +50852,296 @@ static const JSClassShortDef js_weakref_class_def[] = {
     { JS_ATOM_WeakRef, js_weakref_finalizer, NULL }, /* JS_CLASS_WEAK_REF */
 };
 
+typedef struct JSFinRecEntry {
+    struct list_head link;
+    JSValue obj;
+    JSValue target;
+    JSValue held_val;
+    JSValue token;
+} JSFinRecEntry;
+
+typedef struct JSFinalizationRegistryData {
+    struct list_head entries;
+    JSContext *ctx;
+    JSValue cb;
+} JSFinalizationRegistryData;
+
+static void delete_finrec_weakref(JSRuntime *rt, JSFinRecEntry *fre)
+{
+    JSWeakRefRecord **pwr, *wr;
+
+    pwr = get_first_weak_ref(fre->target);
+    for(;;) {
+        wr = *pwr;
+        assert(wr != NULL);
+        if (wr->kind == JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY && wr->u.fin_rec_entry == fre)
+            break;
+        pwr = &wr->next_weak_ref;
+    }
+    *pwr = wr->next_weak_ref;
+    js_free_rt(rt, wr);
+}
+
+static void js_finrec_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSFinalizationRegistryData *frd = JS_GetOpaque(val, JS_CLASS_FINALIZATION_REGISTRY);
+    if (frd) {
+        struct list_head *el, *el1;
+        /* first pass to remove the weak ref entries and avoid having them modified
+           by freeing a token / held value. */
+        list_for_each_safe(el, el1, &frd->entries) {
+            JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
+            delete_finrec_weakref(rt, fre);
+        }
+        /* second pass to actually free all objects. */
+        list_for_each_safe(el, el1, &frd->entries) {
+            JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
+            list_del(&fre->link);
+            JS_FreeValueRT(rt, fre->held_val);
+            JS_FreeValueRT(rt, fre->token);
+            js_free_rt(rt, fre);
+        }
+        JS_FreeValueRT(rt, frd->cb);
+        js_free_rt(rt, frd);
+    }
+}
+
+static void js_finrec_mark(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
+{
+    JSFinalizationRegistryData *frd = JS_GetOpaque(val, JS_CLASS_FINALIZATION_REGISTRY);
+    if (frd) {
+        JS_MarkValue(rt, frd->cb, mark_func);
+        struct list_head *el;
+        list_for_each(el, &frd->entries) {
+            JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
+            JS_MarkValue(rt, fre->held_val, mark_func);
+            JS_MarkValue(rt, fre->token, mark_func);
+        }
+    }
+}
+
+static JSValue js_finrec_constructor(JSContext *ctx, JSValueConst new_target, int argc, JSValueConst *argv)
+{
+    if (JS_IsUndefined(new_target))
+        return JS_ThrowTypeError(ctx, "constructor requires 'new'");
+    JSValue cb = argv[0];
+    if (!JS_IsFunction(ctx, cb))
+        return JS_ThrowTypeError(ctx, "argument must be a function");
+
+    JSValue obj = js_create_from_ctor(ctx, new_target, JS_CLASS_FINALIZATION_REGISTRY);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    JSFinalizationRegistryData *frd = js_malloc(ctx, sizeof(*frd));
+    if (!frd) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    init_list_head(&frd->entries);
+    frd->ctx = ctx;
+    frd->cb = js_dup(cb);
+    JS_SetOpaque(obj, frd);
+    return obj;
+}
+
+static JSValue js_finrec_register(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    JSFinalizationRegistryData *frd = JS_GetOpaque2(ctx, this_val, JS_CLASS_FINALIZATION_REGISTRY);
+    if (!frd)
+        return JS_EXCEPTION;
+
+    JSValue target = argv[0];
+    JSValue held_val = argv[1];
+    // The function length needs to return 2, so the 3rd argument won't be initialized.
+    JSValue token = argc > 2 ? argv[2] : JS_UNDEFINED;
+
+    if (!is_valid_weakref_target(target))
+        return JS_ThrowTypeError(ctx, "invalid target");
+    if (js_same_value(ctx, target, this_val))
+        return JS_UNDEFINED;
+    if (!JS_IsUndefined(held_val) && js_same_value(ctx, target, held_val))
+        return JS_ThrowTypeError(ctx, "held value cannot be the target");
+    if (!JS_IsUndefined(token) && !is_valid_weakref_target(token))
+        return JS_ThrowTypeError(ctx, "invalid unregister token");
+
+    JSFinRecEntry *fre = js_malloc(ctx, sizeof(*fre));
+    if (!fre)
+        return JS_EXCEPTION;
+    JSWeakRefRecord *wr = js_malloc(ctx, sizeof(*wr));
+    if (!wr) {
+        js_free(ctx, fre);
+        return JS_EXCEPTION;
+    }
+    fre->obj = this_val;
+    fre->target = target;
+    fre->held_val = js_dup(held_val);
+    fre->token = js_dup(token);
+    list_add_tail(&fre->link, &frd->entries);
+    wr->kind = JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY;
+    wr->u.fin_rec_entry = fre;
+    insert_weakref_record(target, wr);
+
+    return JS_UNDEFINED;
+}
+
+static JSValue js_finrec_unregister(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    JSFinalizationRegistryData *frd = JS_GetOpaque2(ctx, this_val, JS_CLASS_FINALIZATION_REGISTRY);
+    if (!frd)
+        return JS_EXCEPTION;
+
+    JSValue token = argv[0];
+    if (!is_valid_weakref_target(token))
+        return JS_ThrowTypeError(ctx, "invalid unregister token");
+
+    struct list_head *el, *el1;
+    BOOL removed = FALSE;
+    list_for_each_safe(el, el1, &frd->entries) {
+        JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
+        if (js_same_value(ctx, fre->token, token)) {
+            list_del(&fre->link);
+            delete_finrec_weakref(ctx->rt, fre);
+            JS_FreeValue(ctx, fre->held_val);
+            JS_FreeValue(ctx, fre->token);
+            js_free(ctx, fre);
+            removed = TRUE;
+        }
+    }
+
+    return js_bool(removed);
+}
+
+static const JSCFunctionListEntry js_finrec_proto_funcs[] = {
+    JS_CFUNC_DEF("register", 2, js_finrec_register ),
+    JS_CFUNC_DEF("unregister", 1, js_finrec_unregister ),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "FinalizationRegistry", JS_PROP_CONFIGURABLE ),
+};
+
+static const JSClassShortDef js_finrec_class_def[] = {
+    { JS_ATOM_FinalizationRegistry, js_finrec_finalizer, js_finrec_mark }, /* JS_CLASS_FINALIZATION_REGISTRY */
+};
+
 void JS_AddIntrinsicWeakRef(JSContext *ctx)
 {
     JSRuntime *rt = ctx->rt;
 
+    /* WeakRef */
     if (!JS_IsRegisteredClass(rt, JS_CLASS_WEAK_REF)) {
         init_class_range(rt, js_weakref_class_def, JS_CLASS_WEAK_REF,
                          countof(js_weakref_class_def));
     }
-
     ctx->class_proto[JS_CLASS_WEAK_REF] = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_WEAK_REF],
                                js_weakref_proto_funcs,
                                countof(js_weakref_proto_funcs));
     JS_NewGlobalCConstructor(ctx, "WeakRef", js_weakref_constructor, 1, ctx->class_proto[JS_CLASS_WEAK_REF]);
+
+    /* FinalizationRegistry */
+    if (!JS_IsRegisteredClass(rt, JS_CLASS_FINALIZATION_REGISTRY)) {
+        init_class_range(rt, js_finrec_class_def, JS_CLASS_FINALIZATION_REGISTRY,
+                         countof(js_finrec_class_def));
+    }
+    ctx->class_proto[JS_CLASS_FINALIZATION_REGISTRY] = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_FINALIZATION_REGISTRY],
+                               js_finrec_proto_funcs,
+                               countof(js_finrec_proto_funcs));
+    JS_NewGlobalCConstructor(ctx, "FinalizationRegistry", js_finrec_constructor, 1, ctx->class_proto[JS_CLASS_FINALIZATION_REGISTRY]);
+}
+
+static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
+{
+    JSWeakRefRecord *wr, *wr_next;
+    JSWeakRefData *wrd;
+    JSMapRecord *mr;
+    JSMapState *s;
+    JSFinRecEntry *fre;
+
+    /* first pass to remove the records from the WeakMap/WeakSet
+       lists */
+    for(wr = *first_weak_ref; wr != NULL; wr = wr->next_weak_ref) {
+        switch(wr->kind) {
+        case JS_WEAK_REF_KIND_MAP:
+            mr = wr->u.map_record;
+            s = mr->map;
+            assert(s->is_weak);
+            assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
+            list_del(&mr->hash_link);
+            list_del(&mr->link);
+            break;
+        case JS_WEAK_REF_KIND_WEAK_REF:
+            wrd = wr->u.weak_ref_data;
+            wrd->target = JS_UNDEFINED;
+            break;
+        case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY:
+            fre = wr->u.fin_rec_entry;
+            list_del(&fre->link);
+            break;
+        default:
+            abort();
+        }
+    }
+
+    /* second pass to free the values to avoid modifying the weak
+       reference list while traversing it. */
+    for(wr = *first_weak_ref; wr != NULL; wr = wr_next) {
+        wr_next = wr->next_weak_ref;
+        switch(wr->kind) {
+        case JS_WEAK_REF_KIND_MAP:
+            mr = wr->u.map_record;
+            JS_FreeValueRT(rt, mr->value);
+            js_free_rt(rt, mr);
+            break;
+        case JS_WEAK_REF_KIND_WEAK_REF:
+            wrd = wr->u.weak_ref_data;
+            JS_SetOpaque(wrd->obj, NULL);
+            js_free_rt(rt, wrd);
+            break;
+        case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY: {
+            fre = wr->u.fin_rec_entry;
+            JSFinalizationRegistryData *frd = JS_GetOpaque(fre->obj, JS_CLASS_FINALIZATION_REGISTRY);
+            assert(frd != NULL);
+            JSValue func = js_dup(frd->cb);
+            JSValue ret = JS_Call(frd->ctx, func, JS_UNDEFINED, 1, &fre->held_val);
+            JS_FreeValueRT(rt, func);
+            JS_FreeValueRT(rt, ret);
+            JS_FreeValueRT(rt, fre->held_val);
+            JS_FreeValueRT(rt, fre->token);
+            js_free_rt(rt, fre);
+            break;
+        }
+        default:
+            abort();
+        }
+        js_free_rt(rt, wr);
+    }
+
+    *first_weak_ref = NULL; /* fail safe */
+}
+
+static BOOL is_valid_weakref_target(JSValue val)
+{
+    switch (JS_VALUE_GET_TAG(val)) {
+    case JS_TAG_OBJECT:
+        break;
+    case JS_TAG_SYMBOL: {
+        // Per spec: prohibit symbols registered with Symbol.for()
+        JSAtomStruct *p = JS_VALUE_GET_PTR(val);
+        if (p->atom_type != JS_ATOM_TYPE_GLOBAL_SYMBOL)
+            break;
+        // fallthru
+    }
+    default:
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+static void insert_weakref_record(JSValue target, struct JSWeakRefRecord *wr)
+{
+    JSWeakRefRecord **pwr = get_first_weak_ref(target);
+    /* Add the weak reference */
+    wr->next_weak_ref = *pwr;
+    *pwr = wr;
 }
 
 /* Poly IC */
