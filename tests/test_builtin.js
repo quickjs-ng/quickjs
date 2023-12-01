@@ -710,8 +710,8 @@ function test_generator()
 /* CVE-2023-31922 */
 function test_proxy_is_array()
 {
-  for (var r = new Proxy ([],{}) , y = 0 ; y < 331072 ; y ++ )
-      r = new Proxy (r, {});
+  for (var r = new Proxy([], {}), y = 0; y < 331072; y++)
+      r = new Proxy(r, {});
 
   try {
     /* Without ASAN */
@@ -721,7 +721,7 @@ function test_proxy_is_array()
     if (e instanceof InternalError) {
       assert(e.message, "stack overflow", "Stack overflow error was not raised")
     } else {
-      throw(e);
+      throw e;
     }
   }
 }
