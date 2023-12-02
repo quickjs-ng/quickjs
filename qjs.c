@@ -36,7 +36,7 @@
 #include <time.h>
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__CYGWIN__)
 #include <malloc.h>
 #endif
 
@@ -259,7 +259,7 @@ static const JSMallocFunctions trace_mf = {
     (size_t (*)(const void *))_msize,
 #elif defined(EMSCRIPTEN)
     NULL,
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__CYGWIN__)
     (size_t (*)(const void *))malloc_usable_size,
 #else
     /* change this to `NULL,` if compilation fails */
