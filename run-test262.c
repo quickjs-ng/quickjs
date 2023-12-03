@@ -1668,7 +1668,7 @@ int run_test(const char *filename, int index)
                 /* XXX: should extract the phase */
                 char *q = find_tag(p, "type:", &state);
                 if (q) {
-                    while (isspace(*q))
+                    while (isspace((unsigned char)*q))
                         q++;
                     error_type = strdup_len(q, strcspn(q, " \n"));
                 }
@@ -2089,7 +2089,7 @@ int main(int argc, char **argv)
     update_exclude_dirs();
 
     if (is_dir_list) {
-        if (optind < argc && !isdigit(argv[optind][0])) {
+        if (optind < argc && !isdigit((unsigned char)argv[optind][0])) {
             filename = argv[optind++];
             namelist_load(&test_list, filename);
         }

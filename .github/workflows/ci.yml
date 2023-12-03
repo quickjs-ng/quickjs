@@ -350,3 +350,39 @@ jobs:
           emmake make -C build qjs_wasm -j$(getconf _NPROCESSORS_ONLN)
       - name: result
         run: ls -lh build
+
+  cygwin:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: C:\cygwin\bin\bash.exe --login --norc -eo pipefail -o igncr '{0}'
+    steps:
+      - name: Set up Cygwin
+        uses: cygwin/cygwin-install-action@master
+        with:
+            packages: make cmake gcc-g++ bash
+
+      - uses: actions/checkout@v3
+
+      - name: build
+
+        # Plain `make` fails here with this error:
+        #   No rule to make target '/cygdrive/d/a/quickjs-ng/quickjs-ng/cutils.c',
+        #   needed by 'CMakeFiles/qjs.dir/cutils.c.o'. Stop.
+        #
+        # For some reason, making the build directory then `make`ing in there
+        # fixes it.
+        run: |
+          cd $GITHUB_WORKSPACE
+          make build/CMakeCache.txt
+          make --directory build
+
+      - name: stats
+        run: |
+          cd $GITHUB_WORKSPACE
+          make --debug stats
+
+      - name: test
+        run: |
+          cd $GITHUB_WORKSPACE
+          make --debug test
