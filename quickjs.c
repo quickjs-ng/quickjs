@@ -2615,6 +2615,7 @@ static JSAtomKindEnum JS_AtomGetKind(JSContext *ctx, JSAtom v)
     default:
         abort();
     }
+    return (JSAtomKindEnum){-1}; // pacify compiler
 }
 
 static BOOL JS_AtomIsString(JSContext *ctx, JSAtom v)
@@ -44106,6 +44107,7 @@ static JSWeakRefRecord **get_first_weak_ref(JSValueConst key)
         default:
             abort();
         }
+        return NULL; // pacify compiler
 }
 
 static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
@@ -50142,6 +50144,7 @@ static JSValue js_dataview_getValue(JSContext *ctx,
     default:
         abort();
     }
+    return JS_EXCEPTION; // pacify compiler
 }
 
 static JSValue js_dataview_setValue(JSContext *ctx,
