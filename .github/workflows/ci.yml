@@ -386,3 +386,18 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           make --debug test
+
+  openbsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build + test
+        uses: vmactions/openbsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg_add cmake
+          run: |
+            cmake -B build
+            cmake --build build -j $(sysctl -n hw.ncpu)
+            ./build/qjs -qd
