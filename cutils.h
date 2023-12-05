@@ -38,6 +38,13 @@
 #define alloca _alloca
 #define ssize_t ptrdiff_t
 #endif
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#elif defined(__linux__) || defined(__CYGWIN__)
+#include <malloc.h>
+#elif defined(__FreeBSD__)
+#include <malloc_np.h>
+#endif
 
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
@@ -330,5 +337,18 @@ void rqsort(void *base, size_t nmemb, size_t size,
 
 int64_t js__gettimeofday_us(void);
 uint64_t js__hrtime_ns(void);
+
+static inline size_t js__malloc_usable_size(const void *ptr)
+{
+#if defined(__APPLE__)
+    return malloc_size(ptr);
+#elif defined(_WIN32)
+    return _msize((void *)ptr);
+#elif defined(__linux__) || defined(__FreeBSD__)
+    return malloc_usable_size((void *)ptr);
+#else
+    return 0;
+#endif
+}
 
 #endif  /* CUTILS_H */
