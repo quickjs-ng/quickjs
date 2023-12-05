@@ -1646,7 +1646,7 @@ static inline size_t js_def_malloc_usable_size(void *ptr)
     return malloc_size(ptr);
 #elif defined(_WIN32)
     return _msize(ptr);
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
     return malloc_usable_size(ptr);
 #else
     return 0;
