@@ -36,13 +36,6 @@
 #include <time.h>
 #include <fenv.h>
 #include <math.h>
-#if defined(__APPLE__)
-#include <malloc/malloc.h>
-#elif defined(__linux__) || defined(__CYGWIN__)
-#include <malloc.h>
-#elif defined(__FreeBSD__)
-#include <malloc_np.h>
-#endif
 
 #include "cutils.h"
 #include "list.h"
@@ -1639,20 +1632,6 @@ void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque)
     rt->user_opaque = opaque;
 }
 
-/* default memory allocation functions with memory limitation */
-static inline size_t js_def_malloc_usable_size(void *ptr)
-{
-#if defined(__APPLE__)
-    return malloc_size(ptr);
-#elif defined(_WIN32)
-    return _msize(ptr);
-#elif defined(__linux__) || defined(__FreeBSD__)
-    return malloc_usable_size(ptr);
-#else
-    return 0;
-#endif
-}
-
 static void *js_def_malloc(JSMallocState *s, size_t size)
 {
     void *ptr;
@@ -1668,7 +1647,7 @@ static void *js_def_malloc(JSMallocState *s, size_t size)
         return NULL;
 
     s->malloc_count++;
-    s->malloc_size += js_def_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
     return ptr;
 }
 
@@ -1678,7 +1657,7 @@ static void js_def_free(JSMallocState *s, void *ptr)
         return;
 
     s->malloc_count--;
-    s->malloc_size -= js_def_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    s->malloc_size -= js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
     free(ptr);
 }
 
@@ -1691,7 +1670,7 @@ static void *js_def_realloc(JSMallocState *s, void *ptr, size_t size)
             return NULL;
         return js_def_malloc(s, size);
     }
-    old_size = js_def_malloc_usable_size(ptr);
+    old_size = js__malloc_usable_size(ptr);
     if (size == 0) {
         s->malloc_count--;
         s->malloc_size -= old_size + MALLOC_OVERHEAD;
@@ -1705,7 +1684,7 @@ static void *js_def_realloc(JSMallocState *s, void *ptr, size_t size)
     if (!ptr)
         return NULL;
 
-    s->malloc_size += js_def_malloc_usable_size(ptr) - old_size;
+    s->malloc_size += js__malloc_usable_size(ptr) - old_size;
     return ptr;
 }
 
