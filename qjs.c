@@ -38,6 +38,8 @@
 #include <malloc/malloc.h>
 #elif defined(__linux__) || defined(__CYGWIN__)
 #include <malloc.h>
+#elif defined(__FreeBSD__)
+#include <malloc_np.h>
 #endif
 
 #include "cutils.h"
@@ -135,7 +137,7 @@ static inline size_t js_trace_malloc_usable_size(void *ptr)
     return malloc_size(ptr);
 #elif defined(_WIN32)
     return _msize(ptr);
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__FreeBSD__)
     return malloc_usable_size(ptr);
 #else
     return 0;

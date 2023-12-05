@@ -67,13 +67,11 @@
 
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
-#if !defined(environ)
 #include <crt_externs.h>
 #define environ (*_NSGetEnviron())
 #endif
-#endif /* __APPLE__ */
 
-#if defined(__OpenBSD__)
+#if defined(__OpenBSD__) || defined(__FreeBSD__)
 typedef sig_t sighandler_t;
 extern char **environ;
 #endif
@@ -3591,6 +3589,8 @@ void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
 #define OS_PLATFORM "linux"
 #elif defined(__OpenBSD__)
 #define OS_PLATFORM "openbsd"
+#elif defined(__FreeBSD__)
+#define OS_PLATFORM "freebsd"
 #else
 #define OS_PLATFORM "unknown"
 #endif

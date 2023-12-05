@@ -401,3 +401,18 @@ jobs:
             cmake -B build
             cmake --build build -j $(sysctl -n hw.ncpu)
             ./build/qjs -qd
+
+  freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build + test
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y cmake
+          run: |
+            cmake -B build
+            cmake --build build -j $(sysctl -n hw.ncpu)
+            ./build/qjs -qd
