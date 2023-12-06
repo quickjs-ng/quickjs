@@ -32,15 +32,15 @@ QJS=$(BUILD_DIR)/qjs
 RUN262=$(BUILD_DIR)/run-test262
 
 
-all: build
+all: $(QJS)
 
-build: $(BUILD_DIR)/CMakeCache.txt
-	cmake --build $(BUILD_DIR) -j $(JOBS)
-
-$(BUILD_DIR)/CMakeCache.txt:
+$(BUILD_DIR):
 	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
 
-install: build
+$(QJS): $(BUILD_DIR)
+	cmake --build $(BUILD_DIR) -j $(JOBS)
+
+install: $(QJS)
 	cmake --build $(BUILD_DIR) --target install
 
 clean:
@@ -52,10 +52,10 @@ debug:
 distclean:
 	@rm -rf $(BUILD_DIR)
 
-stats: build
+stats: $(QJS)
 	$(QJS) -qd
 
-test: build
+test: $(QJS)
 	$(QJS) tests/test_bigint.js
 	$(QJS) tests/test_closure.js
 	$(QJS) tests/test_language.js
@@ -65,19 +65,19 @@ test: build
 	$(QJS) tests/test_worker.js
 	$(QJS) tests/test_queue_microtask.js
 
-test262: build
+test262: $(QJS)
 	$(RUN262) -m -c test262.conf -a
 
-test262-update: build
+test262-update: $(QJS)
 	$(RUN262) -u -c test262.conf -a
 
-test262-check: build
+test262-check: $(QJS)
 	$(RUN262) -m -c test262.conf -E -a
 
-microbench: build
+microbench: $(QJS)
 	$(QJS) tests/microbench.js
 
-unicode_gen: $(BUILD_DIR)/CMakeCache.txt
+unicode_gen: $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) --target unicode_gen
 
 libunicode-table.h: unicode_gen
