@@ -26,11 +26,20 @@
 
 BUILD_DIR=build
 BUILD_TYPE?=Release
-JOBS?=$(shell getconf _NPROCESSORS_ONLN)
 
 QJS=$(BUILD_DIR)/qjs
 RUN262=$(BUILD_DIR)/run-test262
 
+JOBS?=$(shell getconf _NPROCESSORS_ONLN)
+ifeq ($(JOBS),)
+JOBS := $(shell sysctl -n hw.ncpu)
+endif
+ifeq ($(JOBS),)
+JOBS := $(shell nproc)
+endif
+ifeq ($(JOBS),)
+JOBS := 4
+endif
 
 all: $(QJS)
 
