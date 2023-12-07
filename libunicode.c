@@ -947,8 +947,8 @@ int unicode_script(CharRange *cr,
     int script_idx;
     const uint8_t *p, *p_end;
     uint32_t c, c1, b, n, v, v_len, i, type;
-    CharRange cr1_s, *cr1;
-    CharRange cr2_s, *cr2 = &cr2_s;
+    CharRange cr1_s = { 0 }, *cr1 = NULL;
+    CharRange cr2_s = { 0 }, *cr2 = &cr2_s;
     BOOL is_common;
 
     script_idx = unicode_find_name(unicode_script_name_table, script_name);
