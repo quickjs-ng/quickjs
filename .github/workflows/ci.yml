@@ -385,11 +385,10 @@ jobs:
         with:
           usesh: true
           prepare: |
-            pkg_add cmake
+            pkg_add cmake gmake
           run: |
-            cmake -B build
-            cmake --build build -j $(sysctl -n hw.ncpu)
-            ./build/qjs -qd
+            gmake
+            gmake stats
 
   freebsd:
     runs-on: ubuntu-latest
@@ -400,8 +399,7 @@ jobs:
         with:
           usesh: true
           prepare: |
-            pkg install -y cmake
+            pkg install -y cmake gmake
           run: |
-            cmake -B build
-            cmake --build build -j $(sysctl -n hw.ncpu)
-            ./build/qjs -qd
+            gmake
+            gmake stats
