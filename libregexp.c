@@ -103,6 +103,7 @@ static const REOpCode reopcode_info[REOP_COUNT] = {
 #define RE_HEADER_FLAGS         0
 #define RE_HEADER_CAPTURE_COUNT 1
 #define RE_HEADER_STACK_SIZE    2
+#define RE_HEADER_BYTECODE_LEN  3
 
 #define RE_HEADER_LEN 7
 
@@ -280,7 +281,7 @@ static __maybe_unused void lre_dump_bytecode(const uint8_t *buf,
     assert(buf_len >= RE_HEADER_LEN);
 
     re_flags=  buf[0];
-    bc_len = get_u32(buf + 3);
+    bc_len = get_u32(buf + RE_HEADER_BYTECODE_LEN);
     assert(bc_len + RE_HEADER_LEN <= buf_len);
     printf("flags: 0x%x capture_count=%d stack_size=%d\n",
            re_flags, buf[1], buf[2]);
@@ -1896,7 +1897,8 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
 
     s->byte_code.buf[RE_HEADER_CAPTURE_COUNT] = s->capture_count;
     s->byte_code.buf[RE_HEADER_STACK_SIZE] = stack_size;
-    put_u32(s->byte_code.buf + 3, s->byte_code.size - RE_HEADER_LEN);
+    put_u32(s->byte_code.buf + RE_HEADER_BYTECODE_LEN,
+            s->byte_code.size - RE_HEADER_LEN);
 
     /* add the named groups if needed */
     if (s->group_names.size > (s->capture_count - 1)) {
@@ -2554,8 +2556,8 @@ const char *lre_get_groupnames(const uint8_t *bc_buf)
     uint32_t re_bytecode_len;
     if ((lre_get_flags(bc_buf) & LRE_FLAG_NAMED_GROUPS) == 0)
         return NULL;
-    re_bytecode_len = get_u32(bc_buf + 3);
-    return (const char *)(bc_buf + 7 + re_bytecode_len);
+    re_bytecode_len = get_u32(bc_buf + RE_HEADER_BYTECODE_LEN);
+    return (const char *)(bc_buf + RE_HEADER_LEN + re_bytecode_len);
 }
 
 void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
@@ -2573,8 +2575,8 @@ void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
     //  <capture group name 1>
     //  <capture group name 2>
     //  etc.
-    n = get_u32(&p[3]); // bytecode size
-    inplace_bswap32(&p[3]);
+    n = get_u32(&p[RE_HEADER_BYTECODE_LEN]);
+    inplace_bswap32(&p[RE_HEADER_BYTECODE_LEN]);
     if (is_byte_swapped)
         n = bswap32(n);
     if (n > len - RE_HEADER_LEN)
