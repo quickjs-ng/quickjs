@@ -403,3 +403,18 @@ jobs:
           run: |
             gmake
             gmake stats
+
+  netbsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build + test
+        uses: vmactions/netbsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            /usr/sbin/pkg_add cmake gmake
+          run: |
+            gmake
+            gmake stats
+            gmake test

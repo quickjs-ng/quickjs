@@ -71,7 +71,7 @@ typedef sig_t sighandler_t;
 #define environ (*_NSGetEnviron())
 #endif
 
-#if defined(__OpenBSD__) || defined(__FreeBSD__)
+#if defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__)
 typedef sig_t sighandler_t;
 extern char **environ;
 #endif
@@ -3589,6 +3589,8 @@ void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
 #define OS_PLATFORM "linux"
 #elif defined(__OpenBSD__)
 #define OS_PLATFORM "openbsd"
+#elif defined(__NetBSD__)
+#define OS_PLATFORM "netbsd"
 #elif defined(__FreeBSD__)
 #define OS_PLATFORM "freebsd"
 #else
