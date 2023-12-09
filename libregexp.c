@@ -101,11 +101,11 @@ static const REOpCode reopcode_info[REOP_COUNT] = {
 };
 
 #define RE_HEADER_FLAGS         0
-#define RE_HEADER_CAPTURE_COUNT 1
-#define RE_HEADER_STACK_SIZE    2
-#define RE_HEADER_BYTECODE_LEN  3
+#define RE_HEADER_CAPTURE_COUNT 2
+#define RE_HEADER_STACK_SIZE    3
+#define RE_HEADER_BYTECODE_LEN  4
 
-#define RE_HEADER_LEN 7
+#define RE_HEADER_LEN 8
 
 static inline int is_digit(int c) {
     return c >= '0' && c <= '9';
@@ -280,16 +280,16 @@ static __maybe_unused void lre_dump_bytecode(const uint8_t *buf,
 
     assert(buf_len >= RE_HEADER_LEN);
 
-    re_flags=  buf[0];
+    re_flags = lre_get_flags(buf);
     bc_len = get_u32(buf + RE_HEADER_BYTECODE_LEN);
     assert(bc_len + RE_HEADER_LEN <= buf_len);
     printf("flags: 0x%x capture_count=%d stack_size=%d\n",
-           re_flags, buf[1], buf[2]);
+           re_flags, buf[RE_HEADER_CAPTURE_COUNT], buf[RE_HEADER_STACK_SIZE]);
     if (re_flags & LRE_FLAG_NAMED_GROUPS) {
         const char *p;
         p = (char *)buf + RE_HEADER_LEN + bc_len;
         printf("named groups: ");
-        for(i = 1; i < buf[1]; i++) {
+        for(i = 1; i < buf[RE_HEADER_CAPTURE_COUNT]; i++) {
             if (i != 1)
                 printf(",");
             printf("<%s>", p);
@@ -1850,7 +1850,7 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
     dbuf_init2(&s->byte_code, opaque, lre_realloc);
     dbuf_init2(&s->group_names, opaque, lre_realloc);
 
-    dbuf_putc(&s->byte_code, re_flags); /* first element is the flags */
+    dbuf_put_u16(&s->byte_code, re_flags); /* first element is the flags */
     dbuf_putc(&s->byte_code, 0); /* second element is the number of captures */
     dbuf_putc(&s->byte_code, 0); /* stack size */
     dbuf_put_u32(&s->byte_code, 0); /* bytecode length */
@@ -1903,7 +1903,8 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
     /* add the named groups if needed */
     if (s->group_names.size > (s->capture_count - 1)) {
         dbuf_put(&s->byte_code, s->group_names.buf, s->group_names.size);
-        s->byte_code.buf[RE_HEADER_FLAGS] |= LRE_FLAG_NAMED_GROUPS;
+        put_u16(s->byte_code.buf + RE_HEADER_FLAGS,
+                LRE_FLAG_NAMED_GROUPS | lre_get_flags(s->byte_code.buf));
     }
     dbuf_free(&s->group_names);
 
@@ -2509,7 +2510,7 @@ int lre_exec(uint8_t **capture,
     int re_flags, i, alloca_size, ret;
     StackInt *stack_buf;
 
-    re_flags = bc_buf[RE_HEADER_FLAGS];
+    re_flags = lre_get_flags(bc_buf);
     s->multi_line = (re_flags & LRE_FLAG_MULTILINE) != 0;
     s->ignore_case = (re_flags & LRE_FLAG_IGNORECASE) != 0;
     s->is_unicode = (re_flags & LRE_FLAG_UNICODE) != 0;
@@ -2546,7 +2547,7 @@ int lre_get_capture_count(const uint8_t *bc_buf)
 
 int lre_get_flags(const uint8_t *bc_buf)
 {
-    return bc_buf[RE_HEADER_FLAGS];
+    return get_u16(bc_buf + RE_HEADER_FLAGS);
 }
 
 /* Return NULL if no group names. Otherwise, return a pointer to
@@ -2575,6 +2576,8 @@ void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
     //  <capture group name 1>
     //  <capture group name 2>
     //  etc.
+    inplace_bswap16(&p[RE_HEADER_FLAGS]);
+
     n = get_u32(&p[RE_HEADER_BYTECODE_LEN]);
     inplace_bswap32(&p[RE_HEADER_BYTECODE_LEN]);
     if (is_byte_swapped)
