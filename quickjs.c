@@ -27165,7 +27165,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
                 printf(",%u", get_u16(tab + pos + 8));
             break;
         case OP_FMT_none_loc:
-            idx = (op - OP_get_loc0) % 4;
+            idx = (op - OP_get_loc0_loc1) % 4;
             goto has_loc;
         case OP_FMT_loc8:
             idx = get_u8(tab + pos);
