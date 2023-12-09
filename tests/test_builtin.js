@@ -1,5 +1,28 @@
 import * as os from "os";
 
+// Keep this at the top; it tests source positions.
+function test_exception_source_pos()
+{
+    var e;
+
+    try {
+        throw new Error(""); // line 9, column 19
+    } catch(_e) {
+        e = _e;
+    }
+
+    assert(e.stack.includes("test_builtin.js:9:19"));
+}
+
+// Keep this at the top; it tests source positions.
+function test_function_source_pos() // line 18, column 1
+{
+    function inner() {} // line 20, column 5
+    var f = eval("function f() {} f");
+    assert(`${test_function_source_pos.lineNumber}:${test_function_source_pos.columnNumber}`, "18:1");
+    assert(`${inner.lineNumber}:${inner.columnNumber}`, "20:5");
+    assert(`${f.lineNumber}:${f.columnNumber}`, "1:1");
+}
 
 function assert(actual, expected, message) {
     if (arguments.length == 1)
@@ -758,3 +781,5 @@ test_weak_map();
 test_weak_set();
 test_generator();
 test_proxy_is_array();
+test_exception_source_pos();
+test_function_source_pos();
