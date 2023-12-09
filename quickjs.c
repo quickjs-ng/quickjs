@@ -11802,17 +11802,6 @@ int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValueConst val)
     return JS_ToBigInt64Free(ctx, pres, js_dup(val));
 }
 
-static JSBigInt *js_new_bf(JSContext *ctx)
-{
-    JSBigInt *p;
-    p = js_malloc(ctx, sizeof(*p));
-    if (!p)
-        return NULL;
-    p->header.ref_count = 1;
-    bf_init(ctx->bf_ctx, &p->num);
-    return p;
-}
-
 static JSValue JS_NewBigInt(JSContext *ctx)
 {
     JSBigInt *p;
@@ -33010,33 +32999,25 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
     return 0;
 }
 
-static JSValue JS_ReadBigInt(BCReaderState *s, int tag)
+static JSValue JS_ReadBigInt(BCReaderState *s)
 {
-    JSValue obj = JS_UNDEFINED;
+    JSValue obj;
     uint8_t v8;
     int32_t e;
     uint32_t len;
     limb_t l, i, n;
-    JSBigInt *p;
     limb_t v;
     bf_t *a;
 
-    p = js_new_bf(s->ctx);
-    if (!p)
+    obj = JS_NewBigInt(s->ctx);
+    if (JS_IsException(obj))
         goto fail;
-    switch(tag) {
-    case BC_TAG_BIG_INT:
-        obj = JS_MKPTR(JS_TAG_BIG_INT, p);
-        break;
-    default:
-        abort();
-    }
 
     /* sign + exponent */
     if (bc_get_sleb128(s, &e))
         goto fail;
 
-    a = &p->num;
+    a = JS_GetBigInt(obj);
     a->sign = e & 1;
     e >>= 1;
     if (e == 0)
@@ -33775,7 +33756,7 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
         obj = JS_ReadObjectValue(s);
         break;
     case BC_TAG_BIG_INT:
-        obj = JS_ReadBigInt(s, tag);
+        obj = JS_ReadBigInt(s);
         break;
     case BC_TAG_OBJECT_REFERENCE:
         {
