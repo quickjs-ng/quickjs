@@ -11878,7 +11878,7 @@ static int js_unary_arith_bigint(JSContext *ctx,
         return -1;
     }
     r = JS_GetBigInt(res);
-    a = JS_ToBigInt(ctx, &a_s, op1);
+    a = JS_ToBigIntFree(ctx, &a_s, op1); // infallible, always a bigint
     ret = 0;
     switch(op) {
     case OP_inc:
@@ -11901,7 +11901,6 @@ static int js_unary_arith_bigint(JSContext *ctx,
         abort();
     }
     JS_FreeBigInt(ctx, a, &a_s);
-    JS_FreeValue(ctx, op1);
     if (unlikely(ret)) {
         JS_FreeValue(ctx, res);
         throw_bf_exception(ctx, ret);
@@ -12034,16 +12033,21 @@ static int js_binary_arith_bigint(JSContext *ctx, OPCodeEnum op,
     int ret;
     JSValue res;
 
-    res = JS_NewBigInt(ctx);
-    if (JS_IsException(res))
-        goto fail;
-    a = JS_ToBigInt(ctx, &a_s, op1);
-    if (!a)
-        goto fail;
-    b = JS_ToBigInt(ctx, &b_s, op2);
+    a = JS_ToBigIntFree(ctx, &a_s, op1);
+    if (!a) {
+        JS_FreeValue(ctx, op2);
+        return -1;
+    }
+    b = JS_ToBigIntFree(ctx, &b_s, op2);
     if (!b) {
         JS_FreeBigInt(ctx, a, &a_s);
-        goto fail;
+        return -1;
+    }
+    res = JS_NewBigInt(ctx);
+    if (JS_IsException(res)) {
+        JS_FreeBigInt(ctx, a, &a_s);
+        JS_FreeBigInt(ctx, b, &b_s);
+        return -1;
     }
     r = JS_GetBigInt(res);
     ret = 0;
@@ -12114,8 +12118,6 @@ static int js_binary_arith_bigint(JSContext *ctx, OPCodeEnum op,
     }
     JS_FreeBigInt(ctx, a, &a_s);
     JS_FreeBigInt(ctx, b, &b_s);
-    JS_FreeValue(ctx, op1);
-    JS_FreeValue(ctx, op2);
     if (unlikely(ret)) {
         JS_FreeValue(ctx, res);
         throw_bf_exception(ctx, ret);
@@ -12123,11 +12125,6 @@ static int js_binary_arith_bigint(JSContext *ctx, OPCodeEnum op,
     }
     *pres = JS_CompactBigInt(ctx, res);
     return 0;
- fail:
-    JS_FreeValue(ctx, res);
-    JS_FreeValue(ctx, op1);
-    JS_FreeValue(ctx, op2);
-    return -1;
 }
 
 static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *sp,
