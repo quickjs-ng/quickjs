@@ -47388,7 +47388,6 @@ static JSValue js_bigint_asUintN(JSContext *ctx,
     res = JS_NewBigInt(ctx);
     if (JS_IsException(res))
         return JS_EXCEPTION;
-    r = JS_GetBigInt(res);
     a = JS_ToBigInt(ctx, &a_s, argv[1]);
     if (!a) {
         JS_FreeValue(ctx, res);
