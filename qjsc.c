@@ -150,7 +150,7 @@ static void dump_hex(FILE *f, const uint8_t *buf, size_t len)
 }
 
 static void output_object_code(JSContext *ctx,
-                               FILE *fo, JSValueConst obj, const char *c_name,
+                               FILE *fo, JSValue obj, const char *c_name,
                                BOOL load_only)
 {
     uint8_t *out_buf;

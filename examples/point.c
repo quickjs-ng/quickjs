@@ -43,8 +43,8 @@ static void js_point_finalizer(JSRuntime *rt, JSValue val)
 }
 
 static JSValue js_point_ctor(JSContext *ctx,
-                             JSValueConst new_target,
-                             int argc, JSValueConst *argv)
+                             JSValue new_target,
+                             int argc, JSValue *argv)
 {
     JSPointData *s;
     JSValue obj = JS_UNDEFINED;
@@ -74,7 +74,7 @@ static JSValue js_point_ctor(JSContext *ctx,
     return JS_EXCEPTION;
 }
 
-static JSValue js_point_get_xy(JSContext *ctx, JSValueConst this_val, int magic)
+static JSValue js_point_get_xy(JSContext *ctx, JSValue this_val, int magic)
 {
     JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
     if (!s)
@@ -85,7 +85,7 @@ static JSValue js_point_get_xy(JSContext *ctx, JSValueConst this_val, int magic)
         return JS_NewInt32(ctx, s->y);
 }
 
-static JSValue js_point_set_xy(JSContext *ctx, JSValueConst this_val, JSValue val, int magic)
+static JSValue js_point_set_xy(JSContext *ctx, JSValue this_val, JSValue val, int magic)
 {
     JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
     int v;
@@ -100,8 +100,8 @@ static JSValue js_point_set_xy(JSContext *ctx, JSValueConst this_val, JSValue va
     return JS_UNDEFINED;
 }
 
-static JSValue js_point_norm(JSContext *ctx, JSValueConst this_val,
-                             int argc, JSValueConst *argv)
+static JSValue js_point_norm(JSContext *ctx, JSValue this_val,
+                             int argc, JSValue *argv)
 {
     JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
     if (!s)

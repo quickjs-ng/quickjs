@@ -371,8 +371,8 @@ static void enumerate_tests(const char *path)
           namelist_cmp_indirect);
 }
 
-static JSValue js_print(JSContext *ctx, JSValueConst this_val,
-                        int argc, JSValueConst *argv)
+static JSValue js_print(JSContext *ctx, JSValue this_val,
+                        int argc, JSValue *argv)
 {
     int i;
     const char *str;
@@ -508,7 +508,7 @@ static void *agent_start(void *arg)
                                             NULL, NULL, TRUE);
                 args[1] = JS_NewInt32(ctx, agent->broadcast_val);
                 ret_val = JS_Call(ctx, agent->broadcast_func, JS_UNDEFINED,
-                                  2, (JSValueConst *)args);
+                                  2, (JSValue *)args);
                 JS_FreeValue(ctx, args[0]);
                 JS_FreeValue(ctx, args[1]);
                 if (JS_IsException(ret_val))
@@ -594,7 +594,7 @@ static BOOL is_broadcast_pending(void)
 static JSValue js_agent_broadcast(JSContext *ctx, JSValue this_val,
                                   int argc, JSValue *argv)
 {
-    JSValueConst sab = argv[0];
+    JSValue sab = argv[0];
     struct list_head *el;
     Test262Agent *agent;
     uint8_t *buf;
