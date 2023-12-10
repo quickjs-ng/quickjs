@@ -372,6 +372,20 @@ function test_eval2()
     f1(g);
     f2(g);
     assert(g_call_count, 2);
+    var e;
+    try {
+        new class extends Object {
+            constructor() {
+                (() => {
+                    for (const _ in this);
+                    eval("");
+                })();
+            }
+        };
+    } catch (_e) {
+        e = _e;
+    }
+    assert(e?.message, "this is not initialized");
 }
 
 function test_eval()
