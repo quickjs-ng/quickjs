@@ -48401,6 +48401,43 @@ static JSValue js_typed_array_at(JSContext *ctx, JSValue this_val,
     return JS_UNDEFINED;
 }
 
+static JSValue js_typed_array_with(JSContext *ctx, JSValue this_val,
+                                   int argc, JSValue *argv)
+{
+    JSValue arr, val, ret;
+    JSObject *p;
+    int64_t idx, len;
+
+    p = get_typed_array(ctx, this_val, /*is_dataview*/0);
+    if (!p)
+        return JS_EXCEPTION;
+
+    if (JS_ToInt64Sat(ctx, &idx, argv[0]))
+        return JS_EXCEPTION;
+
+    len = p->u.array.count;
+    if (idx < 0)
+        idx = len + idx;
+    if (idx < 0 || idx >= len)
+        return JS_ThrowRangeError(ctx, "invalid array index");
+
+    val = JS_ToPrimitive(ctx, argv[1], HINT_NUMBER);
+    if (JS_IsException(val))
+        return JS_EXCEPTION;
+
+    arr = js_typed_array_constructor_ta(ctx, JS_UNDEFINED, this_val,
+                                        p->class_id);
+    if (JS_IsException(arr)) {
+        JS_FreeValue(ctx, val);
+        return JS_EXCEPTION;
+    }
+    if (JS_SetPropertyInt64(ctx, arr, idx, val) < 0) {
+        JS_FreeValue(ctx, arr);
+        return JS_EXCEPTION;
+    }
+    return arr;
+}
+
 static JSValue js_typed_array_set(JSContext *ctx,
                                   JSValue this_val,
                                   int argc, JSValue *argv)
@@ -49589,6 +49626,7 @@ static const JSCFunctionListEntry js_typed_array_base_funcs[] = {
 static const JSCFunctionListEntry js_typed_array_base_proto_funcs[] = {
     JS_CGETSET_DEF("length", js_typed_array_get_length, NULL ),
     JS_CFUNC_DEF("at", 1, js_typed_array_at ),
+    JS_CFUNC_DEF("with", 2, js_typed_array_with ),
     JS_CGETSET_MAGIC_DEF("buffer", js_typed_array_get_buffer, NULL, 0 ),
     JS_CGETSET_MAGIC_DEF("byteLength", js_typed_array_get_byteLength, NULL, 0 ),
     JS_CGETSET_MAGIC_DEF("byteOffset", js_typed_array_get_byteOffset, NULL, 0 ),
