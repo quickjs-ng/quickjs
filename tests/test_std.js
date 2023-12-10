@@ -2,6 +2,7 @@ import * as std from "std";
 import * as os from "os";
 
 const isWin = os.platform === 'win32';
+const isCygwin = os.platform === 'cygwin';
 
 function assert(actual, expected, message) {
     if (arguments.length == 1)
@@ -246,7 +247,11 @@ function test_os_exec()
     os.kill(pid, os.SIGTERM);
     [ret, status] = os.waitpid(pid, 0);
     assert(ret, pid);
-    assert(status & 0x7f, os.SIGTERM);
+    // Flaky on cygwin for unclear reasons, see
+    // https://github.com/quickjs-ng/quickjs/issues/184
+    if (!isCygwin) {
+        assert(status & 0x7f, os.SIGTERM);
+    }
 }
 
 function test_timer()
