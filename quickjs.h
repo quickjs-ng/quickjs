@@ -86,46 +86,11 @@ typedef struct JSRefCountHeader {
 } JSRefCountHeader;
 
 #define JS_FLOAT64_NAN NAN
+#define JSValueConst JSValue /* For backwards compatibility. */
 
-#ifdef CONFIG_CHECK_JSVALUE
-/* JSValue consistency : it is not possible to run the code in this
-   mode, but it is useful to detect simple reference counting
-   errors. It would be interesting to modify a static C analyzer to
-   handle specific annotations (clang has such annotations but only
-   for objective C) */
-typedef struct __JSValue *JSValue;
-typedef const struct __JSValue *JSValueConst;
-
-#define JS_VALUE_GET_TAG(v) (int)((uintptr_t)(v) & 0xf)
-/* same as JS_VALUE_GET_TAG, but return JS_TAG_FLOAT64 with NaN boxing */
-#define JS_VALUE_GET_NORM_TAG(v) JS_VALUE_GET_TAG(v)
-#define JS_VALUE_GET_INT(v) (int)((intptr_t)(v) >> 4)
-#define JS_VALUE_GET_BOOL(v) JS_VALUE_GET_INT(v)
-#define JS_VALUE_GET_FLOAT64(v) (double)JS_VALUE_GET_INT(v)
-#define JS_VALUE_GET_PTR(v) (void *)((intptr_t)(v) & ~0xf)
-
-#define JS_MKVAL(tag, val) (JSValue)(intptr_t)(((val) << 4) | (tag))
-#define JS_MKPTR(tag, p) (JSValue)((intptr_t)(p) | (tag))
-
-#define JS_TAG_IS_FLOAT64(tag) ((unsigned)(tag) == JS_TAG_FLOAT64)
-
-#define JS_NAN JS_MKVAL(JS_TAG_FLOAT64, 1)
-
-static inline JSValue __JS_NewFloat64(double d)
-{
-    return JS_MKVAL(JS_TAG_FLOAT64, (int)d);
-}
-
-static inline JS_BOOL JS_VALUE_IS_NAN(JSValue v)
-{
-    return 0;
-}
-
-#elif defined(JS_NAN_BOXING)
+#if defined(JS_NAN_BOXING)
 
 typedef uint64_t JSValue;
-
-#define JSValueConst JSValue
 
 #define JS_VALUE_GET_TAG(v) (int)((v) >> 32)
 #define JS_VALUE_GET_INT(v) (int)(v)
@@ -198,8 +163,6 @@ typedef struct JSValue {
     JSValueUnion u;
     int64_t tag;
 } JSValue;
-
-#define JSValueConst JSValue
 
 #define JS_VALUE_GET_TAG(v) ((int32_t)(v).tag)
 /* same as JS_VALUE_GET_TAG, but return JS_TAG_FLOAT64 with NaN boxing */
