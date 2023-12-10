@@ -48337,8 +48337,14 @@ static JSValue js_typed_array_set_internal(JSContext *ctx,
         val = JS_GetPropertyUint32(ctx, src_obj, i);
         if (JS_IsException(val))
             goto fail;
-        if (JS_SetPropertyUint32(ctx, dst, offset + i, val) < 0)
+        // Per spec: detaching the TA mid-iteration is allowed and should
+        // not throw an exception. Because iteration over the source array is
+        // observable, we cannot bail out early when the TA is first detached.
+        if (typed_array_is_detached(ctx, p)) {
+            JS_FreeValue(ctx, val);
+        } else if (JS_SetPropertyUint32(ctx, dst, offset + i, val) < 0) {
             goto fail;
+        }
     }
 done:
     JS_FreeValue(ctx, src_obj);
