@@ -49562,6 +49562,24 @@ static JSValue js_typed_array_sort(JSContext *ctx, JSValue this_val,
     return js_dup(this_val);
 }
 
+static JSValue js_typed_array_toSorted(JSContext *ctx, JSValue this_val,
+                                       int argc, JSValue *argv)
+{
+    JSValue arr, ret;
+    JSObject *p;
+
+    p = get_typed_array(ctx, this_val, /*is_dataview*/0);
+    if (!p)
+        return JS_EXCEPTION;
+    arr = js_typed_array_constructor_ta(ctx, JS_UNDEFINED, this_val,
+                                        p->class_id);
+    if (JS_IsException(arr))
+        return JS_EXCEPTION;
+    ret = js_typed_array_sort(ctx, arr, argc, argv);
+    JS_FreeValue(ctx, arr);
+    return ret;
+}
+
 static const JSCFunctionListEntry js_typed_array_base_funcs[] = {
     JS_CFUNC_DEF("from", 1, js_typed_array_from ),
     JS_CFUNC_DEF("of", 0, js_typed_array_of ),
@@ -49598,6 +49616,7 @@ static const JSCFunctionListEntry js_typed_array_base_proto_funcs[] = {
     JS_CFUNC_DEF("slice", 2, js_typed_array_slice ),
     JS_CFUNC_DEF("subarray", 2, js_typed_array_subarray ),
     JS_CFUNC_DEF("sort", 1, js_typed_array_sort ),
+    JS_CFUNC_DEF("toSorted", 1, js_typed_array_toSorted ),
     JS_CFUNC_MAGIC_DEF("join", 1, js_typed_array_join, 0 ),
     JS_CFUNC_MAGIC_DEF("toLocaleString", 0, js_typed_array_join, 1 ),
     JS_CFUNC_MAGIC_DEF("indexOf", 1, js_typed_array_indexOf, special_indexOf ),
