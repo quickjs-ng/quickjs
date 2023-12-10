@@ -7,32 +7,6 @@ test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-
 test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-on-get-src-value-no-throw.js:30: strict mode: TypeError: out-of-bound numeric index (Testing with Float64Array.)
 test262/test/built-ins/TypedArray/prototype/sort/sort-tonumber.js:30: TypeError: ArrayBuffer is detached (Testing with Float64Array.)
 test262/test/built-ins/TypedArray/prototype/sort/sort-tonumber.js:30: strict mode: TypeError: ArrayBuffer is detached (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/BigInt/early-type-coercion-bigint.js:29: TypeError: not a function (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArray/prototype/with/BigInt/early-type-coercion-bigint.js:29: strict mode: TypeError: not a function (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArray/prototype/with/early-type-coercion.js:29: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/early-type-coercion.js:29: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/ignores-species.js:26: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/ignores-species.js:26: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/immutable.js:14: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/immutable.js:14: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-bigger-or-eq-than-length.js:22: Test262Error: Expected a RangeError but got a TypeError (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-bigger-or-eq-than-length.js:22: strict mode: Test262Error: Expected a RangeError but got a TypeError (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-casted-to-number.js:24: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-casted-to-number.js:24: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-negative.js:24: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-negative.js:24: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-smaller-than-minus-length.js:22: Test262Error: Expected a RangeError but got a TypeError (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/index-smaller-than-minus-length.js:22: strict mode: Test262Error: Expected a RangeError but got a TypeError (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/length-property-ignored.js:21: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/length-property-ignored.js:21: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/with/metadata/length.js:30: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/with/metadata/length.js:30: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/with/metadata/name.js:28: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/with/metadata/name.js:28: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/with/metadata/property-descriptor.js:18: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/with/metadata/property-descriptor.js:18: strict mode: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/with/not-a-constructor.js:25: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/TypedArray/prototype/with/not-a-constructor.js:25: strict mode: Test262Error: isConstructor invoked with a non-function value
 test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/detached-buffer.js:46: Test262Error:  (Testing with BigInt64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/detached-buffer.js:46: strict mode: Test262Error:  (Testing with BigInt64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/tonumber-value-detached-buffer.js:40: Test262Error: Reflect.defineProperty(ta, 0, {value: {valueOf() {$DETACHBUFFER(ta.buffer); return 42n;}}}) must return true Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
