@@ -24,8 +24,8 @@
 #include "../quickjs-libc.h"
 #include "../cutils.h"
 
-static JSValue js_bjson_read(JSContext *ctx, JSValueConst this_val,
-                             int argc, JSValueConst *argv)
+static JSValue js_bjson_read(JSContext *ctx, JSValue this_val,
+                             int argc, JSValue *argv)
 {
     uint8_t *buf;
     uint64_t pos, len;
@@ -49,8 +49,8 @@ static JSValue js_bjson_read(JSContext *ctx, JSValueConst this_val,
     return obj;
 }
 
-static JSValue js_bjson_write(JSContext *ctx, JSValueConst this_val,
-                              int argc, JSValueConst *argv)
+static JSValue js_bjson_write(JSContext *ctx, JSValue this_val,
+                              int argc, JSValue *argv)
 {
     size_t len;
     uint8_t *buf;
