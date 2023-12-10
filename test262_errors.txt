@@ -7,20 +7,6 @@ test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-
 test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-on-get-src-value-no-throw.js:30: strict mode: TypeError: out-of-bound numeric index (Testing with Float64Array.)
 test262/test/built-ins/TypedArray/prototype/sort/sort-tonumber.js:30: TypeError: ArrayBuffer is detached (Testing with Float64Array.)
 test262/test/built-ins/TypedArray/prototype/sort/sort-tonumber.js:30: strict mode: TypeError: ArrayBuffer is detached (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/ignores-species.js:26: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/ignores-species.js:26: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/immutable.js:14: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/immutable.js:14: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/length-property-ignored.js:21: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/length-property-ignored.js:21: strict mode: TypeError: not a function (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/length.js:30: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/length.js:30: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/name.js:28: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/name.js:28: strict mode: TypeError: cannot convert to object
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/property-descriptor.js:18: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/toReversed/metadata/property-descriptor.js:18: strict mode: Test262Error: typeof Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/TypedArray/prototype/toReversed/not-a-constructor.js:25: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/TypedArray/prototype/toReversed/not-a-constructor.js:25: strict mode: Test262Error: isConstructor invoked with a non-function value
 test262/test/built-ins/TypedArray/prototype/toSorted/ignores-species.js:26: TypeError: not a function (Testing with Float64Array.)
 test262/test/built-ins/TypedArray/prototype/toSorted/ignores-species.js:26: strict mode: TypeError: not a function (Testing with Float64Array.)
 test262/test/built-ins/TypedArray/prototype/toSorted/immutable.js:14: TypeError: not a function (Testing with Float64Array.)
