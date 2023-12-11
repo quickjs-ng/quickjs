@@ -104,6 +104,14 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     /* system modules */
     js_init_module_std(ctx, "std");
     js_init_module_os(ctx, "os");
+
+    /* navigator.userAgent */
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue navigator = JS_NewObject(ctx);
+    JS_DefinePropertyValueStr(ctx, navigator, "userAgent", JS_NewString(ctx, "quickjs-ng"), JS_PROP_ENUMERABLE);
+    JS_DefinePropertyValueStr(ctx, global, "navigator", navigator, JS_PROP_ENUMERABLE);
+    JS_FreeValue(ctx, global);
+
     return ctx;
 }
 
