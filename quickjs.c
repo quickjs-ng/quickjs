@@ -624,7 +624,6 @@ typedef struct JSFunctionBytecode {
     uint8_t super_call_allowed : 1;
     uint8_t super_allowed : 1;
     uint8_t arguments_allowed : 1;
-    uint8_t has_debug : 1;
     uint8_t backtrace_barrier : 1; /* stop backtrace on this function */
     uint8_t read_only_bytecode : 1;
     /* XXX: 4 bits available */
@@ -642,16 +641,13 @@ typedef struct JSFunctionBytecode {
     int cpool_count;
     int closure_var_count;
     JSInlineCache *ic;
-    struct {
-        /* debug info, move to separate structure to save memory? */
-        JSAtom filename;
-        int line_num;
-        int col_num;
-        int source_len;
-        int pc2line_len;
-        uint8_t *pc2line_buf;
-        char *source;
-    } debug;
+    JSAtom filename;
+    int line_num;
+    int col_num;
+    int source_len;
+    int pc2line_len;
+    uint8_t *pc2line_buf;
+    char *source;
 } JSFunctionBytecode;
 
 typedef struct JSBoundFunction {
@@ -5754,7 +5750,7 @@ static void compute_bytecode_size(JSFunctionBytecode *b, JSMemoryUsage_helper *h
     int memory_used_count, js_func_size, i;
 
     memory_used_count = 0;
-    js_func_size = offsetof(JSFunctionBytecode, debug);
+    js_func_size = sizeof(*b);
     if (b->vardefs) {
         js_func_size += (b->arg_count + b->var_count) * sizeof(*b->vardefs);
     }
@@ -5771,17 +5767,12 @@ static void compute_bytecode_size(JSFunctionBytecode *b, JSMemoryUsage_helper *h
     if (!b->read_only_bytecode && b->byte_code_buf) {
         hp->js_func_code_size += b->byte_code_len;
     }
-    if (b->has_debug) {
-        js_func_size += sizeof(*b) - offsetof(JSFunctionBytecode, debug);
-        if (b->debug.source) {
-            memory_used_count++;
-            js_func_size += b->debug.source_len + 1;
-        }
-        if (b->debug.pc2line_len) {
-            memory_used_count++;
-            hp->js_func_pc2line_count += 1;
-            hp->js_func_pc2line_size += b->debug.pc2line_len;
-        }
+    memory_used_count++;
+    js_func_size += b->source_len + 1;
+    if (b->pc2line_len) {
+        memory_used_count++;
+        hp->js_func_pc2line_count += 1;
+        hp->js_func_pc2line_size += b->pc2line_len;
     }
     hp->js_func_size += js_func_size;
     hp->js_func_count += 1;
@@ -6291,16 +6282,11 @@ static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
     unsigned int op;
 
     *col = 1;
-    if (!b->has_debug || !b->debug.pc2line_buf) {
-        /* function was stripped */
-        return -1;
-    }
-
-    p = b->debug.pc2line_buf;
-    p_end = p + b->debug.pc2line_len;
+    p = b->pc2line_buf;
+    p_end = p + b->pc2line_len;
     pc = 0;
-    line_num = b->debug.line_num;
-    col_num = b->debug.col_num;
+    line_num = b->line_num;
+    col_num = b->col_num;
     while (p < p_end) {
         op = *p++;
         if (op == 0) {
@@ -6334,7 +6320,7 @@ static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
     return line_num;
 fail:
     /* should never happen */
-    return b->debug.line_num;
+    return b->line_num;
 }
 
 /* in order to avoid executing arbitrary code during the stack trace
@@ -6416,18 +6402,16 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
 
             b = p->u.func.function_bytecode;
             backtrace_barrier = b->backtrace_barrier;
-            if (b->has_debug) {
-                line_num1 = find_line_num(ctx, b,
-                                          sf->cur_pc - b->byte_code_buf - 1,
-                                          &col_num1);
-                atom_str = JS_AtomToCString(ctx, b->debug.filename);
-                dbuf_printf(&dbuf, " (%s",
-                            atom_str ? atom_str : "<null>");
-                JS_FreeCString(ctx, atom_str);
-                if (line_num1 != -1)
-                    dbuf_printf(&dbuf, ":%d:%d", line_num1, col_num1);
-                dbuf_putc(&dbuf, ')');
-            }
+            line_num1 = find_line_num(ctx, b,
+                                      sf->cur_pc - b->byte_code_buf - 1,
+                                      &col_num1);
+            atom_str = JS_AtomToCString(ctx, b->filename);
+            dbuf_printf(&dbuf, " (%s",
+                        atom_str ? atom_str : "<null>");
+            JS_FreeCString(ctx, atom_str);
+            if (line_num1 != -1)
+                dbuf_printf(&dbuf, ":%d:%d", line_num1, col_num1);
+            dbuf_putc(&dbuf, ')');
         } else {
             dbuf_printf(&dbuf, " (native)");
         }
@@ -13023,18 +13007,18 @@ static JSValue js_function_proto_fileName(JSContext *ctx,
                                           JSValue this_val)
 {
     JSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
-    if (b && b->has_debug) {
-        return JS_AtomToString(ctx, b->debug.filename);
+    if (b) {
+        return JS_AtomToString(ctx, b->filename);
     }
     return JS_UNDEFINED;
 }
 
-static JSValue js_function_proto_debug_int32(JSContext *ctx,
-                                             JSValue this_val,
-                                             int magic)
+static JSValue js_function_proto_int32(JSContext *ctx,
+                                       JSValue this_val,
+                                       int magic)
 {
     JSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
-    if (b && b->has_debug) {
+    if (b) {
         int *field = (int *) ((char *)b + magic);
         return js_int32(*field);
     }
@@ -26215,9 +26199,7 @@ JSAtom JS_GetScriptOrModuleName(JSContext *ctx, int n_stack_levels)
     if (!js_class_has_bytecode(p->class_id))
         return JS_ATOM_NULL;
     b = p->u.func.function_bytecode;
-    if (!b->has_debug)
-        return JS_ATOM_NULL;
-    return JS_DupAtom(ctx, b->debug.filename);
+    return JS_DupAtom(ctx, b->filename);
 }
 
 JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m)
@@ -27335,29 +27317,22 @@ static __maybe_unused void dump_single_byte_code(JSContext *ctx,
                                                  JSFunctionBytecode *b)
 {
     JSVarDef *args, *vars;
-    int line_num;
 
     args = vars = b->vardefs;
     if (vars)
         vars = &vars[b->arg_count];
 
-    line_num = -1;
-    if (b->has_debug)
-        line_num = b->debug.line_num;
-
     dump_byte_code(ctx, /*pass*/3, pc, short_opcode_info(*pc).size,
                    args, b->arg_count, vars, b->var_count,
                    b->closure_var, b->closure_var_count,
                    b->cpool, b->cpool_count,
-                   NULL, line_num,
+                   NULL, b->line_num,
                    NULL, b);
 }
 
 static __maybe_unused void print_func_name(JSFunctionBytecode *b)
 {
-    if (b->has_debug)
-        if (b->debug.source)
-            print_lines(b->debug.source, 0, 1);
+    print_lines(b->source, 0, 1);
 }
 
 static __maybe_unused void dump_pc2line(JSContext *ctx,
@@ -27422,9 +27397,9 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
     char atom_buf[ATOM_GET_STR_BUF_SIZE];
     const char *str;
 
-    if (b->has_debug && b->debug.filename != JS_ATOM_NULL) {
-        str = JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->debug.filename);
-        printf("%s:%d:%d: ", str, b->debug.line_num, b->debug.col_num);
+    if (b->filename != JS_ATOM_NULL) {
+        str = JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->filename);
+        printf("%s:%d:%d: ", str, b->line_num, b->col_num);
     }
 
     str = JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->func_name);
@@ -27479,12 +27454,9 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
                    b->vardefs ? b->vardefs + b->arg_count : NULL, b->var_count,
                    b->closure_var, b->closure_var_count,
                    b->cpool, b->cpool_count,
-                   b->has_debug ? b->debug.source : NULL,
-                   b->has_debug ? b->debug.line_num : -1, NULL, b);
+                   b->source, b->line_num, NULL, b);
 #if defined(DUMP_BYTECODE) && (DUMP_BYTECODE & 32)
-    if (b->has_debug)
-        dump_pc2line(ctx, b->debug.pc2line_buf, b->debug.pc2line_len,
-                     b->debug.line_num, b->debug.col_num);
+    dump_pc2line(ctx, b->pc2line_buf, b->pc2line_len, b->line_num, b->col_num);
 #endif
     printf("\n");
 }
@@ -30792,17 +30764,16 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     /* XXX: source and pc2line info should be packed at the end of the
        JSFunctionBytecode structure, avoiding allocation overhead
      */
-    b->has_debug = 1;
-    b->debug.filename = fd->filename;
-    b->debug.line_num = fd->line_num;
-    b->debug.col_num = fd->col_num;
+    b->filename = fd->filename;
+    b->line_num = fd->line_num;
+    b->col_num = fd->col_num;
 
-    b->debug.pc2line_buf = js_realloc(ctx, fd->pc2line.buf, fd->pc2line.size);
-    if (!b->debug.pc2line_buf)
-        b->debug.pc2line_buf = fd->pc2line.buf;
-    b->debug.pc2line_len = fd->pc2line.size;
-    b->debug.source = fd->source;
-    b->debug.source_len = fd->source_len;
+    b->pc2line_buf = js_realloc(ctx, fd->pc2line.buf, fd->pc2line.size);
+    if (!b->pc2line_buf)
+        b->pc2line_buf = fd->pc2line.buf;
+    b->pc2line_len = fd->pc2line.size;
+    b->source = fd->source;
+    b->source_len = fd->source_len;
 
     if (fd->scopes != fd->def_scope_array)
         js_free(ctx, fd->scopes);
@@ -30879,11 +30850,9 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
         JS_FreeContext(b->realm);
 
     JS_FreeAtomRT(rt, b->func_name);
-    if (b->has_debug) {
-        JS_FreeAtomRT(rt, b->debug.filename);
-        js_free_rt(rt, b->debug.pc2line_buf);
-        js_free_rt(rt, b->debug.source);
-    }
+    JS_FreeAtomRT(rt, b->filename);
+    js_free_rt(rt, b->pc2line_buf);
+    js_free_rt(rt, b->source);
 
     remove_gc_object(&b->header);
     if (rt->gc_phase == JS_GC_PHASE_REMOVE_CYCLES && b->header.ref_count != 0) {
@@ -32054,7 +32023,7 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
 } BCTagEnum;
 
-#define BC_VERSION 5
+#define BC_VERSION 6
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -32421,7 +32390,6 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
     bc_set_flags(&flags, &idx, b->super_call_allowed, 1);
     bc_set_flags(&flags, &idx, b->super_allowed, 1);
     bc_set_flags(&flags, &idx, b->arguments_allowed, 1);
-    bc_set_flags(&flags, &idx, b->has_debug, 1);
     bc_set_flags(&flags, &idx, b->backtrace_barrier, 1);
     assert(idx <= 16);
     bc_put_u16(s, flags);
@@ -32472,24 +32440,22 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
     if (JS_WriteFunctionBytecode(s, b->byte_code_buf, b->byte_code_len))
         goto fail;
 
-    if (b->has_debug) {
-        bc_put_atom(s, b->debug.filename);
-        bc_put_leb128(s, b->debug.line_num);
-        bc_put_leb128(s, b->debug.col_num);
-        bc_put_leb128(s, b->debug.pc2line_len);
-        dbuf_put(&s->dbuf, b->debug.pc2line_buf, b->debug.pc2line_len);
+    bc_put_atom(s, b->filename);
+    bc_put_leb128(s, b->line_num);
+    bc_put_leb128(s, b->col_num);
+    bc_put_leb128(s, b->pc2line_len);
+    dbuf_put(&s->dbuf, b->pc2line_buf, b->pc2line_len);
 
-        /* compatibility */
-        dbuf_putc(&s->dbuf, 255);
-        dbuf_putc(&s->dbuf, 73); // 'I'
-        dbuf_putc(&s->dbuf, 67); // 'C'
-        if (b->ic == NULL) {
-            bc_put_leb128(s, 0);
-        } else {
-            bc_put_leb128(s, b->ic->count);
-            for (i = 0; i < b->ic->count; i++) {
-                bc_put_atom(s, b->ic->cache[i].atom);
-            }
+    /* compatibility */
+    dbuf_putc(&s->dbuf, 255);
+    dbuf_putc(&s->dbuf, 73); // 'I'
+    dbuf_putc(&s->dbuf, 67); // 'C'
+    if (b->ic == NULL) {
+        bc_put_leb128(s, 0);
+    } else {
+        bc_put_leb128(s, b->ic->count);
+        for (i = 0; i < b->ic->count; i++) {
+            bc_put_atom(s, b->ic->cache[i].atom);
         }
     }
 
@@ -33333,7 +33299,6 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     bc.super_call_allowed = bc_get_flags(v16, &idx, 1);
     bc.super_allowed = bc_get_flags(v16, &idx, 1);
     bc.arguments_allowed = bc_get_flags(v16, &idx, 1);
-    bc.has_debug = bc_get_flags(v16, &idx, 1);
     bc.backtrace_barrier = bc_get_flags(v16, &idx, 1);
     bc.read_only_bytecode = s->is_rom_data;
     if (bc_get_u8(s, &v8))
@@ -33358,11 +33323,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     if (bc_get_leb128_int(s, &local_count))
         goto fail;
 
-    if (bc.has_debug) {
-        function_size = sizeof(*b);
-    } else {
-        function_size = offsetof(JSFunctionBytecode, debug);
-    }
+    function_size = sizeof(*b);
     cpool_offset = function_size;
     function_size += bc.cpool_count * sizeof(*bc.cpool);
     vardefs_offset = function_size;
@@ -33378,7 +33339,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     if (!b)
         return JS_EXCEPTION;
 
-    memcpy(b, &bc, offsetof(JSFunctionBytecode, debug));
+    memcpy(b, &bc, sizeof(*b));
     b->header.ref_count = 1;
     if (local_count != 0) {
         b->vardefs = (void *)((uint8_t*)b + vardefs_offset);
@@ -33457,44 +33418,42 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             goto fail;
         bc_read_trace(s, "}\n");
     }
-    if (b->has_debug) {
-        /* read optional debug information */
-        bc_read_trace(s, "debug {\n");
-        if (bc_get_atom(s, &b->debug.filename))
+    /* read optional debug information */
+    bc_read_trace(s, "debug {\n");
+    if (bc_get_atom(s, &b->filename))
+        goto fail;
+    if (bc_get_leb128_int(s, &b->line_num))
+        goto fail;
+    if (bc_get_leb128_int(s, &b->col_num))
+        goto fail;
+    if (bc_get_leb128_int(s, &b->pc2line_len))
+        goto fail;
+    if (b->pc2line_len) {
+        b->pc2line_buf = js_mallocz(ctx, b->pc2line_len);
+        if (!b->pc2line_buf)
             goto fail;
-        if (bc_get_leb128_int(s, &b->debug.line_num))
+        if (bc_get_buf(s, b->pc2line_buf, b->pc2line_len))
             goto fail;
-        if (bc_get_leb128_int(s, &b->debug.col_num))
-            goto fail;
-        if (bc_get_leb128_int(s, &b->debug.pc2line_len))
-            goto fail;
-        if (b->debug.pc2line_len) {
-            b->debug.pc2line_buf = js_mallocz(ctx, b->debug.pc2line_len);
-            if (!b->debug.pc2line_buf)
+    }
+    if (s->buf_end - s->ptr > 3 && s->ptr[0] == 255 &&
+        s->ptr[1] == 73 && s->ptr[2] == 67) {
+        s->ptr += 3;
+        bc_get_leb128(s, &ic_len);
+        if (ic_len == 0) {
+            b->ic = NULL;
+        } else {
+            b->ic = init_ic(ctx);
+            if (b->ic == NULL)
                 goto fail;
-            if (bc_get_buf(s, b->debug.pc2line_buf, b->debug.pc2line_len))
-                goto fail;
-        }
-        if (s->buf_end - s->ptr > 3 && s->ptr[0] == 255 &&
-            s->ptr[1] == 73 && s->ptr[2] == 67) {
-            s->ptr += 3;
-            bc_get_leb128(s, &ic_len);
-            if (ic_len == 0) {
-                b->ic = NULL;
-            } else {
-                b->ic = init_ic(ctx);
-                if (b->ic == NULL)
-                    goto fail;
-                for (i = 0; i < ic_len; i++) {
-                    bc_get_atom(s, &atom);
-                    add_ic_slot1(ctx, b->ic, atom);
-                    JS_FreeAtom(ctx, atom);
-                }
-                rebuild_ic(ctx, b->ic);
+            for (i = 0; i < ic_len; i++) {
+                bc_get_atom(s, &atom);
+                add_ic_slot1(ctx, b->ic, atom);
+                JS_FreeAtom(ctx, atom);
             }
+            rebuild_ic(ctx, b->ic);
         }
 #ifdef DUMP_READ_OBJECT
-        bc_read_trace(s, "filename: "); print_atom(s->ctx, b->debug.filename); printf("\n");
+        bc_read_trace(s, "filename: "); print_atom(s->ctx, b->filename); printf("\n");
 #endif
         bc_read_trace(s, "}\n");
     }
@@ -35933,10 +35892,7 @@ static JSValue js_function_toString(JSContext *ctx, JSValue this_val,
     p = JS_VALUE_GET_OBJ(this_val);
     if (js_class_has_bytecode(p->class_id)) {
         JSFunctionBytecode *b = p->u.func.function_bytecode;
-        if (b->has_debug && b->debug.source) {
-            return JS_NewStringLen(ctx, b->debug.source, b->debug.source_len);
-        }
-        func_kind = b->func_kind;
+        return JS_NewStringLen(ctx, b->source, b->source_len);
     }
     {
         JSValue name;
@@ -35983,10 +35939,10 @@ static const JSCFunctionListEntry js_function_proto_funcs[] = {
     JS_CFUNC_DEF("toString", 0, js_function_toString ),
     JS_CFUNC_DEF("[Symbol.hasInstance]", 1, js_function_hasInstance ),
     JS_CGETSET_DEF("fileName", js_function_proto_fileName, NULL ),
-    JS_CGETSET_MAGIC_DEF("lineNumber", js_function_proto_debug_int32, NULL,
-                         offsetof(JSFunctionBytecode, debug.line_num)),
-    JS_CGETSET_MAGIC_DEF("columnNumber", js_function_proto_debug_int32, NULL,
-                         offsetof(JSFunctionBytecode, debug.col_num)),
+    JS_CGETSET_MAGIC_DEF("lineNumber", js_function_proto_int32, NULL,
+                         offsetof(JSFunctionBytecode, line_num)),
+    JS_CGETSET_MAGIC_DEF("columnNumber", js_function_proto_int32, NULL,
+                         offsetof(JSFunctionBytecode, col_num)),
 };
 
 /* Error class */
