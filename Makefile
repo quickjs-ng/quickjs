@@ -92,4 +92,4 @@ unicode_gen: $(BUILD_DIR)
 libunicode-table.h: unicode_gen
 	$(BUILD_DIR)/unicode_gen unicode $@
 
-.PHONY: all debug install clean distclean stats test test262 test262-update test262-check microbench unicode_gen
+.PHONY: all debug install clean distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS)
