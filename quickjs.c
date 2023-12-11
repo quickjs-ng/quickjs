@@ -646,6 +646,7 @@ typedef struct JSFunctionBytecode {
         /* debug info, move to separate structure to save memory? */
         JSAtom filename;
         int line_num;
+        int col_num;
         int source_len;
         int pc2line_len;
         uint8_t *pc2line_buf;
@@ -6283,12 +6284,13 @@ static int get_sleb128(int32_t *pval, const uint8_t *buf,
 }
 
 static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
-                         uint32_t pc_value)
+                         uint32_t pc_value, int *col)
 {
     const uint8_t *p_end, *p;
-    int new_line_num, line_num, pc, v, ret;
+    int new_line_num, new_col_num, line_num, col_num, pc, v, ret;
     unsigned int op;
 
+    *col = 1;
     if (!b->has_debug || !b->debug.pc2line_buf) {
         /* function was stripped */
         return -1;
@@ -6298,6 +6300,7 @@ static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
     p_end = p + b->debug.pc2line_len;
     pc = 0;
     line_num = b->debug.line_num;
+    col_num = b->debug.col_num;
     while (p < p_end) {
         op = *p++;
         if (op == 0) {
@@ -6308,11 +6311,8 @@ static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
             pc += val;
             p += ret;
             ret = get_sleb128(&v, p, p_end);
-            if (ret < 0) {
-            fail:
-                /* should never happen */
-                return b->debug.line_num;
-            }
+            if (ret < 0)
+                goto fail;
             p += ret;
             new_line_num = line_num + v;
         } else {
@@ -6320,11 +6320,21 @@ static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
             pc += (op / PC2LINE_RANGE);
             new_line_num = line_num + (op % PC2LINE_RANGE) + PC2LINE_BASE;
         }
+        ret = get_sleb128(&v, p, p_end);
+        if (ret < 0)
+            goto fail;
+        p += ret;
+        new_col_num = col_num + v;
         if (pc_value < pc)
-            return line_num;
+            break;
         line_num = new_line_num;
+        col_num = new_col_num;
     }
+    *col = col_num;
     return line_num;
+fail:
+    /* should never happen */
+    return b->debug.line_num;
 }
 
 /* in order to avoid executing arbitrary code during the stack trace
@@ -6356,7 +6366,7 @@ static const char *get_func_name(JSContext *ctx, JSValue func)
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
 static void build_backtrace(JSContext *ctx, JSValue error_obj,
-                            const char *filename, int line_num,
+                            const char *filename, int line_num, int col_num,
                             int backtrace_flags)
 {
     JSStackFrame *sf;
@@ -6366,18 +6376,21 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
     const char *str1;
     JSObject *p;
     BOOL backtrace_barrier;
+    int flags;
 
+    flags = JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE;
     js_dbuf_init(ctx, &dbuf);
     if (filename) {
         dbuf_printf(&dbuf, "    at %s", filename);
         if (line_num != -1)
-            dbuf_printf(&dbuf, ":%d", line_num);
+            dbuf_printf(&dbuf, ":%d:%d", line_num, col_num);
         dbuf_putc(&dbuf, '\n');
         str = JS_NewString(ctx, filename);
-        JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_fileName, str,
-                               JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-        JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_lineNumber, js_int32(line_num),
-                               JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+        JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_fileName, str, flags);
+        JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_lineNumber,
+                               js_int32(line_num), flags);
+        JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_columnNumber,
+                               js_int32(col_num), flags);
         if (backtrace_flags & JS_BACKTRACE_FLAG_SINGLE_LEVEL)
             goto done;
     }
@@ -6399,19 +6412,20 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
         if (js_class_has_bytecode(p->class_id)) {
             JSFunctionBytecode *b;
             const char *atom_str;
-            int line_num1;
+            int line_num1, col_num1;
 
             b = p->u.func.function_bytecode;
             backtrace_barrier = b->backtrace_barrier;
             if (b->has_debug) {
                 line_num1 = find_line_num(ctx, b,
-                                          sf->cur_pc - b->byte_code_buf - 1);
+                                          sf->cur_pc - b->byte_code_buf - 1,
+                                          &col_num1);
                 atom_str = JS_AtomToCString(ctx, b->debug.filename);
                 dbuf_printf(&dbuf, " (%s",
                             atom_str ? atom_str : "<null>");
                 JS_FreeCString(ctx, atom_str);
                 if (line_num1 != -1)
-                    dbuf_printf(&dbuf, ":%d", line_num1);
+                    dbuf_printf(&dbuf, ":%d:%d", line_num1, col_num1);
                 dbuf_putc(&dbuf, ')');
             }
         } else {
@@ -6429,8 +6443,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
     else
         str = JS_NewString(ctx, (char *)dbuf.buf);
     dbuf_free(&dbuf);
-    JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_stack, str,
-                           JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+    JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_stack, str, flags);
 }
 
 /* Note: it is important that no exception is returned by this function */
@@ -6470,7 +6483,7 @@ static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
                                JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
     }
     if (add_backtrace) {
-        build_backtrace(ctx, obj, NULL, 0, 0);
+        build_backtrace(ctx, obj, NULL, 0, 0, 0);
     }
     ret = JS_Throw(ctx, obj);
     return ret;
@@ -13016,12 +13029,14 @@ static JSValue js_function_proto_fileName(JSContext *ctx,
     return JS_UNDEFINED;
 }
 
-static JSValue js_function_proto_lineNumber(JSContext *ctx,
-                                            JSValue this_val)
+static JSValue js_function_proto_debug_int32(JSContext *ctx,
+                                             JSValue this_val,
+                                             int magic)
 {
     JSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
     if (b && b->has_debug) {
-        return js_int32(b->debug.line_num);
+        int *field = (int *) ((char *)b + magic);
+        return js_int32(*field);
     }
     return JS_UNDEFINED;
 }
@@ -16772,7 +16787,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
            before if the exception happens in a bytecode
            operation */
         sf->cur_pc = pc;
-        build_backtrace(ctx, rt->current_exception, NULL, 0, 0);
+        build_backtrace(ctx, rt->current_exception, NULL, 0, 0, 0);
     }
     if (!JS_IsUncatchableError(ctx, rt->current_exception)) {
         while (sp > stack_buf) {
@@ -18034,10 +18049,11 @@ typedef struct LabelSlot {
     RelocEntry *first_reloc;
 } LabelSlot;
 
-typedef struct LineNumberSlot {
+typedef struct SourceLocSlot {
     uint32_t pc;
     int line_num;
-} LineNumberSlot;
+    int col_num;
+} SourceLocSlot;
 
 typedef enum JSParseFunctionEnum {
     JS_PARSE_FUNC_STATEMENT,
@@ -18131,6 +18147,7 @@ typedef struct JSFunctionDef {
     DynBuf byte_code;
     int last_opcode_pos; /* -1 if no last opcode */
     int last_opcode_line_num;
+    int last_opcode_col_num;
     BOOL use_short_opcodes; /* true if short opcodes are used in byte_code */
 
     LabelSlot *label_slots;
@@ -18152,15 +18169,17 @@ typedef struct JSFunctionDef {
     int jump_size;
     int jump_count;
 
-    LineNumberSlot *line_number_slots;
-    int line_number_size;
-    int line_number_count;
+    SourceLocSlot *source_loc_slots;
+    int source_loc_size;
+    int source_loc_count;
     int line_number_last;
     int line_number_last_pc;
+    int col_number_last;
 
     /* pc2line table */
     JSAtom filename;
     int line_num;
+    int col_num;
     DynBuf pc2line;
 
     char *source;  /* raw source, utf-8 encoded */
@@ -18173,6 +18192,7 @@ typedef struct JSFunctionDef {
 typedef struct JSToken {
     int val;
     int line_num;   /* line number of token start */
+    int col_num;    /* column number of token start */
     const uint8_t *ptr;
     union {
         struct {
@@ -18198,13 +18218,17 @@ typedef struct JSToken {
 typedef struct JSParseState {
     JSContext *ctx;
     int last_line_num;  /* line number of last token */
+    int last_col_num;   /* column number of last token */
     int line_num;       /* line number of current offset */
+    int col_num;        /* column number of current offset */
     const char *filename;
     JSToken token;
     BOOL got_lf; /* true if got line feed before the current token */
     const uint8_t *last_ptr;
     const uint8_t *buf_ptr;
     const uint8_t *buf_end;
+    const uint8_t *eol;  // most recently seen end-of-line character
+    const uint8_t *mark; // first token character, invariant: eol < mark
 
     /* current function code */
     JSFunctionDef *cur_func;
@@ -18276,6 +18300,7 @@ static void free_token(JSParseState *s, JSToken *token)
 static void __attribute((unused)) dump_token(JSParseState *s,
                                              const JSToken *token)
 {
+    printf("%d:%d ", token->line_num, token->col_num);
     switch(token->val) {
     case TOK_NUMBER:
         {
@@ -18346,8 +18371,8 @@ int __attribute__((format(printf, 2, 3))) js_parse_error(JSParseState *s, const 
     backtrace_flags = 0;
     if (s->cur_func && s->cur_func->backtrace_barrier)
         backtrace_flags = JS_BACKTRACE_FLAG_SINGLE_LEVEL;
-    build_backtrace(ctx, ctx->rt->current_exception, s->filename, s->line_num,
-                    backtrace_flags);
+    build_backtrace(ctx, ctx->rt->current_exception, s->filename,
+                    s->line_num, s->col_num, backtrace_flags);
     return -1;
 }
 
@@ -18380,7 +18405,8 @@ static int js_parse_error_reserved_identifier(JSParseState *s)
                                         s->token.u.ident.atom));
 }
 
-static __exception int js_parse_template_part(JSParseState *s, const uint8_t *p)
+static __exception int js_parse_template_part(JSParseState *s,
+                                              const uint8_t *p)
 {
     uint32_t c;
     StringBuffer b_s, *b = &b_s;
@@ -18416,6 +18442,8 @@ static __exception int js_parse_template_part(JSParseState *s, const uint8_t *p)
         }
         if (c == '\n') {
             s->line_num++;
+            s->eol = &p[-1];
+            s->mark = p;
         } else if (c >= 0x80) {
             const uint8_t *p_next;
             c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
@@ -18503,8 +18531,11 @@ static __exception int js_parse_string(JSParseState *s, int sep,
             case '\n':
                 /* ignore escaped newline sequence */
                 p++;
-                if (sep != '`')
+                if (sep != '`') {
                     s->line_num++;
+                    s->eol = &p[-1];
+                    s->mark = p;
+                }
                 continue;
             default:
                 if (c >= '0' && c <= '9') {
@@ -18776,8 +18807,10 @@ static __exception int next_token(JSParseState *s)
     p = s->last_ptr = s->buf_ptr;
     s->got_lf = FALSE;
     s->last_line_num = s->token.line_num;
+    s->last_col_num = s->token.col_num;
  redo:
     s->token.line_num = s->line_num;
+    s->token.col_num = s->col_num;
     s->token.ptr = p;
     c = *p;
     switch(c) {
@@ -18806,6 +18839,8 @@ static __exception int next_token(JSParseState *s)
     case '\n':
         p++;
     line_terminator:
+        s->eol = &p[-1];
+        s->mark = p;
         s->got_lf = TRUE;
         s->line_num++;
         goto redo;
@@ -18813,7 +18848,7 @@ static __exception int next_token(JSParseState *s)
     case '\v':
     case ' ':
     case '\t':
-        p++;
+        s->mark = ++p;
         goto redo;
     case '/':
         if (p[1] == '*') {
@@ -18831,7 +18866,8 @@ static __exception int next_token(JSParseState *s)
                 if (*p == '\n') {
                     s->line_num++;
                     s->got_lf = TRUE; /* considered as LF for ASI */
-                    p++;
+                    s->eol = p++;
+                    s->mark = p;
                 } else if (*p == '\r') {
                     s->got_lf = TRUE; /* considered as LF for ASI */
                     p++;
@@ -18846,6 +18882,7 @@ static __exception int next_token(JSParseState *s)
                     p++;
                 }
             }
+            s->mark = p;
             goto redo;
         } else if (p[1] == '/') {
             /* line comment */
@@ -18868,6 +18905,7 @@ static __exception int next_token(JSParseState *s)
                     p++;
                 }
             }
+            s->mark = p;
             goto redo;
         } else if (p[1] == '=') {
             p += 2;
@@ -19213,6 +19251,7 @@ static __exception int next_token(JSParseState *s)
                 goto line_terminator;
             default:
                 if (lre_is_space(c)) {
+                    s->mark = p;
                     goto redo;
                 } else if (lre_js_is_ident_first(c)) {
                     ident_has_escape = FALSE;
@@ -19228,6 +19267,7 @@ static __exception int next_token(JSParseState *s)
         p++;
         break;
     }
+    s->token.col_num = s->mark - s->eol;
     s->buf_ptr = p;
 
     //    dump_token(s, &s->token);
@@ -19286,8 +19326,10 @@ static __exception int json_next_token(JSParseState *s)
 
     p = s->last_ptr = s->buf_ptr;
     s->last_line_num = s->token.line_num;
+    s->last_col_num = s->token.col_num;
  redo:
     s->token.line_num = s->line_num;
+    s->token.col_num = s->col_num;
     s->token.ptr = p;
     c = *p;
     switch(c) {
@@ -19311,8 +19353,9 @@ static __exception int json_next_token(JSParseState *s)
         }
         /* fall thru */
     case '\n':
-        p++;
         s->line_num++;
+        s->eol = p++;
+        s->mark = p;
         goto redo;
     case '\f':
     case '\v':
@@ -19321,6 +19364,7 @@ static __exception int json_next_token(JSParseState *s)
     case ' ':
     case '\t':
         p++;
+        s->mark = p;
         goto redo;
     case '/':
         /* JSON does not accept comments */
@@ -19386,6 +19430,7 @@ static __exception int json_next_token(JSParseState *s)
         p++;
         break;
     }
+    s->token.col_num = s->mark - s->eol;
     s->buf_ptr = p;
 
     //    dump_token(s, &s->token);
@@ -19548,13 +19593,16 @@ static void emit_op(JSParseState *s, uint8_t val)
     JSFunctionDef *fd = s->cur_func;
     DynBuf *bc = &fd->byte_code;
 
-    /* Use the line number of the last token used, not the next token,
-       nor the current offset in the source file.
+    /* Use the line and column number of the last token used,
+       not the next token, nor the current offset in the source file.
      */
-    if (unlikely(fd->last_opcode_line_num != s->last_line_num)) {
-        dbuf_putc(bc, OP_line_num);
+    if (unlikely(fd->last_opcode_line_num != s->last_line_num ||
+                 fd->last_opcode_col_num != s->last_col_num)) {
+        dbuf_putc(bc, OP_source_loc);
         dbuf_put_u32(bc, s->last_line_num);
+        dbuf_put_u32(bc, s->last_col_num);
         fd->last_opcode_line_num = s->last_line_num;
+        fd->last_opcode_col_num = s->last_col_num;
     }
     fd->last_opcode_pos = bc->size;
     dbuf_putc(bc, val);
@@ -20124,7 +20172,7 @@ static __exception int js_parse_function_decl(JSParseState *s,
                                               JSParseFunctionEnum func_type,
                                               JSFunctionKindEnum func_kind,
                                               JSAtom func_name, const uint8_t *ptr,
-                                              int start_line);
+                                              int start_line, int start_col);
 static JSFunctionDef *js_parse_function_class_fields_init(JSParseState *s);
 static __exception int js_parse_function_decl2(JSParseState *s,
                                                JSParseFunctionEnum func_type,
@@ -20132,6 +20180,7 @@ static __exception int js_parse_function_decl2(JSParseState *s,
                                                JSAtom func_name,
                                                const uint8_t *ptr,
                                                int function_line_num,
+                                               int function_col_num,
                                                JSParseExportEnum export_flag,
                                                JSFunctionDef **pfd);
 static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags);
@@ -20256,6 +20305,7 @@ static __exception int js_parse_template(JSParseState *s, int call, int *argc)
          * s->token.ptr are OK) */
         s->got_lf = FALSE;
         s->last_line_num = s->token.line_num;
+        s->last_col_num = s->token.col_num;
         if (js_parse_template_part(s, s->buf_ptr))
             return -1;
     }
@@ -20409,16 +20459,24 @@ static int __exception js_parse_property_name(JSParseState *s,
 
 typedef struct JSParsePos {
     int last_line_num;
+    int last_col_num;
     int line_num;
+    int col_num;
     BOOL got_lf;
     const uint8_t *ptr;
+    const uint8_t *eol;
+    const uint8_t *mark;
 } JSParsePos;
 
 static int js_parse_get_pos(JSParseState *s, JSParsePos *sp)
 {
     sp->last_line_num = s->last_line_num;
+    sp->last_col_num = s->last_col_num;
     sp->line_num = s->token.line_num;
+    sp->col_num = s->token.col_num;
     sp->ptr = s->token.ptr;
+    sp->eol = s->eol;
+    sp->mark = s->mark;
     sp->got_lf = s->got_lf;
     return 0;
 }
@@ -20426,8 +20484,12 @@ static int js_parse_get_pos(JSParseState *s, JSParsePos *sp)
 static __exception int js_parse_seek_token(JSParseState *s, const JSParsePos *sp)
 {
     s->token.line_num = sp->last_line_num;
+    s->token.col_num = sp->last_col_num;
     s->line_num = sp->line_num;
+    s->col_num = sp->col_num;
     s->buf_ptr = sp->ptr;
+    s->eol = sp->eol;
+    s->mark = sp->mark;
     s->got_lf = sp->got_lf;
     return next_token(s);
 }
@@ -20501,6 +20563,7 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, BOOL no_line_
                  * s->token.ptr are OK) */
                 s->got_lf = FALSE;
                 s->last_line_num = s->token.line_num;
+                s->last_col_num = s->token.col_num;
                 if (js_parse_template_part(s, s->buf_ptr))
                     goto done;
                 goto handle_template;
@@ -20632,7 +20695,7 @@ static __exception int js_parse_object_literal(JSParseState *s)
 {
     JSAtom name = JS_ATOM_NULL;
     const uint8_t *start_ptr;
-    int start_line, prop_type;
+    int start_line, start_col, prop_type;
     BOOL has_proto;
 
     if (next_token(s))
@@ -20644,6 +20707,7 @@ static __exception int js_parse_object_literal(JSParseState *s)
         /* specific case for getter/setter */
         start_ptr = s->token.ptr;
         start_line = s->token.line_num;
+        start_col = s->token.col_num;
 
         if (s->token.val == TOK_ELLIPSIS) {
             if (next_token(s))
@@ -20689,7 +20753,7 @@ static __exception int js_parse_object_literal(JSParseState *s)
                     func_kind = JS_FUNC_ASYNC_GENERATOR;
             }
             if (js_parse_function_decl(s, func_type, func_kind, JS_ATOM_NULL,
-                                       start_ptr, start_line))
+                                       start_ptr, start_line, start_col))
                 goto fail;
             if (name == JS_ATOM_NULL) {
                 emit_op(s, OP_define_method_computed);
@@ -20887,7 +20951,9 @@ static JSFunctionDef *js_new_function_def(JSContext *ctx,
                                           JSFunctionDef *parent,
                                           BOOL is_eval,
                                           BOOL is_func_expr,
-                                          const char *filename, int line_num);
+                                          const char *filename,
+                                          int line_num,
+                                          int col_num);
 
 static __exception int js_parse_class_default_ctor(JSParseState *s,
                                                    BOOL has_super,
@@ -20896,8 +20962,8 @@ static __exception int js_parse_class_default_ctor(JSParseState *s,
     JSParseFunctionEnum func_type;
     JSFunctionDef *fd = s->cur_func;
 
-    fd = js_new_function_def(s->ctx, fd, FALSE, FALSE,
-                             s->filename, s->token.line_num);
+    fd = js_new_function_def(s->ctx, fd, FALSE, FALSE, s->filename,
+                             s->token.line_num, s->token.col_num);
     if (!fd)
         return -1;
 
@@ -21087,7 +21153,9 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
                 JSFunctionDef *init;
                 if (js_parse_function_decl2(s, JS_PARSE_FUNC_CLASS_STATIC_INIT,
                                             JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                            s->token.ptr, s->token.line_num,
+                                            s->token.ptr,
+                                            s->token.line_num,
+                                            s->token.col_num,
                                             JS_PARSE_EXPORT_NONE, &init) < 0) {
                     goto fail;
                 }
@@ -21170,7 +21238,9 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
 
             if (js_parse_function_decl2(s, JS_PARSE_FUNC_GETTER + is_set,
                                         JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                        start_ptr, s->token.line_num,
+                                        start_ptr,
+                                        s->token.line_num,
+                                        s->token.col_num,
                                         JS_PARSE_EXPORT_NONE, &method_fd))
                 goto fail;
             if (is_private) {
@@ -21323,7 +21393,11 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
                 if (add_brand(s, &class_fields[is_static]) < 0)
                     goto fail;
             }
-            if (js_parse_function_decl2(s, func_type, func_kind, JS_ATOM_NULL, start_ptr, s->token.line_num, JS_PARSE_EXPORT_NONE, &method_fd))
+            if (js_parse_function_decl2(s, func_type, func_kind, JS_ATOM_NULL,
+                                        start_ptr,
+                                        s->token.line_num,
+                                        s->token.col_num,
+                                        JS_PARSE_EXPORT_NONE, &method_fd))
                 goto fail;
             if (func_type == JS_PARSE_FUNC_DERIVED_CLASS_CONSTRUCTOR ||
                 func_type == JS_PARSE_FUNC_CLASS_CONSTRUCTOR) {
@@ -22458,7 +22532,9 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 if (s->cur_func && s->cur_func->backtrace_barrier)
                     backtrace_flags = JS_BACKTRACE_FLAG_SINGLE_LEVEL;
                 build_backtrace(s->ctx, s->ctx->rt->current_exception,
-                                s->filename, s->token.line_num,
+                                s->filename,
+                                s->token.line_num,
+                                s->token.col_num,
                                 backtrace_flags);
                 return -1;
             }
@@ -22479,7 +22555,9 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             js_parse_skip_parens_token(s, NULL, TRUE) == TOK_ARROW) {
             if (js_parse_function_decl(s, JS_PARSE_FUNC_ARROW,
                                        JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                       s->token.ptr, s->token.line_num))
+                                       s->token.ptr,
+                                       s->token.line_num,
+                                       s->token.col_num))
                 return -1;
         } else {
             if (js_parse_expr_paren(s))
@@ -22489,7 +22567,9 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
     case TOK_FUNCTION:
         if (js_parse_function_decl(s, JS_PARSE_FUNC_EXPR,
                                    JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                   s->token.ptr, s->token.line_num))
+                                   s->token.ptr,
+                                   s->token.line_num,
+                                   s->token.col_num))
             return -1;
         break;
     case TOK_CLASS:
@@ -22528,21 +22608,27 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 peek_token(s, TRUE) == TOK_ARROW) {
                 if (js_parse_function_decl(s, JS_PARSE_FUNC_ARROW,
                                            JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                           s->token.ptr, s->token.line_num))
+                                           s->token.ptr,
+                                           s->token.line_num,
+                                           s->token.col_num))
                     return -1;
             } else if (token_is_pseudo_keyword(s, JS_ATOM_async) &&
                        peek_token(s, TRUE) != '\n') {
                 const uint8_t *source_ptr;
                 int source_line_num;
+                int source_col_num;
 
                 source_ptr = s->token.ptr;
                 source_line_num = s->token.line_num;
+                source_col_num = s->token.col_num;
                 if (next_token(s))
                     return -1;
                 if (s->token.val == TOK_FUNCTION) {
                     if (js_parse_function_decl(s, JS_PARSE_FUNC_EXPR,
                                                JS_FUNC_ASYNC, JS_ATOM_NULL,
-                                               source_ptr, source_line_num))
+                                               source_ptr,
+                                               source_line_num,
+                                               source_col_num))
                         return -1;
                 } else if ((parse_flags & PF_ARROW_FUNC) &&
                            ((s->token.val == '(' &&
@@ -22551,7 +22637,9 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                              peek_token(s, TRUE) == TOK_ARROW))) {
                     if (js_parse_function_decl(s, JS_PARSE_FUNC_ARROW,
                                                JS_FUNC_ASYNC, JS_ATOM_NULL,
-                                               source_ptr, source_line_num))
+                                               source_ptr,
+                                               source_line_num,
+                                               source_col_num))
                         return -1;
                 } else {
                     name = JS_DupAtom(s->ctx, JS_ATOM_async);
@@ -24959,7 +25047,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         parse_func_var:
             if (js_parse_function_decl(s, JS_PARSE_FUNC_VAR,
                                        JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                       s->token.ptr, s->token.line_num))
+                                       s->token.ptr,
+                                       s->token.line_num,
+                                       s->token.col_num))
                 goto fail;
             break;
         }
@@ -26450,7 +26540,9 @@ static __exception int js_parse_export(JSParseState *s)
                 peek_token(s, TRUE) == TOK_FUNCTION)) {
         return js_parse_function_decl2(s, JS_PARSE_FUNC_STATEMENT,
                                        JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                       s->token.ptr, s->token.line_num,
+                                       s->token.ptr,
+                                       s->token.line_num,
+                                       s->token.col_num,
                                        JS_PARSE_EXPORT_NAMED, NULL);
     }
 
@@ -26560,7 +26652,9 @@ static __exception int js_parse_export(JSParseState *s)
                     peek_token(s, TRUE) == TOK_FUNCTION)) {
             return js_parse_function_decl2(s, JS_PARSE_FUNC_STATEMENT,
                                            JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                           s->token.ptr, s->token.line_num,
+                                           s->token.ptr,
+                                           s->token.line_num,
+                                           s->token.col_num,
                                            JS_PARSE_EXPORT_DEFAULT, NULL);
         } else {
             if (js_parse_assign_expr(s))
@@ -26758,7 +26852,9 @@ static __exception int js_parse_source_element(JSParseState *s)
          peek_token(s, TRUE) == TOK_FUNCTION)) {
         if (js_parse_function_decl(s, JS_PARSE_FUNC_STATEMENT,
                                    JS_FUNC_NORMAL, JS_ATOM_NULL,
-                                   s->token.ptr, s->token.line_num))
+                                   s->token.ptr,
+                                   s->token.line_num,
+                                   s->token.col_num))
             return -1;
     } else if (s->token.val == TOK_EXPORT && fd->module) {
         if (js_parse_export(s))
@@ -26780,7 +26876,9 @@ static JSFunctionDef *js_new_function_def(JSContext *ctx,
                                           JSFunctionDef *parent,
                                           BOOL is_eval,
                                           BOOL is_func_expr,
-                                          const char *filename, int line_num)
+                                          const char *filename,
+                                          int line_num,
+                                          int col_num)
 {
     JSFunctionDef *fd;
 
@@ -26828,6 +26926,7 @@ static JSFunctionDef *js_new_function_def(JSContext *ctx,
 
     fd->filename = JS_NewAtom(ctx, filename);
     fd->line_num = line_num;
+    fd->col_num = col_num;
 
     js_dbuf_init(ctx, &fd->pc2line);
     //fd->pc2line_last_line_num = line_num;
@@ -26888,7 +26987,7 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
     dbuf_free(&fd->byte_code);
     js_free(ctx, fd->jump_slots);
     js_free(ctx, fd->label_slots);
-    js_free(ctx, fd->line_number_slots);
+    js_free(ctx, fd->source_loc_slots);
 
     /* free ic */
     if (fd->ic)
@@ -27027,8 +27126,9 @@ static void dump_byte_code(JSContext *ctx, int pass,
         op = tab[pos];
         if (source) {
             if (b) {
-                line1 = find_line_num(ctx, b, pos) - line_num + 1;
-            } else if (op == OP_line_num) {
+                int col1;
+                line1 = find_line_num(ctx, b, pos, &col1) - line_num + 1;
+            } else if (op == OP_source_loc) {
                 line1 = get_u32(tab + pos + 1) - line_num + 1;
             }
             if (line1 > line) {
@@ -27105,6 +27205,9 @@ static void dump_byte_code(JSContext *ctx, int pass,
             break;
         case OP_FMT_u32:
             printf(" %u", get_u32(tab + pos));
+            break;
+        case OP_FMT_u32x2:
+            printf(" %u:%u", get_u32(tab + pos), get_u32(tab + pos + 4));
             break;
         case OP_FMT_label8:
             addr = get_i8(tab + pos);
@@ -27257,8 +27360,9 @@ static __maybe_unused void print_func_name(JSFunctionBytecode *b)
             print_lines(b->debug.source, 0, 1);
 }
 
-static __maybe_unused void dump_pc2line(JSContext *ctx, const uint8_t *buf, int len,
-                                                 int line_num)
+static __maybe_unused void dump_pc2line(JSContext *ctx,
+                                        const uint8_t *buf, int len,
+                                        int line_num, int col_num)
 {
     const uint8_t *p_end, *p_next, *p;
     int pc, v;
@@ -27267,7 +27371,7 @@ static __maybe_unused void dump_pc2line(JSContext *ctx, const uint8_t *buf, int 
     if (len <= 0)
         return;
 
-    printf("%5s %5s\n", "PC", "LINE");
+    printf("%5s %5s %5s\n", "PC", "LINE", "COLUMN");
 
     p = buf;
     p_end = buf + len;
@@ -27281,15 +27385,12 @@ static __maybe_unused void dump_pc2line(JSContext *ctx, const uint8_t *buf, int 
             pc += v;
             p = p_next;
             v = unicode_from_utf8(p, p_end - p, &p_next);
-            if (v < 0) {
-            fail:
-                printf("invalid pc2line encode pos=%d\n", (int)(p - buf));
-                return;
-            }
-            if (!(v & 1)) {
-                v = v >> 1;
-            } else {
+            if (v < 0)
+                goto fail;
+            if (v & 1) {
                 v = -(v >> 1) - 1;
+            } else {
+                v = v >> 1;
             }
             line_num += v;
             p = p_next;
@@ -27298,8 +27399,21 @@ static __maybe_unused void dump_pc2line(JSContext *ctx, const uint8_t *buf, int 
             pc += (op / PC2LINE_RANGE);
             line_num += (op % PC2LINE_RANGE) + PC2LINE_BASE;
         }
-        printf("%5d %5d\n", pc, line_num);
+        v = unicode_from_utf8(p, p_end - p, &p_next);
+        if (v < 0)
+            goto fail;
+        if (v & 1) {
+            v = -(v >> 1) - 1;
+        } else {
+            v = v >> 1;
+        }
+        col_num += v;
+        p = p_next;
+        printf("%5d %5d %5d\n", pc, line_num, col_num);
     }
+    return;
+fail:
+    printf("invalid pc2line encode pos=%d\n", (int)(p - buf));
 }
 
 static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionBytecode *b)
@@ -27310,7 +27424,7 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
 
     if (b->has_debug && b->debug.filename != JS_ATOM_NULL) {
         str = JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->debug.filename);
-        printf("%s:%d: ", str, b->debug.line_num);
+        printf("%s:%d:%d: ", str, b->debug.line_num, b->debug.col_num);
     }
 
     str = JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->func_name);
@@ -27369,7 +27483,8 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
                    b->has_debug ? b->debug.line_num : -1, NULL, b);
 #if defined(DUMP_BYTECODE) && (DUMP_BYTECODE & 32)
     if (b->has_debug)
-        dump_pc2line(ctx, b->debug.pc2line_buf, b->debug.pc2line_len, b->debug.line_num);
+        dump_pc2line(ctx, b->debug.pc2line_buf, b->debug.pc2line_len,
+                     b->debug.line_num, b->debug.col_num);
 #endif
     printf("\n");
 }
@@ -28528,7 +28643,8 @@ typedef struct CodeContext {
     const uint8_t *bc_buf; /* code buffer */
     int bc_len;   /* length of the code buffer */
     int pos;      /* position past the matched code pattern */
-    int line_num; /* last visited OP_line_num parameter or -1 */
+    int line_num; /* last visited OP_source_loc parameter or -1 */
+    int col_num;  /* last visited OP_source_loc parameter or -1 */
     int op;
     int idx;
     int label;
@@ -28543,11 +28659,12 @@ typedef struct CodeContext {
 static BOOL code_match(CodeContext *s, int pos, ...)
 {
     const uint8_t *tab = s->bc_buf;
-    int op, len, op1, line_num, pos_next;
+    int op, len, op1, line_num, col_num, pos_next;
     va_list ap;
     BOOL ret = FALSE;
 
     line_num = -1;
+    col_num = -1;
     va_start(ap, pos);
 
     for(;;) {
@@ -28555,6 +28672,7 @@ static BOOL code_match(CodeContext *s, int pos, ...)
         if (op1 == -1) {
             s->pos = pos;
             s->line_num = line_num;
+            s->col_num = col_num;
             ret = TRUE;
             break;
         }
@@ -28566,8 +28684,9 @@ static BOOL code_match(CodeContext *s, int pos, ...)
             pos_next = pos + len;
             if (pos_next > s->bc_len)
                 goto done;
-            if (op == OP_line_num) {
+            if (op == OP_source_loc) {
                 line_num = get_u32(tab + pos + 1);
+                col_num = get_u32(tab + pos + 5);
                 pos = pos_next;
             } else {
                 break;
@@ -28799,17 +28918,17 @@ static void instantiate_hoisted_definitions(JSContext *ctx, JSFunctionDef *s, Dy
 }
 
 static int skip_dead_code(JSFunctionDef *s, const uint8_t *bc_buf, int bc_len,
-                          int pos, int *linep)
+                          int pos, int *linep, int *colp)
 {
     int op, len, label;
 
     for (; pos < bc_len; pos += len) {
         op = bc_buf[pos];
         len = opcode_info[op].size;
-        if (op == OP_line_num) {
+        if (op == OP_source_loc) {
             *linep = get_u32(bc_buf + pos + 1);
-        } else
-        if (op == OP_label) {
+            *colp = get_u32(bc_buf + pos + 5);
+        } else if (op == OP_label) {
             label = get_u32(bc_buf + pos + 1);
             if (update_label(s, label, 0) > 0)
                 break;
@@ -28849,7 +28968,9 @@ static int get_label_pos(JSFunctionDef *s, int label)
         pos = s->label_slots[label].pos;
         for (;;) {
             switch (s->byte_code.buf[pos]) {
-            case OP_line_num:
+            case OP_source_loc:
+                pos += 9;
+                continue;
             case OP_label:
                 pos += 5;
                 continue;
@@ -28869,7 +28990,7 @@ static int get_label_pos(JSFunctionDef *s, int label)
    variables when necessary */
 static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
 {
-    int pos, pos_next, bc_len, op, len, i, idx, line_num;
+    int pos, pos_next, bc_len, op, len, i, idx, line_num, col_num;
     uint8_t *bc_buf;
     JSAtom var_name;
     DynBuf bc_out;
@@ -28920,14 +29041,16 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
     }
 
     line_num = 0; /* avoid warning */
+    col_num = 0;
     for (pos = 0; pos < bc_len; pos = pos_next) {
         op = bc_buf[pos];
         len = opcode_info[op].size;
         pos_next = pos + len;
         switch(op) {
-        case OP_line_num:
+        case OP_source_loc:
             line_num = get_u32(bc_buf + pos + 1);
-            s->line_number_size++;
+            col_num = get_u32(bc_buf + pos + 5);
+            s->source_loc_size++;
             goto no_change;
 
         case OP_eval: /* convert scope index to adjusted variable index */
@@ -29006,11 +29129,15 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
             if (code_match(&cc, pos_next, M2(OP_put_array_el, OP_put_ref_value), OP_drop, -1)) {
                 dbuf_putc(&bc_out, cc.op);
                 pos_next = cc.pos;
-                if (cc.line_num != -1 && cc.line_num != line_num) {
+                if (cc.line_num == -1)
+                    break;
+                if (cc.line_num != line_num || cc.col_num != col_num) {
                     line_num = cc.line_num;
-                    s->line_number_size++;
-                    dbuf_putc(&bc_out, OP_line_num);
+                    col_num = cc.col_num;
+                    s->source_loc_size++;
+                    dbuf_putc(&bc_out, OP_source_loc);
                     dbuf_put_u32(&bc_out, line_num);
+                    dbuf_put_u32(&bc_out, col_num);
                 }
                 break;
             }
@@ -29029,14 +29156,20 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
             {
                 /* remove dead code */
                 int line = -1;
+                int col = -1;
                 dbuf_put(&bc_out, bc_buf + pos, len);
-                pos = skip_dead_code(s, bc_buf, bc_len, pos + len, &line);
+                pos = skip_dead_code(s, bc_buf, bc_len, pos + len,
+                                     &line, &col);
                 pos_next = pos;
-                if (pos < bc_len && line >= 0 && line_num != line) {
+                if (line < 0 || pos >= bc_len)
+                    break;
+                if (line_num != line || col_num != col) {
                     line_num = line;
-                    s->line_number_size++;
-                    dbuf_putc(&bc_out, OP_line_num);
+                    col_num = col;
+                    s->source_loc_size++;
+                    dbuf_putc(&bc_out, OP_source_loc);
                     dbuf_put_u32(&bc_out, line_num);
+                    dbuf_put_u32(&bc_out, col_num);
                 }
                 break;
             }
@@ -29126,12 +29259,13 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
             /* Transformation: dup if_false(l1) drop, l1: if_false(l2) -> if_false(l2) */
             /* Transformation: dup if_true(l1) drop, l1: if_true(l2) -> if_true(l2) */
             if (code_match(&cc, pos_next, M2(OP_if_false, OP_if_true), OP_drop, -1)) {
-                int lab0, lab1, op1, pos1, line1, pos2;
+                int lab0, lab1, op1, pos1, line1, col1, pos2;
                 lab0 = lab1 = cc.label;
                 assert(lab1 >= 0 && lab1 < s->label_count);
                 op1 = cc.op;
                 pos1 = cc.pos;
                 line1 = cc.line_num;
+                col1 = cc.col_num;
                 while (code_match(&cc, (pos2 = get_label_pos(s, lab1)), OP_dup, op1, OP_drop, -1)) {
                     lab1 = cc.label;
                 }
@@ -29142,11 +29276,15 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
                     dbuf_putc(&bc_out, op1);
                     dbuf_put_u32(&bc_out, cc.label);
                     pos_next = pos1;
-                    if (line1 != -1 && line1 != line_num) {
+                    if (line1 == -1)
+                        break;
+                    if (line1 != line_num || col1 != col_num) {
                         line_num = line1;
-                        s->line_number_size++;
-                        dbuf_putc(&bc_out, OP_line_num);
+                        col_num = col1;
+                        s->source_loc_size++;
+                        dbuf_putc(&bc_out, OP_source_loc);
                         dbuf_put_u32(&bc_out, line_num);
+                        dbuf_put_u32(&bc_out, col_num);
                     }
                     break;
                 }
@@ -29190,39 +29328,52 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
 }
 
 /* the pc2line table gives a line number for each PC value */
-static void add_pc2line_info(JSFunctionDef *s, uint32_t pc, int line_num)
+static void add_pc2line_info(JSFunctionDef *s, uint32_t pc,
+                             int line_num, int col_num)
 {
-    if (s->line_number_slots != NULL
-    &&  s->line_number_count < s->line_number_size
-    &&  pc >= s->line_number_last_pc
-    &&  line_num != s->line_number_last) {
-        s->line_number_slots[s->line_number_count].pc = pc;
-        s->line_number_slots[s->line_number_count].line_num = line_num;
-        s->line_number_count++;
-        s->line_number_last_pc = pc;
-        s->line_number_last = line_num;
-    }
+    if (s->source_loc_slots == NULL)
+        return;
+    if (s->source_loc_count >= s->source_loc_size)
+        return;
+    if (pc < s->line_number_last_pc)
+        return;
+    if (line_num == s->line_number_last)
+        if (col_num == s->col_number_last)
+            return;
+    s->source_loc_slots[s->source_loc_count].pc = pc;
+    s->source_loc_slots[s->source_loc_count].line_num = line_num;
+    s->source_loc_slots[s->source_loc_count].col_num = col_num;
+    s->source_loc_count++;
+    s->line_number_last_pc = pc;
+    s->line_number_last = line_num;
+    s->col_number_last = col_num;
 }
 
 static void compute_pc2line_info(JSFunctionDef *s)
 {
-    if (s->line_number_slots) {
+    if (s->source_loc_slots) {
         int last_line_num = s->line_num;
+        int last_col_num = s->col_num;
         uint32_t last_pc = 0;
         int i;
 
         js_dbuf_init(s->ctx, &s->pc2line);
-        for (i = 0; i < s->line_number_count; i++) {
-            uint32_t pc = s->line_number_slots[i].pc;
-            int line_num = s->line_number_slots[i].line_num;
-            int diff_pc, diff_line;
+        for (i = 0; i < s->source_loc_count; i++) {
+            uint32_t pc = s->source_loc_slots[i].pc;
+            int line_num = s->source_loc_slots[i].line_num;
+            int col_num = s->source_loc_slots[i].col_num;
+            int diff_pc, diff_line, diff_col;
 
             if (line_num < 0)
                 continue;
 
             diff_pc = pc - last_pc;
+            if (diff_pc < 0)
+                continue;
+
             diff_line = line_num - last_line_num;
-            if (diff_line == 0 || diff_pc < 0)
+            diff_col = col_num - last_col_num;
+            if (diff_line == 0 && diff_col == 0)
                 continue;
 
             if (diff_line >= PC2LINE_BASE &&
@@ -29236,8 +29387,11 @@ static void compute_pc2line_info(JSFunctionDef *s)
                 dbuf_put_leb128(&s->pc2line, diff_pc);
                 dbuf_put_sleb128(&s->pc2line, diff_line);
             }
+            dbuf_put_sleb128(&s->pc2line, diff_col);
+
             last_pc = pc;
             last_line_num = line_num;
+            last_col_num = col_num;
         }
     }
 }
@@ -29259,8 +29413,8 @@ static BOOL code_has_label(CodeContext *s, int pos, int label)
 {
     while (pos < s->bc_len) {
         int op = s->bc_buf[pos];
-        if (op == OP_line_num) {
-            pos += 5;
+        if (op == OP_source_loc) {
+            pos += 9;
             continue;
         }
         if (op == OP_label) {
@@ -29283,7 +29437,7 @@ static BOOL code_has_label(CodeContext *s, int pos, int label)
 /* return the target label, following the OP_goto jumps
    the first opcode at destination is stored in *pop
  */
-static int find_jump_target(JSFunctionDef *s, int label, int *pop, int *pline)
+static int find_jump_target(JSFunctionDef *s, int label, int *pop)
 {
     int i, pos, op;
 
@@ -29293,10 +29447,7 @@ static int find_jump_target(JSFunctionDef *s, int label, int *pop, int *pline)
         pos = s->label_slots[label].pos2;
         for (;;) {
             switch(op = s->byte_code.buf[pos]) {
-            case OP_line_num:
-                if (pline)
-                    *pline = get_u32(s->byte_code.buf + pos + 1);
-                /* fall thru */
+            case OP_source_loc:
             case OP_label:
                 pos += opcode_info[op].size;
                 continue;
@@ -29402,7 +29553,7 @@ static void put_short_code(DynBuf *bc_out, int op, int idx)
 /* peephole optimizations and resolve goto/labels */
 static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
 {
-    int pos, pos_next, bc_len, op, op1, len, i, line_num, patch_offsets;
+    int pos, pos_next, bc_len, op, op1, len, i, line_num, col_num, patch_offsets;
     const uint8_t *bc_buf;
     DynBuf bc_out;
     LabelSlot *label_slots, *ls;
@@ -29414,6 +29565,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
     label_slots = s->label_slots;
 
     line_num = s->line_num;
+    col_num = s->col_num;
 
     cc.bc_buf = bc_buf = s->byte_code.buf;
     cc.bc_len = bc_len = s->byte_code.size;
@@ -29425,11 +29577,12 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             return -1;
     }
 
-    if (s->line_number_size) {
-        s->line_number_slots = js_mallocz(s->ctx, sizeof(*s->line_number_slots) * s->line_number_size);
-        if (s->line_number_slots == NULL)
+    if (s->source_loc_size) {
+        s->source_loc_slots = js_mallocz(s->ctx, sizeof(*s->source_loc_slots) * s->source_loc_size);
+        if (s->source_loc_slots == NULL)
             return -1;
         s->line_number_last = s->line_num;
+        s->col_number_last = s->col_num;
         s->line_number_last_pc = 0;
     }
 
@@ -29499,11 +29652,12 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
         len = opcode_info[op].size;
         pos_next = pos + len;
         switch(op) {
-        case OP_line_num:
+        case OP_source_loc:
             /* line number info (for debug). We put it in a separate
                compressed table to reduce memory usage and get better
                performance */
             line_num = get_u32(bc_buf + pos + 1);
+            col_num = get_u32(bc_buf + pos + 5);
             break;
 
         case OP_label:
@@ -29544,12 +29698,14 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 argc = get_u16(bc_buf + pos + 1);
                 if (code_match(&cc, pos_next, OP_return, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     put_short_code(&bc_out, op + 1, argc);
-                    pos_next = skip_dead_code(s, bc_buf, bc_len, cc.pos, &line_num);
+                    pos_next = skip_dead_code(s, bc_buf, bc_len, cc.pos,
+                                              &line_num, &col_num);
                     break;
                 }
-                add_pc2line_info(s, bc_out.size, line_num);
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 put_short_code(&bc_out, op, argc);
                 break;
             }
@@ -29560,16 +29716,16 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
         case OP_return_async:
         case OP_throw:
         case OP_throw_error:
-            pos_next = skip_dead_code(s, bc_buf, bc_len, pos_next, &line_num);
+            pos_next = skip_dead_code(s, bc_buf, bc_len, pos_next,
+                                      &line_num, &col_num);
             goto no_change;
 
         case OP_goto:
             label = get_u32(bc_buf + pos + 1);
         has_goto:
             {
-                int line1 = -1;
                 /* Use custom matcher because multiple labels can follow */
-                label = find_jump_target(s, label, &op1, &line1);
+                label = find_jump_target(s, label, &op1);
                 if (code_has_label(&cc, pos_next, label)) {
                     /* jump to next instruction: remove jump */
                     update_label(s, label, -1);
@@ -29578,11 +29734,11 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 if (op1 == OP_return || op1 == OP_return_undef || op1 == OP_throw) {
                     /* jump to return/throw: remove jump, append return/throw */
                     /* updating the line number obfuscates assembly listing */
-                    //if (line1 >= 0) line_num = line1;
                     update_label(s, label, -1);
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, op1);
-                    pos_next = skip_dead_code(s, bc_buf, bc_len, pos_next, &line_num);
+                    pos_next = skip_dead_code(s, bc_buf, bc_len, pos_next,
+                                              &line_num, &col_num);
                     break;
                 }
                 /* XXX: should duplicate single instructions followed by goto or return */
@@ -29605,7 +29761,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
         case OP_if_true:
         case OP_if_false:
             label = get_u32(bc_buf + pos + 1);
-            label = find_jump_target(s, label, &op1, NULL);
+            label = find_jump_target(s, label, &op1);
             /* transform if_false/if_true(l1) label(l1) -> drop label(l1) */
             if (code_has_label(&cc, pos_next, label)) {
                 update_label(s, label, -1);
@@ -29616,8 +29772,10 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             if (code_match(&cc, pos_next, OP_goto, -1)) {
                 int pos1 = cc.pos;
                 int line1 = cc.line_num;
+                int col1 = cc.col_num;
                 if (code_has_label(&cc, pos1, label)) {
                     if (line1 >= 0) line_num = line1;
+                    if (col1 >= 0) col_num = col1;
                     pos_next = pos1;
                     update_label(s, label, -1);
                     label = cc.label;
@@ -29625,9 +29783,10 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 }
             }
         has_label:
-            add_pc2line_info(s, bc_out.size, line_num);
+            add_pc2line_info(s, bc_out.size, line_num, col_num);
             if (op == OP_goto) {
-                pos_next = skip_dead_code(s, bc_buf, bc_len, pos_next, &line_num);
+                pos_next = skip_dead_code(s, bc_buf, bc_len, pos_next,
+                                          &line_num, &col_num);
             }
             assert(label >= 0 && label < s->label_count);
             ls = &label_slots[label];
@@ -29695,10 +29854,10 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 atom = get_u32(bc_buf + pos + 1);
                 label = get_u32(bc_buf + pos + 5);
                 is_with = bc_buf[pos + 9];
-                label = find_jump_target(s, label, &op1, NULL);
+                label = find_jump_target(s, label, &op1);
                 assert(label >= 0 && label < s->label_count);
                 ls = &label_slots[label];
-                add_pc2line_info(s, bc_out.size, line_num);
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 jp = &s->jump_slots[s->jump_count++];
                 jp->op = op;
                 jp->size = 4;
@@ -29720,6 +29879,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             /* remove useless drops before return */
             if (code_match(&cc, pos_next, OP_return_undef, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
+                if (cc.col_num >= 0) col_num = cc.col_num;
                 break;
             }
             goto no_change;
@@ -29728,7 +29888,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             /* transform null strict_eq into is_null */
             if (code_match(&cc, pos_next, OP_strict_eq, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
-                add_pc2line_info(s, bc_out.size, line_num);
+                if (cc.col_num >= 0) col_num = cc.col_num;
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 dbuf_putc(&bc_out, OP_is_null);
                 pos_next = cc.pos;
                 break;
@@ -29736,7 +29897,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             /* transform null strict_neq if_false/if_true -> is_null if_true/if_false */
             if (code_match(&cc, pos_next, OP_strict_neq, M2(OP_if_false, OP_if_true), -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
-                add_pc2line_info(s, bc_out.size, line_num);
+                if (cc.col_num >= 0) col_num = cc.col_num;
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 dbuf_putc(&bc_out, OP_is_null);
                 pos_next = cc.pos;
                 label = cc.label;
@@ -29750,6 +29912,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             if (code_match(&cc, pos_next, M2(OP_if_false, OP_if_true), -1)) {
             has_constant_test:
                 if (cc.line_num >= 0) line_num = cc.line_num;
+                if (cc.col_num >= 0) col_num = cc.col_num;
                 if (val == cc.op - OP_if_false) {
                     /* transform null if_false(l1) -> goto l1 */
                     /* transform false if_false(l1) -> goto l1 */
@@ -29775,10 +29938,12 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             if ((val != INT32_MIN && val != 0)
             &&  code_match(&cc, pos_next, OP_neg, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
+                if (cc.col_num >= 0) col_num = cc.col_num;
                 if (code_match(&cc, cc.pos, OP_drop, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
+                    if (cc.col_num >= 0) col_num = cc.col_num;
                 } else {
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     push_short_int(&bc_out, -val);
                 }
                 pos_next = cc.pos;
@@ -29787,6 +29952,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             /* remove push/drop pairs generated by the parser */
             if (code_match(&cc, pos_next, OP_drop, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
+                if (cc.col_num >= 0) col_num = cc.col_num;
                 pos_next = cc.pos;
                 break;
             }
@@ -29795,7 +29961,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 val = (val != 0);
                 goto has_constant_test;
             }
-            add_pc2line_info(s, bc_out.size, line_num);
+            add_pc2line_info(s, bc_out.size, line_num, col_num);
             push_short_int(&bc_out, val);
             break;
 
@@ -29804,7 +29970,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             {
                 int idx = get_u32(bc_buf + pos + 1);
                 if (idx < 256) {
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, OP_push_const8 + op - OP_push_const);
                     dbuf_putc(&bc_out, idx);
                     break;
@@ -29817,7 +29983,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 JSAtom atom = get_u32(bc_buf + pos + 1);
                 if (atom == JS_ATOM_length) {
                     JS_FreeAtom(ctx, atom);
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, OP_get_length);
                     break;
                 }
@@ -29831,12 +29997,13 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 if (code_match(&cc, pos_next, OP_drop, -1)) {
                     JS_FreeAtom(ctx, atom);
                     if (cc.line_num >= 0) line_num = cc.line_num;
+                    if (cc.col_num >= 0) col_num = cc.col_num;
                     pos_next = cc.pos;
                     break;
                 }
                 if (atom == JS_ATOM_empty_string) {
                     JS_FreeAtom(ctx, atom);
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, OP_push_empty_string);
                     break;
                 }
@@ -29857,13 +30024,15 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             /* remove push/drop pairs generated by the parser */
             if (code_match(&cc, pos_next, OP_drop, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
+                if (cc.col_num >= 0) col_num = cc.col_num;
                 pos_next = cc.pos;
                 break;
             }
             /* transform undefined return -> return_undefined */
             if (code_match(&cc, pos_next, OP_return, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
-                add_pc2line_info(s, bc_out.size, line_num);
+                if (cc.col_num >= 0) col_num = cc.col_num;
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 dbuf_putc(&bc_out, OP_return_undef);
                 pos_next = cc.pos;
                 break;
@@ -29876,7 +30045,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             /* transform undefined strict_eq -> is_undefined */
             if (code_match(&cc, pos_next, OP_strict_eq, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
-                add_pc2line_info(s, bc_out.size, line_num);
+                if (cc.col_num >= 0) col_num = cc.col_num;
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 dbuf_putc(&bc_out, OP_is_undefined);
                 pos_next = cc.pos;
                 break;
@@ -29884,7 +30054,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             /* transform undefined strict_neq if_false/if_true -> is_undefined if_true/if_false */
             if (code_match(&cc, pos_next, OP_strict_neq, M2(OP_if_false, OP_if_true), -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
-                add_pc2line_info(s, bc_out.size, line_num);
+                if (cc.col_num >= 0) col_num = cc.col_num;
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 dbuf_putc(&bc_out, OP_is_undefined);
                 pos_next = cc.pos;
                 label = cc.label;
@@ -29900,7 +30071,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             */
             if (code_match(&cc, pos_next, M2(OP_put_field, OP_put_var_strict), OP_drop, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
-                add_pc2line_info(s, bc_out.size, line_num);
+                if (cc.col_num >= 0) col_num = cc.col_num;
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 dbuf_putc(&bc_out, cc.op);
                 dbuf_put_u32(&bc_out, cc.atom);
                 pos_next = cc.pos;
@@ -29915,10 +30087,12 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 /* Transformation: dup put_x(n) -> set_x(n) */
                 if (code_match(&cc, pos_next, M3(OP_put_loc, OP_put_arg, OP_put_var_ref), -1, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
+                    if (cc.col_num >= 0) col_num = cc.col_num;
                     op1 = cc.op + 1;  /* put_x -> set_x */
                     pos_next = cc.pos;
                     if (code_match(&cc, cc.pos, OP_drop, -1)) {
                         if (cc.line_num >= 0) line_num = cc.line_num;
+                        if (cc.col_num >= 0) col_num = cc.col_num;
                         op1 -= 1; /* set_x drop -> put_x */
                         pos_next = cc.pos;
                         if (code_match(&cc, cc.pos, op1 - 1, cc.idx, -1)) {
@@ -29927,7 +30101,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                             pos_next = cc.pos;
                         }
                     }
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     put_short_code(&bc_out, op1, cc.idx);
                     if (line2 >= 0) line_num = line2;
                     break;
@@ -29939,6 +30113,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             // transformation: swap swap -> nothing!
             if (code_match(&cc, pos_next, OP_swap, -1, -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
+                if (cc.col_num >= 0) col_num = cc.col_num;
                 pos_next = cc.pos;
                 break;
             }
@@ -29959,7 +30134,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 if (code_match(&cc, pos_next, M2(OP_post_dec, OP_post_inc), OP_put_loc, idx, OP_drop, -1) ||
                     code_match(&cc, pos_next, M2(OP_dec, OP_inc), OP_dup, OP_put_loc, idx, OP_drop, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, (cc.op == OP_inc || cc.op == OP_post_inc) ? OP_inc_loc : OP_dec_loc);
                     dbuf_putc(&bc_out, idx);
                     pos_next = cc.pos;
@@ -29970,7 +30146,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                  */
                 if (code_match(&cc, pos_next, OP_push_atom_value, OP_add, OP_dup, OP_put_loc, idx, OP_drop, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     if (cc.atom == JS_ATOM_empty_string) {
                         JS_FreeAtom(ctx, cc.atom);
                         dbuf_putc(&bc_out, OP_push_empty_string);
@@ -29988,7 +30165,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                  */
                 if (code_match(&cc, pos_next, OP_push_i32, OP_add, OP_dup, OP_put_loc, idx, OP_drop, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     push_short_int(&bc_out, cc.label);
                     dbuf_putc(&bc_out, OP_add_loc);
                     dbuf_putc(&bc_out, idx);
@@ -30002,7 +30180,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                  */
                 if (code_match(&cc, pos_next, M3(OP_get_loc, OP_get_arg, OP_get_var_ref), -1, OP_add, OP_dup, OP_put_loc, idx, OP_drop, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     put_short_code(&bc_out, cc.op, cc.idx);
                     dbuf_putc(&bc_out, OP_add_loc);
                     dbuf_putc(&bc_out, idx);
@@ -30012,12 +30191,13 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 /* transformation: get_loc(0) get_loc(1) -> get_loc0_loc1 */
                 if (idx == 0 && code_match(&cc, pos_next, OP_get_loc, 1, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, OP_get_loc0_loc1);
                     pos_next = cc.pos;
                     break;
                 }
-                add_pc2line_info(s, bc_out.size, line_num);
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 put_short_code(&bc_out, op, idx);
             }
             break;
@@ -30026,7 +30206,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             {
                 int idx;
                 idx = get_u16(bc_buf + pos + 1);
-                add_pc2line_info(s, bc_out.size, line_num);
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 put_short_code(&bc_out, op, idx);
             }
             break;
@@ -30039,12 +30219,13 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 idx = get_u16(bc_buf + pos + 1);
                 if (code_match(&cc, pos_next, op - 1, idx, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     put_short_code(&bc_out, op + 1, idx);
                     pos_next = cc.pos;
                     break;
                 }
-                add_pc2line_info(s, bc_out.size, line_num);
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
                 put_short_code(&bc_out, op, idx);
             }
             break;
@@ -30061,22 +30242,25 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 int op1, idx;
                 if (code_match(&cc, pos_next, M3(OP_put_loc, OP_put_arg, OP_put_var_ref), -1, OP_drop, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
+                    if (cc.col_num >= 0) col_num = cc.col_num;
                     op1 = cc.op;
                     idx = cc.idx;
                     pos_next = cc.pos;
                     if (code_match(&cc, cc.pos, op1 - 1, idx, -1)) {
                         if (cc.line_num >= 0) line_num = cc.line_num;
+                        if (cc.col_num >= 0) col_num = cc.col_num;
                         op1 += 1;   /* put_x(n) get_x(n) -> set_x(n) */
                         pos_next = cc.pos;
                     }
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, OP_dec + (op - OP_post_dec));
                     put_short_code(&bc_out, op1, idx);
                     break;
                 }
                 if (code_match(&cc, pos_next, OP_perm3, M2(OP_put_field, OP_put_var_strict), OP_drop, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, OP_dec + (op - OP_post_dec));
                     dbuf_putc(&bc_out, cc.op);
                     dbuf_put_u32(&bc_out, cc.atom);
@@ -30085,7 +30269,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 }
                 if (code_match(&cc, pos_next, OP_perm4, OP_put_array_el, OP_drop, -1)) {
                     if (cc.line_num >= 0) line_num = cc.line_num;
-                    add_pc2line_info(s, bc_out.size, line_num);
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, OP_dec + (op - OP_post_dec));
                     dbuf_putc(&bc_out, OP_put_array_el);
                     pos_next = cc.pos;
@@ -30098,6 +30283,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             /* simplify typeof tests */
             if (code_match(&cc, pos_next, OP_push_atom_value, M4(OP_strict_eq, OP_strict_neq, OP_eq, OP_neq), -1)) {
                 if (cc.line_num >= 0) line_num = cc.line_num;
+                if (cc.col_num >= 0) col_num = cc.col_num;
                 int op1 = (cc.op == OP_strict_eq || cc.op == OP_eq) ? OP_strict_eq : OP_strict_neq;
                 int op2 = -1;
                 switch (cc.atom) {
@@ -30111,7 +30297,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 if (op2 >= 0) {
                     /* transform typeof(s) == "<type>" into is_<type> */
                     if (op1 == OP_strict_eq) {
-                        add_pc2line_info(s, bc_out.size, line_num);
+                        add_pc2line_info(s, bc_out.size, line_num, col_num);
                         dbuf_putc(&bc_out, op2);
                         JS_FreeAtom(ctx, cc.atom);
                         pos_next = cc.pos;
@@ -30120,7 +30306,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                     if (op1 == OP_strict_neq && code_match(&cc, cc.pos, OP_if_false, -1)) {
                         /* transform typeof(s) != "<type>" if_false into is_<type> if_true */
                         if (cc.line_num >= 0) line_num = cc.line_num;
-                        add_pc2line_info(s, bc_out.size, line_num);
+                        if (cc.col_num >= 0) col_num = cc.col_num;
+                        add_pc2line_info(s, bc_out.size, line_num, col_num);
                         dbuf_putc(&bc_out, op2);
                         JS_FreeAtom(ctx, cc.atom);
                         pos_next = cc.pos;
@@ -30134,7 +30321,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
 
         default:
         no_change:
-            add_pc2line_info(s, bc_out.size, line_num);
+            add_pc2line_info(s, bc_out.size, line_num, col_num);
             dbuf_put(&bc_out, bc_buf + pos, len);
             break;
         }
@@ -30191,9 +30378,9 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                     if (jp1->pos > pos)
                         jp1->pos -= delta;
                 }
-                for (j = 0; j < s->line_number_count; j++) {
-                    if (s->line_number_slots[j].pc > pos)
-                        s->line_number_slots[j].pc -= delta;
+                for (j = 0; j < s->source_loc_count; j++) {
+                    if (s->source_loc_slots[j].pc > pos)
+                        s->source_loc_slots[j].pc -= delta;
                 }
                 continue;
             }
@@ -30226,8 +30413,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
     s->label_slots = NULL;
     /* XXX: should delay until copying to runtime bytecode function */
     compute_pc2line_info(s);
-    js_free(ctx, s->line_number_slots);
-    s->line_number_slots = NULL;
+    js_free(ctx, s->source_loc_slots);
+    s->source_loc_slots = NULL;
     /* set the new byte code */
     dbuf_free(&s->byte_code);
     s->byte_code = bc_out;
@@ -30608,10 +30795,8 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     b->has_debug = 1;
     b->debug.filename = fd->filename;
     b->debug.line_num = fd->line_num;
+    b->debug.col_num = fd->col_num;
 
-    //DynBuf pc2line;
-    //compute_pc2line_info(fd, &pc2line);
-    //js_free(ctx, fd->line_number_slots)
     b->debug.pc2line_buf = js_realloc(ctx, fd->pc2line.buf, fd->pc2line.size);
     if (!b->debug.pc2line_buf)
         b->debug.pc2line_buf = fd->pc2line.buf;
@@ -30850,7 +31035,7 @@ static JSFunctionDef *js_parse_function_class_fields_init(JSParseState *s)
     JSFunctionDef *fd;
 
     fd = js_new_function_def(s->ctx, s->cur_func, FALSE, FALSE,
-                             s->filename, 0);
+                             s->filename, 0, 0);
     if (!fd)
         return NULL;
     fd->func_name = JS_ATOM_NULL;
@@ -30878,6 +31063,7 @@ static __exception int js_parse_function_decl2(JSParseState *s,
                                                JSAtom func_name,
                                                const uint8_t *ptr,
                                                int function_line_num,
+                                               int function_col_num,
                                                JSParseExportEnum export_flag,
                                                JSFunctionDef **pfd)
 {
@@ -30992,8 +31178,8 @@ static __exception int js_parse_function_decl2(JSParseState *s,
         }
     }
 
-    fd = js_new_function_def(ctx, fd, FALSE, is_expr,
-                             s->filename, function_line_num);
+    fd = js_new_function_def(ctx, fd, FALSE, is_expr, s->filename,
+                             function_line_num, function_col_num);
     if (!fd) {
         JS_FreeAtom(ctx, func_name);
         return -1;
@@ -31433,11 +31619,12 @@ static __exception int js_parse_function_decl(JSParseState *s,
                                               JSFunctionKindEnum func_kind,
                                               JSAtom func_name,
                                               const uint8_t *ptr,
-                                              int function_line_num)
+                                              int start_line,
+                                              int start_col)
 {
     return js_parse_function_decl2(s, func_type, func_kind, func_name, ptr,
-                                   function_line_num, JS_PARSE_EXPORT_NONE,
-                                   NULL);
+                                   start_line, start_col,
+                                   JS_PARSE_EXPORT_NONE, NULL);
 }
 
 static __exception int js_parse_program(JSParseState *s)
@@ -31488,10 +31675,14 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->ctx = ctx;
     s->filename = filename;
     s->line_num = 1;
+    s->col_num = 1;
     s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
+    s->mark = s->buf_ptr + min_int(1, input_len);
+    s->eol = s->buf_ptr;
     s->token.val = ' ';
     s->token.line_num = 1;
+    s->token.col_num = 1;
 }
 
 static JSValue JS_EvalFunctionInternal(JSContext *ctx, JSValue fun_obj,
@@ -31603,7 +31794,7 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
             js_mode |= JS_MODE_STRICT;
         }
     }
-    fd = js_new_function_def(ctx, NULL, TRUE, FALSE, filename, 1);
+    fd = js_new_function_def(ctx, NULL, TRUE, FALSE, filename, 1, 1);
     if (!fd)
         goto fail1;
     if (m != NULL) {
@@ -31863,7 +32054,7 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
 } BCTagEnum;
 
-#define BC_VERSION 4
+#define BC_VERSION 5
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -32284,6 +32475,7 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
     if (b->has_debug) {
         bc_put_atom(s, b->debug.filename);
         bc_put_leb128(s, b->debug.line_num);
+        bc_put_leb128(s, b->debug.col_num);
         bc_put_leb128(s, b->debug.pc2line_len);
         dbuf_put(&s->dbuf, b->debug.pc2line_buf, b->debug.pc2line_len);
 
@@ -33271,6 +33463,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         if (bc_get_atom(s, &b->debug.filename))
             goto fail;
         if (bc_get_leb128_int(s, &b->debug.line_num))
+            goto fail;
+        if (bc_get_leb128_int(s, &b->debug.col_num))
             goto fail;
         if (bc_get_leb128_int(s, &b->debug.pc2line_len))
             goto fail;
@@ -35789,7 +35983,10 @@ static const JSCFunctionListEntry js_function_proto_funcs[] = {
     JS_CFUNC_DEF("toString", 0, js_function_toString ),
     JS_CFUNC_DEF("[Symbol.hasInstance]", 1, js_function_hasInstance ),
     JS_CGETSET_DEF("fileName", js_function_proto_fileName, NULL ),
-    JS_CGETSET_DEF("lineNumber", js_function_proto_lineNumber, NULL ),
+    JS_CGETSET_MAGIC_DEF("lineNumber", js_function_proto_debug_int32, NULL,
+                         offsetof(JSFunctionBytecode, debug.line_num)),
+    JS_CGETSET_MAGIC_DEF("columnNumber", js_function_proto_debug_int32, NULL,
+                         offsetof(JSFunctionBytecode, debug.col_num)),
 };
 
 /* Error class */
@@ -35902,7 +36099,7 @@ static JSValue js_error_constructor(JSContext *ctx, JSValue new_target,
     }
 
     /* skip the Error() function in the backtrace */
-    build_backtrace(ctx, obj, NULL, 0, JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
+    build_backtrace(ctx, obj, NULL, 0, 0, JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
     return obj;
  exception:
     JS_FreeValue(ctx, obj);
