@@ -3,8 +3,6 @@ test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedYield-brok
 test262/test/built-ins/AsyncGeneratorPrototype/return/return-suspendedYield-broken-promise-try-catch.js:39: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
-test262/test/built-ins/TypedArray/prototype/sort/sort-tonumber.js:30: TypeError: ArrayBuffer is detached (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/sort/sort-tonumber.js:30: strict mode: TypeError: ArrayBuffer is detached (Testing with Float64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/detached-buffer.js:46: Test262Error:  (Testing with BigInt64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/detached-buffer.js:46: strict mode: Test262Error:  (Testing with BigInt64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/tonumber-value-detached-buffer.js:40: Test262Error: Reflect.defineProperty(ta, 0, {value: {valueOf() {$DETACHBUFFER(ta.buffer); return 42n;}}}) must return true Expected SameValue(«false», «true») to be true (Testing with BigInt64Array.)
