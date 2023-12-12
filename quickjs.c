@@ -8429,6 +8429,9 @@ retry:
                         JS_FreeValue(ctx, val);
                         if (JS_IsException(val))
                             return -1;
+                        if (typed_array_is_detached(ctx, p1))
+                            if (!(flags & JS_PROP_DEFINE_PROPERTY))
+                                return FALSE; // per spec: no OOB exception
                         return JS_ThrowTypeErrorOrFalse(ctx, flags, "out-of-bound numeric index");
                     }
                 }
@@ -8687,6 +8690,9 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
                 return -1;
             if (unlikely(idx >= (uint32_t)p->u.array.count)) {
             ta_out_of_bound:
+                if (typed_array_is_detached(ctx, p))
+                    if (!(flags & JS_PROP_DEFINE_PROPERTY))
+                        return FALSE; // per spec: no OOB exception
                 return JS_ThrowTypeErrorOrFalse(ctx, flags, "out-of-bound numeric index");
             }
             p->u.array.u.double_ptr[idx] = d;
@@ -34488,7 +34494,8 @@ static __exception int JS_DefinePropertyDesc(JSContext *ctx, JSValue obj,
         return -1;
 
     ret = JS_DefineProperty(ctx, obj, prop,
-                            d.value, d.getter, d.setter, d.flags | flags);
+                            d.value, d.getter, d.setter,
+                            d.flags | flags | JS_PROP_DEFINE_PROPERTY);
     js_free_desc(ctx, &d);
     return ret;
 }
