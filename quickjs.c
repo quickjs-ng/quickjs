@@ -49591,7 +49591,12 @@ static int js_TA_cmp_generic(const void *a, const void *b, void *opaque) {
     uint32_t a_idx, b_idx;
     JSValue argv[2];
     JSValue res;
+    JSObject *p;
     int cmp;
+
+    p = JS_VALUE_GET_OBJ(psc->arr);
+    if (typed_array_is_detached(ctx, p))
+        return 0;
 
     cmp = 0;
     if (!psc->exception) {
@@ -49621,9 +49626,6 @@ static int js_TA_cmp_generic(const void *a, const void *b, void *opaque) {
         if (cmp == 0) {
             /* make sort stable: compare array offsets */
             cmp = (a_idx > b_idx) - (a_idx < b_idx);
-        }
-        if (validate_typed_array(ctx, psc->arr) < 0) {
-            psc->exception = 1;
         }
     done:
         JS_FreeValue(ctx, (JSValue)argv[0]);
@@ -49719,6 +49721,9 @@ static JSValue js_typed_array_sort(JSContext *ctx, JSValue this_val,
                    js_TA_cmp_generic, &tsc);
             if (tsc.exception)
                 goto fail;
+            // per spec: typed array can be detached mid-iteration
+            if (typed_array_is_detached(ctx, p))
+                goto done;
             array_tmp = js_malloc(ctx, len * elt_size);
             if (!array_tmp) {
             fail:
@@ -49755,6 +49760,7 @@ static JSValue js_typed_array_sort(JSContext *ctx, JSValue this_val,
                 abort();
             }
             js_free(ctx, array_tmp);
+        done:
             js_free(ctx, array_idx);
         } else {
             rqsort(array_ptr, len, elt_size, cmpfun, &tsc);
