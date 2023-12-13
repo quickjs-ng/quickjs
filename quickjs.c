@@ -7261,6 +7261,12 @@ static int JS_AddBrand(JSContext *ctx, JSValue obj, JSValue home_obj)
         return -1;
     }
     p1 = JS_VALUE_GET_OBJ(obj);
+    prs = find_own_property(&pr, p1, brand_atom);
+    if (unlikely(prs)) {
+        JS_FreeAtom(ctx, brand_atom);
+        JS_ThrowTypeError(ctx, "private method is already present");
+        return -1;
+    }
     pr = add_property(ctx, p1, brand_atom, JS_PROP_C_W_E);
     JS_FreeAtom(ctx, brand_atom);
     if (!pr)
