@@ -77,7 +77,6 @@ DEF(await, "await")
 
 /* empty string */
 DEF(empty_string, "")
-DEF(negative_zero, "-0")
 /* identifiers */
 DEF(length, "length")
 DEF(fileName, "fileName")
