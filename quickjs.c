@@ -1070,6 +1070,11 @@ static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValue val);
 static void js_promise_resolve_function_mark(JSRuntime *rt, JSValue val,
                                 JS_MarkFunc *mark_func);
 
+#define HINT_STRING  0
+#define HINT_NUMBER  1
+#define HINT_NONE    2
+#define HINT_FORCE_ORDINARY (1 << 4) // don't try Symbol.toPrimitive
+static JSValue JS_ToPrimitiveFree(JSContext *ctx, JSValue val, int hint);
 static JSValue JS_ToStringFree(JSContext *ctx, JSValue val);
 static int JS_ToBoolFree(JSContext *ctx, JSValue val);
 static int JS_ToInt32Free(JSContext *ctx, int32_t *pres, JSValue val);
@@ -8224,6 +8229,7 @@ static void js_free_desc(JSContext *ctx, JSPropertyDescriptor *desc)
 
 /* generic (and slower) version of JS_SetProperty() for
  * Reflect.set(). 'obj' must be an object.  */
+// TODO(bnoordhuis) merge with JS_SetPropertyInternal2
 static int JS_SetPropertyGeneric(JSContext *ctx,
                                  JSValue obj, JSAtom prop,
                                  JSValue val, JSValue this_obj,
@@ -8289,6 +8295,18 @@ static int JS_SetPropertyGeneric(JSContext *ctx,
     }
 
     p = JS_VALUE_GET_OBJ(this_obj);
+    if (prop == JS_ATOM_negative_zero &&
+        p->class_id >= JS_CLASS_UINT8C_ARRAY &&
+        p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+        // per spec: CanonicalNumericIndexString("-0") evaluates to -0 and
+        // returns true but sets no property; side effects of evaluating
+        // the value should still be observable
+        val = JS_ToPrimitiveFree(ctx, val, HINT_NUMBER);
+        if (JS_IsException(val))
+            return -1;
+        JS_FreeValue(ctx, val);
+        return TRUE;
+    }
 
     /* modify the property in this_obj if it already exists */
     ret = JS_GetOwnPropertyInternal(ctx, &desc, p, prop);
@@ -8363,6 +8381,18 @@ int JS_SetPropertyInternal2(JSContext *ctx, JSValue this_obj,
         }
     }
     p = JS_VALUE_GET_OBJ(this_obj);
+    if (prop == JS_ATOM_negative_zero &&
+        p->class_id >= JS_CLASS_UINT8C_ARRAY &&
+        p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+        // per spec: CanonicalNumericIndexString("-0") evaluates to -0 and
+        // returns true but sets no property; side effects of evaluating
+        // the value should still be observable
+        val = JS_ToPrimitiveFree(ctx, val, HINT_NUMBER);
+        if (JS_IsException(val))
+            return -1;
+        JS_FreeValue(ctx, val);
+        return TRUE;
+    }
 retry:
     prs = find_own_property_ic(&pr, p, prop, &offset);
     if (prs) {
@@ -9769,12 +9799,6 @@ void *JS_GetAnyOpaque(JSValue obj, JSClassID *class_id)
     *class_id = p->class_id;
     return p->u.opaque;
 }
-
-#define HINT_STRING  0
-#define HINT_NUMBER  1
-#define HINT_NONE    2
-/* don't try Symbol.toPrimitive */
-#define HINT_FORCE_ORDINARY (1 << 4)
 
 static JSValue JS_ToPrimitiveFree(JSContext *ctx, JSValue val, int hint)
 {
