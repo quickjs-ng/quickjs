@@ -236,6 +236,18 @@ add_executable(unicode_gen EXCLUDE_FROM_ALL
 )
 target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
 
+add_custom_command(
+    OUTPUT function_source.c
+    COMMAND qjsc -e -o function_source.c ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_source.js
+    DEPENDS qjsc ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_source.js
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Compile function_source.js to a C file with bytecode embedded"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_source.js
+)
+add_executable(function_source ${CMAKE_CURRENT_BINARY_DIR}/function_source.c)
+target_include_directories(function_source PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(function_source PRIVATE ${qjs_defines})
+target_link_libraries(function_source ${qjs_libs})
 
 # Examples
 #
@@ -246,7 +258,7 @@ if(BUILD_EXAMPLES AND NOT WIN32)
         COMMAND qjsc -e -o hello.c ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello.js
         DEPENDS qjsc
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Compile hello.js to a C file with bytecode embeddee"
+        COMMENT "Compile hello.js to a C file with bytecode embedded"
         SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello.js
     )
     add_executable(hello
@@ -262,7 +274,7 @@ if(BUILD_EXAMPLES AND NOT WIN32)
         COMMAND qjsc -e -o hello_module.c -m ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello_module.js
         DEPENDS qjsc
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Compile hello_module.js to a C file with bytecode embeddee"
+        COMMENT "Compile hello_module.js to a C file with bytecode embedded"
         SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/examples/hello_module.js
     )
     add_executable(hello_module

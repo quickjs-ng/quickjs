@@ -109,6 +109,7 @@ jobs:
           ./build/qjs examples/test_fib.js
           ./build/qjs examples/test_point.js
           ./build/qjs tests/test_bjson.js
+          ./build/function_source
   linux-shared:
     runs-on: ubuntu-latest
     steps:
@@ -213,6 +214,7 @@ jobs:
           ./build/qjs examples/test_fib.js
           ./build/qjs examples/test_point.js
           ./build/qjs tests/test_bjson.js
+          ./build/function_source
   macos-shared:
     runs-on: macos-latest
     steps:
@@ -274,6 +276,7 @@ jobs:
           cmd /r build\Debug\qjs.exe tests\test_std.js
           cmd /r build\Debug\qjs.exe tests\test_worker.js
           cmd /r build\Debug\qjs.exe tests\test_queue_microtask.js
+          cmd /r build\Debug\function_source.exe
 
   windows-mingw:
     runs-on: windows-latest

@@ -277,8 +277,8 @@ typedef struct DynBuf {
 void dbuf_init(DynBuf *s);
 void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func);
 int dbuf_realloc(DynBuf *s, size_t new_size);
-int dbuf_write(DynBuf *s, size_t offset, const uint8_t *data, size_t len);
-int dbuf_put(DynBuf *s, const uint8_t *data, size_t len);
+int dbuf_write(DynBuf *s, size_t offset, const void *data, size_t len);
+int dbuf_put(DynBuf *s, const void *data, size_t len);
 int dbuf_put_self(DynBuf *s, size_t offset, size_t len);
 int dbuf_putc(DynBuf *s, uint8_t c);
 int dbuf_putstr(DynBuf *s, const char *str);
