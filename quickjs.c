@@ -626,8 +626,7 @@ typedef struct JSFunctionBytecode {
     uint8_t super_allowed : 1;
     uint8_t arguments_allowed : 1;
     uint8_t backtrace_barrier : 1; /* stop backtrace on this function */
-    uint8_t read_only_bytecode : 1;
-    /* XXX: 4 bits available */
+    /* XXX: 5 bits available */
     uint8_t *byte_code_buf; /* (self pointer) */
     int byte_code_len;
     JSAtom func_name;
@@ -5770,7 +5769,7 @@ static void compute_bytecode_size(JSFunctionBytecode *b, JSMemoryUsage_helper *h
     if (b->closure_var) {
         js_func_size += b->closure_var_count * sizeof(*b->closure_var);
     }
-    if (!b->read_only_bytecode && b->byte_code_buf) {
+    if (b->byte_code_buf) {
         hp->js_func_code_size += b->byte_code_len;
     }
     memory_used_count++;
@@ -32117,7 +32116,7 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
 } BCTagEnum;
 
-#define BC_VERSION 6
+#define BC_VERSION 7
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -32981,7 +32980,6 @@ typedef struct BCReaderState {
     int error_state;
     BOOL allow_sab : 8;
     BOOL allow_bytecode : 8;
-    BOOL is_rom_data : 8;
     BOOL allow_reference : 8;
     /* object references */
     JSObject **objects;
@@ -33213,17 +33211,9 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
     JSAtom atom;
     uint32_t idx;
 
-    if (s->is_rom_data) {
-        /* directly use the input buffer */
-        if (unlikely(s->buf_end - s->ptr < bc_len))
-            return bc_read_error_end(s);
-        bc_buf = (uint8_t *)s->ptr;
-        s->ptr += bc_len;
-    } else {
-        bc_buf = (void *)((uint8_t*)b + byte_code_offset);
-        if (bc_get_buf(s, bc_buf, bc_len))
-            return -1;
-    }
+    bc_buf = (uint8_t*)b + byte_code_offset;
+    if (bc_get_buf(s, bc_buf, bc_len))
+        return -1;
     b->byte_code_buf = bc_buf;
 
     pos = 0;
@@ -33237,20 +33227,15 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
         case OP_FMT_atom_label_u8:
         case OP_FMT_atom_label_u16:
             idx = get_u32(bc_buf + pos + 1);
-            if (s->is_rom_data) {
-                /* just increment the reference count of the atom */
-                JS_DupAtom(s->ctx, (JSAtom)idx);
-            } else {
-                if (bc_idx_to_atom(s, &atom, idx)) {
-                    /* Note: the atoms will be freed up to this position */
-                    b->byte_code_len = pos;
-                    return -1;
-                }
-                put_u32(bc_buf + pos + 1, atom);
-#ifdef DUMP_READ_OBJECT
-                bc_read_trace(s, "at %d, fixup atom: ", pos + 1); print_atom(s->ctx, atom); printf("\n");
-#endif
+            if (bc_idx_to_atom(s, &atom, idx)) {
+                /* Note: the atoms will be freed up to this position */
+                b->byte_code_len = pos;
+                return -1;
             }
+            put_u32(bc_buf + pos + 1, atom);
+#ifdef DUMP_READ_OBJECT
+            bc_read_trace(s, "at %d, fixup atom: ", pos + 1); print_atom(s->ctx, atom); printf("\n");
+#endif
             break;
         default:
             break;
@@ -33394,7 +33379,6 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     bc.super_allowed = bc_get_flags(v16, &idx, 1);
     bc.arguments_allowed = bc_get_flags(v16, &idx, 1);
     bc.backtrace_barrier = bc_get_flags(v16, &idx, 1);
-    bc.read_only_bytecode = s->is_rom_data;
     if (bc_get_u8(s, &v8))
         goto fail;
     bc.js_mode = v8;
@@ -33425,9 +33409,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     closure_var_offset = function_size;
     function_size += bc.closure_var_count * sizeof(*bc.closure_var);
     byte_code_offset = function_size;
-    if (!bc.read_only_bytecode) {
-        function_size += bc.byte_code_len;
-    }
+    function_size += bc.byte_code_len;
 
     b = js_mallocz(ctx, function_size);
     if (!b)
@@ -34071,8 +34053,6 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
         if (atom == JS_ATOM_NULL)
             return s->error_state = -1;
         s->idx_to_atom[i] = atom;
-        if (s->is_rom_data && (atom != (i + s->first_atom)))
-            s->is_rom_data = FALSE; /* atoms must be relocated */
     }
     bc_read_trace(s, "}\n");
     return 0;
@@ -34105,7 +34085,6 @@ JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len,
     s->buf_end = buf + buf_len;
     s->ptr = buf;
     s->allow_bytecode = ((flags & JS_READ_OBJ_BYTECODE) != 0);
-    s->is_rom_data = ((flags & JS_READ_OBJ_ROM_DATA) != 0);
     s->allow_sab = ((flags & JS_READ_OBJ_SAB) != 0);
     s->allow_reference = ((flags & JS_READ_OBJ_REFERENCE) != 0);
     if (s->allow_bytecode)
