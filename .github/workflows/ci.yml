@@ -263,6 +263,7 @@ jobs:
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Visual Studio 17 2022" -T ClangCL
           cmake --build build --target qjs_exe
+          cmake --build build --target function_source
       - name: stats
         run: |
           cmd /r build\Debug\qjs.exe -qd
