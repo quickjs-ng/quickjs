@@ -244,7 +244,10 @@ add_custom_command(
     COMMENT "Compile function_source.js to a C file with bytecode embedded"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/function_source.js
 )
-add_executable(function_source ${CMAKE_CURRENT_BINARY_DIR}/function_source.c)
+add_executable(function_source
+    ${CMAKE_CURRENT_BINARY_DIR}/function_source.c
+    quickjs-libc.c
+)
 target_include_directories(function_source PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(function_source PRIVATE ${qjs_defines})
 target_link_libraries(function_source ${qjs_libs})
