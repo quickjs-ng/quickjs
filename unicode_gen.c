@@ -678,38 +678,50 @@ void parse_prop_list(const char *filename)
     for(;;) {
         if (!get_line(line, sizeof(line), f))
             break;
+        // first parse the property name
         p = line;
         while (isspace(*p))
             p++;
         if (*p == '#' || *p == '@' || *p == '\0')
             continue;
+        p = strchr(p, ';');
+        if (!p)
+            continue;
+        p++;
+        p += strspn(p, " \t");
+        q = buf;
+        static const char fini[] = " \t;#";
+        while (!memchr(fini, *p, sizeof(fini))) {
+            if ((q - buf) < sizeof(buf) - 1)
+                *q++ = *p;
+            p++;
+        }
+        *q = '\0';
+        i = find_name(unicode_prop_name, countof(unicode_prop_name), buf);
+        if (i < 0) {
+            fprintf(stderr, "Property not found: %s\n", buf);
+            exit(1);
+        }
+        // now parse the codepoint, codepoint range, or sequence
+        p = line;
         c0 = strtoul(p, (char **)&p, 16);
         if (*p == '.' && p[1] == '.') {
             p += 2;
             c1 = strtoul(p, (char **)&p, 16);
-        } else {
-            c1 = c0;
-        }
-        assert(c1 <= CHARCODE_MAX);
-        p += strspn(p, " \t");
-        if (*p == ';') {
-            p++;
-            p += strspn(p, " \t");
-            q = buf;
-            while (*p != '\0' && *p != ' ' && *p != '#' && *p != '\t') {
-                if ((q - buf) < sizeof(buf) - 1)
-                    *q++ = *p;
-                p++;
-            }
-            *q = '\0';
-            i = find_name(unicode_prop_name,
-                          countof(unicode_prop_name), buf);
-            if (i < 0) {
-                fprintf(stderr, "Property not found: %s\n", buf);
-                exit(1);
-            }
+            assert(c1 <= CHARCODE_MAX);
             for(c = c0; c <= c1; c++) {
                 set_prop(c, i, 1);
+            }
+        } else {
+            c1 = strtoul(p, (char **)&p, 16);
+            if (c1) {
+                // TODO(bnoordhuis) store sequence
+                do {
+                    assert(c1 <= CHARCODE_MAX);
+                    c1 = strtoul(p, (char **)&p, 16);
+                } while (c1);
+            } else {
+                set_prop(c0, i, 1);
             }
         }
     }
@@ -2948,6 +2960,14 @@ int main(int argc, char **argv)
     parse_script_extensions(filename);
 
     snprintf(filename, sizeof(filename), "%s/emoji-data.txt",
+             unicode_db_path);
+    parse_prop_list(filename);
+
+    snprintf(filename, sizeof(filename), "%s/emoji-sequences.txt",
+             unicode_db_path);
+    parse_prop_list(filename);
+
+    snprintf(filename, sizeof(filename), "%s/emoji-zwj-sequences.txt",
              unicode_db_path);
     parse_prop_list(filename);
 

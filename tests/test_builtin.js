@@ -590,6 +590,8 @@ function test_regexp()
     assert(/{1a}/.toString(), "/{1a}/");
     a = /a{1+/.exec("a{11");
     assert(a, ["a{11"] );
+
+    /\p{Basic_Emoji}/u;
 }
 
 function test_symbol()

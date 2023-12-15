@@ -4136,6 +4136,27 @@ static const uint8_t unicode_prop_Bidi_Mirrored_table[173] = {
     0x80, 0xb8, 0x80, 0xb8, 0x80,
 };
 
+static const uint8_t unicode_prop_Basic_Emoji_table[144] = {
+    0x60, 0x23, 0x19, 0x81, 0x40, 0xcc, 0x1a, 0x01,
+    0x80, 0x42, 0x08, 0x81, 0x94, 0x81, 0xb1, 0x8b,
+    0xaa, 0x80, 0x92, 0x80, 0x8c, 0x07, 0x81, 0x90,
+    0x0c, 0x0f, 0x04, 0x80, 0x94, 0x06, 0x08, 0x03,
+    0x01, 0x06, 0x03, 0x81, 0x9b, 0x80, 0xa2, 0x00,
+    0x03, 0x10, 0x80, 0xbc, 0x82, 0x97, 0x80, 0x8d,
+    0x80, 0x43, 0x5a, 0x81, 0xb2, 0x03, 0x80, 0x61,
+    0xc4, 0xad, 0x80, 0x40, 0xc9, 0x80, 0x40, 0xbd,
+    0x01, 0x89, 0xe5, 0x80, 0x97, 0x80, 0x93, 0x01,
+    0x20, 0x82, 0x94, 0x81, 0x40, 0xad, 0xa0, 0x8b,
+    0x88, 0x80, 0xc5, 0x80, 0x95, 0x8b, 0xaa, 0x1c,
+    0x8b, 0x90, 0x10, 0x82, 0xc6, 0x00, 0x80, 0x40,
+    0xba, 0x81, 0xbe, 0x8c, 0x18, 0x97, 0x91, 0x80,
+    0x99, 0x81, 0x8c, 0x80, 0xd5, 0xd4, 0xaf, 0xc5,
+    0x28, 0x12, 0x0a, 0x1b, 0x8a, 0x0e, 0x88, 0x40,
+    0xe2, 0x8b, 0x18, 0x41, 0x1a, 0xae, 0x80, 0x89,
+    0x80, 0x40, 0xb8, 0xef, 0x8c, 0x82, 0x88, 0x86,
+    0xad, 0x06, 0x87, 0x8d, 0x83, 0x88, 0x86, 0x88,
+};
+
 static const uint8_t unicode_prop_Emoji_table[239] = {
     0xa2, 0x05, 0x04, 0x89, 0xee, 0x03, 0x80, 0x5f,
     0x8c, 0x80, 0x8b, 0x80, 0x40, 0xd7, 0x80, 0x95,
@@ -4214,6 +4235,21 @@ static const uint8_t unicode_prop_Emoji_Presentation_table[145] = {
     0x88,
 };
 
+static const uint8_t unicode_prop_Emoji_Keycap_Sequence_table[0] = {
+};
+
+static const uint8_t unicode_prop_RGI_Emoji_Flag_Sequence_table[0] = {
+};
+
+static const uint8_t unicode_prop_RGI_Emoji_Modifier_Sequence_table[0] = {
+};
+
+static const uint8_t unicode_prop_RGI_Emoji_Tag_Sequence_table[0] = {
+};
+
+static const uint8_t unicode_prop_RGI_Emoji_ZWJ_Sequence_table[0] = {
+};
+
 static const uint8_t unicode_prop_Extended_Pictographic_table[156] = {
     0x40, 0xa8, 0x03, 0x80, 0x5f, 0x8c, 0x80, 0x8b,
     0x80, 0x40, 0xd7, 0x80, 0x95, 0x80, 0xd9, 0x85,
@@ -4289,11 +4325,17 @@ typedef enum {
     UNICODE_PROP_Variation_Selector,
     UNICODE_PROP_White_Space,
     UNICODE_PROP_Bidi_Mirrored,
+    UNICODE_PROP_Basic_Emoji,
     UNICODE_PROP_Emoji,
     UNICODE_PROP_Emoji_Component,
     UNICODE_PROP_Emoji_Modifier,
     UNICODE_PROP_Emoji_Modifier_Base,
     UNICODE_PROP_Emoji_Presentation,
+    UNICODE_PROP_Emoji_Keycap_Sequence,
+    UNICODE_PROP_RGI_Emoji_Flag_Sequence,
+    UNICODE_PROP_RGI_Emoji_Modifier_Sequence,
+    UNICODE_PROP_RGI_Emoji_Tag_Sequence,
+    UNICODE_PROP_RGI_Emoji_ZWJ_Sequence,
     UNICODE_PROP_Extended_Pictographic,
     UNICODE_PROP_Default_Ignorable_Code_Point,
     UNICODE_PROP_ID_Start,
@@ -4347,11 +4389,17 @@ static const char unicode_prop_name_table[] =
     "Variation_Selector,VS"              "\0"
     "White_Space,space"                  "\0"
     "Bidi_Mirrored,Bidi_M"               "\0"
+    "Basic_Emoji"                        "\0"
     "Emoji"                              "\0"
     "Emoji_Component,EComp"              "\0"
     "Emoji_Modifier,EMod"                "\0"
     "Emoji_Modifier_Base,EBase"          "\0"
     "Emoji_Presentation,EPres"           "\0"
+    "Emoji_Keycap_Sequence"              "\0"
+    "RGI_Emoji_Flag_Sequence"            "\0"
+    "RGI_Emoji_Modifier_Sequence"        "\0"
+    "RGI_Emoji_Tag_Sequence"             "\0"
+    "RGI_Emoji_ZWJ_Sequence"             "\0"
     "Extended_Pictographic,ExtPict"      "\0"
     "Default_Ignorable_Code_Point,DI"    "\0"
     "ID_Start,IDS"                       "\0"
@@ -4419,11 +4467,17 @@ static const uint8_t * const unicode_prop_table[] = {
     unicode_prop_Variation_Selector_table,
     unicode_prop_White_Space_table,
     unicode_prop_Bidi_Mirrored_table,
+    unicode_prop_Basic_Emoji_table,
     unicode_prop_Emoji_table,
     unicode_prop_Emoji_Component_table,
     unicode_prop_Emoji_Modifier_table,
     unicode_prop_Emoji_Modifier_Base_table,
     unicode_prop_Emoji_Presentation_table,
+    unicode_prop_Emoji_Keycap_Sequence_table,
+    unicode_prop_RGI_Emoji_Flag_Sequence_table,
+    unicode_prop_RGI_Emoji_Modifier_Sequence_table,
+    unicode_prop_RGI_Emoji_Tag_Sequence_table,
+    unicode_prop_RGI_Emoji_ZWJ_Sequence_table,
     unicode_prop_Extended_Pictographic_table,
     unicode_prop_Default_Ignorable_Code_Point_table,
     unicode_prop_ID_Start_table,
@@ -4472,13 +4526,20 @@ static const uint16_t unicode_prop_len_table[] = {
     countof(unicode_prop_Variation_Selector_table),
     countof(unicode_prop_White_Space_table),
     countof(unicode_prop_Bidi_Mirrored_table),
+    countof(unicode_prop_Basic_Emoji_table),
     countof(unicode_prop_Emoji_table),
     countof(unicode_prop_Emoji_Component_table),
     countof(unicode_prop_Emoji_Modifier_table),
     countof(unicode_prop_Emoji_Modifier_Base_table),
     countof(unicode_prop_Emoji_Presentation_table),
+    countof(unicode_prop_Emoji_Keycap_Sequence_table),
+    countof(unicode_prop_RGI_Emoji_Flag_Sequence_table),
+    countof(unicode_prop_RGI_Emoji_Modifier_Sequence_table),
+    countof(unicode_prop_RGI_Emoji_Tag_Sequence_table),
+    countof(unicode_prop_RGI_Emoji_ZWJ_Sequence_table),
     countof(unicode_prop_Extended_Pictographic_table),
     countof(unicode_prop_Default_Ignorable_Code_Point_table),
     countof(unicode_prop_ID_Start_table),
     countof(unicode_prop_Case_Ignorable_table),
 };
+
