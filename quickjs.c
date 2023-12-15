@@ -392,7 +392,6 @@ struct JSContext {
     bf_context_t *bf_ctx;   /* points to rt->bf_ctx, shared by all contexts */
     /* when the counter reaches zero, JSRutime.interrupt_handler is called */
     int interrupt_counter;
-    BOOL is_error_property_enabled;
 
     struct list_head loaded_modules; /* list of JSModuleDef.link */
 
