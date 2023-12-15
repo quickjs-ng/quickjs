@@ -6375,12 +6375,6 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
         if (line_num != -1)
             dbuf_printf(&dbuf, ":%d:%d", line_num, col_num);
         dbuf_putc(&dbuf, '\n');
-        str = JS_NewString(ctx, filename);
-        JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_fileName, str, flags);
-        JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_lineNumber,
-                               js_int32(line_num), flags);
-        JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_columnNumber,
-                               js_int32(col_num), flags);
         if (backtrace_flags & JS_BACKTRACE_FLAG_SINGLE_LEVEL)
             goto done;
     }
