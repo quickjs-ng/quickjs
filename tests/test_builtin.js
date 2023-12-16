@@ -24,6 +24,33 @@ function test_function_source_pos() // line 18, column 1
     assert(`${f.lineNumber}:${f.columnNumber}`, "1:1");
 }
 
+// Keep this at the top; it tests source positions.
+function test_exception_prepare_stack()
+{
+    var e;
+
+    Error.prepareStackTrace = (_, frames) => {
+        // Just return the array to check.
+        return frames;
+    };
+
+    try {
+        throw new Error(""); // line 38, column 19
+    } catch(_e) {
+        e = _e;
+    }
+
+    assert(e.stack.length === 2);
+    const f = e.stack[0];
+    assert(f.getFunctionName() === 'test_exception_prepare_stack');
+    assert(f.getFileName() === 'tests/test_builtin.js');
+    assert(f.getLineNumber() === 38);
+    assert(f.getColumnNumber() === 19);
+    assert(!f.isNative());
+
+    Error.prepareStackTrace = undefined;
+}
+
 function assert(actual, expected, message) {
     if (arguments.length == 1)
         expected = true;
@@ -801,3 +828,4 @@ test_generator();
 test_proxy_is_array();
 test_exception_source_pos();
 test_function_source_pos();
+test_exception_prepare_stack();
