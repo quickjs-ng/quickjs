@@ -32018,7 +32018,7 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
 } BCTagEnum;
 
-#define BC_VERSION 7
+#define BC_VERSION 8
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -32440,6 +32440,8 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
     bc_put_leb128(s, b->col_num);
     bc_put_leb128(s, b->pc2line_len);
     dbuf_put(&s->dbuf, b->pc2line_buf, b->pc2line_len);
+    bc_put_leb128(s, b->source_len);
+    dbuf_put(&s->dbuf, b->source, b->source_len);
 
     /* compatibility */
     dbuf_putc(&s->dbuf, 255);
@@ -33017,7 +33019,7 @@ static int bc_get_leb128_u16(BCReaderState *s, uint16_t *pval)
     return 0;
 }
 
-static int bc_get_buf(BCReaderState *s, uint8_t *buf, uint32_t buf_len)
+static int bc_get_buf(BCReaderState *s, void *buf, uint32_t buf_len)
 {
     if (buf_len != 0) {
         if (unlikely(!buf || s->buf_end - s->ptr < buf_len))
@@ -33411,6 +33413,15 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         if (!b->pc2line_buf)
             goto fail;
         if (bc_get_buf(s, b->pc2line_buf, b->pc2line_len))
+            goto fail;
+    }
+    if (bc_get_leb128_int(s, &b->source_len))
+        goto fail;
+    if (b->source_len) {
+        b->source = js_mallocz(ctx, b->source_len);
+        if (!b->source)
+            goto fail;
+        if (bc_get_buf(s, b->source, b->source_len))
             goto fail;
     }
     if (s->buf_end - s->ptr > 3 && s->ptr[0] == 255 &&
