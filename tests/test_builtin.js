@@ -51,6 +51,35 @@ function test_exception_prepare_stack()
     Error.prepareStackTrace = undefined;
 }
 
+// Keep this at the top; it tests source positions.
+function test_exception_stack_size_limit()
+{
+    var e;
+
+    Error.stackTraceLimit = 1;
+    Error.prepareStackTrace = (_, frames) => {
+        // Just return the array to check.
+        return frames;
+    };
+
+    try {
+        throw new Error(""); // line 66, column 19
+    } catch(_e) {
+        e = _e;
+    }
+
+    assert(e.stack.length === 1);
+    const f = e.stack[0];
+    assert(f.getFunctionName() === 'test_exception_stack_size_limit');
+    assert(f.getFileName() === 'tests/test_builtin.js');
+    assert(f.getLineNumber() === 66);
+    assert(f.getColumnNumber() === 19);
+    assert(!f.isNative());
+
+    Error.stackTraceLimit = 10;
+    Error.prepareStackTrace = undefined;
+}
+
 function assert(actual, expected, message) {
     if (arguments.length == 1)
         expected = true;
@@ -829,3 +858,4 @@ test_proxy_is_array();
 test_exception_source_pos();
 test_function_source_pos();
 test_exception_prepare_stack();
+test_exception_stack_size_limit();
