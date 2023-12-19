@@ -40494,12 +40494,38 @@ static const JSCFunctionListEntry js_math_obj[] = {
 /* OS dependent. d = argv[0] is in ms from 1970. Return the difference
    between UTC time and local time 'd' in minutes */
 static int getTimezoneOffset(int64_t time) {
-    struct tm local;
+#if defined(_WIN32)
+    /* XXX: TODO */
+    return 0;
+#else
+    time_t ti;
     struct tm gmt;
+    struct tm local;
     time /= 1000; /* convert to seconds */
-    localtime_r((const time_t *)&time, &local);
-    gmtime_r((const time_t *)&time, &gmt);
-    int offset = (mktime(&gmt) - time) / 60;
+    if (sizeof(time_t) == 4) {
+        /* on 32-bit systems, we need to clamp the time value to the
+           range of `time_t`. This is better than truncating values to
+           32 bits and hopefully provides the same result as 64-bit
+           implementation of localtime_r.
+         */
+        if ((time_t)-1 < 0) {
+            if (time < INT32_MIN) {
+                time = INT32_MIN;
+            } else if (time > INT32_MAX) {
+                time = INT32_MAX;
+            }
+        } else {
+            if (time < 0) {
+                time = 0;
+            } else if (time > UINT32_MAX) {
+                time = UINT32_MAX;
+            }
+        }
+    }
+    ti = time;
+    localtime_r(&ti, &local);
+    gmtime_r(&ti, &gmt);
+    int offset = (mktime(&gmt) - ti) / 60;
 
     /* take off another hour if daylight savings is active */
     if (local.tm_isdst) {
@@ -40507,6 +40533,7 @@ static int getTimezoneOffset(int64_t time) {
     }
 
     return offset;
+#endif
 }
 
 /* RegExp */
