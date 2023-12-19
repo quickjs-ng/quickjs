@@ -47211,6 +47211,7 @@ static JSValue js_date_Symbol_toPrimitive(JSContext *ctx, JSValue this_val,
 static JSValue js_date_getTimezoneOffset(JSContext *ctx, JSValue this_val,
                                          int argc, JSValue *argv)
 {
+    // getTimezoneOffset()
     double v;
 
     if (JS_ThisTimeValue(ctx, &v, this_val))
