@@ -40493,32 +40493,9 @@ static const JSCFunctionListEntry js_math_obj[] = {
 
 /* OS dependent. d = argv[0] is in ms from 1970. Return the difference
    between UTC time and local time 'd' in minutes */
-static int getTimezoneOffset() {
-#if defined(_WIN32)
-    /* XXX: TODO */
-    return 0;
-#else
-    time_t unixTime = time(NULL);
-
-    struct tm* localTime = localtime(&unixTime);
-    time_t localTimeNum = mktime(localTime);
-
-    struct tm *gmtTime = gmtime(&unixTime);
-    time_t gmtTimeNum = mktime(gmtTime);
-
-    // Calculate the time zone offset in minutes
-    int timeZoneOffset = (int)difftime(localTimeNum, gmtTimeNum) / 60;
-
-    // In JavaScript, it's the opposite
-    timeZoneOffset = -timeZoneOffset;
-
-    // Take off another hour if daylight savings it active
-    if (localTime->tm_isdst) {
-        timeZoneOffset = timeZoneOffset - 60;
-    }
-
-    return timeZoneOffset;
-#endif
+static int getTimezoneOffset(int64_t time) {
+    struct tm *gmt = gmtime((const time_t *)&time);
+    return (mktime(gmt) - time) / 60;
 }
 
 /* RegExp */
@@ -46524,7 +46501,7 @@ static __exception int get_date_fields(JSContext *ctx, JSValue obj,
     } else {
         d = dval;
         if (is_local) {
-            tz = -getTimezoneOffset();
+            tz = -getTimezoneOffset(d);
             d += tz * 60000;
         }
     }
@@ -46593,7 +46570,7 @@ static double set_date_fields(double fields[], int is_local) {
         fields[5] * 1000 + fields[6];
     d = days * 86400000 + h;
     if (is_local)
-        d += getTimezoneOffset() * 60000;
+        d += getTimezoneOffset(d) * 60000;
     return time_clip(d);
 }
 
@@ -47203,7 +47180,7 @@ static JSValue js_date_getTimezoneOffset(JSContext *ctx, JSValue this_val,
     if (isnan(v))
         return JS_NAN;
     else
-        return JS_NewInt64(ctx, getTimezoneOffset());
+        return JS_NewInt64(ctx, getTimezoneOffset((int64_t)trunc(v)));
 }
 
 static JSValue js_date_getTime(JSContext *ctx, JSValue this_val,
