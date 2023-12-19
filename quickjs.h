@@ -588,7 +588,7 @@ static inline JSValue JS_DupValue(JSContext *ctx, JSValue v)
         JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
         p->ref_count++;
     }
-    return (JSValue)v;
+    return v;
 }
 
 static inline JSValue JS_DupValueRT(JSRuntime *rt, JSValue v)
@@ -597,7 +597,7 @@ static inline JSValue JS_DupValueRT(JSRuntime *rt, JSValue v)
         JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
         p->ref_count++;
     }
-    return (JSValue)v;
+    return v;
 }
 
 JS_EXTERN int JS_ToBool(JSContext *ctx, JSValue val); /* return -1 for JS_EXCEPTION */
