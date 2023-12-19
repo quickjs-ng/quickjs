@@ -40499,8 +40499,8 @@ static int getTimezoneOffset(int64_t time) {
     return 0;
 #else
     time_t ti;
+    struct tm tm;
     struct tm gmt;
-    struct tm local;
     time /= 1000; /* convert to seconds */
     if (sizeof(time_t) == 4) {
         /* on 32-bit systems, we need to clamp the time value to the
@@ -40523,12 +40523,12 @@ static int getTimezoneOffset(int64_t time) {
         }
     }
     ti = time;
-    localtime_r(&ti, &local);
+    localtime_r(&ti, &tm);
     gmtime_r(&ti, &gmt);
     int offset = (mktime(&gmt) - ti) / 60;
 
     /* take off another hour if daylight savings is active */
-    if (local.tm_isdst) {
+    if (tm.tm_isdst) {
         offset -= 60;
     }
 
