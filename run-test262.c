@@ -508,7 +508,7 @@ static void *agent_start(void *arg)
                                             NULL, NULL, TRUE);
                 args[1] = JS_NewInt32(ctx, agent->broadcast_val);
                 ret_val = JS_Call(ctx, agent->broadcast_func, JS_UNDEFINED,
-                                  2, (JSValue *)args);
+                                  2, args);
                 JS_FreeValue(ctx, args[0]);
                 JS_FreeValue(ctx, args[1]);
                 if (JS_IsException(ret_val))

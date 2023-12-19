@@ -2213,7 +2213,7 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
         /* 'func' might be destroyed when calling itself (if it frees the
            handler), so must take extra care */
         func = JS_DupValue(ctx, port->on_message_func);
-        retval = JS_Call(ctx, func, JS_UNDEFINED, 1, (JSValue *)&obj);
+        retval = JS_Call(ctx, func, JS_UNDEFINED, 1, &obj);
         JS_FreeValue(ctx, obj);
         JS_FreeValue(ctx, func);
         if (JS_IsException(retval)) {
