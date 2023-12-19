@@ -982,7 +982,7 @@ JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 #define QJS_VERSION_MAJOR 0
 #define QJS_VERSION_MINOR 3
 #define QJS_VERSION_PATCH 0
-#define QJS_VERSION_SUFFIX "dev"
+#define QJS_VERSION_SUFFIX ""
 
 JS_EXTERN const char* JS_GetVersion(void);
 
