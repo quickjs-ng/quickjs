@@ -382,6 +382,7 @@ struct JSContext {
     JSValue native_error_proto[JS_NATIVE_ERROR_COUNT];
     JSValue error_ctor;
     JSValue error_prepare_stack;
+    int error_stack_trace_limit;
     JSValue iterator_proto;
     JSValue async_iterator_proto;
     JSValue array_proto_values;
@@ -2101,6 +2102,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->promise_ctor = JS_NULL;
     ctx->error_ctor = JS_NULL;
     ctx->error_prepare_stack = JS_UNDEFINED;
+    ctx->error_stack_trace_limit = 10;
     init_list_head(&ctx->loaded_modules);
 
     JS_AddIntrinsicBasicObjects(ctx);
@@ -6385,9 +6387,6 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
                             const char *filename, int line_num, int col_num,
                             int backtrace_flags)
 {
-    // TODO(saghul) Make this configurable with Error.stackTraceLimit
-    static const int stack_limit = 10;
-
     JSStackFrame *sf;
     JSValue stack, prepare, saved_exception;
     DynBuf dbuf;
@@ -6397,9 +6396,13 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
     JSFunctionBytecode *b;
     BOOL backtrace_barrier, has_prepare;
     JSRuntime *rt;
-    JSCallSiteData csd[stack_limit];
+    JSCallSiteData csd[64];
     uint32_t i;
+    int stack_trace_limit;
 
+    stack_trace_limit = ctx->error_stack_trace_limit;
+    stack_trace_limit = min_int(stack_trace_limit, countof(csd));
+    stack_trace_limit = max_int(stack_trace_limit, 0);
     rt = ctx->rt;
     has_prepare = FALSE;
     i = 0;
@@ -6413,10 +6416,14 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
     if (has_prepare) {
         saved_exception = rt->current_exception;
         rt->current_exception = JS_NULL;
+        if (stack_trace_limit == 0)
+            goto done;
         if (filename)
             js_new_callsite_data2(ctx, &csd[i++], filename, line_num, col_num);
     } else {
         js_dbuf_init(ctx, &dbuf);
+        if (stack_trace_limit == 0)
+            goto done;
         if (filename) {
             i++;
             dbuf_printf(&dbuf, "    at %s", filename);
@@ -6429,7 +6436,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
     if (filename && (backtrace_flags & JS_BACKTRACE_FLAG_SINGLE_LEVEL))
         goto done;
 
-    for (sf = rt->current_stack_frame; sf != NULL && i < stack_limit; sf = sf->prev_frame) {
+    for (sf = rt->current_stack_frame; sf != NULL && i < stack_trace_limit; sf = sf->prev_frame) {
         if (backtrace_flags & JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL) {
             backtrace_flags &= ~JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL;
             continue;
@@ -36178,6 +36185,28 @@ static const JSCFunctionListEntry js_error_proto_funcs[] = {
     JS_PROP_STRING_DEF("message", "", JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE ),
 };
 
+static JSValue js_error_get_stackTraceLimit(JSContext *ctx, JSValue this_val)
+{
+    JSValue val, ret;
+
+    val = JS_ToObject(ctx, this_val);
+    if (JS_IsException(val))
+        return val;
+    JS_FreeValue(ctx, val);
+    return js_int32(ctx->error_stack_trace_limit);
+}
+
+static JSValue js_error_set_stackTraceLimit(JSContext *ctx, JSValue this_val, JSValue value)
+{
+    if (JS_IsUndefined(this_val) || JS_IsNull(this_val))
+        return JS_ThrowTypeErrorNotAnObject(ctx);
+    int limit;
+    if (JS_ToInt32(ctx, &limit, value) < 0)
+        return JS_EXCEPTION;
+    ctx->error_stack_trace_limit = limit;
+    return JS_UNDEFINED;
+}
+
 static JSValue js_error_get_prepareStackTrace(JSContext *ctx, JSValue this_val)
 {
     JSValue val, ret;
@@ -36199,6 +36228,7 @@ static JSValue js_error_set_prepareStackTrace(JSContext *ctx, JSValue this_val, 
 }
 
 static const JSCFunctionListEntry js_error_funcs[] = {
+    JS_CGETSET_DEF("stackTraceLimit", js_error_get_stackTraceLimit, js_error_set_stackTraceLimit ),
     JS_CGETSET_DEF("prepareStackTrace", js_error_get_prepareStackTrace, js_error_set_prepareStackTrace ),
 };
 
