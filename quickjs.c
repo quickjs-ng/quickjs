@@ -40494,8 +40494,19 @@ static const JSCFunctionListEntry js_math_obj[] = {
 /* OS dependent. d = argv[0] is in ms from 1970. Return the difference
    between UTC time and local time 'd' in minutes */
 static int getTimezoneOffset(int64_t time) {
-    struct tm *gmt = gmtime((const time_t *)&time);
-    return (mktime(gmt) - time) / 60;
+    struct tm local;
+    struct tm gmt;
+    time /= 1000; /* convert to seconds */
+    localtime_r((const time_t *)&time, &local);
+    gmtime_r((const time_t *)&time, &gmt);
+    int offset = (mktime(&gmt) - time) / 60;
+
+    /* take off another hour if daylight savings is active */
+    if (local.tm_isdst) {
+        offset -= 60;
+    }
+
+    return offset;
 }
 
 /* RegExp */
