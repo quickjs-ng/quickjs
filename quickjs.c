@@ -40525,14 +40525,11 @@ static int getTimezoneOffset(int64_t time) {
     ti = time;
     localtime_r(&ti, &tm);
     gmtime_r(&ti, &gmt);
-    int offset = (mktime(&gmt) - ti) / 60;
 
-    /* take off another hour if daylight savings is active */
-    if (tm.tm_isdst) {
-        offset -= 60;
-    }
+    /* adjust the gmt struct to represent local time */
+    gmt.tm_isdst = tm.tm_isdst;
 
-    return offset;
+    return difftime(mktime(&gmt), mktime(&tm)) / 60;
 #endif
 }
 
