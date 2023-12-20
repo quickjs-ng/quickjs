@@ -40730,6 +40730,9 @@ static JSValue js_compile_regexp(JSContext *ctx, JSValue pattern,
             case 'u':
                 mask = LRE_FLAG_UNICODE;
                 break;
+            case 'v':
+                mask = LRE_FLAG_UNICODE_SETS;
+                break;
             case 'y':
                 mask = LRE_FLAG_STICKY;
                 break;
@@ -40745,6 +40748,10 @@ static JSValue js_compile_regexp(JSContext *ctx, JSValue pattern,
         }
         JS_FreeCString(ctx, str);
     }
+
+    if (re_flags & LRE_FLAG_UNICODE)
+        if (re_flags & LRE_FLAG_UNICODE_SETS)
+            return JS_ThrowSyntaxError(ctx, "invalid regular expression flags");
 
     str = JS_ToCStringLen2(ctx, &len, pattern, !(re_flags & LRE_FLAG_UNICODE));
     if (!str)
@@ -41067,6 +41074,11 @@ static JSValue js_regexp_get_flags(JSContext *ctx, JSValue this_val)
         goto exception;
     if (res)
         *p++ = 'u';
+    res = JS_ToBoolFree(ctx, JS_GetPropertyStr(ctx, this_val, "unicodeSets"));
+    if (res < 0)
+        goto exception;
+    if (res)
+        *p++ = 'v';
     res = JS_ToBoolFree(ctx, JS_GetPropertyStr(ctx, this_val, "sticky"));
     if (res < 0)
         goto exception;
@@ -42152,6 +42164,7 @@ static const JSCFunctionListEntry js_regexp_proto_funcs[] = {
     JS_CGETSET_MAGIC_DEF("multiline", js_regexp_get_flag, NULL, LRE_FLAG_MULTILINE ),
     JS_CGETSET_MAGIC_DEF("dotAll", js_regexp_get_flag, NULL, LRE_FLAG_DOTALL ),
     JS_CGETSET_MAGIC_DEF("unicode", js_regexp_get_flag, NULL, LRE_FLAG_UNICODE ),
+    JS_CGETSET_MAGIC_DEF("unicodeSets", js_regexp_get_flag, NULL, LRE_FLAG_UNICODE_SETS ),
     JS_CGETSET_MAGIC_DEF("sticky", js_regexp_get_flag, NULL, LRE_FLAG_STICKY ),
     JS_CGETSET_MAGIC_DEF("hasIndices", js_regexp_get_flag, NULL, LRE_FLAG_INDICES ),
     JS_CFUNC_DEF("exec", 1, js_regexp_exec ),
