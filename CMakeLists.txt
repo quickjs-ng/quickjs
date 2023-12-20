@@ -132,6 +132,7 @@ endif()
 #
 
 xoption(BUILD_QJS_LIBC "Build standard library modules as part of the library" OFF)
+xoption(DUMP_QJS_TOKEN "Dump token while parsing, used for inspecting the lexer" OFF)
 
 set(qjs_sources
     cutils.c
@@ -161,6 +162,10 @@ target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>  
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+
+if(DUMP_QJS_TOKEN)
+  target_compile_definitions(qjs PRIVATE DUMP_TOKEN)
+endif()
 
 if(EMSCRIPTEN)
     add_executable(qjs_wasm ${qjs_sources})
