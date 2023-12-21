@@ -40501,6 +40501,7 @@ static int getTimezoneOffset(int64_t time) {
 #else
     time_t ti;
     struct tm tm;
+
     time /= 1000; /* convert to seconds */
     if (sizeof(time_t) == 4) {
         /* on 32-bit systems, we need to clamp the time value to the
