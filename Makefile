@@ -76,13 +76,14 @@ test: $(QJS)
 	$(QJS) tests/test_worker.js
 	$(QJS) tests/test_queue_microtask.js
 	$(MAKE) test-col
+	$(MAKE) test-op_loc
 
 test-col: 
 	BUILD_TYPE=Debug DUMP_TOKEN=ON $(MAKE) -B
 	$(QJS) tests/test-col/run-tests.js
 
 test-op_loc: 
-	BUILD_TYPE=Debug DUMP_BYTECODE=2 $(MAKE) -B
+	BUILD_TYPE=Debug DUMP_TOKEN=OFF DUMP_BYTECODE=2 $(MAKE) -B
 	$(QJS) tests/test-op_loc/run-tests.js
 
 test262: $(QJS)
