@@ -25173,6 +25173,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
 
     default:
     hasexpr:
+        s->loc = LOC(s->token.line_num, s->token.col_num);
         if (js_parse_expr(s))
             goto fail;
         if (s->cur_func->eval_ret_idx >= 0) {

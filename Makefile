@@ -27,6 +27,7 @@
 BUILD_DIR=build
 BUILD_TYPE?=Release
 DUMP_TOKEN?=OFF
+DUMP_BYTECODE?=
 
 QJS=$(BUILD_DIR)/qjs
 RUN262=$(BUILD_DIR)/run-test262
@@ -45,7 +46,7 @@ endif
 all: $(QJS)
 
 $(BUILD_DIR):
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DDUMP_QJS_TOKEN=$(DUMP_TOKEN)
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DDUMP_QJS_TOKEN=$(DUMP_TOKEN) -DDUMP_QJS_BYTECODE=$(DUMP_BYTECODE)
 
 $(QJS): $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) -j $(JOBS)
@@ -79,6 +80,10 @@ test: $(QJS)
 test-col: 
 	BUILD_TYPE=Debug DUMP_TOKEN=ON $(MAKE) -B
 	$(QJS) tests/test-col/run-tests.js
+
+test-op_loc: 
+	BUILD_TYPE=Debug DUMP_BYTECODE=2 $(MAKE) -B
+	$(QJS) tests/test-op_loc/run-tests.js
 
 test262: $(QJS)
 	$(RUN262) -m -c test262.conf -a
