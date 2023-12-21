@@ -646,6 +646,17 @@ function test_regexp()
     assert(/{1a}/.toString(), "/{1a}/");
     a = /a{1+/.exec("a{11");
     assert(a, ["a{11"] );
+
+    eval("/[a-]/");  // accepted with no flag
+    eval("/[a-]/u"); // accepted with 'u' flag
+
+    let ex;
+    try {
+        eval("/[a-]/v"); // rejected with 'v' flag
+    } catch (_ex) {
+        ex = _ex;
+    }
+    assert(ex?.message, "invalid class range");
 }
 
 function test_symbol()

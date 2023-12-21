@@ -63,6 +63,7 @@ typedef enum {
 
 #define TMP_BUF_SIZE 128
 
+// invariant: is_unicode ^ unicode_sets (or neither, but not both)
 typedef struct {
     DynBuf byte_code;
     const uint8_t *buf_ptr;
@@ -70,6 +71,7 @@ typedef struct {
     const uint8_t *buf_start;
     int re_flags;
     BOOL is_unicode;
+    BOOL unicode_sets;
     BOOL ignore_case;
     BOOL dotall;
     int capture_count;
@@ -853,6 +855,8 @@ static int re_emit_range(REParseState *s, const CharRange *cr)
     return 0;
 }
 
+// s->unicode turns patterns like []] into syntax errors
+// s->unicode_sets turns more patterns into errors, like [a-] or [[]
 static int re_parse_char_class(REParseState *s, const uint8_t **pp)
 {
     const uint8_t *p;
@@ -864,17 +868,43 @@ static int re_parse_char_class(REParseState *s, const uint8_t **pp)
     cr_init(cr, s->opaque, lre_realloc);
     p = *pp;
     p++;    /* skip '[' */
+
+    if (s->unicode_sets) {
+        static const char verboten[] =
+            "()[{}/-|"                              "\0"
+            "&&!!##$$%%**++,,..::;;<<==>>??@@``~~"  "\0"
+            "^^^_^^";
+        const char *s = verboten;
+        int n = 1;
+        do {
+            if (!memcmp(s, p, n))
+                if (p[n] == ']')
+                    goto invalid_class_range;
+            s += n;
+            if (!*s) {
+                s++;
+                n++;
+            }
+        } while (n < 4);
+    }
+
     invert = FALSE;
     if (*p == '^') {
         p++;
         invert = TRUE;
     }
+
     for(;;) {
         if (*p == ']')
             break;
         c1 = get_class_atom(s, cr1, &p, TRUE);
         if ((int)c1 < 0)
             goto fail;
+        if (*p == '-' && p[1] == ']' && s->unicode_sets) {
+            if (c1 >= CLASS_RANGE_BASE)
+                cr_free(cr1);
+            goto invalid_class_range;
+        }
         if (*p == '-' && p[1] != ']') {
             const uint8_t *p0 = p + 1;
             if (c1 >= CLASS_RANGE_BASE) {
@@ -1843,6 +1873,7 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
     is_sticky = ((re_flags & LRE_FLAG_STICKY) != 0);
     s->ignore_case = ((re_flags & LRE_FLAG_IGNORECASE) != 0);
     s->dotall = ((re_flags & LRE_FLAG_DOTALL) != 0);
+    s->unicode_sets = ((re_flags & LRE_FLAG_UNICODE_SETS) != 0);
     s->capture_count = 1;
     s->total_capture_count = -1;
     s->has_named_captures = -1;

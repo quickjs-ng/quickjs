@@ -37,8 +37,8 @@
 #define LRE_FLAG_UNICODE    (1 << 4)
 #define LRE_FLAG_STICKY     (1 << 5)
 #define LRE_FLAG_INDICES    (1 << 6) /* Unused by libregexp, just recorded. */
-
 #define LRE_FLAG_NAMED_GROUPS (1 << 7) /* named groups are present in the regexp */
+#define LRE_FLAG_UNICODE_SETS (1 << 8)
 
 uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
                      const char *buf, size_t buf_len, int re_flags,
