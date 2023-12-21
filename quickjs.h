@@ -246,6 +246,7 @@ static inline JS_BOOL JS_VALUE_IS_NAN(JSValue v)
 
 #define JS_PROP_NO_ADD           (1 << 16) /* internal use */
 #define JS_PROP_NO_EXOTIC        (1 << 17) /* internal use */
+#define JS_PROP_DEFINE_PROPERTY  (1 << 18) /* internal use */
 
 #define JS_DEFAULT_STACK_SIZE (256 * 1024)
 
@@ -587,7 +588,7 @@ static inline JSValue JS_DupValue(JSContext *ctx, JSValue v)
         JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
         p->ref_count++;
     }
-    return (JSValue)v;
+    return v;
 }
 
 static inline JSValue JS_DupValueRT(JSRuntime *rt, JSValue v)
@@ -596,7 +597,7 @@ static inline JSValue JS_DupValueRT(JSRuntime *rt, JSValue v)
         JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
         p->ref_count++;
     }
-    return (JSValue)v;
+    return v;
 }
 
 JS_EXTERN int JS_ToBool(JSContext *ctx, JSValue val); /* return -1 for JS_EXCEPTION */
@@ -811,7 +812,7 @@ JS_EXTERN uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValue obj,
                                    int flags, uint8_t ***psab_tab, size_t *psab_tab_len);
 
 #define JS_READ_OBJ_BYTECODE  (1 << 0) /* allow function/module */
-#define JS_READ_OBJ_ROM_DATA  (1 << 1) /* avoid duplicating 'buf' data */
+#define JS_READ_OBJ_ROM_DATA  (0)      /* avoid duplicating 'buf' data (obsolete, broken by ICs) */
 #define JS_READ_OBJ_SAB       (1 << 2) /* allow SharedArrayBuffer */
 #define JS_READ_OBJ_REFERENCE (1 << 3) /* allow object references */
 JS_EXTERN JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len, int flags);
@@ -979,7 +980,7 @@ JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 /* Version */
 
 #define QJS_VERSION_MAJOR 0
-#define QJS_VERSION_MINOR 3
+#define QJS_VERSION_MINOR 4
 #define QJS_VERSION_PATCH 0
 #define QJS_VERSION_SUFFIX "dev"
 

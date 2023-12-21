@@ -129,7 +129,7 @@ int dbuf_realloc(DynBuf *s, size_t new_size)
     return 0;
 }
 
-int dbuf_write(DynBuf *s, size_t offset, const uint8_t *data, size_t len)
+int dbuf_write(DynBuf *s, size_t offset, const void *data, size_t len)
 {
     size_t end;
     end = offset + len;
@@ -141,7 +141,7 @@ int dbuf_write(DynBuf *s, size_t offset, const uint8_t *data, size_t len)
     return 0;
 }
 
-int dbuf_put(DynBuf *s, const uint8_t *data, size_t len)
+int dbuf_put(DynBuf *s, const void *data, size_t len)
 {
     if (unlikely((s->size + len) > s->allocated_size)) {
         if (dbuf_realloc(s, s->size + len))

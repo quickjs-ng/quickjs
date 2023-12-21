@@ -24,6 +24,62 @@ function test_function_source_pos() // line 18, column 1
     assert(`${f.lineNumber}:${f.columnNumber}`, "1:1");
 }
 
+// Keep this at the top; it tests source positions.
+function test_exception_prepare_stack()
+{
+    var e;
+
+    Error.prepareStackTrace = (_, frames) => {
+        // Just return the array to check.
+        return frames;
+    };
+
+    try {
+        throw new Error(""); // line 38, column 19
+    } catch(_e) {
+        e = _e;
+    }
+
+    assert(e.stack.length === 2);
+    const f = e.stack[0];
+    assert(f.getFunctionName() === 'test_exception_prepare_stack');
+    assert(f.getFileName() === 'tests/test_builtin.js');
+    assert(f.getLineNumber() === 38);
+    assert(f.getColumnNumber() === 19);
+    assert(!f.isNative());
+
+    Error.prepareStackTrace = undefined;
+}
+
+// Keep this at the top; it tests source positions.
+function test_exception_stack_size_limit()
+{
+    var e;
+
+    Error.stackTraceLimit = 1;
+    Error.prepareStackTrace = (_, frames) => {
+        // Just return the array to check.
+        return frames;
+    };
+
+    try {
+        throw new Error(""); // line 66, column 19
+    } catch(_e) {
+        e = _e;
+    }
+
+    assert(e.stack.length === 1);
+    const f = e.stack[0];
+    assert(f.getFunctionName() === 'test_exception_stack_size_limit');
+    assert(f.getFileName() === 'tests/test_builtin.js');
+    assert(f.getLineNumber() === 66);
+    assert(f.getColumnNumber() === 19);
+    assert(!f.isNative());
+
+    Error.stackTraceLimit = 10;
+    Error.prepareStackTrace = undefined;
+}
+
 function assert(actual, expected, message) {
     if (arguments.length == 1)
         expected = true;
@@ -722,6 +778,18 @@ function test_generator()
         assert(ret, "ret_val");
         return 3;
     }
+    function *f3() {
+        var ret;
+        /* test stack consistency with nip_n to handle yield return +
+         * finally clause */
+        try {
+            ret = 2 + (yield 1);
+        } catch(e) {
+        } finally {
+            ret++;
+        }
+        return ret;
+    }
     var g, v;
     g = f();
     v = g.next();
@@ -742,6 +810,12 @@ function test_generator()
     assert(v.value === 3 && v.done === true);
     v = g.next();
     assert(v.value === undefined && v.done === true);
+
+    g = f3();
+    v = g.next();
+    assert(v.value === 1 && v.done === false);
+    v = g.next(3);
+    assert(v.value === 6 && v.done === true);
 }
 
 /* CVE-2023-31922 */
@@ -783,3 +857,5 @@ test_generator();
 test_proxy_is_array();
 test_exception_source_pos();
 test_function_source_pos();
+test_exception_prepare_stack();
+test_exception_stack_size_limit();

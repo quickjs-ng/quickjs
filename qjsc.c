@@ -305,6 +305,7 @@ static const char main_c_template1[] =
 static const char main_c_template2[] =
     "  js_std_loop(ctx);\n"
     "  JS_FreeContext(ctx);\n"
+    "  js_std_free_handlers(rt);\n"
     "  JS_FreeRuntime(rt);\n"
     "  return 0;\n"
     "}\n";

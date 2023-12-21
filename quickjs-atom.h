@@ -79,9 +79,6 @@ DEF(await, "await")
 DEF(empty_string, "")
 /* identifiers */
 DEF(length, "length")
-DEF(fileName, "fileName")
-DEF(lineNumber, "lineNumber")
-DEF(columnNumber, "columnNumber")
 DEF(message, "message")
 DEF(cause, "cause")
 DEF(errors, "errors")
@@ -239,6 +236,7 @@ DEF(SyntaxError, "SyntaxError")
 DEF(TypeError, "TypeError")
 DEF(URIError, "URIError")
 DEF(InternalError, "InternalError")
+DEF(CallSite, "CallSite")
 /* private symbols */
 DEF(Private_brand, "<brand>")
 /* symbols */
