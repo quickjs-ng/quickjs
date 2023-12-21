@@ -65,7 +65,9 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
 endif()
 
 check_struct_has_member("struct tm" tm_gmtoff "time.h" HAVE_TM_GMTOFF LANGUAGE C)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/config.h)
+if(HAVE_TM_GMTOFF)
+    add_compile_definitions(HAVE_TM_GMTOFF)
+endif()
 
 macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
     option(${OPTION_NAME} ${OPTION_TEXT} ${OPTION_DEFAULT})

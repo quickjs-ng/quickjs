@@ -5,4 +5,3 @@
 build/
 unicode/
 test262_*.txt
-config.h
