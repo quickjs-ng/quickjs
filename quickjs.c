@@ -30,7 +30,6 @@
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
-#include <sys/_types/_intptr_t.h>
 #if !defined(_MSC_VER)
 #include <sys/time.h>
 #endif
@@ -19410,6 +19409,7 @@ static __exception int json_next_token(JSParseState *s)
         }
         /* fall thru */
     case '\n':
+        p++;
         s->line_num++;
         s->col_num = 1;
         s->over_cols = 0;
