@@ -14,13 +14,10 @@ const cwd = import.meta.url
   .slice(0, -"run-tests.js".length - 1);
 const proj = `${cwd}/../..`;
 
-// 1. build qjs by turn on the flag `QJS_DUMP_TOKEN` which will print
+// 1. build qjs by turn on the flag `DUMP_QJS_TOKEN` which will print
 //    token info in stdout
 // 2. add/modify the tests under the subdirectories
-// 3. include test by using `test(TEST_CASE)` form where the `TEST_CASE`
-//    comes from the relative path of the test file
-// 4. the test file is self-included, that means it consists of the test stuff
-//    and their excepted output:
+// 3. the test file is self-included, that means it consists of the test rules:
 //
 //    ```
 //    /* EXCEPT(NAME_OF_THIS_CAST):
