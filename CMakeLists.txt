@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.9)
 project(quickjs LANGUAGES C)
 
 include(CheckCCompilerFlag)
+include(CheckStructHasMember)
 include(GNUInstallDirs)
 
 # TODO:
@@ -62,6 +63,9 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
     xcheck_add_c_compiler_flag(-ggdb)
     xcheck_add_c_compiler_flag(-fno-omit-frame-pointer)
 endif()
+
+check_struct_has_member("struct tm" tm_gmtoff "time.h" HAVE_TM_GMTOFF LANGUAGE C)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/config.h)
 
 macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
     option(${OPTION_NAME} ${OPTION_TEXT} ${OPTION_DEFAULT})

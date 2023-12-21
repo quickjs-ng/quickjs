@@ -42,6 +42,7 @@
 #include "quickjs.h"
 #include "libregexp.h"
 #include "libbf.h"
+#include "config.h"
 
 #if defined(EMSCRIPTEN) || defined(_MSC_VER)
 #define DIRECT_DISPATCH  0
@@ -40500,7 +40501,6 @@ static int getTimezoneOffset(int64_t time) {
 #else
     time_t ti;
     struct tm tm;
-    struct tm gmt;
     time /= 1000; /* convert to seconds */
     if (sizeof(time_t) == 4) {
         /* on 32-bit systems, we need to clamp the time value to the
@@ -40524,12 +40524,17 @@ static int getTimezoneOffset(int64_t time) {
     }
     ti = time;
     localtime_r(&ti, &tm);
+#ifdef HAVE_TM_GMTOFF
+    return -tm.tm_gmtoff / 60;
+#else
+    struct tm gmt;
     gmtime_r(&ti, &gmt);
 
     /* adjust the gmt struct to represent local time */
     gmt.tm_isdst = tm.tm_isdst;
 
     return difftime(mktime(&gmt), mktime(&tm)) / 60;
+#endif /* HAVE_TM_GMTOFF */
 #endif
 }
 
