@@ -11,11 +11,12 @@ for (let a = 1, b, c;
 */
 
 /* EXPECT(a < 10):
+        source_loc 3:3
         get_loc_check 1: a
         push_i32 10
         lt
         source_loc 3:3
-        if_false 3:168
+        if_false 3:186
 */
 
 /* EXPECT(a++):

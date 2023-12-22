@@ -1,6 +1,8 @@
 import * as std from "std";
 import * as os from "os";
 
+const isWin = os.platform === "win32";
+
 function extractExpect(code) {
   const matches = code.matchAll(/\/\* EXPECT\((.*?)\):\n([\s\S]*?)\*\//gm);
   return [...matches].map((m) => ({
@@ -57,25 +59,28 @@ function test(name) {
   }
 }
 
-test("literal_arr");
-test("literal_obj");
-test("expr_call");
-test("vardec_basic");
-test("vardec_destruct");
-test("class_ctor");
-test("class_method");
-test("class_prop_init");
-test("class_call_private");
-test("if_basic");
-test("for_basic");
-test("forin_basic");
-test("forin_destruct");
-test("forof_basic");
-test("forof_destruct");
-test("forof_await");
-test("while_basic");
-test("dowhile");
-test("break");
-test("continue");
-test("return");
-test("switch");
+// the tests depends on `os.pipe` which does not exists on win
+if (!isWin) {
+  test("literal_arr");
+  test("literal_obj");
+  test("expr_call");
+  test("vardec_basic");
+  test("vardec_destruct");
+  test("class_ctor");
+  test("class_method");
+  test("class_prop_init");
+  test("class_call_private");
+  test("if_basic");
+  test("for_basic");
+  test("forin_basic");
+  test("forin_destruct");
+  test("forof_basic");
+  test("forof_destruct");
+  test("forof_await");
+  test("while_basic");
+  test("dowhile");
+  test("break");
+  test("continue");
+  test("return");
+  test("switch");
+}

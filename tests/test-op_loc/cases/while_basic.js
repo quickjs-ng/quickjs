@@ -12,8 +12,9 @@ while (a > b) {
 */
 
 /* EXPECT(a > b):
+        source_loc 4:12
         get_var b
         gt
         source_loc 4:8
-        if_false 3:129
+        if_false 3:147
 */

@@ -6314,6 +6314,10 @@ static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
     unsigned int op;
 
     *col = 1;
+    if (b->pc2line_buf == NULL) {
+        return b->line_num;
+    }
+
     p = b->pc2line_buf;
     p_end = p + b->pc2line_len;
     pc = 0;
@@ -18402,7 +18406,7 @@ int __attribute__((format(printf, 2, 3))) js_parse_error(JSParseState *s, const 
     if (s->cur_func && s->cur_func->backtrace_barrier)
         backtrace_flags = JS_BACKTRACE_FLAG_SINGLE_LEVEL;
     build_backtrace(ctx, ctx->rt->current_exception, s->filename,
-                    s->line_num, s->col_num, backtrace_flags);
+                    s->line_num, s->last_col_num, backtrace_flags);
     return -1;
 }
 
@@ -22555,6 +22559,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             JSValue val;
             val = s->token.u.num.val;
 
+            s->loc = 0;
             if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
                 emit_op(s, OP_push_i32);
                 emit_u32(s, JS_VALUE_GET_INT(val));
@@ -22571,6 +22576,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             return -1;
         break;
     case TOK_STRING:
+        s->loc = 0;
         if (emit_push_const(s, s->token.u.str.str, 1))
             return -1;
         if (next_token(s))
@@ -23052,6 +23058,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     emit_u16(s, arg_count);
                     break;
                 case OP_eval:
+                    s->loc = loc;
                     emit_op(s, OP_eval);
                     emit_u16(s, arg_count);
                     emit_u16(s, fd->scope_level);
@@ -23220,6 +23227,7 @@ static __exception int js_parse_delete(JSParseState *s)
 static __exception int js_parse_unary(JSParseState *s, int parse_flags)
 {
     int op;
+    s->loc = LOC(s->token.line_num, s->token.col_num);
 
     switch(s->token.val) {
     case '+':

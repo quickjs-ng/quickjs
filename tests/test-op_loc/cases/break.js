@@ -8,5 +8,5 @@ outer: while (a > 1) {
 
 /* EXPECT(outer):
         source_loc 5:5
-        goto 2:128
+        goto 2:146
 */
