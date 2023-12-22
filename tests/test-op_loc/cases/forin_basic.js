@@ -18,7 +18,7 @@ for (const a in b) {
         push_i32 2
         add
         source_loc 3:8
-        label 5:103
-  103:  insert3
+        label 5:112
+  112:  insert3
         put_ref_value
 */

@@ -20,12 +20,13 @@ switch (a) {
 
 /* EXPECT(break b):
         source_loc 8:5
-        goto 1:175
+        goto 1:193
 */
 
 /* EXPECT(default):
         source_loc 10:5
         get_var print
+        source_loc 10:11
         get_var a
         source_loc 10:10
         call 1

@@ -6,7 +6,9 @@ if (print(a)) {
 }
 
 /* EXPECT(print(a)):
+        source_loc 3:5
         get_var print
+        source_loc 3:11
         get_var a
         source_loc 3:10
         call 1

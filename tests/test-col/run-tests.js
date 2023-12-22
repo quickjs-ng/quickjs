@@ -1,6 +1,8 @@
 import * as std from "std";
 import * as os from "os";
 
+const isWin = os.platform === "win32";
+
 function extractExpect(code) {
   const matches = code.matchAll(/\/\* EXPECT\((.*?)\):\n([\s\S]*?)\*\//gm);
   return [...matches].map((m) => ({
@@ -57,20 +59,23 @@ function test(name) {
   }
 }
 
-test("unicode");
-test("expr_basic");
-test("vardec_basic");
-test("vardec_destruct");
-test("if_basic");
-test("for_basic");
-test("forin_basic");
-test("forin_destruct");
-test("forof_basic");
-test("forof_destruct");
-test("while_basic");
-test("dowhile");
-test("break");
-test("continue");
-test("return");
-test("throw");
-test("switch");
+// the tests depends on `os.pipe` which does not exists on win
+if (!isWin) {
+  test("unicode");
+  test("expr_basic");
+  test("vardec_basic");
+  test("vardec_destruct");
+  test("if_basic");
+  test("for_basic");
+  test("forin_basic");
+  test("forin_destruct");
+  test("forof_basic");
+  test("forof_destruct");
+  test("while_basic");
+  test("dowhile");
+  test("break");
+  test("continue");
+  test("return");
+  test("throw");
+  test("switch");
+}
