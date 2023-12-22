@@ -26,11 +26,7 @@ test262/test/language/expressions/function/static-init-await-binding.js:16: stri
 test262/test/language/expressions/generators/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/generators/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:21: TypeError: cannot read property 'c' of undefined
-test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:15: strict mode: TypeError: cannot read property '_b' of undefined
+test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:16: strict mode: TypeError: cannot read property '_b' of undefined
 test262/test/language/global-code/script-decl-lex-var-declared-via-eval-sloppy.js:13: Test262Error: variable Expected a SyntaxError to be thrown but no exception was thrown at all
-test262/test/language/statements/async-generator/yield-star-promise-not-unwrapped.js:25: TypeError: $DONE() not called
-test262/test/language/statements/async-generator/yield-star-promise-not-unwrapped.js:25: strict mode: TypeError: $DONE() not called
-test262/test/language/statements/async-generator/yield-star-return-then-getter-ticks.js:131: TypeError: $DONE() not called
-test262/test/language/statements/async-generator/yield-star-return-then-getter-ticks.js:131: strict mode: TypeError: $DONE() not called
 test262/test/language/statements/for-of/head-lhs-async-invalid.js:14: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/statements/for-of/head-lhs-async-invalid.js:14: strict mode: unexpected error type: Test262: This statement should not be evaluated.
