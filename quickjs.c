@@ -61,8 +61,6 @@
 #endif
 
 #if defined(__NEWLIB__)
-/* undefine if `struct tm` does not contain `tm_gmtoff` property */
-/* this can also be configured through `cmake -DHAVE_TM_GMTOFF=OFF  */
 #undef HAVE_TM_GMTOFF
 #endif
 
