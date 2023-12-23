@@ -61,9 +61,9 @@
 #endif
 
 #if defined(__NEWLIB__)
-/* define if `struct tm` does not contain `tm_gmtoff` property */
-/* this can also be enabled through `cmake -DCONFIG_TM_GMTOFF=OFF  */
-#define NO_TM_GMTOFF
+/* undefine if `struct tm` does not contain `tm_gmtoff` property */
+/* this can also be configured through `cmake -DHAVE_TM_GMTOFF=OFF  */
+#undef HAVE_TM_GMTOFF
 #endif
 
 /* dump object free */
@@ -40530,7 +40530,9 @@ static int getTimezoneOffset(int64_t time) {
     }
     ti = time;
     localtime_r(&ti, &tm);
-#ifdef NO_TM_GMTOFF
+#ifdef HAVE_TM_GMTOFF
+    return -tm.tm_gmtoff / 60;
+#else
     struct tm gmt;
     gmtime_r(&ti, &gmt);
 
@@ -40538,9 +40540,7 @@ static int getTimezoneOffset(int64_t time) {
     tm.tm_isdst = 0;
 
     return difftime(mktime(&gmt), mktime(&tm)) / 60;
-#else
-    return -tm.tm_gmtoff / 60;
-#endif /* NO_TM_GMTOFF */
+#endif /* HAVE_TM_GMTOFF */
 #endif
 }
 

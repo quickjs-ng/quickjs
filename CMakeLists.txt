@@ -86,11 +86,7 @@ xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
 xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
 xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
-xoption(CONFIG_TM_GMTOFF "Enable when `tm_gmtoff` exists on `struct tm` " ON)
-
-if(NOT CONFIG_TM_GMTOFF)
-    add_compile_definitions(NO_TM_GMTOFF)
-endif()
+xoption(HAVE_TM_GMTOFF "Enable when `tm_gmtoff` exists on `struct tm` " ON)
 
 if(CONFIG_ASAN)
 message(STATUS "Building with ASan")
