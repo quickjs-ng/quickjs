@@ -60,7 +60,7 @@
 #define CONFIG_PRINTF_RNDN
 #endif
 
-#if defined(_NEWLIB_STDIO_H)
+#if defined(__NEWLIB__)
 /* define if `struct tm` does not contain `tm_gmtoff` property */
 /* this can also be enabled through `cmake -DCONFIG_TM_GMTOFF=OFF  */
 #define NO_TM_GMTOFF
