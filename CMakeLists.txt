@@ -64,11 +64,6 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
     xcheck_add_c_compiler_flag(-fno-omit-frame-pointer)
 endif()
 
-check_struct_has_member("struct tm" tm_gmtoff "time.h" HAVE_TM_GMTOFF LANGUAGE C)
-if(HAVE_TM_GMTOFF)
-    add_compile_definitions(HAVE_TM_GMTOFF)
-endif()
-
 macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
     option(${OPTION_NAME} ${OPTION_TEXT} ${OPTION_DEFAULT})
     if(DEFINED ENV{${OPTION_NAME}})
@@ -91,6 +86,11 @@ xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
 xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
 xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
+xoption(CONFIG_TM_GMTOFF "Enable when `tm_gmtoff` exists on `struct tm` " ON)
+
+if(NOT CONFIG_TM_GMTOFF)
+    add_compile_definitions(NO_TM_GMTOFF)
+endif()
 
 if(CONFIG_ASAN)
 message(STATUS "Building with ASan")
