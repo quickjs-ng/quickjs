@@ -61,7 +61,7 @@
 #endif
 
 #if defined(__NEWLIB__)
-#undef NO_TM_GMTOFF
+#define NO_TM_GMTOFF
 #endif
 
 /* dump object free */
