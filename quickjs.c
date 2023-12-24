@@ -60,6 +60,10 @@
 #define CONFIG_PRINTF_RNDN
 #endif
 
+#if defined(__NEWLIB__)
+#define NO_TM_GMTOFF
+#endif
+
 /* dump object free */
 //#define DUMP_FREE
 //#define DUMP_CLOSURE
@@ -40685,7 +40689,17 @@ static int getTimezoneOffset(int64_t time) {
     }
     ti = time;
     localtime_r(&ti, &tm);
+#ifdef NO_TM_GMTOFF
+    struct tm gmt;
+    gmtime_r(&ti, &gmt);
+
+    /* disable DST adjustment on the local tm struct */
+    tm.tm_isdst = 0;
+
+    return difftime(mktime(&gmt), mktime(&tm)) / 60;
+#else
     return -tm.tm_gmtoff / 60;
+#endif /* NO_TM_GMTOFF */
 #endif
 }
 
