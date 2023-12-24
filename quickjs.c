@@ -61,7 +61,7 @@
 #endif
 
 #if defined(__NEWLIB__)
-#undef HAVE_TM_GMTOFF
+#undef NO_TM_GMTOFF
 #endif
 
 /* dump object free */
@@ -40528,9 +40528,7 @@ static int getTimezoneOffset(int64_t time) {
     }
     ti = time;
     localtime_r(&ti, &tm);
-#ifdef HAVE_TM_GMTOFF
-    return -tm.tm_gmtoff / 60;
-#else
+#ifdef NO_TM_GMTOFF
     struct tm gmt;
     gmtime_r(&ti, &gmt);
 
@@ -40538,7 +40536,9 @@ static int getTimezoneOffset(int64_t time) {
     tm.tm_isdst = 0;
 
     return difftime(mktime(&gmt), mktime(&tm)) / 60;
-#endif /* HAVE_TM_GMTOFF */
+#else
+    return -tm.tm_gmtoff / 60;
+#endif /* NO_TM_GMTOFF */
 #endif
 }
 
