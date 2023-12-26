@@ -29797,8 +29797,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 int argc;
                 argc = get_u16(bc_buf + pos + 1);
                 if (code_match(&cc, pos_next, OP_return, -1)) {
-                    if (cc.loc != 0)
-                        loc = cc.loc;
+                    /* do not reset loc to cc.loc to keep reporting 
+                       the origin callsite */
                     RESOLVE_LOC();
                     add_pc2line_info(s, bc_out.size, loc);
                     put_short_code(&bc_out, op + 1, argc);
