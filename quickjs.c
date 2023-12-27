@@ -23716,9 +23716,38 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
         if (get_lvalue(s, &opcode, &scope, &name, &label, NULL, (op != '='), op) < 0)
             return -1;
 
+        // comply with rather obtuse evaluation order of computed properties:
+        // obj[key]=val evaluates val->obj->key when obj is null/undefined
+        // but key->obj->val when an object
+        // FIXME(bnoordhuis) less stack shuffling; don't to_propkey twice in
+        // happy path; replace `dup is_undefined_or_null if_true` with new
+        // opcode if_undefined_or_null? replace `swap dup` with over?
+        if (op == '=' && opcode == OP_get_array_el) {
+            int label_next = -1;
+            JSFunctionDef *fd = s->cur_func;
+            assert(OP_to_propkey2 == fd->byte_code.buf[fd->last_opcode_pos]);
+            fd->byte_code.size = fd->last_opcode_pos;
+            fd->last_opcode_pos = -1;
+            emit_op(s, OP_swap); // obj key -> key obj
+            emit_op(s, OP_dup);
+            emit_op(s, OP_is_undefined_or_null);
+            label_next = emit_goto(s, OP_if_true, -1);
+            emit_op(s, OP_swap);
+            emit_op(s, OP_to_propkey);
+            emit_op(s, OP_swap);
+            emit_label(s, label_next);
+            emit_op(s, OP_swap);
+        }
+
         if (js_parse_assign_expr2(s, parse_flags)) {
             JS_FreeAtom(s->ctx, name);
             return -1;
+        }
+
+        if (op == '=' && opcode == OP_get_array_el) {
+            emit_op(s, OP_swap); // obj key val -> obj val key
+            emit_op(s, OP_to_propkey);
+            emit_op(s, OP_swap);
         }
 
         if (op == '=') {
