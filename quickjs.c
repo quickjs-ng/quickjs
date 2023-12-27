@@ -18257,17 +18257,19 @@ typedef struct JSParseState {
     const uint8_t *last_ptr;
     const uint8_t *buf_ptr;
     const uint8_t *buf_end;
-    intptr_t over_cols; /* number of the over read columns introduced by unicodes */
     /* current function code */
     JSFunctionDef *cur_func;
     BOOL is_module; /* parsing a module */
     BOOL allow_html_comments;
 } JSParseState;
 
-#define advance_col(s, cur_ofst, last_ofst)                                    \
+#define advance_col(s, ofst)                                                   \
     do {                                                                       \
-        s->col_num += (intptr_t)cur_ofst - (intptr_t)last_ofst - s->over_cols; \
-        s->over_cols = 0;                                                      \
+        const uint8_t *tp = s->token.ptr;                                      \
+        while (tp < p) {                                                       \
+            unicode_from_utf8(tp, UTF8_CHAR_LEN_MAX, &tp);                     \
+            s->col_num += 1;                                                   \
+        }                                                                      \
     } while(0)
 
 typedef struct JSOpCode {
@@ -18476,12 +18478,10 @@ static __exception int js_parse_template_part(JSParseState *s,
         }
         if (c == '\n') {
             s->line_num++;
-            s->col_num = 1;
-            s->over_cols = 0;
+            s->col_num = 1; 
         } else if (c >= 0x80) {
             const uint8_t *p_next;
             c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            s->over_cols += (intptr_t)p_next - (intptr_t)(p - 1) - 1;
             if (c > 0x10FFFF) {
                 js_parse_error(s, "invalid UTF-8 sequence");
                 goto fail;
@@ -18568,8 +18568,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 p++;
                 if (sep != '`') {
                     s->line_num++;
-                    s->col_num = 1;
-                    s->over_cols = 0;
+                    s->col_num = 1; 
                 }
                 continue;
             default:
@@ -18594,8 +18593,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     }
                 } else if (c >= 0x80) {
                     const uint8_t *p_next;
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
-                    s->over_cols += (intptr_t)p_next - (intptr_t)p - 1;
+                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next); 
                     if (c > 0x10FFFF) {
                         goto invalid_utf8;
                     }
@@ -18622,8 +18620,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
             }
         } else if (c >= 0x80) {
             const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            s->over_cols += (intptr_t)p_next - (intptr_t)(p - 1) - 1;
+            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next); 
             if (c > 0x10FFFF)
                 goto invalid_utf8;
             p = p_next;
@@ -18696,8 +18693,7 @@ static __exception int js_parse_regexp(JSParseState *s)
                 goto eof_error;
             else if (c >= 0x80) {
                 const uint8_t *p_next;
-                c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-                s->over_cols += (intptr_t)p_next - (intptr_t)(p - 1) - 1;
+                c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next); 
                 if (c > 0x10FFFF) {
                     goto invalid_utf8;
                 }
@@ -18707,8 +18703,7 @@ static __exception int js_parse_regexp(JSParseState *s)
             }
         } else if (c >= 0x80) {
             const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            s->over_cols += (intptr_t)p_next - (intptr_t)(p - 1) - 1;
+            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next); 
             if (c > 0x10FFFF) {
             invalid_utf8:
                 js_parse_error(s, "invalid UTF-8 sequence");
@@ -18732,7 +18727,6 @@ static __exception int js_parse_regexp(JSParseState *s)
         c = *p_next++;
         if (c >= 0x80) {
             c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
-            s->over_cols += (intptr_t)p_next - (intptr_t)p - 1;
             if (c > 0x10FFFF) {
                 goto invalid_utf8;
             }
@@ -18750,7 +18744,7 @@ static __exception int js_parse_regexp(JSParseState *s)
     s->token.line_num = s->line_num;
     s->token.col_num = s->col_num;
     s->buf_ptr = p;
-    advance_col(s, p, s->token.ptr);
+    advance_col(s, p);
     return 0;
  fail:
     string_buffer_free(b);
@@ -18814,7 +18808,6 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
             *pident_has_escape = TRUE;
         } else if (c >= 128) {
             c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
-            s->over_cols += (intptr_t)p1 - (intptr_t)p - 1;
         }
         if (!lre_js_is_ident_next(c))
             break;
@@ -18886,7 +18879,6 @@ static __exception int next_token(JSParseState *s)
         s->got_lf = TRUE;
         s->line_num++;
         s->col_num = 1;
-        s->over_cols = 0;
         goto redo;
     case '\f':
     case '\v':
@@ -18911,18 +18903,16 @@ static __exception int next_token(JSParseState *s)
                 }
                 if (*p == '\n') {
                     s->line_num++;
-                    s->col_num = 1;
-                    s->over_cols = 0;
+                    s->col_num = 1; 
                     s->got_lf = TRUE; /* considered as LF for ASI */
                     p++;
-                    p2 = p;
+                    s->token.ptr = p;
                 } else if (*p == '\r') {
                     s->got_lf = TRUE; /* considered as LF for ASI */
                     p++;
                 } else if (*p >= 0x80) {
                     p1 = p;
                     c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-                    s->over_cols += (intptr_t)p - (intptr_t)p1 - 1;
                     if (c == CP_LS || c == CP_PS) {
                         s->got_lf = TRUE; /* considered as LF for ASI */
                     } else if (c == -1) {
@@ -18932,7 +18922,7 @@ static __exception int next_token(JSParseState *s)
                     p++;
                 }
             }
-            advance_col(s, p, p2);
+            advance_col(s, p);
             goto redo;
         } else if (p[1] == '/') {
             const uint8_t *p1;
@@ -18947,7 +18937,6 @@ static __exception int next_token(JSParseState *s)
                 if (*p >= 0x80) {
                     p1 = p;
                     c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-                    s->over_cols += (intptr_t)p1 - (intptr_t)p - 1;
                     /* LS or PS are considered as line terminator */
                     if (c == CP_LS || c == CP_PS) {
                         break;
@@ -18958,7 +18947,7 @@ static __exception int next_token(JSParseState *s)
                     p++;
                 }
             }
-            advance_col(s, p, s->token.ptr);
+            advance_col(s, p);
             goto redo;
         } else if (p[1] == '=') {
             p += 2;
@@ -19050,7 +19039,6 @@ static __exception int next_token(JSParseState *s)
                 c = lre_parse_escape(&p1, TRUE);
             } else if (c >= 128) {
                 c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
-                s->over_cols += (intptr_t)p1 - (intptr_t)p - 1;
             }
             if (!lre_js_is_ident_first(c)) {
                 js_parse_error(s, "invalid first character of private name");
@@ -19298,7 +19286,6 @@ static __exception int next_token(JSParseState *s)
             /* unicode value */
             const uint8_t *p1 = p;
             c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-            s->over_cols += (intptr_t)p1 - (intptr_t)p - 1;
             switch(c) {
             case CP_PS:
             case CP_LS:
@@ -19307,7 +19294,7 @@ static __exception int next_token(JSParseState *s)
                 goto line_terminator;
             default:
                 if (lre_is_space(c)) {
-                    advance_col(s, p, s->token.ptr);
+                    advance_col(s, p);
                     goto redo;
                 } else if (lre_js_is_ident_first(c)) {
                     ident_has_escape = FALSE;
@@ -19324,7 +19311,7 @@ static __exception int next_token(JSParseState *s)
         break;
     }
 
-    advance_col(s, p, s->token.ptr);
+    advance_col(s, p);
     s->buf_ptr = p;
 
 #ifdef DUMP_TOKEN
@@ -19416,7 +19403,6 @@ static __exception int json_next_token(JSParseState *s)
         p++;
         s->line_num++;
         s->col_num = 1;
-        s->over_cols = 0;
         goto redo;
     case '\f':
     case '\v':
@@ -19492,7 +19478,7 @@ static __exception int json_next_token(JSParseState *s)
         break;
     }
 
-    advance_col(s, p, s->token.ptr);
+    advance_col(s, p);
     s->buf_ptr = p;
 
 #ifdef DUMP_TOKEN
@@ -20524,7 +20510,6 @@ typedef struct JSParsePos {
     int col_num;
     BOOL got_lf;
     const uint8_t *ptr;
-    intptr_t over_cols;
 } JSParsePos;
 
 static int js_parse_get_pos(JSParseState *s, JSParsePos *sp)
@@ -20534,7 +20519,6 @@ static int js_parse_get_pos(JSParseState *s, JSParsePos *sp)
     sp->line_num = s->token.line_num;
     sp->col_num = s->token.col_num;
     sp->ptr = s->token.ptr;
-    sp->over_cols = s->over_cols;
     sp->got_lf = s->got_lf;
     return 0;
 }
@@ -20546,7 +20530,6 @@ static __exception int js_parse_seek_token(JSParseState *s, const JSParsePos *sp
     s->line_num = sp->line_num;
     s->col_num = sp->col_num;
     s->buf_ptr = sp->ptr;
-    s->over_cols = sp->over_cols;
     s->token.ptr = sp->ptr;
     s->got_lf = sp->got_lf;
     return next_token(s);
@@ -31868,7 +31851,6 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->loc = 0;
     s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
-    s->over_cols = 0;
     s->token.val = ' ';
     s->token.line_num = 1;
     s->token.col_num = 1;
@@ -31925,7 +31907,6 @@ static void skip_shebang(JSParseState *s)
             } else if (*p >= 0x80) {
                 p1 = p;
                 c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-                s->over_cols += (intptr_t)p - (intptr_t)p1 - 1;
                 if (c == CP_LS || c == CP_PS) {
                     break;
                 } else if (c == -1) {
