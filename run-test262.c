@@ -820,6 +820,19 @@ static JSModuleDef *js_module_loader_test(JSContext *ctx,
     uint8_t *buf;
     JSModuleDef *m;
     JSValue func_val;
+    char *filename, *slash, path[1024];
+
+    // interpret import("bar.js") from path/to/foo.js as
+    // import("path/to/bar.js") but leave import("./bar.js") untouched
+    filename = opaque;
+    if (!strchr(module_name, '/')) {
+        slash = strrchr(filename, '/');
+        if (slash) {
+            snprintf(path, sizeof(path), "%.*s/%s",
+                     (int) (slash - filename), filename, module_name);
+            module_name = path;
+        }
+    }
 
     buf = js_load_file(ctx, &buf_len, module_name);
     if (!buf) {
@@ -1555,7 +1568,7 @@ int run_test_buf(const char *filename, char *harness, namelist_t *ip,
     JS_SetCanBlock(rt, can_block);
 
     /* loader for ES6 modules */
-    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader_test, NULL);
+    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader_test, (void *) filename);
 
     add_helpers(ctx);
 
@@ -1851,7 +1864,7 @@ int run_test262_harness_test(const char *filename, BOOL is_module)
     JS_SetCanBlock(rt, can_block);
 
     /* loader for ES6 modules */
-    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader_test, NULL);
+    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader_test, (void *) filename);
 
     add_helpers(ctx);
 
