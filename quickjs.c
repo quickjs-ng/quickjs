@@ -18593,7 +18593,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     }
                 } else if (c >= 0x80) {
                     const uint8_t *p_next;
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next); 
+                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
                     if (c > 0x10FFFF) {
                         goto invalid_utf8;
                     }
@@ -18620,7 +18620,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
             }
         } else if (c >= 0x80) {
             const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next); 
+            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
             if (c > 0x10FFFF)
                 goto invalid_utf8;
             p = p_next;
@@ -18693,7 +18693,7 @@ static __exception int js_parse_regexp(JSParseState *s)
                 goto eof_error;
             else if (c >= 0x80) {
                 const uint8_t *p_next;
-                c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next); 
+                c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
                 if (c > 0x10FFFF) {
                     goto invalid_utf8;
                 }
@@ -18703,7 +18703,7 @@ static __exception int js_parse_regexp(JSParseState *s)
             }
         } else if (c >= 0x80) {
             const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next); 
+            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
             if (c > 0x10FFFF) {
             invalid_utf8:
                 js_parse_error(s, "invalid UTF-8 sequence");
