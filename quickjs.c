@@ -8730,7 +8730,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
             ta_out_of_bound:
                 if (typed_array_is_detached(ctx, p))
                     if (!(flags & JS_PROP_DEFINE_PROPERTY))
-                        return FALSE; // per spec: no OOB exception
+                        return TRUE; // per spec: no OOB exception
                 return JS_ThrowTypeErrorOrFalse(ctx, flags, "out-of-bound numeric index");
             }
             p->u.array.u.double_ptr[idx] = d;
@@ -34586,8 +34586,7 @@ static __exception int JS_DefinePropertyDesc(JSContext *ctx, JSValue obj,
         return -1;
 
     ret = JS_DefineProperty(ctx, obj, prop,
-                            d.value, d.getter, d.setter,
-                            d.flags | flags | JS_PROP_DEFINE_PROPERTY);
+                            d.value, d.getter, d.setter, d.flags | flags);
     js_free_desc(ctx, &d);
     return ret;
 }
@@ -34618,7 +34617,8 @@ static __exception int JS_ObjectDefineProperties(JSContext *ctx,
         desc = JS_GetProperty(ctx, props, atoms[i].atom);
         if (JS_IsException(desc))
             goto exception;
-        if (JS_DefinePropertyDesc(ctx, obj, atoms[i].atom, desc, JS_PROP_THROW) < 0)
+        if (JS_DefinePropertyDesc(ctx, obj, atoms[i].atom, desc,
+                                  JS_PROP_THROW | JS_PROP_DEFINE_PROPERTY) < 0)
             goto exception;
     }
     ret = 0;
@@ -34720,7 +34720,7 @@ static JSValue js_object_defineProperty(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     flags = 0;
     if (!magic)
-        flags |= JS_PROP_THROW;
+        flags = JS_PROP_THROW | JS_PROP_DEFINE_PROPERTY;
     ret = JS_DefinePropertyDesc(ctx, obj, atom, desc, flags);
     JS_FreeAtom(ctx, atom);
     if (ret < 0) {
