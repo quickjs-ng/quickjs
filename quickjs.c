@@ -5567,7 +5567,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                 for (i = 0; i < b->ic->count; i++) {
                     shapes = &b->ic->cache[i].shape;
                     for (shape = *shapes; shape != endof(*shapes); shape++)
-                        if (*shape) 
+                        if (*shape)
                             mark_func(rt, &(*shape)->header);
                 }
             }
@@ -7217,8 +7217,8 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj,
 
 static JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue obj,
                                             JSAtom prop, JSValue this_obj,
-                                            JSInlineCache *ic, int32_t offset, 
-                                            BOOL throw_ref_error) 
+                                            JSInlineCache *ic, int32_t offset,
+                                            BOOL throw_ref_error)
 {
     uint32_t tag;
     JSObject *p;
@@ -7230,7 +7230,7 @@ static JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue obj,
     if (likely(offset >= 0))
         return js_dup(p->prop[offset].u.value);
 slow_path:
-    return JS_GetPropertyInternal2(ctx, obj, prop, this_obj, ic, throw_ref_error);      
+    return JS_GetPropertyInternal2(ctx, obj, prop, this_obj, ic, throw_ref_error);
 }
 
 static JSValue JS_ThrowTypeErrorPrivateNotFound(JSContext *ctx, JSAtom atom)
@@ -15700,7 +15700,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             }
             BREAK;
 
-        CASE(OP_get_field_ic): 
+        CASE(OP_get_field_ic):
             {
                 JSValue val;
                 JSAtom atom;
@@ -15783,7 +15783,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 atom = get_ic_atom(ic, ic_offset);
                 pc += 4;
                 ret = JS_SetPropertyInternalWithIC(ctx, sp[-2], atom, sp[-1], JS_PROP_THROW_STRICT, ic, ic_offset);
-                ic->updated = FALSE;                
+                ic->updated = FALSE;
                 JS_FreeValue(ctx, sp[-2]);
                 sp -= 2;
                 if (unlikely(ret < 0))
@@ -18248,7 +18248,7 @@ typedef struct JSParseState {
     int last_col_num;   /* column number of last token */
     int line_num;       /* line number of current offset */
     int col_num;        /* column number of current offset */
-    /* ecnoding line_num and col_num in the form of `line_num:col_num` for 
+    /* ecnoding line_num and col_num in the form of `line_num:col_num` for
        emitting `OP_source_loc` into the bytecode stream, `0` to skip emitting */
     uint64_t loc;
     const char *filename;
@@ -18478,7 +18478,7 @@ static __exception int js_parse_template_part(JSParseState *s,
         }
         if (c == '\n') {
             s->line_num++;
-            s->col_num = 1; 
+            s->col_num = 1;
         } else if (c >= 0x80) {
             const uint8_t *p_next;
             c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
@@ -18568,7 +18568,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 p++;
                 if (sep != '`') {
                     s->line_num++;
-                    s->col_num = 1; 
+                    s->col_num = 1;
                 }
                 continue;
             default:
@@ -18903,7 +18903,7 @@ static __exception int next_token(JSParseState *s)
                 }
                 if (*p == '\n') {
                     s->line_num++;
-                    s->col_num = 1; 
+                    s->col_num = 1;
                     s->got_lf = TRUE; /* considered as LF for ASI */
                     p++;
                     s->token.ptr = p;
@@ -23075,7 +23075,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
         } else if (s->token.val == '.') {
             if (next_token(s))
                 return -1;
-            
+
             // save col_num after `.`
             loc = LOC(s->token.line_num, s->token.col_num);
         parse_property:
@@ -24085,7 +24085,7 @@ static __exception int js_parse_var(JSParseState *s, int parse_flags, int tok,
             if (s->token.val == '=') {
                 if (next_token(s))
                     goto var_error;
-                
+
                 loc = LOC(s->token.line_num, s->token.col_num);
                 if (tok == TOK_VAR) {
                     /* Must make a reference for proper `with` semantics */
@@ -24342,7 +24342,7 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     }
     if (next_token(s))
         return -1;
-    
+
     // col_num of token after `in` or `of`
     loc = LOC(s->token.line_num, s->token.col_num);
     if (is_for_of) {
@@ -24604,7 +24604,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             set_eval_ret_undefined(s);
 
             emit_label(s, label_cont);
-            
+
             if (js_parse_expect(s, '('))
                 goto fail;
             loc = LOC(s->token.line_num, s->token.col_num);
@@ -24658,7 +24658,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 goto fail;
             if (js_parse_expect(s, ')'))
                 goto fail;
-            
+
             /* Insert semicolon if missing */
             if (s->token.val == ';') {
                 if (next_token(s))
@@ -27322,7 +27322,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
             {
                 uint64_t loc = get_u64(tab + pos);
                 printf(" %u:%u", LOC_LINE(loc), LOC_COL(loc));
-            } 
+            }
             break;
         case OP_FMT_label8:
             addr = get_i8(tab + pos);
@@ -29780,7 +29780,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 int argc;
                 argc = get_u16(bc_buf + pos + 1);
                 if (code_match(&cc, pos_next, OP_return, -1)) {
-                    /* do not reset loc to cc.loc to keep reporting 
+                    /* do not reset loc to cc.loc to keep reporting
                        the origin callsite */
                     RESOLVE_LOC();
                     add_pc2line_info(s, bc_out.size, loc);
