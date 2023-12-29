@@ -1,10 +1,6 @@
 test262/test/annexB/language/eval-code/direct/script-decl-lex-collision-in-sloppy-mode.js:13: Test262Error: Expected a SyntaxError to be thrown but no exception was thrown at all
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/detached-buffer.js:46: Test262Error:  (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/detached-buffer.js:46: strict mode: Test262Error:  (Testing with BigInt64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/detached-buffer.js:47: Test262Error:  (Testing with Float64Array.)
-test262/test/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/detached-buffer.js:47: strict mode: Test262Error:  (Testing with Float64Array.)
 test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: Test262Error: Expected a DummyError but got a TypeError
