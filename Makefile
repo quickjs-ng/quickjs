@@ -1,6 +1,6 @@
 #
 # QuickJS Javascript Engine
-# 
+#
 # Copyright (c) 2017-2021 Fabrice Bellard
 # Copyright (c) 2017-2021 Charlie Gordon
 # Copyright (c) 2023 Ben Noordhuis
@@ -78,11 +78,11 @@ test: $(QJS)
 	$(MAKE) test-col
 	$(MAKE) test-op_loc
 
-test-col: 
+test-col:
 	BUILD_TYPE=Debug DUMP_TOKEN=ON $(MAKE) -B
 	$(QJS) tests/test-col/run-tests.js
 
-test-op_loc: 
+test-op_loc:
 	BUILD_TYPE=Debug DUMP_TOKEN=OFF DUMP_BYTECODE=2 $(MAKE) -B
 	$(QJS) tests/test-op_loc/run-tests.js
 
