@@ -829,6 +829,22 @@ function test_generator()
     assert(v.value === 6 && v.done === true);
 }
 
+function test_proxy_iter()
+{
+    const p = new Proxy({}, {
+        getOwnPropertyDescriptor() {
+            return {configurable: true, enumerable: true, value: 42};
+        },
+        ownKeys() {
+            return ["x", "y"];
+        },
+    });
+    const a = [];
+    for (const x in p) a.push(x);
+    assert(a[0], "x");
+    assert(a[1], "y");
+}
+
 /* CVE-2023-31922 */
 function test_proxy_is_array()
 {
@@ -865,6 +881,7 @@ test_map();
 test_weak_map();
 test_weak_set();
 test_generator();
+test_proxy_iter();
 test_proxy_is_array();
 test_exception_source_pos();
 test_function_source_pos();
