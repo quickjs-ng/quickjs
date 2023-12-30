@@ -247,6 +247,7 @@ static inline JS_BOOL JS_VALUE_IS_NAN(JSValue v)
 #define JS_PROP_NO_ADD           (1 << 16) /* internal use */
 #define JS_PROP_NO_EXOTIC        (1 << 17) /* internal use */
 #define JS_PROP_DEFINE_PROPERTY  (1 << 18) /* internal use */
+#define JS_PROP_REFLECT_DEFINE_PROPERTY (1 << 19) /* internal use */
 
 #define JS_DEFAULT_STACK_SIZE (256 * 1024)
 

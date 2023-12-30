@@ -8673,7 +8673,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
             break;
         case JS_CLASS_UINT8C_ARRAY:
             if (JS_ToUint8ClampFree(ctx, &v, val))
-                return -1;
+                goto ta_cvt_fail;
             /* Note: the conversion can detach the typed array, so the
                array bound check must be done after */
             if (unlikely(idx >= (uint32_t)p->u.array.count))
@@ -8683,7 +8683,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
         case JS_CLASS_INT8_ARRAY:
         case JS_CLASS_UINT8_ARRAY:
             if (JS_ToInt32Free(ctx, &v, val))
-                return -1;
+                goto ta_cvt_fail;
             if (unlikely(idx >= (uint32_t)p->u.array.count))
                 goto ta_out_of_bound;
             p->u.array.u.uint8_ptr[idx] = v;
@@ -8691,7 +8691,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
         case JS_CLASS_INT16_ARRAY:
         case JS_CLASS_UINT16_ARRAY:
             if (JS_ToInt32Free(ctx, &v, val))
-                return -1;
+                goto ta_cvt_fail;
             if (unlikely(idx >= (uint32_t)p->u.array.count))
                 goto ta_out_of_bound;
             p->u.array.u.uint16_ptr[idx] = v;
@@ -8699,7 +8699,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
         case JS_CLASS_INT32_ARRAY:
         case JS_CLASS_UINT32_ARRAY:
             if (JS_ToInt32Free(ctx, &v, val))
-                return -1;
+                goto ta_cvt_fail;
             if (unlikely(idx >= (uint32_t)p->u.array.count))
                 goto ta_out_of_bound;
             p->u.array.u.uint32_ptr[idx] = v;
@@ -8710,7 +8710,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
             {
                 int64_t v;
                 if (JS_ToBigInt64Free(ctx, &v, val))
-                    return -1;
+                    goto ta_cvt_fail;
                 if (unlikely(idx >= (uint32_t)p->u.array.count))
                     goto ta_out_of_bound;
                 p->u.array.u.uint64_ptr[idx] = v;
@@ -8718,14 +8718,20 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
             break;
         case JS_CLASS_FLOAT32_ARRAY:
             if (JS_ToFloat64Free(ctx, &d, val))
-                return -1;
+                goto ta_cvt_fail;
             if (unlikely(idx >= (uint32_t)p->u.array.count))
                 goto ta_out_of_bound;
             p->u.array.u.float_ptr[idx] = d;
             break;
         case JS_CLASS_FLOAT64_ARRAY:
-            if (JS_ToFloat64Free(ctx, &d, val))
+            if (JS_ToFloat64Free(ctx, &d, val)) {
+            ta_cvt_fail:
+                if (flags & JS_PROP_REFLECT_DEFINE_PROPERTY) {
+                    JS_FreeValue(ctx, JS_GetException(ctx));
+                    return FALSE;
+                }
                 return -1;
+            }
             if (unlikely(idx >= (uint32_t)p->u.array.count)) {
             ta_out_of_bound:
                 if (typed_array_is_detached(ctx, p))
@@ -34718,9 +34724,9 @@ static JSValue js_object_defineProperty(JSContext *ctx, JSValue this_val,
     atom = JS_ValueToAtom(ctx, prop);
     if (unlikely(atom == JS_ATOM_NULL))
         return JS_EXCEPTION;
-    flags = 0;
-    if (!magic)
-        flags = JS_PROP_THROW | JS_PROP_DEFINE_PROPERTY;
+    flags = JS_PROP_THROW | JS_PROP_DEFINE_PROPERTY;
+    if (magic)
+        flags = JS_PROP_REFLECT_DEFINE_PROPERTY;
     ret = JS_DefinePropertyDesc(ctx, obj, atom, desc, flags);
     JS_FreeAtom(ctx, atom);
     if (ret < 0) {
