@@ -13387,8 +13387,14 @@ static __exception int js_for_in_next(JSContext *ctx, JSValue *sp)
             if (prop == JS_ATOM_NULL || !(prs->flags & JS_PROP_ENUMERABLE))
                 continue;
         }
-        /* check if the property was deleted */
-        ret = JS_HasProperty(ctx, it->obj, prop);
+        // check if the property was deleted unless we're dealing with a proxy
+        JSValue obj = it->obj;
+        if (JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
+            JSObject *p = JS_VALUE_GET_OBJ(obj);
+            if (p->class_id == JS_CLASS_PROXY)
+                break;
+        }
+        ret = JS_HasProperty(ctx, obj, prop);
         if (ret < 0)
             return ret;
         if (ret)
