@@ -38,6 +38,10 @@ jobs:
         if: ${{ matrix.buildType == 'Release' }}
         run: |
           time make test262
+      - name: test v8 mjsunit
+        if: ${{ matrix.buildType == 'Release' }}
+        run: |
+          ./v8.sh
   linux-32bits:
     runs-on: ubuntu-latest
     defaults:

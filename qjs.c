@@ -41,6 +41,8 @@
 extern const uint8_t qjsc_repl[];
 extern const uint32_t qjsc_repl_size;
 
+static JSCFunctionListEntry argv0;
+
 static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
                     const char *filename, int eval_flags)
 {
@@ -94,6 +96,22 @@ static int eval_file(JSContext *ctx, const char *filename, int module)
     return ret;
 }
 
+static JSValue js_gc(JSContext *ctx, JSValue this_val,
+                     int argc, JSValue *argv)
+{
+    JS_RunGC(JS_GetRuntime(ctx));
+    return JS_UNDEFINED;
+}
+
+static const JSCFunctionListEntry navigator_obj[] = {
+    JS_PROP_STRING_DEF("userAgent", "quickjs-ng", JS_PROP_ENUMERABLE),
+};
+
+static const JSCFunctionListEntry global_obj[] = {
+    JS_CFUNC_DEF("gc", 0, js_gc),
+    JS_OBJECT_DEF("navigator", navigator_obj, countof(navigator_obj), JS_PROP_C_W_E),
+};
+
 /* also used to initialize the worker context */
 static JSContext *JS_NewCustomContext(JSRuntime *rt)
 {
@@ -105,11 +123,9 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     js_init_module_std(ctx, "std");
     js_init_module_os(ctx, "os");
 
-    /* navigator.userAgent */
     JSValue global = JS_GetGlobalObject(ctx);
-    JSValue navigator = JS_NewObject(ctx);
-    JS_DefinePropertyValueStr(ctx, navigator, "userAgent", JS_NewString(ctx, "quickjs-ng"), JS_PROP_ENUMERABLE);
-    JS_DefinePropertyValueStr(ctx, global, "navigator", navigator, JS_PROP_ENUMERABLE);
+    JS_SetPropertyFunctionList(ctx, global, global_obj, countof(global_obj));
+    JS_SetPropertyFunctionList(ctx, global, &argv0, 1);
     JS_FreeValue(ctx, global);
 
     return ctx;
@@ -282,6 +298,9 @@ int main(int argc, char **argv)
     char *include_list[32];
     int i, include_count = 0;
     size_t stack_size = 0;
+
+    argv0 = (JSCFunctionListEntry)JS_PROP_STRING_DEF("argv0", argv[0],
+                                                     JS_PROP_C_W_E);
 
     /* cannot use getopt because we want to pass the command line to
        the script */
