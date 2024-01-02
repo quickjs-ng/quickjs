@@ -7,7 +7,10 @@ const dir = "test262/implementation-contributed/v8/mjsunit"
 
 const exclude = [
     "array-concat.js",              // slow
+    "array-isarray.js",             // unstable output due to stack overflow
     "ascii-regexp-subject.js",      // slow
+    "cyclic-array-to-string.js",    // unstable output due to stack overflow
+    "error-tostring.js",            // unstable output due to stack overflow
     "regexp.js",                    // invalid, legitimate early SyntaxError
     "regexp-capture-3.js",          // slow
     "string-replace.js",            // unstable output

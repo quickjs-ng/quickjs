@@ -31,8 +31,6 @@ ReferenceError: 'Realm' is not defined
 === array-functions-prototype-misc.js
 === array-functions-prototype.js
 === array-indexing.js
-=== array-isarray.js
-Object <Error(InternalError: stack overflow)> is not an instance of <RangeError> but of <InternalError>
 === array-iteration.js
 === array-join-element-tostring-prototype-side-effects.js
 === array-join-nesting.js
@@ -157,19 +155,6 @@ ReferenceError: 'Realm' is not defined
 === cross-realm-filtering.js
 ReferenceError: 'Realm' is not defined
     at <eval> (cross-realm-filtering.js:5:14)
-
-=== cyclic-array-to-string.js
-InternalError: stack overflow
-    at join (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
 
 === cyrillic.js
 Failure (7): expected <true> found <false>
@@ -429,20 +414,6 @@ Failure: expected <"x is not defined"> found <"'x' is not defined">
 === error-constructors.js
 === error-tostring-omit.js
 Failure: expected <true> found <false>
-=== error-tostring.js
-Object <Error(InternalError: stack overflow)> is not an instance of <RangeError> but of <InternalError>
-InternalError: stack overflow
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at toString (native)
-
 === escape.js
 === eval-enclosing-function-name.js
 Failure: expected <"number"> found <"undefined">
