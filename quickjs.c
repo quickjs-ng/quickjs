@@ -5561,7 +5561,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
         {
             JSShape **shape, *(*shapes)[IC_CACHE_ITEM_CAPACITY];
             JSFunctionBytecode *b = (JSFunctionBytecode *)gp;
-            int i, j;
+            int i;
             for(i = 0; i < b->cpool_count; i++) {
                 JS_MarkValue(rt, b->cpool[i], mark_func);
             }
@@ -36210,7 +36210,7 @@ static const JSCFunctionListEntry js_error_proto_funcs[] = {
 
 static JSValue js_error_get_stackTraceLimit(JSContext *ctx, JSValue this_val)
 {
-    JSValue val, ret;
+    JSValue val;
 
     val = JS_ToObject(ctx, this_val);
     if (JS_IsException(val))
@@ -36232,7 +36232,7 @@ static JSValue js_error_set_stackTraceLimit(JSContext *ctx, JSValue this_val, JS
 
 static JSValue js_error_get_prepareStackTrace(JSContext *ctx, JSValue this_val)
 {
-    JSValue val, ret;
+    JSValue val;
 
     val = JS_ToObject(ctx, this_val);
     if (JS_IsException(val))
@@ -48764,7 +48764,7 @@ static JSValue js_typed_array_at(JSContext *ctx, JSValue this_val,
 static JSValue js_typed_array_with(JSContext *ctx, JSValue this_val,
                                    int argc, JSValue *argv)
 {
-    JSValue arr, val, ret;
+    JSValue arr, val;
     JSObject *p;
     int64_t idx, len;
 
@@ -51645,7 +51645,7 @@ fail:
 
 int free_ic(JSRuntime* rt, JSInlineCache *ic)
 {
-    uint32_t i, j;
+    uint32_t i;
     JSInlineCacheHashSlot *ch, *ch_next;
     JSShape **shape, *(*shapes)[IC_CACHE_ITEM_CAPACITY];
     if (ic->cache) {
