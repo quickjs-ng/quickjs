@@ -3,10 +3,6 @@ test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Er
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: strict mode: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: Test262Error: Expected a DummyError but got a TypeError
-test262/test/language/expressions/assignment/target-member-computed-reference-null.js:32: strict mode: Test262Error: Expected a DummyError but got a TypeError
-test262/test/language/expressions/assignment/target-member-computed-reference-undefined.js:32: Test262Error: Expected a DummyError but got a TypeError
-test262/test/language/expressions/assignment/target-member-computed-reference-undefined.js:32: strict mode: Test262Error: Expected a DummyError but got a TypeError
 test262/test/language/expressions/function/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/function/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/generators/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
