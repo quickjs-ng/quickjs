@@ -68,19 +68,17 @@ static void *__builtin_frame_address(unsigned int level) {
 #endif
 
 // https://stackoverflow.com/a/6849629
-#if defined(_MSC_VER) // This should be applied even we are using clang-cl
-#  undef FORMAT_STRING
-#  if _MSC_VER >= 1400
-#    include <sal.h>
-#    if _MSC_VER > 1400
-#      define FORMAT_STRING(p) _Printf_format_string_ p
-#    else
-#      define FORMAT_STRING(p) __format_string p
-#    endif /* FORMAT_STRING */
-#  else
-#    define FORMAT_STRING(p) p
-#  endif /* _MSC_VER */
-#endif
+#undef FORMAT_STRING
+#if _MSC_VER >= 1400
+# include <sal.h>
+# if _MSC_VER > 1400
+#  define FORMAT_STRING(p) _Printf_format_string_ p
+# else
+#  define FORMAT_STRING(p) __format_string p
+# endif /* FORMAT_STRING */
+#else
+# define FORMAT_STRING(p) p
+#endif /* _MSC_VER */
 
 // https://stackoverflow.com/a/3312896
 #if defined(__GNUC__) || defined(__clang__)
