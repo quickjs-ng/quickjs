@@ -46,13 +46,8 @@
 #include <malloc_np.h>
 #endif
 
-#if !defined(_MSC_VER) && !defined(__clang__)
-#  define likely(x)       __builtin_expect(!!(x), 1)
-#  define unlikely(x)     __builtin_expect(!!(x), 0)
-#  define force_inline inline __attribute__((always_inline))
-#  define no_inline __attribute__((noinline))
-#  define __maybe_unused __attribute__((unused))
-#else
+
+#if defined(_MSC_VER) && !defined(__clang__)
 #  define likely(x)       (x)
 #  define unlikely(x)     (x)
 #  define force_inline __forceinline
@@ -64,10 +59,16 @@
 static void *__builtin_frame_address(unsigned int level) {
     return (void *)((char*)_AddressOfReturnAddress() - sizeof(int *) - level * sizeof(int *));
 }
+#else
+#  define likely(x)       __builtin_expect(!!(x), 1)
+#  define unlikely(x)     __builtin_expect(!!(x), 0)
+#  define force_inline inline __attribute__((always_inline))
+#  define no_inline __attribute__((noinline))
+#  define __maybe_unused __attribute__((unused))
 #endif
 
 // https://stackoverflow.com/a/6849629
-#if defined(_MSC_VER) && !defined(__clang__)
+#if defined(_MSC_VER) // This should be applied even we are using clang-cl
 #  undef FORMAT_STRING
 #  if _MSC_VER >= 1400
 #    include <sal.h>
@@ -82,7 +83,7 @@ static void *__builtin_frame_address(unsigned int level) {
 #endif
 
 // https://stackoverflow.com/a/3312896
-#ifdef __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
 #define PACK( __Declaration__ ) __Declaration__ __attribute__((__packed__))
 #endif
 
