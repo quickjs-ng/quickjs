@@ -46,7 +46,7 @@
 #include <malloc_np.h>
 #endif
 
-#if !defined(_MSC_VER)
+#if !defined(_MSC_VER) && !defined(__clang__)
 #  define likely(x)       __builtin_expect(!!(x), 1)
 #  define unlikely(x)     __builtin_expect(!!(x), 0)
 #  define force_inline inline __attribute__((always_inline))
@@ -67,28 +67,30 @@ static void *__builtin_frame_address(unsigned int level) {
 #endif
 
 // https://stackoverflow.com/a/6849629
-#undef FORMAT_STRING
-#if _MSC_VER >= 1400
-# include <sal.h>
-# if _MSC_VER > 1400
-#  define FORMAT_STRING(p) _Printf_format_string_ p
-# else
-#  define FORMAT_STRING(p) __format_string p
-# endif /* FORMAT_STRING */
-#else
-# define FORMAT_STRING(p) p
-#endif /* _MSC_VER */
+#if defined(_MSC_VER) && !defined(__clang__)
+#  undef FORMAT_STRING
+#  if _MSC_VER >= 1400
+#    include <sal.h>
+#    if _MSC_VER > 1400
+#      define FORMAT_STRING(p) _Printf_format_string_ p
+#    else
+#      define FORMAT_STRING(p) __format_string p
+#    endif /* FORMAT_STRING */
+#  else
+#    define FORMAT_STRING(p) p
+#  endif /* _MSC_VER */
+#endif
 
 // https://stackoverflow.com/a/3312896
 #ifdef __GNUC__
 #define PACK( __Declaration__ ) __Declaration__ __attribute__((__packed__))
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__)
 #define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__)
 #include "math.h"
 #define INF INFINITY
 #define NEG_INF -INFINITY
@@ -181,48 +183,48 @@ static inline int64_t min_int64(int64_t a, int64_t b)
 /* WARNING: undefined if a = 0 */
 static inline int clz32(unsigned int a)
 {
-#ifndef _MSC_VER
-    return __builtin_clz(a);
-#else
+#if defined(_MSC_VER) && !defined(__clang__)
     unsigned long index;
     _BitScanReverse(&index, a);
     return 31 - index;
+#else
+    return __builtin_clz(a);
 #endif
 }
 
 /* WARNING: undefined if a = 0 */
 static inline int clz64(uint64_t a)
 {
-#ifndef _MSC_VER
-    return __builtin_clzll(a);
-#else
+#if defined(_MSC_VER) && !defined(__clang__)
     unsigned long index;
     _BitScanReverse64(&index, a);
     return 63 - index;
+#else
+    return __builtin_clzll(a);
 #endif
 }
 
 /* WARNING: undefined if a = 0 */
 static inline int ctz32(unsigned int a)
 {
-#ifndef _MSC_VER
-    return __builtin_ctz(a);
-#else
+#if defined(_MSC_VER) && !defined(__clang__)
     unsigned long index;
     _BitScanForward(&index, a);
     return index;
+#else
+    return __builtin_ctz(a);
 #endif
 }
 
 /* WARNING: undefined if a = 0 */
 static inline int ctz64(uint64_t a)
 {
-#ifndef _MSC_VER
-    return __builtin_ctzll(a);
-#else
+#if defined(_MSC_VER) && !defined(__clang__)
     unsigned long index;
     _BitScanForward64(&index, a);
     return index;
+#else
+    return __builtin_ctzll(a);
 #endif
 }
 
