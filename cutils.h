@@ -46,11 +46,56 @@
 #include <malloc_np.h>
 #endif
 
-#define likely(x)       __builtin_expect(!!(x), 1)
-#define unlikely(x)     __builtin_expect(!!(x), 0)
-#define force_inline inline __attribute__((always_inline))
-#define no_inline __attribute__((noinline))
-#define __maybe_unused __attribute__((unused))
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#  define likely(x)       (x)
+#  define unlikely(x)     (x)
+#  define force_inline __forceinline
+#  define no_inline __declspec(noinline)
+#  define __maybe_unused
+#  define __attribute__(x)
+#  define __attribute(x)
+#  include <intrin.h>
+static void *__builtin_frame_address(unsigned int level) {
+    return (void *)((char*)_AddressOfReturnAddress() - sizeof(int *) - level * sizeof(int *));
+}
+#else
+#  define likely(x)       __builtin_expect(!!(x), 1)
+#  define unlikely(x)     __builtin_expect(!!(x), 0)
+#  define force_inline inline __attribute__((always_inline))
+#  define no_inline __attribute__((noinline))
+#  define __maybe_unused __attribute__((unused))
+#endif
+
+// https://stackoverflow.com/a/6849629
+#undef FORMAT_STRING
+#if _MSC_VER >= 1400
+# include <sal.h>
+# if _MSC_VER > 1400
+#  define FORMAT_STRING(p) _Printf_format_string_ p
+# else
+#  define FORMAT_STRING(p) __format_string p
+# endif /* FORMAT_STRING */
+#else
+# define FORMAT_STRING(p) p
+#endif /* _MSC_VER */
+
+// https://stackoverflow.com/a/3312896
+// https://stackoverflow.com/a/3312896
+#if defined(__GNUC__) || defined(__clang__) // GCC, clang, clang-cl, and so on but not MSVC
+#  define PACK( __Declaration__ ) __Declaration__ __attribute__((__packed__))
+#elif defined(_MSC_VER) && !defined(__clang__) // MSVC
+#  define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
+#endif
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <math.h>
+#define INF INFINITY
+#define NEG_INF -INFINITY
+#else
+#define INF (1.0/0.0)
+#define NEG_INF (-1.0/0.0)
+#endif
 
 #define xglue(x, y) x ## y
 #define glue(x, y) xglue(x, y)
@@ -136,38 +181,68 @@ static inline int64_t min_int64(int64_t a, int64_t b)
 /* WARNING: undefined if a = 0 */
 static inline int clz32(unsigned int a)
 {
+#if defined(_MSC_VER) && !defined(__clang__)
+    unsigned long index;
+    _BitScanReverse(&index, a);
+    return 31 - index;
+#else
     return __builtin_clz(a);
+#endif
 }
 
 /* WARNING: undefined if a = 0 */
 static inline int clz64(uint64_t a)
 {
+#if defined(_MSC_VER) && !defined(__clang__)
+    unsigned long index;
+    _BitScanReverse64(&index, a);
+    return 63 - index;
+#else
     return __builtin_clzll(a);
+#endif
 }
 
 /* WARNING: undefined if a = 0 */
 static inline int ctz32(unsigned int a)
 {
+#if defined(_MSC_VER) && !defined(__clang__)
+    unsigned long index;
+    _BitScanForward(&index, a);
+    return index;
+#else
     return __builtin_ctz(a);
+#endif
 }
 
 /* WARNING: undefined if a = 0 */
 static inline int ctz64(uint64_t a)
 {
+#if defined(_MSC_VER) && !defined(__clang__)
+    unsigned long index;
+    _BitScanForward64(&index, a);
+    return index;
+#else
     return __builtin_ctzll(a);
+#endif
 }
 
-struct __attribute__((packed)) packed_u64 {
-    uint64_t v;
-};
+PACK(
+    struct packed_u64 {
+             uint64_t v;
+    }
+);
 
-struct __attribute__((packed)) packed_u32 {
-    uint32_t v;
-};
+PACK(
+    struct packed_u32 {
+        uint32_t v;
+    }
+);
 
-struct __attribute__((packed)) packed_u16 {
-    uint16_t v;
-};
+PACK(
+    struct packed_u16 {
+        uint16_t v;
+    }
+);
 
 static inline uint64_t get_u64(const uint8_t *tab)
 {
@@ -299,7 +374,7 @@ static inline int dbuf_put_u64(DynBuf *s, uint64_t val)
     return dbuf_put(s, (uint8_t *)&val, 8);
 }
 int __attribute__((format(printf, 2, 3))) dbuf_printf(DynBuf *s,
-                                                      const char *fmt, ...);
+                                                      FORMAT_STRING(const char *fmt), ...);
 void dbuf_free(DynBuf *s);
 static inline BOOL dbuf_error(DynBuf *s) {
     return s->error;

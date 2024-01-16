@@ -5,3 +5,5 @@
 build/
 unicode/
 test262_*.txt
+.idea
+cmake-*

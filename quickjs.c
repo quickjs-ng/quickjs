@@ -10153,7 +10153,7 @@ static JSValue js_atof2(JSContext *ctx, const char *str, const char **pp,
         if (!(flags & ATOD_INT_ONLY) &&
             atod_type == ATOD_TYPE_FLOAT64 &&
             strstart(p, "Infinity", &p)) {
-            double d = 1.0 / 0.0;
+            double d = INF;
             if (is_neg)
                 d = -d;
             val = js_float64(d);
@@ -22081,6 +22081,8 @@ static int js_parse_destructuring_element(JSParseState *s, int tok, int is_arg,
     JSAtom prop_name, var_name;
     int opcode, scope, tok1, skip_bits;
     BOOL has_initializer;
+
+    label_lvalue = -1;
 
     if (has_ellipsis < 0) {
         /* pre-parse destructuration target for spread detection */
@@ -40441,7 +40443,7 @@ static JSValue js_math_min_max(JSContext *ctx, JSValue this_val,
     uint32_t tag;
 
     if (unlikely(argc == 0)) {
-        return __JS_NewFloat64(is_max ? -1.0 / 0.0 : 1.0 / 0.0);
+        return __JS_NewFloat64(is_max ? NEG_INF : INF);
     }
 
     tag = JS_VALUE_GET_TAG(argv[0]);
