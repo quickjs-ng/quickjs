@@ -89,7 +89,7 @@ static void *__builtin_frame_address(unsigned int level) {
 #endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
-#include "<math.h>"
+#include <math.h>
 #define INF INFINITY
 #define NEG_INF -INFINITY
 #else
