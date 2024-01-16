@@ -81,12 +81,11 @@ static void *__builtin_frame_address(unsigned int level) {
 #endif /* _MSC_VER */
 
 // https://stackoverflow.com/a/3312896
-#if defined(__GNUC__) || defined(__clang__)
-#define PACK( __Declaration__ ) __Declaration__ __attribute__((__packed__))
-#endif
-
-#if defined(_MSC_VER) && !defined(__clang__)
-#define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
+// https://stackoverflow.com/a/3312896
+#if defined(__GNUC__) || defined(__clang__) // GCC, clang, clang-cl, and so on but not MSVC
+#  define PACK( __Declaration__ ) __Declaration__ __attribute__((__packed__))
+#elif defined(_MSC_VER) && !defined(__clang__) // MSVC
+#  define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
 #endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
