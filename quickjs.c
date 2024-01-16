@@ -22082,6 +22082,8 @@ static int js_parse_destructuring_element(JSParseState *s, int tok, int is_arg,
     int opcode, scope, tok1, skip_bits;
     BOOL has_initializer;
 
+    label_lvalue = -1;
+
     if (has_ellipsis < 0) {
         /* pre-parse destructuration target for spread detection */
         js_parse_skip_parens_token(s, &skip_bits, FALSE);
