@@ -5571,7 +5571,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                 for (i = 0; i < b->ic->count; i++) {
                     shapes = &b->ic->cache[i].shape;
                     for (shape = *shapes; shape != endof(*shapes); shape++)
-                        if (*shape) 
+                        if (*shape)
                             mark_func(rt, &(*shape)->header);
                 }
             }
@@ -7217,8 +7217,8 @@ JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj,
 
 static JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue obj,
                                             JSAtom prop, JSValue this_obj,
-                                            JSInlineCache *ic, int32_t offset, 
-                                            BOOL throw_ref_error) 
+                                            JSInlineCache *ic, int32_t offset,
+                                            BOOL throw_ref_error)
 {
     uint32_t tag;
     JSObject *p;
@@ -7230,7 +7230,7 @@ static JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue obj,
     if (likely(offset >= 0))
         return js_dup(p->prop[offset].u.value);
 slow_path:
-    return JS_GetPropertyInternal2(ctx, obj, prop, this_obj, ic, throw_ref_error);      
+    return JS_GetPropertyInternal2(ctx, obj, prop, this_obj, ic, throw_ref_error);
 }
 
 static JSValue JS_ThrowTypeErrorPrivateNotFound(JSContext *ctx, JSAtom atom)
@@ -15718,7 +15718,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             }
             BREAK;
 
-        CASE(OP_get_field_ic): 
+        CASE(OP_get_field_ic):
             {
                 JSValue val;
                 JSAtom atom;
@@ -15801,7 +15801,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 atom = get_ic_atom(ic, ic_offset);
                 pc += 4;
                 ret = JS_SetPropertyInternalWithIC(ctx, sp[-2], atom, sp[-1], JS_PROP_THROW_STRICT, ic, ic_offset);
-                ic->updated = FALSE;                
+                ic->updated = FALSE;
                 JS_FreeValue(ctx, sp[-2]);
                 sp -= 2;
                 if (unlikely(ret < 0))
@@ -25275,7 +25275,7 @@ static int add_req_module_entry(JSContext *ctx, JSModuleDef *m,
     return i;
 }
 
-static JSExportEntry *find_export_entry(JSContext *ctx, JSModuleDef *m,
+static JSExportEntry *find_export_entry(JSContext *ctx, const JSModuleDef *m,
                                         JSAtom export_name)
 {
     JSExportEntry *me;
@@ -34392,6 +34392,37 @@ int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
             return -1;
     }
     return 0;
+}
+
+JSValue JS_GetModuleExport(JSContext *ctx, const JSModuleDef *m, const char *export_name) {
+    JSExportEntry *me;
+    JSAtom name;
+    name = JS_NewAtom(ctx, export_name);
+    if (name == JS_ATOM_NULL)
+        goto fail;
+    me = find_export_entry(ctx, m, name);
+    JS_FreeAtom(ctx, name);
+    if (!me)
+        goto fail;
+    return JS_DupValue(ctx, me->u.local.var_ref->value);
+ fail:
+    return JS_UNDEFINED;
+}
+
+int JS_CountModuleExport(JSContext *ctx, const JSModuleDef *m) {
+    return m->export_entries_count;
+}
+
+JSAtom JS_GetModuleExportName(JSContext *ctx, const JSModuleDef *m, int idx) {
+    if (idx >= m->export_entries_count || idx < 0)
+        return JS_ATOM_NULL;
+    return JS_DupAtom(ctx, m->export_entries[idx].export_name);
+}
+
+JSValue JS_GetModuleExportValue(JSContext *ctx, const JSModuleDef *m, int idx) {
+    if (idx >= m->export_entries_count || idx < 0)
+        return JS_UNDEFINED;
+    return JS_DupValue(ctx, m->export_entries[idx].u.local.var_ref->value);
 }
 
 /* Note: 'func_obj' is not necessarily a constructor */
