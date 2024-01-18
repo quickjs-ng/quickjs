@@ -966,6 +966,11 @@ JS_EXTERN int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *exp
                                  JSValue val);
 JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
                                      const JSCFunctionListEntry *tab, int len);
+/* can only be called after the module is initialized */
+JS_EXTERN JSValue JS_GetModuleExport(JSContext *ctx, const JSModuleDef *m, const char *export_name);
+JS_EXTERN int JS_CountModuleExport(JSContext *ctx, const JSModuleDef *m);
+JS_EXTERN JSAtom JS_GetModuleExportName(JSContext *ctx, const JSModuleDef *m, int idx);
+JS_EXTERN JSValue JS_GetModuleExportValue(JSContext *ctx, const JSModuleDef *m, int idx);
 
 /* Promise */
 
