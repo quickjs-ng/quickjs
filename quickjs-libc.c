@@ -3872,6 +3872,12 @@ static void js_std_dump_error1(JSContext *ctx, JSValue exception_val)
     is_error = JS_IsError(ctx, exception_val);
     js_dump_obj(ctx, stderr, exception_val);
     if (is_error) {
+        val = JS_GetPropertyStr(ctx, exception_val, "message");
+        if (!JS_IsUndefined(val)) {
+            js_dump_obj(ctx, stderr, val);
+        }
+        JS_FreeValue(ctx, val);
+        
         val = JS_GetPropertyStr(ctx, exception_val, "stack");
         if (!JS_IsUndefined(val)) {
             js_dump_obj(ctx, stderr, val);
