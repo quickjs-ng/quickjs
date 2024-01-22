@@ -23,15 +23,16 @@ jobs:
           cd ..
           cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
           mv build/qjs build/qjs-linux-x86
+          mv build/qjsc build/qjsc-linux-x86
       - name: check
         shell: alpine.sh {0}
         run: |
-          file build/qjs-linux-x86
+          file build/qjs-linux-x86 build/qjsc-linux-x86
       - name: upload
         uses: actions/upload-artifact@v3
         with:
           name: qjs
-          path: build/qjs-linux-x86
+          path: build/*-linux-x86
 
   linux-x86_64:
     runs-on: ubuntu-latest
@@ -50,15 +51,16 @@ jobs:
           cd ..
           cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
           mv build/qjs build/qjs-linux-x86_64
+          mv build/qjsc build/qjsc-linux-x86_64
       - name: check
         shell: alpine.sh {0}
         run: |
-          file build/qjs-linux-x86_64
+          file build/qjs-linux-x86_64 build/qjsc-linux-x86_64
       - name: upload
         uses: actions/upload-artifact@v3
         with:
           name: qjs
-          path: build/qjs-linux-x86_64
+          path: build/*-linux-x86_64
 
   macos:
     runs-on: macos-latest
@@ -71,14 +73,15 @@ jobs:
           cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ..
           make -j$(getconf _NPROCESSORS_ONLN)
           mv qjs qjs-darwin
+          mv qjsc qjsc-darwin
       - name: check
         run: |
-          lipo -info build/qjs-darwin
+          lipo -info build/qjs-darwin build/qjsc-darwin
       - name: upload
         uses: actions/upload-artifact@v3
         with:
           name: qjs
-          path: build/qjs-darwin
+          path: build/*-darwin
 
   windows-x86:
     runs-on: windows-latest
@@ -102,14 +105,15 @@ jobs:
         run: |
           make
           mv build/qjs.exe build/qjs-windows-x86.exe
+          mv build/qjsc.exe build/qjsc-windows-x86.exe
       - name: check
         run: |
-          ldd build/qjs-windows-x86.exe
+          ldd build/qjs-windows-x86.exe build/qjsc-windows-x86.exe
       - name: upload
         uses: actions/upload-artifact@v3
         with:
           name: qjs
-          path: build/qjs-windows-x86.exe
+          path: build/*-windows-x86.exe
 
   windows-x86_64:
     runs-on: windows-latest
@@ -133,14 +137,15 @@ jobs:
         run: |
           make
           mv build/qjs.exe build/qjs-windows-x86_64.exe
+          mv build/qjsc.exe build/qjsc-windows-x86_64.exe
       - name: check
         run: |
-          ldd build/qjs-windows-x86_64.exe
+          ldd build/qjs-windows-x86_64.exe build/qjsc-windows-x86_64.exe
       - name: upload
         uses: actions/upload-artifact@v3
         with:
           name: qjs
-          path: build/qjs-windows-x86_64.exe
+          path: build/*-windows-x86_64.exe
 
   upload-to-release:
     needs: [linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64]
@@ -154,8 +159,5 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            build/qjs/qjs-linux-x86_64
-            build/qjs/qjs-linux-x86
-            build/qjs/qjs-windows-x86.exe
-            build/qjs/qjs-windows-x86_64.exe
-            build/qjs/qjs-darwin
+            build/qjs/qjs-*
+            build/qjs/qjsc-*
