@@ -5839,7 +5839,7 @@ void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s)
     s->malloc_limit = rt->malloc_state.malloc_limit;
 
     s->memory_used_count = 2; /* rt + rt->class_array */
-    s->memory_used_size = sizeof(JSRuntime) + sizeof(JSValue) * rt->class_count;
+    s->memory_used_size = sizeof(JSRuntime) + sizeof(JSClass) * rt->class_count;
 
     list_for_each(el, &rt->context_list) {
         JSContext *ctx = list_entry(el, JSContext, link);
