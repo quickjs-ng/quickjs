@@ -429,6 +429,8 @@ static inline size_t js__malloc_usable_size(const void *ptr)
     return malloc_size(ptr);
 #elif defined(_WIN32)
     return _msize((void *)ptr);
+#elif defined(__ANDROID__)
+    return dlmalloc_usable_size((void *)ptr);
 #elif defined(__linux__) || defined(__FreeBSD__)
     return malloc_usable_size((void *)ptr);
 #else
