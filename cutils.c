@@ -612,6 +612,7 @@ void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
 }
 
 #if defined(_MSC_VER)
+struct timezone;
  // From: https://stackoverflow.com/a/26085827
 static int gettimeofday_msvc(struct timeval *tp, struct timezone *tzp)
 {
