@@ -1726,6 +1726,8 @@ static const JSMallocFunctions def_malloc_funcs = {
     malloc_size,
 #elif defined(_WIN32)
     (size_t (*)(const void *))_msize,
+#elif defined(__ANDROID__)
+    (size_t (*)(const void *))dlmalloc_usable_size,
 #elif defined(__linux__) || defined (__CYGWIN__)
     (size_t (*)(const void *))malloc_usable_size,
 #else
