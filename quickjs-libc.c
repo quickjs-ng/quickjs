@@ -1291,7 +1291,7 @@ static JSValue js_std_file_putByte(JSContext *ctx, JSValue this_val,
 /* urlGet */
 #if !defined(__wasi__)
 
-#define URL_GET_PROGRAM "curl -s -i"
+#define URL_GET_PROGRAM "curl -s -i --"
 #define URL_GET_BUF_SIZE 4096
 
 static int http_get_header_line(FILE *f, char *buf, size_t buf_size,
@@ -1364,16 +1364,22 @@ static JSValue js_std_urlGet(JSContext *ctx, JSValue this_val,
     }
 
     js_std_dbuf_init(ctx, &cmd_buf);
-    dbuf_printf(&cmd_buf, "%s ''", URL_GET_PROGRAM);
+    dbuf_printf(&cmd_buf, "%s '", URL_GET_PROGRAM);
     len = strlen(url);
     for(i = 0; i < len; i++) {
-        c = url[i];
-        if (c == '\'' || c == '\\')
+        switch (c = url[i]) {
+        case '\'':
+            dbuf_putstr(&cmd_buf, "'\\''");
+            break;
+        case '[': case ']': case '{': case '}': case '\\':
             dbuf_putc(&cmd_buf, '\\');
-        dbuf_putc(&cmd_buf, c);
+            /* FALLTHROUGH */
+        default:
+            dbuf_putc(&cmd_buf, c);
+        }
     }
     JS_FreeCString(ctx, url);
-    dbuf_putstr(&cmd_buf, "''");
+    dbuf_putstr(&cmd_buf, "'");
     dbuf_putc(&cmd_buf, '\0');
     if (dbuf_error(&cmd_buf)) {
         dbuf_free(&cmd_buf);
