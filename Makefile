@@ -28,6 +28,7 @@ BUILD_DIR=build
 BUILD_TYPE?=Release
 
 QJS=$(BUILD_DIR)/qjs
+QJSC=$(BUILD_DIR)/qjsc
 RUN262=$(BUILD_DIR)/run-test262
 
 JOBS?=$(shell getconf _NPROCESSORS_ONLN)
@@ -49,11 +50,21 @@ $(BUILD_DIR):
 $(QJS): $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) -j $(JOBS)
 
-install: $(QJS)
+$(QJSC): $(BUILD_DIR)
+	cmake --build $(BUILD_DIR) --target qjsc -j $(JOBS)
+
+install: $(QJS) $(QJSC)
 	cmake --build $(BUILD_DIR) --target install
 
 clean:
 	cmake --build $(BUILD_DIR) --target clean
+
+codegen: $(QJSC)
+	$(QJSC) -o gen/repl.c -m repl.js
+	$(QJSC) -e -o gen/function_source.c tests/function_source.js
+	$(QJSC) -e -o gen/hello.c examples/hello.js
+	$(QJSC) -e -o gen/hello_module.c -m examples/hello_module.js
+	$(QJSC) -e -o gen/test_fib.c -M examples/fib.so,fib -m examples/test_fib.js
 
 debug:
 	BUILD_TYPE=Debug $(MAKE)
@@ -92,4 +103,4 @@ unicode_gen: $(BUILD_DIR)
 libunicode-table.h: unicode_gen
 	$(BUILD_DIR)/unicode_gen unicode $@
 
-.PHONY: all debug install clean distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS)
+.PHONY: all debug install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)
