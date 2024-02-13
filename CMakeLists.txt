@@ -54,6 +54,17 @@ if(MSVC)
     add_compile_definitions(WIN32_LEAN_AND_MEAN)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+    add_compile_definitions(
+        _WASI_EMULATED_PROCESS_CLOCKS
+        _WASI_EMULATED_SIGNAL
+    )
+    add_link_options(
+        -lwasi-emulated-process-clocks
+        -lwasi-emulated-signal
+    )
+endif()
+
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
     add_compile_options(-O0)
     xcheck_add_c_compiler_flag(-ggdb)

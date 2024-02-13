@@ -395,6 +395,22 @@ jobs:
           emmake make -C build qjs_wasm -j$(getconf _NPROCESSORS_ONLN)
       - name: result
         run: ls -lh build
+  wasi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: jcbhmr/setup-wasmtime@v2
+      - name: setup wasi-sdk
+        run: |
+          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk_21.0_amd64.deb -P /tmp
+          sudo apt install /tmp/wasi-sdk*.deb
+      - name: test
+        run: |
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
+          make -C build qjs_exe
+          wasmtime run build/qjs -qd
+          echo "console.log('hello wasi!');" > t.js
+          wasmtime run --dir . build/qjs t.js
 
   cygwin:
     runs-on: windows-latest
