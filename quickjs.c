@@ -43,7 +43,7 @@
 #include "libregexp.h"
 #include "libbf.h"
 
-#if defined(EMSCRIPTEN) || defined(_MSC_VER)
+#if defined(EMSCRIPTEN) || defined(_MSC_VER) || defined(__wasi__)
 #define DIRECT_DISPATCH  0
 #else
 #define DIRECT_DISPATCH  1
@@ -55,7 +55,7 @@
 #define MALLOC_OVERHEAD  8
 #endif
 
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__wasi__)
 /* define it if printf uses the RNDN rounding mode instead of RNDNA */
 #define CONFIG_PRINTF_RNDN
 #endif
@@ -2318,11 +2318,15 @@ JSRuntime *JS_GetRuntime(JSContext *ctx)
 
 static void update_stack_limit(JSRuntime *rt)
 {
+#if defined(__wasi__)
+    rt->stack_limit = 0; /* no limit */
+#else
     if (rt->stack_size == 0) {
         rt->stack_limit = 0; /* no limit */
     } else {
         rt->stack_limit = rt->stack_top - rt->stack_size;
     }
+#endif
 }
 
 void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size)
