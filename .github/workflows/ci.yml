@@ -83,7 +83,7 @@ jobs:
           add-apt-repository -y ppa:git-core/ppa
           apt update
           apt install -y git
-          wget https://github.com/Kitware/CMake/releases/download/v3.28.0-rc5/cmake-3.28.0-rc5-linux-x86_64.sh
+          wget -nv https://github.com/Kitware/CMake/releases/download/v3.28.0-rc5/cmake-3.28.0-rc5-linux-x86_64.sh
           sh cmake-3.28.0-rc5-linux-x86_64.sh --skip-license --prefix=/usr
       - name: checkout
         uses: actions/checkout@v3
@@ -402,7 +402,7 @@ jobs:
       - uses: jcbhmr/setup-wasmtime@v2
       - name: setup wasi-sdk
         run: |
-          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk_21.0_amd64.deb -P /tmp
+          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk_21.0_amd64.deb -P /tmp
           sudo apt install /tmp/wasi-sdk*.deb
       - name: test
         run: |
