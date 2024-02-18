@@ -32505,20 +32505,14 @@ static int JS_WriteBigInt(BCWriterState *s, JSValue obj)
         bc_put_leb128(s, len);
         /* always saved in byte based little endian representation */
         for(j = 0; j < n1; j++) {
-            dbuf_putc(&s->dbuf, v >> (j * 8));
+            bc_put_u8(s, v >> (j * 8));
         }
         for(; i < a->len; i++) {
             limb_t v = a->tab[i];
 #if LIMB_BITS == 32
-#ifdef WORDS_BIGENDIAN
-            v = bswap32(v);
-#endif
-            dbuf_put_u32(&s->dbuf, v);
+            bc_put_u32(s, v);
 #else
-#ifdef WORDS_BIGENDIAN
-            v = bswap64(v);
-#endif
-            dbuf_put_u64(&s->dbuf, v);
+            bc_put_u64(s, v);
 #endif
         }
     }
@@ -33110,33 +33104,45 @@ static int bc_get_u8(BCReaderState *s, uint8_t *pval)
 
 static int bc_get_u16(BCReaderState *s, uint16_t *pval)
 {
+    uint16_t v;
     if (unlikely(s->buf_end - s->ptr < 2)) {
         *pval = 0; /* avoid warning */
         return bc_read_error_end(s);
     }
-    *pval = get_u16(s->ptr);
+    v = get_u16(s->ptr);
+    if (is_be())
+        v = bswap16(v);
+    *pval = v;
     s->ptr += 2;
     return 0;
 }
 
 static __maybe_unused int bc_get_u32(BCReaderState *s, uint32_t *pval)
 {
+    uint32_t v;
     if (unlikely(s->buf_end - s->ptr < 4)) {
         *pval = 0; /* avoid warning */
         return bc_read_error_end(s);
     }
-    *pval = get_u32(s->ptr);
+    v = get_u32(s->ptr);
+    if (is_be())
+        v = bswap32(v);
+    *pval = v;
     s->ptr += 4;
     return 0;
 }
 
 static int bc_get_u64(BCReaderState *s, uint64_t *pval)
 {
+    uint64_t v;
     if (unlikely(s->buf_end - s->ptr < 8)) {
         *pval = 0; /* avoid warning */
         return bc_read_error_end(s);
     }
-    *pval = get_u64(s->ptr);
+    v = get_u64(s->ptr);
+    if (is_be())
+        v = bswap64(v);
+    *pval = v;
     s->ptr += 8;
     return 0;
 }
@@ -33279,6 +33285,9 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
         return -1;
     b->byte_code_buf = bc_buf;
 
+    if (is_be())
+        bc_byte_swap(bc_buf, bc_len);
+
     pos = 0;
     while (pos < bc_len) {
         op = bc_buf[pos];
@@ -33373,15 +33382,9 @@ static JSValue JS_ReadBigInt(BCReaderState *s)
 #if LIMB_BITS == 32
             if (bc_get_u32(s, &v))
                 goto fail;
-#ifdef WORDS_BIGENDIAN
-            v = bswap32(v);
-#endif
 #else
             if (bc_get_u64(s, &v))
                 goto fail;
-#ifdef WORDS_BIGENDIAN
-            v = bswap64(v);
-#endif
 #endif
             a->tab[i] = v;
         }
@@ -50421,12 +50424,9 @@ static JSValue js_dataview_getValue(JSContext *ctx,
     size = 1 << typed_array_size_log2(class_id);
     if (JS_ToIndex(ctx, &pos, argv[0]))
         return JS_EXCEPTION;
-    is_swap = FALSE;
+    is_swap = TRUE;
     if (argc > 1)
-        is_swap = JS_ToBool(ctx, argv[1]);
-#ifndef WORDS_BIGENDIAN
-    is_swap ^= 1;
-#endif
+        is_swap = !JS_ToBool(ctx, argv[1]);
     abuf = ta->buffer->u.array_buffer;
     if (abuf->detached)
         return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
@@ -50552,12 +50552,9 @@ static JSValue js_dataview_setValue(JSContext *ctx,
             v64 = u.u64;
         }
     }
-    is_swap = FALSE;
+    is_swap = TRUE;
     if (argc > 2)
-        is_swap = JS_ToBool(ctx, argv[2]);
-#ifndef WORDS_BIGENDIAN
-    is_swap ^= 1;
-#endif
+        is_swap = !JS_ToBool(ctx, argv[2]);
     abuf = ta->buffer->u.array_buffer;
     if (abuf->detached)
         return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
