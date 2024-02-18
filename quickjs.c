@@ -32217,6 +32217,7 @@ static const char * const bc_tag_str[] = {
     "TypedArray",
     "ArrayBuffer",
     "SharedArrayBuffer",
+    "RegExp",
     "Date",
     "ObjectValue",
     "ObjectReference",

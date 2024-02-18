@@ -2595,7 +2595,7 @@ const char *lre_get_groupnames(const uint8_t *bc_buf)
 void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
 {
     uint8_t *p, *pe;
-    uint32_t n, r;
+    uint32_t n, r, nw;
 
     p = buf;
     if (len < RE_HEADER_LEN)
@@ -2630,16 +2630,23 @@ void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
             case REOP_save_reset: // has two 8 bit arguments
                 break;
             case REOP_range32: // variable length
-                for (r = 3 + 4 * get_u16(&p[1]); n < r; n += 4)
+                nw = get_u16(&p[1]);  // number of pairs of uint32_t
+                if (is_byte_swapped)
+                    n = bswap16(n);
+                for (r = 3 + 8 * nw; n < r; n += 4)
                     inplace_bswap32(&p[n]);
                 goto doswap16;
             case REOP_range: // variable length
-                for (r = 3 + 2 * get_u16(&p[1]); n < r; n += 2)
+                nw = get_u16(&p[1]);  // number of pairs of uint16_t
+                if (is_byte_swapped)
+                    n = bswap16(n);
+                for (r = 3 + 4 * nw; n < r; n += 2)
                     inplace_bswap16(&p[n]);
                 goto doswap16;
             default:
             doswap16:
                 inplace_bswap16(&p[1]);
+                break;
             }
             break;
         case 5:
