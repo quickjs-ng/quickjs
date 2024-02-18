@@ -3938,16 +3938,36 @@ const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValue val1, BOOL ce
     JSValue val;
     JSString *str, *str_new;
     int pos, len, c, c1;
+    JSObject *p;
     uint8_t *q;
 
-    if (JS_VALUE_GET_TAG(val1) != JS_TAG_STRING) {
-        val = JS_ToString(ctx, val1);
-        if (JS_IsException(val))
-            goto fail;
-    } else {
+    if (JS_VALUE_GET_TAG(val1) == JS_TAG_STRING) {
         val = js_dup(val1);
+        goto go;
     }
 
+    val = JS_ToString(ctx, val1);
+    if (!JS_IsException(val))
+        goto go;
+
+    // Stringification can fail when there is an exception pending,
+    // e.g. a stack overflow InternalError. Special-case exception
+    // objects to make debugging easier, look up the .message property
+    // and stringify that.
+    if (JS_VALUE_GET_TAG(val1) != JS_TAG_OBJECT)
+        goto fail;
+
+    p = JS_VALUE_GET_OBJ(val1);
+    if (p->class_id != JS_CLASS_ERROR)
+        goto fail;
+
+    val = JS_GetProperty(ctx, val1, JS_ATOM_message);
+    if (JS_VALUE_GET_TAG(val) != JS_TAG_STRING) {
+        JS_FreeValue(ctx, val);
+        goto fail;
+    }
+
+go:
     str = JS_VALUE_GET_STRING(val);
     len = str->len;
     if (!str->is_wide_char) {
