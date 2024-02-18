@@ -26,6 +26,7 @@
 #define CUTILS_H
 
 #include <stdlib.h>
+#include <string.h>
 #include <inttypes.h>
 
 /* set if CPU is big endian */
@@ -81,14 +82,6 @@ static void *__builtin_frame_address(unsigned int level) {
 #else
 # define FORMAT_STRING(p) p
 #endif /* _MSC_VER */
-
-// https://stackoverflow.com/a/3312896
-// https://stackoverflow.com/a/3312896
-#if defined(__GNUC__) || defined(__clang__) // GCC, clang, clang-cl, and so on but not MSVC
-#  define PACK( __Declaration__ ) __Declaration__ __attribute__((__packed__))
-#elif defined(_MSC_VER) && !defined(__clang__) // MSVC
-#  define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
-#endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <math.h>
@@ -228,67 +221,61 @@ static inline int ctz64(uint64_t a)
 #endif
 }
 
-PACK(
-    struct packed_u64 {
-             uint64_t v;
-    }
-);
-
-PACK(
-    struct packed_u32 {
-        uint32_t v;
-    }
-);
-
-PACK(
-    struct packed_u16 {
-        uint16_t v;
-    }
-);
-
 static inline uint64_t get_u64(const uint8_t *tab)
 {
-    return ((const struct packed_u64 *)tab)->v;
+    uint64_t v;
+    memcpy(&v, tab, sizeof(v));
+    return v;
 }
 
 static inline int64_t get_i64(const uint8_t *tab)
 {
-    return (int64_t)((const struct packed_u64 *)tab)->v;
+    int64_t v;
+    memcpy(&v, tab, sizeof(v));
+    return v;
 }
 
 static inline void put_u64(uint8_t *tab, uint64_t val)
 {
-    ((struct packed_u64 *)tab)->v = val;
+    memcpy(tab, &val, sizeof(val));
 }
 
 static inline uint32_t get_u32(const uint8_t *tab)
 {
-    return ((const struct packed_u32 *)tab)->v;
+    uint32_t v;
+    memcpy(&v, tab, sizeof(v));
+    return v;
 }
 
 static inline int32_t get_i32(const uint8_t *tab)
 {
-    return (int32_t)((const struct packed_u32 *)tab)->v;
+    int32_t v;
+    memcpy(&v, tab, sizeof(v));
+    return v;
 }
 
 static inline void put_u32(uint8_t *tab, uint32_t val)
 {
-    ((struct packed_u32 *)tab)->v = val;
+    memcpy(tab, &val, sizeof(val));
 }
 
 static inline uint32_t get_u16(const uint8_t *tab)
 {
-    return ((const struct packed_u16 *)tab)->v;
+    uint16_t v;
+    memcpy(&v, tab, sizeof(v));
+    return v;
 }
 
 static inline int32_t get_i16(const uint8_t *tab)
 {
-    return (int16_t)((const struct packed_u16 *)tab)->v;
+    int16_t v;
+    memcpy(&v, tab, sizeof(v));
+    return v;
 }
 
 static inline void put_u16(uint8_t *tab, uint16_t val)
 {
-    ((struct packed_u16 *)tab)->v = val;
+    memcpy(tab, &val, sizeof(val));
 }
 
 static inline uint32_t get_u8(const uint8_t *tab)
