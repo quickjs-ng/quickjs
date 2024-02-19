@@ -456,6 +456,8 @@ typedef struct JSClassDef {
 } JSClassDef;
 
 JS_EXTERN JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id);
+/* Returns the class ID if `v` is an object, otherwise returns 0. */
+JS_EXTERN JSClassID JS_GetClassID(JSValue v);
 JS_EXTERN int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def);
 JS_EXTERN int JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id);
 
