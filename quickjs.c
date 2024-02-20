@@ -3348,7 +3348,7 @@ JSClassID JS_GetClassID(JSValue v)
 {
   JSObject *p;
   if (JS_VALUE_GET_TAG(v) != JS_TAG_OBJECT)
-    return 0;
+    return JS_INVALID_CLASS_ID;
   p = JS_VALUE_GET_OBJ(v);
   return p->class_id;
 }

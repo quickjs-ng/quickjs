@@ -455,8 +455,9 @@ typedef struct JSClassDef {
     JSClassExoticMethods *exotic;
 } JSClassDef;
 
+#define JS_INVALID_CLASS_ID 0
 JS_EXTERN JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id);
-/* Returns the class ID if `v` is an object, otherwise returns 0. */
+/* Returns the class ID if `v` is an object, otherwise returns JS_INVALID_CLASS_ID. */
 JS_EXTERN JSClassID JS_GetClassID(JSValue v);
 JS_EXTERN int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def);
 JS_EXTERN int JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id);
