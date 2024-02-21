@@ -46814,7 +46814,7 @@ static double time_clip(double t) {
    of the operations */
 static double set_date_fields(double fields[], int is_local) {
     double y, m, dt, ym, mn, day, h, s, milli, time, tv;
-    int yi, mi, md, i;
+    int yi, mi, i;
     int64_t days;
     volatile double temp;  /* enforce evaluation order */
 
