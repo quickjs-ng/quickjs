@@ -977,13 +977,17 @@ JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 
 /* Promise */
 
+#define JS_INVALID_PROMISE_STATE -1
+
 typedef enum JSPromiseStateEnum {
     JS_PROMISE_PENDING,
     JS_PROMISE_FULFILLED,
     JS_PROMISE_REJECTED,
 } JSPromiseStateEnum;
 
+/* Returns JSPromiseReactionEnum for the promise or JS_INVALID_PROMISE_STATE if the value is not a promise. */
 JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
+/* Return the result of the promise if the promise's state is in the FULFILLED or REJECTED state. Otherwise returns JS_UNDEFINED. */
 JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 
 /* Version */
