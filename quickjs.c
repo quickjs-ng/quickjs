@@ -45116,7 +45116,7 @@ JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise)
 {
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)
-        return -1;
+      return JS_INVALID_PROMISE_STATE;
     return s->promise_state;
 }
 
