@@ -84,14 +84,22 @@ function assert(actual, expected, message) {
     if (arguments.length == 1)
         expected = true;
 
-    if (actual === expected)
-        return;
-
-    if (actual !== null && expected !== null
-    &&  typeof actual == 'object' && typeof expected == 'object'
-    &&  actual.toString() === expected.toString())
-        return;
-
+    if (typeof actual === typeof expected) {
+        if (actual === expected) {
+            if (actual !== 0 || (1 / actual) === (1 / expected))
+                return;
+        }
+        if (typeof actual === 'number') {
+            if (isNaN(actual) && isNaN(expected))
+                return true;
+        }
+        if (typeof actual === 'object') {
+            if (actual !== null && expected !== null
+            &&  actual.constructor === expected.constructor
+            &&  actual.toString() === expected.toString())
+                return;
+        }
+    }
     throw Error("assertion failed: got |" + actual + "|" +
                 ", expected |" + expected + "|" +
                 (message ? " (" + message + ")" : ""));
@@ -594,20 +602,54 @@ function test_date()
     assert(d.toISOString(), "2017-09-22T18:10:11.091Z");
     a = Date.parse(d.toISOString());
     assert((new Date(a)).toISOString(), d.toISOString());
-    s = new Date("2020-01-01T01:01:01.1Z").toISOString();
-    assert(s ==  "2020-01-01T01:01:01.100Z");
-    s = new Date("2020-01-01T01:01:01.12Z").toISOString();
-    assert(s ==  "2020-01-01T01:01:01.120Z");
     s = new Date("2020-01-01T01:01:01.123Z").toISOString();
-    assert(s ==  "2020-01-01T01:01:01.123Z");
+    assert(s,    "2020-01-01T01:01:01.123Z");
+    // implementation defined behavior
+    s = new Date("2020-01-01T01:01:01.1Z").toISOString();
+    assert(s,    "2020-01-01T01:01:01.100Z");
+    s = new Date("2020-01-01T01:01:01.12Z").toISOString();
+    assert(s,    "2020-01-01T01:01:01.120Z");
     s = new Date("2020-01-01T01:01:01.1234Z").toISOString();
-    assert(s ==  "2020-01-01T01:01:01.123Z");
+    assert(s,    "2020-01-01T01:01:01.123Z");
     s = new Date("2020-01-01T01:01:01.12345Z").toISOString();
-    assert(s ==  "2020-01-01T01:01:01.123Z");
+    assert(s,    "2020-01-01T01:01:01.123Z");
     s = new Date("2020-01-01T01:01:01.1235Z").toISOString();
-    assert(s ==  "2020-01-01T01:01:01.124Z");
+    assert(s ==  "2020-01-01T01:01:01.124Z" ||      // QuickJS
+           s ==  "2020-01-01T01:01:01.123Z");       // nodeJS
     s = new Date("2020-01-01T01:01:01.9999Z").toISOString();
-    assert(s ==  "2020-01-01T01:01:02.000Z");
+    assert(s ==  "2020-01-01T01:01:02.000Z" ||      // QuickJS
+           s ==  "2020-01-01T01:01:01.999Z");       // nodeJS
+
+    assert(Date.UTC(2017), 1483228800000);
+    assert(Date.UTC(2017, 9), 1506816000000);
+    assert(Date.UTC(2017, 9, 22), 1508630400000);
+    assert(Date.UTC(2017, 9, 22, 18), 1508695200000);
+    assert(Date.UTC(2017, 9, 22, 18, 10), 1508695800000);
+    assert(Date.UTC(2017, 9, 22, 18, 10, 11), 1508695811000);
+    assert(Date.UTC(2017, 9, 22, 18, 10, 11, 91), 1508695811091);
+
+    assert(Date.UTC(NaN), NaN);
+    assert(Date.UTC(2017, NaN), NaN);
+    assert(Date.UTC(2017, 9, NaN), NaN);
+    assert(Date.UTC(2017, 9, 22, NaN), NaN);
+    assert(Date.UTC(2017, 9, 22, 18, NaN), NaN);
+    assert(Date.UTC(2017, 9, 22, 18, 10, NaN), NaN);
+    assert(Date.UTC(2017, 9, 22, 18, 10, 11, NaN), NaN);
+    assert(Date.UTC(2017, 9, 22, 18, 10, 11, 91, NaN), 1508695811091);
+
+    // TODO: Fix rounding errors on Windows/Cygwin.
+    if (!['win32', 'cygwin'].includes(os.platform)) {
+        // from test262/test/built-ins/Date/UTC/fp-evaluation-order.js
+        assert(Date.UTC(1970, 0, 1, 80063993375, 29, 1, -288230376151711740), 29312,
+               'order of operations / precision in MakeTime');
+        assert(Date.UTC(1970, 0, 213503982336, 0, 0, 0, -18446744073709552000), 34447360,
+               'precision in MakeDate');
+    }
+    //assert(Date.UTC(2017 - 1e9, 9 + 12e9), 1506816000000);  // node fails this
+    assert(Date.UTC(2017, 9, 22 - 1e10, 18 + 24e10), 1508695200000);
+    assert(Date.UTC(2017, 9, 22, 18 - 1e10, 10 + 60e10), 1508695800000);
+    assert(Date.UTC(2017, 9, 22, 18, 10 - 1e10, 11 + 60e10), 1508695811000);
+    assert(Date.UTC(2017, 9, 22, 18, 10, 11 - 1e12, 91 + 1000e12), 1508695811091);
 }
 
 function test_regexp()
