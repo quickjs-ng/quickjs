@@ -695,6 +695,16 @@ function test_map()
 {
     var a, i, n, tab, o, v;
     n = 1000;
+
+    a = new Map();
+    for (var i = 0; i < n; i++) {
+        a.set(i, i);
+    }
+    a.set(-2147483648, 1);
+    assert(a.get(-2147483648), 1);
+    assert(a.get(-2147483647 - 1), 1);
+    assert(a.get(-2147483647.5 - 0.5), 1);
+
     a = new Map();
     tab = [];
     for(i = 0; i < n; i++) {
