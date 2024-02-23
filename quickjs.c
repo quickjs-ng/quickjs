@@ -48195,6 +48195,10 @@ JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
                                         buf, free_func, opaque, FALSE);
 }
 
+JS_BOOL JS_IsArrayBuffer(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_ARRAY_BUFFER;
+}
+
 /* create a new ArrayBuffer of length 'len' and copy 'buf' to it */
 JSValue JS_NewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len)
 {
@@ -50691,6 +50695,9 @@ JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len)
     return js_new_uint8array(ctx, buffer);
 }
 
+JS_BOOL JS_IsUint8Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_UINT8_ARRAY;
+}
 
 /* Atomics */
 #ifdef CONFIG_ATOMICS
