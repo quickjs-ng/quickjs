@@ -977,7 +977,7 @@ JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 
 /* Promise */
 
-#define JS_INVALID_PROMISE_STATE -1
+#define JS_INVALID_PROMISE_STATE (-1)
 
 typedef enum JSPromiseStateEnum {
     JS_PROMISE_PENDING,
