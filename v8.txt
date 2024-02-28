@@ -799,11 +799,6 @@ Failure: expected <true> found <false>
 === number-string-index-call.js
 === number-tostring-add.js
 === number-tostring-big-integer.js
-Failure:
-expected:
-"314404114120101444444424000000000000000"
-found:
-"1.2345e+27"
 === number-tostring-func.js
 === number-tostring-small.js
 === number-tostring.js

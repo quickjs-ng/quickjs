@@ -11271,6 +11271,8 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
         while (d0 >= radix) {
             digit = fmod(d0, radix);
             d0 = trunc(d0 / radix);
+            if (d0 >= MAX_SAFE_INTEGER)
+                digit = 0;
             *--ptr = digits[digit];
         }
         *--ptr = digits[(int)d0];
