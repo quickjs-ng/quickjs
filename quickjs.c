@@ -11293,7 +11293,7 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
         }
         *ptr2 = '\0';
         if (frac * radix >= radix / 2) {
-            char nine = '0' + radix - 1;
+            char nine = digits[radix - 1];
             // round to closest
             while (ptr2[-1] == nine)
                 *--ptr2 = '\0';
