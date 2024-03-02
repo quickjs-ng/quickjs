@@ -938,6 +938,8 @@ import * as os from "os";
                     std.puts(a);
                 } else if (stack.indexOf(a) >= 0) {
                     std.puts("[circular]");
+                } else if (a instanceof Date) {
+                    std.puts("Date " + a.toGMTString().__quote());
                 } else {
                     stack.push(a);
                     if (Array.isArray(a)) {
