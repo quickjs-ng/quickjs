@@ -29,9 +29,6 @@
 #include <string.h>
 #include <inttypes.h>
 
-/* set if CPU is big endian */
-#undef WORDS_BIGENDIAN
-
 #if defined(_MSC_VER)
 #include <windows.h>
 #include <winsock2.h>
