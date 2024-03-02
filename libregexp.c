@@ -783,6 +783,9 @@ static int get_class_atom(REParseState *s, CharRange *cr,
                     /* always valid to escape these characters */
                     goto normal_char;
                 } else if (s->is_unicode) {
+                    // special case: allowed inside [] but not outside
+                    if (ret == -2 && *p == '-' && inclass)
+                        goto normal_char;
                 invalid_escape:
                     return re_parse_error(s, "invalid escape sequence in regular expression");
                 } else {

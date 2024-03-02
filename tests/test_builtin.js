@@ -699,6 +699,9 @@ function test_regexp()
         ex = _ex;
     }
     assert(ex?.message, "invalid class range");
+
+    eval("/[\\-]/");
+    eval("/[\\-]/u");
 }
 
 function test_symbol()
