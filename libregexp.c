@@ -1969,11 +1969,11 @@ static BOOL is_word_char(uint32_t c)
             const uint16_t *_p = (const uint16_t *)cptr;                \
             const uint16_t *_end = (const uint16_t *)cbuf_end;          \
             c = *_p++;                                                  \
-            if (is_hi_surrogate(c) && cbuf_type == 2) {                 \
-                if (_p < _end && is_lo_surrogate(*_p)) {                \
-                    c = from_surrogate(c, *_p++);                       \
-                }                                                       \
-            }                                                           \
+            if (is_hi_surrogate(c))                                     \
+                if (cbuf_type == 2)                                     \
+                    if (_p < _end)                                      \
+                        if (is_lo_surrogate(*_p))                       \
+                            c = from_surrogate(c, *_p++);               \
             cptr = (const void *)_p;                                    \
         }                                                               \
     } while (0)
@@ -1986,11 +1986,11 @@ static BOOL is_word_char(uint32_t c)
             const uint16_t *_p = (const uint16_t *)cptr;                \
             const uint16_t *_end = (const uint16_t *)cbuf_end;          \
             c = *_p++;                                                  \
-            if (is_hi_surrogate(c) && cbuf_type == 2) {                 \
-                if (_p < _end && is_lo_surrogate(*_p)) {                \
-                    c = from_surrogate(c, *_p);                         \
-                }                                                       \
-            }                                                           \
+            if (is_hi_surrogate(c))                                     \
+                if (cbuf_type == 2)                                     \
+                    if (_p < _end)                                      \
+                        if (is_lo_surrogate(*_p))                       \
+                            c = from_surrogate(c, *_p);                 \
         }                                                               \
     } while (0)
 
@@ -2002,11 +2002,11 @@ static BOOL is_word_char(uint32_t c)
             const uint16_t *_p = (const uint16_t *)cptr - 1;            \
             const uint16_t *_start = (const uint16_t *)cbuf_start;      \
             c = *_p;                                                    \
-            if (is_lo_surrogate(c) && cbuf_type == 2) {                 \
-                if (_p > _start && is_hi_surrogate(_p[-1])) {           \
-                    c = from_surrogate(*--_p, c);                       \
-                }                                                       \
-            }                                                           \
+            if (is_lo_surrogate(c))                                     \
+                if (cbuf_type == 2)                                     \
+                    if (_p > _start)                                    \
+                        if (is_hi_surrogate(_p[-1]))                    \
+                            c = from_surrogate(*--_p, c);               \
         }                                                               \
     } while (0)
 
@@ -2019,11 +2019,11 @@ static BOOL is_word_char(uint32_t c)
             const uint16_t *_p = (const uint16_t *)cptr - 1;            \
             const uint16_t *_start = (const uint16_t *)cbuf_start;      \
             c = *_p;                                                    \
-            if (is_lo_surrogate(c) && cbuf_type == 2) {                 \
-                if (_p > _start && is_hi_surrogate(_p[-1])) {           \
-                    c = from_surrogate(*--_p, c);                       \
-                }                                                       \
-            }                                                           \
+            if (is_lo_surrogate(c))                                     \
+                if (cbuf_type == 2)                                     \
+                    if (_p > _start)                                    \
+                        if (is_hi_surrogate(_p[-1]))                    \
+                            c = from_surrogate(*--_p, c);               \
             cptr = (const void *)_p;                                    \
         }                                                               \
     } while (0)
@@ -2035,11 +2035,11 @@ static BOOL is_word_char(uint32_t c)
         } else {                                                        \
             const uint16_t *_p = (const uint16_t *)cptr - 1;            \
             const uint16_t *_start = (const uint16_t *)cbuf_start;      \
-            if (is_lo_surrogate(*_p) && cbuf_type == 2) {               \
-                if (_p > _start && is_hi_surrogate(_p[-1])) {           \
-                    --_p;                                               \
-                }                                                       \
-            }                                                           \
+            if (is_lo_surrogate(*_p))                                   \
+                if (cbuf_type == 2)                                     \
+                    if (_p > _start)                                    \
+                        if (is_hi_surrogate(_p[-1]))                    \
+                            _p--;                                       \
             cptr = (const void *)_p;                                    \
         }                                                               \
     } while (0)
