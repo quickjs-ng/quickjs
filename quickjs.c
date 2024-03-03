@@ -32,9 +32,9 @@
 #include <assert.h>
 #if !defined(_MSC_VER)
 #include <sys/time.h>
-#endif
 #if defined(_WIN32)
 #include <timezoneapi.h>
+#endif
 #endif
 #include <time.h>
 #include <fenv.h>
