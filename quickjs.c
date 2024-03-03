@@ -33,6 +33,9 @@
 #if !defined(_MSC_VER)
 #include <sys/time.h>
 #endif
+#if defined(_WIN32)
+#include <timezoneapi.h>
+#endif
 #include <time.h>
 #include <fenv.h>
 #include <math.h>
