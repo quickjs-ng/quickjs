@@ -32,6 +32,9 @@
 #include <assert.h>
 #if !defined(_MSC_VER)
 #include <sys/time.h>
+#if defined(_WIN32)
+#include <timezoneapi.h>
+#endif
 #endif
 #include <time.h>
 #include <fenv.h>
@@ -40827,8 +40830,9 @@ static const JSCFunctionListEntry js_math_obj[] = {
    between UTC time and local time 'd' in minutes */
 static int getTimezoneOffset(int64_t time) {
 #if defined(_WIN32)
-    /* XXX: TODO */
-    return 0;
+    TIME_ZONE_INFORMATION time_zone_info;
+    GetTimeZoneInformation(&time_zone_info);
+    return (int)time_zone_info.Bias / 60;
 #else
     time_t ti;
     struct tm tm;
