@@ -183,106 +183,7 @@ Failure (54[]): expected <true> found <false>
 Failure (55[]): expected <true> found <false>
 Failure (56[]): expected <true> found <false>
 === date-parse.js
-Failure (parse: Sat, 01-Jan-2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Jan 01 2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Jan 01 08:00:00 UT 2000): expected <946713600000> found <NaN>
-Failure (parse: Saturday, 01-Jan-00 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 08:00 +0000): expected <946713600000> found <NaN>
-Failure (parse: [Saturday] Jan 01 08:00:00 UT 2000): expected <946713600000> found <NaN>
-Failure (parse: Ignore all of this stuff because it is annoying 01 Jan 2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: All of this stuff is really annnoying, so it will be ignored Jan 01 2000 08:00:00 UT): expected <946713600000> f
-Failure (parse: Sat, 01-Janisamonth-2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Janisamonth 2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Janisamonth 01 2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Janisamonth 01 08:00:00 UT 2000): expected <946713600000> found <NaN>
-Failure (parse: Saturday, 01-Janisamonth-00 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: 01 Janisamonth 00 08:00 +0000): expected <946713600000> found <NaN>
-Failure (parse: Janisamonthandtherestisignored01 2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Jan01 2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 2000/01/01 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01/01/2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01/01 2000 08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01,Jan,2000,08:00:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 08:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 08:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Jan 01 2000 08:00 UT): expected <946713600000> found <NaN>
-Failure (parse: Jan 01 08:00 UT 2000): expected <946713600000> found <NaN>
-Failure (parse: Saturday, 01-Jan-00 08:00 UT): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 08:00 +0000): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 08:00 AM UT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 08:00 AM UT): expected <946713600000> found <NaN>
-Failure (parse: Jan 01 2000 08:00 AM UT): expected <946713600000> found <NaN>
-Failure (parse: Jan 01 08:00 AM UT 2000): expected <946713600000> found <NaN>
-Failure (parse: Saturday, 01-Jan-00 08:00 AM UT): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 08:00 AM +0000): expected <946713600000> found <NaN>
-Failure (parse:    Sat,   01-Jan-2000   08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat,   01   Jan   2000   08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Saturday,   01-Jan-00   08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   01    Jan   00    08:00   +0000   ): expected <946713600000> found <NaN>
-Failure (parse:  ()(Sat, 01-Jan-2000)  Sat,   01-Jan-2000   08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat()(Sat, 01-Jan-2000)01   Jan   2000   08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat,(02)01   Jan   2000   08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat,  01(02)Jan   2000   08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat,  01  Jan  2000 (2001)08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat,  01  Jan  2000 (01)08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat,  01  Jan  2000 (01:00:00)08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat,  01  Jan  2000  08:00:00 (CDT)UT  ): expected <946713600000> found <NaN>
-Failure (parse:   Sat,  01  Jan  2000  08:00:00  UT((((CDT))))): expected <946713600000> found <NaN>
-Failure (parse:   Saturday,   01-Jan-00 ()(((asfd)))(Sat, 01-Jan-2000)08:00:00   UT  ): expected <946713600000> found <NaN>
-Failure (parse:   01    Jan   00    08:00 ()(((asdf)))(Sat, 01-Jan-2000)+0000   ): expected <946713600000> found <NaN>
-Failure (parse:   01    Jan   00    08:00   +0000()((asfd)(Sat, 01-Jan-2000)) ): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 08:00:00 GMT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 08:00:00 GMT+0): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 08:00:00 GMT+00): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 08:00:00 GMT+000): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 08:00:00 GMT+0000): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 08:00:00 GMT+00:00): expected <946713600000> found <NaN>
-Failure (parse: Saturday, 01-Jan-00 08:00:00 GMT): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 08:00 -0000): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 08:00 +0000): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 03:00:00 UTC-0500): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 03:00:00 UTC-05:00): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 03:00:00 EST): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 03:00:00 EST): expected <946713600000> found <946695600000>
-Failure (parse: Saturday, 01-Jan-00 03:00:00 EST): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 03:00 -0500): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 04:00:00 EDT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 04:00:00 EDT): expected <946713600000> found <946699200000>
-Failure (parse: Saturday, 01-Jan-00 04:00:00 EDT): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 04:00 -0400): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 02:00:00 CST): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 02:00:00 CST): expected <946713600000> found <946692000000>
-Failure (parse: Saturday, 01-Jan-00 02:00:00 CST): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 02:00 -0600): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 03:00:00 CDT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 03:00:00 CDT): expected <946713600000> found <946695600000>
-Failure (parse: Saturday, 01-Jan-00 03:00:00 CDT): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 03:00 -0500): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 01:00:00 MST): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 01:00:00 MST): expected <946713600000> found <946688400000>
-Failure (parse: Saturday, 01-Jan-00 01:00:00 MST): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 01:00 -0700): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 02:00:00 MDT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 02:00:00 MDT): expected <946713600000> found <946692000000>
-Failure (parse: Saturday, 01-Jan-00 02:00:00 MDT): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 02:00 -0600): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 00:00:00 PST): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 00:00:00 PST): expected <946713600000> found <946684800000>
-Failure (parse: Saturday, 01-Jan-00 00:00:00 PST): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 00:00 -0800): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 PST): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01-Jan-2000 01:00:00 PDT): expected <946713600000> found <NaN>
-Failure (parse: Sat, 01 Jan 2000 01:00:00 PDT): expected <946713600000> found <946688400000>
-Failure (parse: Saturday, 01-Jan-00 01:00:00 PDT): expected <946713600000> found <NaN>
-Failure (parse: 01 Jan 00 01:00 -0700): expected <946713600000> found <NaN>
-Failure (parse-local-time: Sat, 01-Jan-2000 08:00:00 is NaN.): expected <true> found <false>
-Failure (parse-local-time: Sat, 01-Jan-2000 08:00:00 <= 0.): expected <true> found <false>
-Failure (parse-local-time: Jan 01 2000 08:00:00 is NaN.): expected <true> found <false>
-Failure (parse-local-time: Jan 01 2000 08:00:00 <= 0.): expected <true> found <false>
-Failure (parse-local-time: Jan 01 08:00:00 2000 is NaN.): expected <true> found <false>
-Failure (parse-local-time: Jan 01 08:00:00 2000 <= 0.): expected <true> found <false>
-Failure (parse-local-time: Saturday, 01-Jan-00 08:00:00 is NaN.): expected <true> found <false>
-<output elided>
+Failure (May 25 2008 1:30( )AM (PM) is not NaN.): expected <true> found <false>
 === declare-locally.js
 === deep-recursion.js
 === define-property-gc.js
@@ -718,8 +619,6 @@ Did not throw exception
 Did not throw exception
 === json-stringify-stack.js
 === json.js
-Failure: expected <"1979-01-11T08:00:00.000Z"> found <null>
-Failure: expected <"2005-05-05T05:05:05.000Z"> found <null>
 Did not throw exception
 Did not throw exception
 Did not throw exception
