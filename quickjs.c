@@ -1262,41 +1262,17 @@ static const JSClassExoticMethods js_string_exotic_methods;
 static const JSClassExoticMethods js_proxy_exotic_methods;
 static const JSClassExoticMethods js_module_ns_exotic_methods;
 
-// Special care is taken to not invoke UB when checking if the result fits
-// in an int32_t. Leans on the fact that the input is integral if the lower
-// 52 bits of the equation 2**e * (f + 2**52) are zero.
-static BOOL float_is_int32(double d)
+static inline BOOL double_is_int32(double d)
 {
-    uint64_t u, m, e, f;
-    JSFloat64Union t;
+    JSFloat64Union t1, t2;
 
-    t.d = d;
-    u = t.u64;
-
-    // special case -0
-    m = 1ull << 63;
-    if (u == m)
+    if (d >= INT32_MIN && d <= INT32_MAX) {
+        t1.d = d;
+        t2.d = (int32_t)d;
+        return t1.u64 == t2.u64;
+    } else {
         return FALSE;
-
-    e = (u >> 52) & 0x7FF;
-    if (e > 0)
-        e -= 1023;
-
-    // too large, nan or inf?
-    if (e > 30)
-        return FALSE;
-
-    // fractional or subnormal if low bits are non-zero
-    f = 0xFFFFFFFFFFFFFull & u;
-    m = 0xFFFFFFFFFFFFFull >> e;
-    return 0 == (f & m);
-}
-
-static JSValue js_float64(double d)
-{
-    if (float_is_int32(d))
-        return JS_MKVAL(JS_TAG_INT, (int32_t)d);
-    return __JS_NewFloat64(d);
+    }
 }
 
 static int compare_u32(uint32_t a, uint32_t b)
@@ -1309,11 +1285,35 @@ static JSValue js_int32(int32_t v)
     return JS_MKVAL(JS_TAG_INT, v);
 }
 
+static JSValue js_float64(double d)
+{
+    return JS_NewFloat64__(d);
+}
+
 static JSValue js_uint32(uint32_t v)
 {
     if (v <= INT32_MAX)
         return js_int32(v);
-    return js_float64(v);
+    else
+        return js_float64(v);
+}
+
+static JSValue js_int64(int64_t v)
+{
+    if (v == (int32_t)v)
+        return js_int32(v);
+    else
+        return js_float64(v);
+}
+
+#define JS_NewInt64(ctx, val)  js_int64(val)
+
+static JSValue js_double(double d)
+{
+    if (double_is_int32(d))
+        return js_int32((int32_t)d);
+    else
+        return js_float64(d);
 }
 
 static JSValue js_bool(JS_BOOL v)
@@ -3168,7 +3168,7 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
             /* -0 case is specific */
             if (c == '0' && len == 2) {
             minus_zero:
-                return __JS_NewFloat64(-0.0);
+                return js_float64(-0.0);
             }
         }
         if (!is_num(c)) {
@@ -7948,10 +7948,10 @@ static JSValue JS_GetPropertyValue(JSContext *ctx, JSValue this_obj,
             return JS_NewBigUint64(ctx, p->u.array.u.uint64_ptr[idx]);
         case JS_CLASS_FLOAT32_ARRAY:
             if (unlikely(idx >= p->u.array.count)) goto slow_path;
-            return __JS_NewFloat64(p->u.array.u.float_ptr[idx]);
+            return js_float64(p->u.array.u.float_ptr[idx]);
         case JS_CLASS_FLOAT64_ARRAY:
             if (unlikely(idx >= p->u.array.count)) goto slow_path;
-            return __JS_NewFloat64(p->u.array.u.double_ptr[idx]);
+            return js_float64(p->u.array.u.double_ptr[idx]);
         default:
             goto slow_path;
         }
@@ -10274,7 +10274,7 @@ static JSValue js_atof2(JSContext *ctx, const char *str, const char **pp,
             double d;
             d = js_strtod(buf, radix, is_float);
             /* return int or float64 */
-            val = js_float64(d);
+            val = js_double(d);
         }
         break;
     case ATOD_TYPE_BIG_INT:
@@ -10483,7 +10483,7 @@ static __maybe_unused JSValue JS_ToIntegerFree(JSContext *ctx, JSValue val)
             } else {
                 /* convert -0 to +0 */
                 d = trunc(d) + 0.0;
-                ret = js_float64(d);
+                ret = js_double(d);
             }
         }
         break;
@@ -11743,9 +11743,9 @@ static double js_pow(double a, double b)
     }
 }
 
-JSValue JS_NewFloat64(JSContext *ctx, double d)
+JSValue JS_NewDouble(JSContext *ctx, double d)
 {
-    return js_float64(d);
+    return js_double(d);
 }
 
 JSValue JS_NewBigInt64_1(JSContext *ctx, int64_t v)
@@ -12103,7 +12103,7 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
                 break;
             case OP_neg:
                 if (v64 == 0) {
-                    sp[-1] = __JS_NewFloat64(-0.0);
+                    sp[-1] = js_float64(-0.0);
                     return 0;
                 } else {
                     v64 = -v64;
@@ -12137,7 +12137,7 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
             default:
                 abort();
             }
-            sp[-1] = __JS_NewFloat64(d);
+            sp[-1] = js_float64(d);
         }
         break;
     }
@@ -12330,23 +12330,23 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
         case OP_mul:
             v = (int64_t)v1 * (int64_t)v2;
             if (v == 0 && (v1 | v2) < 0) {
-                sp[-2] = __JS_NewFloat64(-0.0);
+                sp[-2] = js_float64(-0.0);
                 return 0;
             }
             break;
         case OP_div:
-            sp[-2] = __JS_NewFloat64((double)v1 / (double)v2);
+            sp[-2] = js_float64((double)v1 / (double)v2);
             return 0;
         case OP_mod:
             if (v1 < 0 || v2 <= 0) {
-                sp[-2] = js_float64(fmod(v1, v2));
+                sp[-2] = js_double(fmod(v1, v2));
                 return 0;
             } else {
                 v = (int64_t)v1 % (int64_t)v2;
             }
             break;
         case OP_pow:
-            sp[-2] = js_float64(js_pow(v1, v2));
+            sp[-2] = js_double(js_pow(v1, v2));
             return 0;
         default:
             abort();
@@ -12384,7 +12384,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
         default:
             abort();
         }
-        sp[-2] = __JS_NewFloat64(dr);
+        sp[-2] = js_float64(dr);
     }
     return 0;
  exception:
@@ -12408,7 +12408,7 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         double d1, d2;
         d1 = JS_VALUE_GET_FLOAT64(op1);
         d2 = JS_VALUE_GET_FLOAT64(op2);
-        sp[-2] = __JS_NewFloat64(d1 + d2);
+        sp[-2] = js_float64(d1 + d2);
         return 0;
     }
 
@@ -12467,7 +12467,7 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         }
         if (JS_ToFloat64Free(ctx, &d2, op2))
             goto exception;
-        sp[-2] = __JS_NewFloat64(d1 + d2);
+        sp[-2] = js_float64(d1 + d2);
     }
     return 0;
  exception:
@@ -14384,7 +14384,7 @@ static JSValue js_call_c_function(JSContext *ctx, JSValue func_obj,
                 ret_val = JS_EXCEPTION;
                 break;
             }
-            ret_val = js_float64(func.f_f(d1));
+            ret_val = js_double(func.f_f(d1));
         }
         break;
     case JS_CFUNC_f_f_f:
@@ -14399,7 +14399,7 @@ static JSValue js_call_c_function(JSContext *ctx, JSValue func_obj,
                 ret_val = JS_EXCEPTION;
                 break;
             }
-            ret_val = js_float64(func.f_f_f(d1, d2));
+            ret_val = js_double(func.f_f_f(d1, d2));
         }
         break;
     case JS_CFUNC_iterator_next:
@@ -16278,8 +16278,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_int32(r);
                     sp--;
                 } else if (JS_VALUE_IS_BOTH_FLOAT(op1, op2)) {
-                    sp[-2] = __JS_NewFloat64(JS_VALUE_GET_FLOAT64(op1) +
-                                             JS_VALUE_GET_FLOAT64(op2));
+                    sp[-2] = js_float64(JS_VALUE_GET_FLOAT64(op1) +
+                                        JS_VALUE_GET_FLOAT64(op2));
                     sp--;
                 } else {
                 add_slow:
@@ -16343,8 +16343,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_int32(r);
                     sp--;
                 } else if (JS_VALUE_IS_BOTH_FLOAT(op1, op2)) {
-                    sp[-2] = __JS_NewFloat64(JS_VALUE_GET_FLOAT64(op1) -
-                                             JS_VALUE_GET_FLOAT64(op2));
+                    sp[-2] = js_float64(JS_VALUE_GET_FLOAT64(op1) -
+                                        JS_VALUE_GET_FLOAT64(op2));
                     sp--;
                 } else {
                     goto binary_arith_slow;
@@ -16377,7 +16377,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 } else if (JS_VALUE_IS_BOTH_FLOAT(op1, op2)) {
                     d = JS_VALUE_GET_FLOAT64(op1) * JS_VALUE_GET_FLOAT64(op2);
                 mul_fp_res:
-                    sp[-2] = __JS_NewFloat64(d);
+                    sp[-2] = js_float64(d);
                     sp--;
                 } else {
                     goto binary_arith_slow;
@@ -16393,7 +16393,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     int v1, v2;
                     v1 = JS_VALUE_GET_INT(op1);
                     v2 = JS_VALUE_GET_INT(op2);
-                    sp[-2] = js_float64((double)v1 / (double)v2);
+                    sp[-2] = js_double((double)v1 / (double)v2);
                     sp--;
                 } else {
                     goto binary_arith_slow;
@@ -16464,7 +16464,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 } else if (JS_TAG_IS_FLOAT64(tag)) {
                     d = -JS_VALUE_GET_FLOAT64(op1);
                 neg_fp_res:
-                    sp[-1] = __JS_NewFloat64(d);
+                    sp[-1] = js_float64(d);
                 } else {
                     if (js_unary_arith_slow(ctx, sp, opcode))
                         goto exception;
@@ -34131,7 +34131,7 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
             if (bc_get_u64(s, &u.u64))
                 return JS_EXCEPTION;
             bc_read_trace(s, "%g\n", u.d);
-            obj = __JS_NewFloat64(u.d);
+            obj = js_float64(u.d);
         }
         break;
     case BC_TAG_STRING:
@@ -34434,7 +34434,7 @@ static int JS_InstantiateFunctionListItem(JSContext *ctx, JSValue obj,
         val = JS_NewInt64(ctx, e->u.i64);
         break;
     case JS_DEF_PROP_DOUBLE:
-        val = __JS_NewFloat64(e->u.f64);
+        val = js_float64(e->u.f64);
         break;
     case JS_DEF_PROP_UNDEFINED:
         val = JS_UNDEFINED;
@@ -34498,7 +34498,7 @@ int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
             val = JS_NewInt64(ctx, e->u.i64);
             break;
         case JS_DEF_PROP_DOUBLE:
-            val = __JS_NewFloat64(e->u.f64);
+            val = js_float64(e->u.f64);
             break;
         case JS_DEF_OBJECT:
             val = JS_NewObject(ctx);
@@ -36097,6 +36097,7 @@ static JSValue js_function_bind(JSContext *ctx, JSValue this_val,
             goto exception;
         if (JS_VALUE_GET_TAG(len_val) == JS_TAG_INT) {
             /* most common case */
+            // XXX: potential overflow
             int len1 = JS_VALUE_GET_INT(len_val);
             if (len1 <= arg_count)
                 len1 = 0;
@@ -36114,7 +36115,7 @@ static JSValue js_function_bind(JSContext *ctx, JSValue this_val,
                 else
                     d -= (double)arg_count; /* also converts -0 to +0 */
             }
-            len_val = js_float64(d);
+            len_val = js_double(d);
         } else {
             JS_FreeValue(ctx, len_val);
             len_val = js_int32(0);
@@ -38522,7 +38523,7 @@ static JSValue js_number_constructor(JSContext *ctx, JSValue new_target,
                 double d;
                 bf_get_float64(&p->num, &d, BF_RNDN);
                 JS_FreeValue(ctx, val);
-                val = __JS_NewFloat64(d);
+                val = js_float64(d);
             }
             break;
         default:
@@ -38678,7 +38679,7 @@ static JSValue js_number_toFixed(JSContext *ctx, JSValue this_val,
     if (f < 0 || f > 100)
         return JS_ThrowRangeError(ctx, "invalid number of digits");
     if (fabs(d) >= 1e21) {
-        return JS_ToStringFree(ctx, __JS_NewFloat64(d));
+        return JS_ToStringFree(ctx, js_float64(d));
     } else {
         return js_dtoa(ctx, d, 10, f, JS_DTOA_FRAC_FORMAT);
     }
@@ -38699,7 +38700,7 @@ static JSValue js_number_toExponential(JSContext *ctx, JSValue this_val,
     if (JS_ToInt32Sat(ctx, &f, argv[0]))
         return JS_EXCEPTION;
     if (!isfinite(d)) {
-        return JS_ToStringFree(ctx,  __JS_NewFloat64(d));
+        return JS_ToStringFree(ctx, js_float64(d));
     }
     if (JS_IsUndefined(argv[0])) {
         flags = 0;
@@ -38731,7 +38732,7 @@ static JSValue js_number_toPrecision(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     if (!isfinite(d)) {
     to_string:
-        return JS_ToStringFree(ctx,  __JS_NewFloat64(d));
+        return JS_ToStringFree(ctx, js_float64(d));
     }
     if (p < 1 || p > 100)
         return JS_ThrowRangeError(ctx, "invalid number of digits");
@@ -40599,7 +40600,7 @@ static JSValue js_math_min_max(JSContext *ctx, JSValue this_val,
     uint32_t tag;
 
     if (unlikely(argc == 0)) {
-        return __JS_NewFloat64(is_max ? NEG_INF : INF);
+        return js_float64(is_max ? NEG_INF : INF);
     }
 
     tag = JS_VALUE_GET_TAG(argv[0]);
@@ -40639,7 +40640,7 @@ static JSValue js_math_min_max(JSContext *ctx, JSValue this_val,
             }
             i++;
         }
-        return js_float64(r);
+        return js_double(r);
     }
 }
 
@@ -40768,7 +40769,7 @@ static JSValue js_math_random(JSContext *ctx, JSValue this_val,
     v = xorshift64star(&ctx->random_state);
     /* 1.0 <= u.d < 2 */
     u.u64 = ((uint64_t)0x3ff << 52) | (v >> 12);
-    return __JS_NewFloat64(u.d - 1.0);
+    return js_float64(u.d - 1.0);
 }
 
 static const JSCFunctionListEntry js_math_funcs[] = {
@@ -47011,7 +47012,7 @@ static JSValue get_date_field(JSContext *ctx, JSValue this_val,
     if (magic & 0x100) {    // getYear
         fields[0] -= 1900;
     }
-    return js_float64(fields[n]);
+    return js_double(fields[n]);
 }
 
 static JSValue set_date_field(JSContext *ctx, JSValue this_val,
@@ -48942,9 +48943,9 @@ static JSValue js_typed_array_at(JSContext *ctx, JSValue this_val,
     case JS_CLASS_UINT32_ARRAY:
         return js_uint32(p->u.array.u.uint32_ptr[idx]);
     case JS_CLASS_FLOAT32_ARRAY:
-        return __JS_NewFloat64(p->u.array.u.float_ptr[idx]);
+        return js_float64(p->u.array.u.float_ptr[idx]);
     case JS_CLASS_FLOAT64_ARRAY:
-        return __JS_NewFloat64(p->u.array.u.double_ptr[idx]);
+        return js_float64(p->u.array.u.double_ptr[idx]);
     case JS_CLASS_BIG_INT64_ARRAY:
         return JS_NewBigInt64(ctx, p->u.array.u.int64_ptr[idx]);
     case JS_CLASS_BIG_UINT64_ARRAY:
@@ -49956,11 +49957,11 @@ static JSValue js_TA_get_uint64(JSContext *ctx, const void *a) {
 }
 
 static JSValue js_TA_get_float32(JSContext *ctx, const void *a) {
-    return __JS_NewFloat64(*(const float *)a);
+    return js_float64(*(const float *)a);
 }
 
 static JSValue js_TA_get_float64(JSContext *ctx, const void *a) {
-    return __JS_NewFloat64(*(const double *)a);
+    return js_float64(*(const double *)a);
 }
 
 struct TA_sort_context {
@@ -50643,7 +50644,7 @@ static JSValue js_dataview_getValue(JSContext *ctx,
             if (is_swap)
                 v = bswap32(v);
             u.i = v;
-            return __JS_NewFloat64(u.f);
+            return js_float64(u.f);
         }
     case JS_CLASS_FLOAT64_ARRAY:
         {
@@ -50654,7 +50655,7 @@ static JSValue js_dataview_getValue(JSContext *ctx,
             u.i = get_u64(ptr);
             if (is_swap)
                 u.i = bswap64(u.i);
-            return __JS_NewFloat64(u.f);
+            return js_float64(u.f);
         }
     default:
         abort();
