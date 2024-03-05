@@ -527,7 +527,7 @@ SyntaxError: unexpected token in expression: '>'
     at html-comments.js:1:1
 
 === html-string-funcs.js
-=== icu-date-lord-howe.js
+=== icu-date-lord-howe.js TZ=Australia/Lord_Howe LC_ALL=en
 Failure:
 expected:
 "Mon Jan 01 1990 11:00:00 GMT+1100 (Lord Howe Daylight Time)"
@@ -538,7 +538,7 @@ expected:
 "Fri Jun 01 1990 10:30:00 GMT+1030 (Lord Howe Standard Time)"
 found:
 "Fri Jun 01 1990 10:30:00 GMT+1030"
-=== icu-date-to-string.js
+=== icu-date-to-string.js TZ=Europe/Madrid LC_ALL=de
 Failure:
 expected:
 "Sun Dec 31 1989 00:00:00 GMT+0100 (Mitteleuropäische Normalzeit)"
@@ -1430,9 +1430,9 @@ Failure: expected <"[object global]"> found <"[object Object]">
 === try-finally-nested.js
 === try.js
 === typeof.js
-=== tzoffset-seoul-noi18n.js
-=== tzoffset-seoul.js
-=== tzoffset-transition-apia.js
+=== tzoffset-seoul-noi18n.js TZ=Asia/Seoul
+=== tzoffset-seoul.js TZ=Asia/Seoul
+=== tzoffset-transition-apia.js TZ=Pacific/Apia
 Failure: expected <Date(1316872800000)> found <Date(1316876400000)>
 Failure: expected <Date(1316874600000)> found <Date(1316878200000)>
 Failure: expected <Date(1325275200000)> found <Date(1325188800000)>
@@ -1466,7 +1466,7 @@ Failure: expected <Date(1325323800000)> found <Date(1325237400000)>
 Failure: expected <Date(1333198800000)> found <Date(1333202400000)>
 Failure: expected <Date(1333200600000)> found <Date(1333204200000)>
 Failure: expected <Date(1333202340000)> found <Date(1333205940000)>
-=== tzoffset-transition-lord-howe.js
+=== tzoffset-transition-lord-howe.js TZ=Australia/Lord_Howe
 Failure: expected <Date(1491056940000)> found <Date(1491058740000)>
 Failure: expected <Date(1491057000000)> found <Date(1491058800000)>
 Failure: expected <Date(1491057900000)> found <Date(1491059700000)>
@@ -1475,7 +1475,7 @@ Failure: expected <Date(1506785340000)> found <Date(1506783540000)>
 Failure: expected <Date(1506785400000)> found <Date(1506783600000)>
 Failure: expected <Date(1506786300000)> found <Date(1506784500000)>
 Failure: expected <-660> found <-630>
-=== tzoffset-transition-moscow.js
+=== tzoffset-transition-moscow.js TZ=Europe/Moscow
 Failure: expected <Date(1269730740000)> found <Date(1269727140000)>
 Failure: expected <Date(1269730800000)> found <Date(1269727200000)>
 Failure: expected <Date(1269732600000)> found <Date(1269729000000)>
@@ -1492,12 +1492,12 @@ Failure: expected <Date(1414270740000)> found <Date(1414274340000)>
 Failure: expected <Date(1414270800000)> found <Date(1414274400000)>
 Failure: expected <Date(1414272600000)> found <Date(1414276200000)>
 Failure: expected <Date(1414274340000)> found <Date(1414277940000)>
-=== tzoffset-transition-new-york-noi18n.js
+=== tzoffset-transition-new-york-noi18n.js TZ=America/New_York
 Failure: expected <Date(1489302000000)> found <Date(1489305600000)>
 Failure: expected <Date(1489303800000)> found <Date(1489307400000)>
 Failure: expected <Date(1509865200000)> found <Date(1509861600000)>
 Failure: expected <Date(1509868800000)> found <Date(1509865200000)>
-=== tzoffset-transition-new-york.js
+=== tzoffset-transition-new-york.js TZ=America/New_York
 Failure: expected <Date(1489302000000)> found <Date(1489305600000)>
 Failure: expected <Date(1489303800000)> found <Date(1489307400000)>
 Failure: expected <Date(1509865200000)> found <Date(1509861600000)>
