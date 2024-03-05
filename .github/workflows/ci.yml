@@ -71,6 +71,26 @@ jobs:
       - name: test
         run: |
           make test
+  linux-s390x:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: alpine.sh {0}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: jirutka/setup-alpine@v1
+        with:
+          arch: s390x
+          packages: "build-base make cmake"
+      - name: build
+        run: |
+          make
+      - name: stats
+        run: |
+          make stats
+      - name: test
+        run: |
+          make test
   linux-gcc48:
     runs-on: ubuntu-latest
     container:
