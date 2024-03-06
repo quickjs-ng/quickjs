@@ -1506,6 +1506,15 @@ static inline int is_digit(int c) {
     return c >= '0' && c <= '9';
 }
 
+static inline BOOL is_be(void)
+{
+    union {
+        uint16_t a;
+        uint8_t  b;
+    } u = {0x100};
+    return u.b;
+}
+
 typedef struct JSClassShortDef {
     JSAtom class_name;
     JSClassFinalizer *finalizer;
@@ -6148,8 +6157,8 @@ void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s)
 
 void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt)
 {
-    fprintf(fp, "QuickJS-ng memory usage -- %s version, %d-bit, malloc limit: %"PRId64"\n\n",
-        JS_GetVersion(), (int)sizeof(void *) * 8, s->malloc_limit);
+    fprintf(fp, "QuickJS-ng memory usage -- %s version, %d-bit, %s Endian, malloc limit: %"PRId64"\n\n",
+        JS_GetVersion(), (int)sizeof(void *) * 8, is_be() ? "Big" : "Little", s->malloc_limit);
     if (rt) {
         static const struct {
             const char *name;
@@ -32334,15 +32343,6 @@ static const char * const bc_tag_str[] = {
     "ObjectReference",
 };
 #endif
-
-static inline BOOL is_be(void)
-{
-    union {
-        uint16_t a;
-        uint8_t  b;
-    } u = {0x100};
-    return u.b;
-}
 
 static void bc_put_u8(BCWriterState *s, uint8_t v)
 {
