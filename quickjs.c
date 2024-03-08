@@ -22177,7 +22177,7 @@ static int js_parse_check_duplicate_parameter(JSParseState *s, JSAtom name)
     return 0;
 
 duplicate:
-    return js_parse_error(s, "duplicate parameter names not allowed in this context");
+    return js_parse_error(s, "Duplicate parameter name not allowed in this context");
 }
 
 static JSAtom js_parse_destructuring_var(JSParseState *s, int tok, int is_arg)
@@ -23055,7 +23055,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             arg_count = 0;
             while (s->token.val != ')') {
                 if (arg_count >= 65535) {
-                    return js_parse_error(s, "too many arguments in function call (only %d allowed)",
+                    return js_parse_error(s, "Too many arguments in function call (only %d allowed)",
                                           65535 - 1);
                 }
                 if (s->token.val == TOK_ELLIPSIS)
