@@ -36,7 +36,7 @@ ReferenceError: 'Realm' is not defined
 === array-join-nesting.js
 === array-join-nonarray-length-getter-side-effects.js
 === array-join.js
-InternalError: stack overflow
+RangeError: Maximum call stack size exceeded
     at join (native)
     at toString (native)
     at join (native)
@@ -99,15 +99,7 @@ async function two(x) {
 === async-stack-traces-prepare-stacktrace-3.js
 === async-stack-traces-prepare-stacktrace-4.js
 === big-array-literal.js
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
-Failure: expected <true> found <false>
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
-Failure: expected <true> found <false>
 === big-object-literal.js
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
-Failure: expected <true> found <false>
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
-Failure: expected <true> found <false>
 === binary-op-newspace.js
 === binary-operation-overwrite.js
 === bit-not.js
@@ -708,12 +700,10 @@ expected:
 found:
 "invalid character in a JSON string"
 === json-parser-recursive.js
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
 === json-replacer-number-wrapper-tostring.js
 === json-replacer-order.js
 === json-stringify-holder.js
 === json-stringify-recursive.js
-Object <Error(InternalError: stack overflow)> is not an instance of <RangeError> but of <InternalError>
 Did not throw exception
 Did not throw exception
 === json-stringify-stack.js
@@ -1130,7 +1120,6 @@ TypeError: not a function
     at <eval> (stack-traces-custom.js:20:21)
 
 === stack-traces-overflow.js
-Object <Error(InternalError: stack overflow)> is not an instance of <RangeError> but of <InternalError>
 Failure: expected <true> found <false>
 Failure: expected <true> found <false>
 Failure: expected <undefined> found <"">
@@ -1399,7 +1388,6 @@ Failure (Capture-Global-nocapture-2): expected <""> found <undefined>
 <output elided>
 === string-normalize.js
 === string-oom-concat.js
-Object <Error(InternalError: string too long)> is not an instance of <RangeError> but of <InternalError>
 === string-pad.js
 === string-replace-gc.js
 === string-replace-one-char.js
