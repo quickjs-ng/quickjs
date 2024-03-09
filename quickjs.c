@@ -40114,12 +40114,6 @@ static JSValue js_string_trim(JSContext *ctx, JSValue this_val,
     return ret;
 }
 
-static JSValue js_string___quote(JSContext *ctx, JSValue this_val,
-                                 int argc, JSValue *argv)
-{
-    return JS_ToQuotedString(ctx, this_val);
-}
-
 /* return 0 if before the first char */
 static int string_prevc(JSString *p, int *pidx)
 {
@@ -40530,7 +40524,6 @@ static const JSCFunctionListEntry js_string_proto_funcs[] = {
     JS_ALIAS_DEF("trimLeft", "trimStart" ),
     JS_CFUNC_DEF("toString", 0, js_string_toString ),
     JS_CFUNC_DEF("valueOf", 0, js_string_toString ),
-    JS_CFUNC_DEF("__quote", 1, js_string___quote ),
     JS_CFUNC_DEF("localeCompare", 1, js_string_localeCompare ),
     JS_CFUNC_DEF("normalize", 0, js_string_normalize ),
     JS_CFUNC_MAGIC_DEF("toLowerCase", 0, js_string_toLowerCase, 1 ),
