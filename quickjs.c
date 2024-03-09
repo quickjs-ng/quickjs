@@ -6774,7 +6774,7 @@ static JSValue JS_ThrowTypeErrorNotASymbol(JSContext *ctx)
 static JSValue JS_ThrowReferenceErrorNotDefined(JSContext *ctx, JSAtom name)
 {
     char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowReferenceError(ctx, "'%s' is not defined",
+    return JS_ThrowReferenceError(ctx, "%s is not defined",
                                   JS_AtomGetStr(ctx, buf, sizeof(buf), name));
 }
 
@@ -34629,7 +34629,7 @@ static JSValue JS_ToObject(JSContext *ctx, JSValue val)
     default:
     case JS_TAG_NULL:
     case JS_TAG_UNDEFINED:
-        return JS_ThrowTypeError(ctx, "cannot convert to object");
+        return JS_ThrowTypeError(ctx, "Cannot convert undefined or null to object");
     case JS_TAG_OBJECT:
     case JS_TAG_EXCEPTION:
         return js_dup(val);
@@ -34674,13 +34674,21 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
     int flags;
 
     if (!JS_IsObject(desc)) {
-        JS_ThrowTypeErrorNotAnObject(ctx);
+        JS_ThrowTypeError(ctx, "Property description must be an object");
         return -1;
     }
     flags = 0;
     val = JS_UNDEFINED;
     getter = JS_UNDEFINED;
     setter = JS_UNDEFINED;
+    if (JS_HasProperty(ctx, desc, JS_ATOM_enumerable)) {
+        JSValue prop = JS_GetProperty(ctx, desc, JS_ATOM_enumerable);
+        if (JS_IsException(prop))
+            goto fail;
+        flags |= JS_PROP_HAS_ENUMERABLE;
+        if (JS_ToBoolFree(ctx, prop))
+            flags |= JS_PROP_ENUMERABLE;
+    }
     if (JS_HasProperty(ctx, desc, JS_ATOM_configurable)) {
         JSValue prop = JS_GetProperty(ctx, desc, JS_ATOM_configurable);
         if (JS_IsException(prop))
@@ -34688,6 +34696,12 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
         flags |= JS_PROP_HAS_CONFIGURABLE;
         if (JS_ToBoolFree(ctx, prop))
             flags |= JS_PROP_CONFIGURABLE;
+    }
+    if (JS_HasProperty(ctx, desc, JS_ATOM_value)) {
+        flags |= JS_PROP_HAS_VALUE;
+        val = JS_GetProperty(ctx, desc, JS_ATOM_value);
+        if (JS_IsException(val))
+            goto fail;
     }
     if (JS_HasProperty(ctx, desc, JS_ATOM_writable)) {
         JSValue prop = JS_GetProperty(ctx, desc, JS_ATOM_writable);
@@ -34697,26 +34711,12 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
         if (JS_ToBoolFree(ctx, prop))
             flags |= JS_PROP_WRITABLE;
     }
-    if (JS_HasProperty(ctx, desc, JS_ATOM_enumerable)) {
-        JSValue prop = JS_GetProperty(ctx, desc, JS_ATOM_enumerable);
-        if (JS_IsException(prop))
-            goto fail;
-        flags |= JS_PROP_HAS_ENUMERABLE;
-        if (JS_ToBoolFree(ctx, prop))
-            flags |= JS_PROP_ENUMERABLE;
-    }
-    if (JS_HasProperty(ctx, desc, JS_ATOM_value)) {
-        flags |= JS_PROP_HAS_VALUE;
-        val = JS_GetProperty(ctx, desc, JS_ATOM_value);
-        if (JS_IsException(val))
-            goto fail;
-    }
     if (JS_HasProperty(ctx, desc, JS_ATOM_get)) {
         flags |= JS_PROP_HAS_GET;
         getter = JS_GetProperty(ctx, desc, JS_ATOM_get);
         if (JS_IsException(getter) ||
             !(JS_IsUndefined(getter) || JS_IsFunction(ctx, getter))) {
-            JS_ThrowTypeError(ctx, "invalid getter");
+            JS_ThrowTypeError(ctx, "Getter must be a function");
             goto fail;
         }
     }
@@ -34725,7 +34725,7 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
         setter = JS_GetProperty(ctx, desc, JS_ATOM_set);
         if (JS_IsException(setter) ||
             !(JS_IsUndefined(setter) || JS_IsFunction(ctx, setter))) {
-            JS_ThrowTypeError(ctx, "invalid setter");
+            JS_ThrowTypeError(ctx, "Setter must be a function");
             goto fail;
         }
     }
@@ -34773,7 +34773,7 @@ static __exception int JS_ObjectDefineProperties(JSContext *ctx,
     int ret = -1;
 
     if (!JS_IsObject(obj)) {
-        JS_ThrowTypeErrorNotAnObject(ctx);
+        JS_ThrowTypeError(ctx, "Object.defineProperties called on non-object");
         return -1;
     }
     desc = JS_UNDEFINED;
@@ -34783,6 +34783,9 @@ static __exception int JS_ObjectDefineProperties(JSContext *ctx,
     p = JS_VALUE_GET_OBJ(props);
     if (JS_GetOwnPropertyNamesInternal(ctx, &atoms, &len, p, JS_GPN_ENUM_ONLY | JS_GPN_STRING_MASK | JS_GPN_SYMBOL_MASK) < 0)
         goto exception;
+    // XXX: ECMA specifies that all descriptions should be validated before
+    //      modifying the object. This would require allocating an array
+    //      JSPropertyDescriptor and use 2 separate loops.
     for(i = 0; i < len; i++) {
         JS_FreeValue(ctx, desc);
         desc = JS_GetProperty(ctx, props, atoms[i].atom);
@@ -34832,7 +34835,7 @@ static JSValue js_object_create(JSContext *ctx, JSValue this_val,
 
     proto = argv[0];
     if (!JS_IsObject(proto) && !JS_IsNull(proto))
-        return JS_ThrowTypeError(ctx, "not a prototype");
+        return JS_ThrowTypeError(ctx, "object prototype may only be an Object or null");
     obj = JS_NewObjectProto(ctx, proto);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
@@ -42531,7 +42534,7 @@ static JSValue json_parse_value(JSParseState *s)
     default:
     def_token:
         if (s->token.val == TOK_EOF) {
-            js_parse_error(s, "unexpected end of input");
+            js_parse_error(s, "Unexpected end of JSON input");
         } else {
             js_parse_error(s, "unexpected token: '%.*s'",
                            (int)(s->buf_ptr - s->token.ptr), s->token.ptr);
