@@ -172,6 +172,18 @@ target_include_directories(qjs PUBLIC
 
 if(EMSCRIPTEN)
     add_executable(qjs_wasm ${qjs_sources})
+    target_link_options(qjs_wasm PRIVATE
+        # in emscripten 3.x, this will be set to 16k which is too small for quickjs. #write sth. to force github rebuild
+        -sSTACK_SIZE=2097152 # let it be 2m = 2 * 1024 * 1024 = 2097152, otherwise, stack overflow may be occured at bootstrap
+        -sNO_INVOKE_RUN
+        -sNO_EXIT_RUNTIME
+        -sMODULARIZE # do not mess the global
+        -sEXPORT_ES6 # export js file to morden es module
+        -sEXPORT_NAME=getQuickJs # give a name
+        -sTEXTDECODER=1 # it will be 2 if we use -Oz, and that will cause js -> c string convertion fail
+        -sNO_DEFAULT_TO_CXX # this project is pure c project, no need for c plus plus handle
+        -sEXPORTED_RUNTIME_METHODS=ccall,cwrap
+    )
     target_compile_definitions(qjs_wasm PRIVATE ${qjs_defines})
     target_link_libraries(qjs_wasm m)
 endif()

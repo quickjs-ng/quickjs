@@ -9,7 +9,7 @@ jobs:
   linux-x86:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: jirutka/setup-alpine@v1
         with:
           arch: x86
@@ -37,7 +37,7 @@ jobs:
   linux-x86_64:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: jirutka/setup-alpine@v1
         with:
           arch: x86_64
@@ -65,7 +65,7 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           mkdir build
@@ -89,7 +89,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -121,7 +121,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -146,6 +146,25 @@ jobs:
         with:
           name: qjs
           path: build/*-windows-x86_64.exe
+
+  wasi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup wasi-sdk
+        run: |
+          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk_21.0_amd64.deb -P /tmp
+          sudo apt install /tmp/wasi-sdk*.deb
+      - name: build
+        run: |
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
+          make -C build qjs_exe
+          mv build/qjs build/qjs-wasi.wasm
+      - name: upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: qjs
+          path: build/qjs-wasi.wasm
 
   upload-to-release:
     needs: [linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64]

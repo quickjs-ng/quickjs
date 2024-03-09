@@ -1964,86 +1964,86 @@ static BOOL is_word_char(uint32_t c)
             (c == '_'));
 }
 
-#define GET_CHAR(c, cptr, cbuf_end)                                     \
+#define GET_CHAR(c, cptr, cbuf_end, cbuf_type)                          \
     do {                                                                \
         if (cbuf_type == 0) {                                           \
             c = *cptr++;                                                \
         } else {                                                        \
-            const uint16_t *_p = (uint16_t *)cptr;                      \
-            const uint16_t *_end = (uint16_t *)cbuf_end;                \
+            const uint16_t *_p = (const uint16_t *)cptr;                \
+            const uint16_t *_end = (const uint16_t *)cbuf_end;          \
             c = *_p++;                                                  \
             if (is_hi_surrogate(c))                                     \
                 if (cbuf_type == 2)                                     \
                     if (_p < _end)                                      \
                         if (is_lo_surrogate(*_p))                       \
                             c = from_surrogate(c, *_p++);               \
-            cptr = (void *) _p;                                         \
+            cptr = (const void *)_p;                                    \
         }                                                               \
     } while (0)
 
-#define PEEK_CHAR(c, cptr, cbuf_end)                                    \
+#define PEEK_CHAR(c, cptr, cbuf_end, cbuf_type)                         \
     do {                                                                \
         if (cbuf_type == 0) {                                           \
             c = cptr[0];                                                \
         } else {                                                        \
-            const uint16_t *_p = (uint16_t *)cptr;                      \
-            const uint16_t *_end = (uint16_t *)cbuf_end;                \
+            const uint16_t *_p = (const uint16_t *)cptr;                \
+            const uint16_t *_end = (const uint16_t *)cbuf_end;          \
             c = *_p++;                                                  \
             if (is_hi_surrogate(c))                                     \
                 if (cbuf_type == 2)                                     \
                     if (_p < _end)                                      \
                         if (is_lo_surrogate(*_p))                       \
-                            c = from_surrogate(c, *_p++);               \
+                            c = from_surrogate(c, *_p);                 \
         }                                                               \
     } while (0)
 
-#define PEEK_PREV_CHAR(c, cptr, cbuf_start)                             \
+#define PEEK_PREV_CHAR(c, cptr, cbuf_start, cbuf_type)                  \
     do {                                                                \
         if (cbuf_type == 0) {                                           \
             c = cptr[-1];                                               \
         } else {                                                        \
-            const uint16_t *_p = (uint16_t *)cptr - 1;                  \
-            const uint16_t *_start = (uint16_t *)cbuf_start;            \
+            const uint16_t *_p = (const uint16_t *)cptr - 1;            \
+            const uint16_t *_start = (const uint16_t *)cbuf_start;      \
             c = *_p;                                                    \
             if (is_lo_surrogate(c))                                     \
                 if (cbuf_type == 2)                                     \
                     if (_p > _start)                                    \
-                        if (is_hi_surrogate(*--_p))                     \
-                            c = from_surrogate(*_p, c);                 \
+                        if (is_hi_surrogate(_p[-1]))                    \
+                            c = from_surrogate(*--_p, c);               \
         }                                                               \
     } while (0)
 
-#define GET_PREV_CHAR(c, cptr, cbuf_start)                              \
+#define GET_PREV_CHAR(c, cptr, cbuf_start, cbuf_type)                   \
     do {                                                                \
         if (cbuf_type == 0) {                                           \
             cptr--;                                                     \
             c = cptr[0];                                                \
         } else {                                                        \
-            const uint16_t *_p = (uint16_t *)cptr - 1;                  \
-            const uint16_t *_start = (uint16_t *)cbuf_start;            \
+            const uint16_t *_p = (const uint16_t *)cptr - 1;            \
+            const uint16_t *_start = (const uint16_t *)cbuf_start;      \
             c = *_p;                                                    \
             if (is_lo_surrogate(c))                                     \
                 if (cbuf_type == 2)                                     \
                     if (_p > _start)                                    \
-                        if (is_hi_surrogate(*--_p))                     \
-                            c = from_surrogate(*_p, c);                 \
-            cptr = (void *) _p;                                         \
+                        if (is_hi_surrogate(_p[-1]))                    \
+                            c = from_surrogate(*--_p, c);               \
+            cptr = (const void *)_p;                                    \
         }                                                               \
     } while (0)
 
-#define PREV_CHAR(cptr, cbuf_start)                                     \
+#define PREV_CHAR(cptr, cbuf_start, cbuf_type)                          \
     do {                                                                \
         if (cbuf_type == 0) {                                           \
             cptr--;                                                     \
         } else {                                                        \
-            const uint16_t *_p = (uint16_t *)cptr - 1;                  \
-            const uint16_t *_start = (uint16_t *)cbuf_start;            \
+            const uint16_t *_p = (const uint16_t *)cptr - 1;            \
+            const uint16_t *_start = (const uint16_t *)cbuf_start;      \
             if (is_lo_surrogate(*_p))                                   \
                 if (cbuf_type == 2)                                     \
                     if (_p > _start)                                    \
                         if (is_hi_surrogate(_p[-1]))                    \
                             _p--;                                       \
-            cptr = (void *) _p;                                         \
+            cptr = (const void *)_p;                                    \
         }                                                               \
     } while (0)
 
@@ -2183,7 +2183,7 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                             /* go backward */
                             char_count = get_u32(pc + 12);
                             for(i = 0; i < char_count; i++) {
-                                PREV_CHAR(cptr, s->cbuf);
+                                PREV_CHAR(cptr, s->cbuf, cbuf_type);
                             }
                             pc = (pc + 16) + (int)get_u32(pc);
                             rs->cptr = cptr;
@@ -2222,7 +2222,7 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
         test_char:
             if (cptr >= cbuf_end)
                 goto no_match;
-            GET_CHAR(c, cptr, cbuf_end);
+            GET_CHAR(c, cptr, cbuf_end, cbuf_type);
             if (s->ignore_case) {
                 c = lre_canonicalize(c, s->is_unicode);
             }
@@ -2269,7 +2269,7 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                 break;
             if (!s->multi_line)
                 goto no_match;
-            PEEK_PREV_CHAR(c, cptr, s->cbuf);
+            PEEK_PREV_CHAR(c, cptr, s->cbuf, cbuf_type);
             if (!is_line_terminator(c))
                 goto no_match;
             break;
@@ -2278,21 +2278,21 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                 break;
             if (!s->multi_line)
                 goto no_match;
-            PEEK_CHAR(c, cptr, cbuf_end);
+            PEEK_CHAR(c, cptr, cbuf_end, cbuf_type);
             if (!is_line_terminator(c))
                 goto no_match;
             break;
         case REOP_dot:
             if (cptr == cbuf_end)
                 goto no_match;
-            GET_CHAR(c, cptr, cbuf_end);
+            GET_CHAR(c, cptr, cbuf_end, cbuf_type);
             if (is_line_terminator(c))
                 goto no_match;
             break;
         case REOP_any:
             if (cptr == cbuf_end)
                 goto no_match;
-            GET_CHAR(c, cptr, cbuf_end);
+            GET_CHAR(c, cptr, cbuf_end, cbuf_type);
             break;
         case REOP_save_start:
         case REOP_save_end:
@@ -2346,14 +2346,14 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                 if (cptr == s->cbuf) {
                     v1 = FALSE;
                 } else {
-                    PEEK_PREV_CHAR(c, cptr, s->cbuf);
+                    PEEK_PREV_CHAR(c, cptr, s->cbuf, cbuf_type);
                     v1 = is_word_char(c);
                 }
                 /* current char */
                 if (cptr >= cbuf_end) {
                     v2 = FALSE;
                 } else {
-                    PEEK_CHAR(c, cptr, cbuf_end);
+                    PEEK_CHAR(c, cptr, cbuf_end, cbuf_type);
                     v2 = is_word_char(c);
                 }
                 if (v1 ^ v2 ^ (REOP_not_word_boundary - opcode))
@@ -2378,8 +2378,8 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                     while (cptr1 < cptr1_end) {
                         if (cptr >= cbuf_end)
                             goto no_match;
-                        GET_CHAR(c1, cptr1, cptr1_end);
-                        GET_CHAR(c2, cptr, cbuf_end);
+                        GET_CHAR(c1, cptr1, cptr1_end, cbuf_type);
+                        GET_CHAR(c2, cptr, cbuf_end, cbuf_type);
                         if (s->ignore_case) {
                             c1 = lre_canonicalize(c1, s->is_unicode);
                             c2 = lre_canonicalize(c2, s->is_unicode);
@@ -2392,8 +2392,8 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                     while (cptr1 > cptr1_start) {
                         if (cptr == s->cbuf)
                             goto no_match;
-                        GET_PREV_CHAR(c1, cptr1, cptr1_start);
-                        GET_PREV_CHAR(c2, cptr, s->cbuf);
+                        GET_PREV_CHAR(c1, cptr1, cptr1_start, cbuf_type);
+                        GET_PREV_CHAR(c2, cptr, s->cbuf, cbuf_type);
                         if (s->ignore_case) {
                             c1 = lre_canonicalize(c1, s->is_unicode);
                             c2 = lre_canonicalize(c2, s->is_unicode);
@@ -2413,7 +2413,7 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                 pc += 2;
                 if (cptr >= cbuf_end)
                     goto no_match;
-                GET_CHAR(c, cptr, cbuf_end);
+                GET_CHAR(c, cptr, cbuf_end, cbuf_type);
                 if (s->ignore_case) {
                     c = lre_canonicalize(c, s->is_unicode);
                 }
@@ -2453,7 +2453,7 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                 pc += 2;
                 if (cptr >= cbuf_end)
                     goto no_match;
-                GET_CHAR(c, cptr, cbuf_end);
+                GET_CHAR(c, cptr, cbuf_end, cbuf_type);
                 if (s->ignore_case) {
                     c = lre_canonicalize(c, s->is_unicode);
                 }
@@ -2485,7 +2485,7 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
             /* go to the previous char */
             if (cptr == s->cbuf)
                 goto no_match;
-            PREV_CHAR(cptr, s->cbuf);
+            PREV_CHAR(cptr, s->cbuf, cbuf_type);
             break;
         case REOP_simple_greedy_quant:
             {
@@ -2598,7 +2598,7 @@ const char *lre_get_groupnames(const uint8_t *bc_buf)
 void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
 {
     uint8_t *p, *pe;
-    uint32_t n, r;
+    uint32_t n, r, nw;
 
     p = buf;
     if (len < RE_HEADER_LEN)
@@ -2633,16 +2633,23 @@ void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
             case REOP_save_reset: // has two 8 bit arguments
                 break;
             case REOP_range32: // variable length
-                for (r = 3 + 4 * get_u16(&p[1]); n < r; n += 4)
+                nw = get_u16(&p[1]);  // number of pairs of uint32_t
+                if (is_byte_swapped)
+                    n = bswap16(n);
+                for (r = 3 + 8 * nw; n < r; n += 4)
                     inplace_bswap32(&p[n]);
                 goto doswap16;
             case REOP_range: // variable length
-                for (r = 3 + 2 * get_u16(&p[1]); n < r; n += 2)
+                nw = get_u16(&p[1]);  // number of pairs of uint16_t
+                if (is_byte_swapped)
+                    n = bswap16(n);
+                for (r = 3 + 4 * nw; n < r; n += 2)
                     inplace_bswap16(&p[n]);
                 goto doswap16;
             default:
             doswap16:
                 inplace_bswap16(&p[1]);
+                break;
             }
             break;
         case 5:
