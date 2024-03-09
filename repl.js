@@ -961,7 +961,7 @@ import * as os from "os";
                             }
                         }
                         std.puts(" ]");
-                    } else if (Object.__getClass(a) === "RegExp") {
+                    } else if (a instanceof RegExp) {
                         std.puts(a.toString());
                     } else {
                         keys = Object.keys(a);
