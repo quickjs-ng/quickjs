@@ -5457,7 +5457,7 @@ static void free_zero_refcount(JSRuntime *rt)
 }
 
 /* called with the ref_count of 'v' reaches zero. */
-void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
+void JS_FreeValueRT__(JSRuntime *rt, JSValue v)
 {
     uint32_t tag = JS_VALUE_GET_TAG(v);
 
@@ -5517,14 +5517,14 @@ void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
         }
         break;
     default:
-        printf("__JS_FreeValue: unknown tag=%d\n", tag);
+        printf("JS_FreeValue: unknown tag=%d\n", tag);
         abort();
     }
 }
 
-void __JS_FreeValue(JSContext *ctx, JSValue v)
+void JS_FreeValue__(JSContext *ctx, JSValue v)
 {
-    __JS_FreeValueRT(ctx->rt, v);
+    JS_FreeValueRT__(ctx->rt, v);
 }
 
 /* garbage collection */
