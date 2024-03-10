@@ -8,21 +8,9 @@
 === arguments-call-apply.js
 === arguments-enum.js
 === arguments-escape.js
-=== arguments-indirect.js
-Failure: expected <"object"> found <"undefined">
-Failure: expected <false> found <true>
-TypeError: cannot read property 'length' of undefined
-    at g (arguments-indirect.js:47:19)
-    at f1 (arguments-indirect.js:29:3)
-    at <eval> (arguments-indirect.js:53:1)
-
 === arguments-lazy.js
 === arguments-load-across-eval.js
 === arguments-read-and-assignment.js
-=== array-constructor.js
-ReferenceError: 'Realm' is not defined
-    at <eval> (array-constructor.js:98:9)
-
 === array-elements-from-array-prototype-chain.js
 === array-elements-from-array-prototype.js
 === array-elements-from-object-prototype.js
@@ -36,7 +24,7 @@ ReferenceError: 'Realm' is not defined
 === array-join-nesting.js
 === array-join-nonarray-length-getter-side-effects.js
 === array-join.js
-InternalError: stack overflow
+RangeError: Maximum call stack size exceeded
     at join (native)
     at toString (native)
     at join (native)
@@ -80,10 +68,6 @@ Failure (Error message): expected <"7 is not a function"> found <"not a function
 === array-tostring.js
 === array-unshift.js
 === arrow-with.js
-=== asm-directive.js
-ReferenceError: 'Realm' is not defined
-    at <eval> (asm-directive.js:5:1)
-
 === async-stack-traces-prepare-stacktrace-1.js
 === async-stack-traces-prepare-stacktrace-2.js
 Failure:
@@ -99,15 +83,7 @@ async function two(x) {
 === async-stack-traces-prepare-stacktrace-3.js
 === async-stack-traces-prepare-stacktrace-4.js
 === big-array-literal.js
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
-Failure: expected <true> found <false>
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
-Failure: expected <true> found <false>
 === big-object-literal.js
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
-Failure: expected <true> found <false>
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
-Failure: expected <true> found <false>
 === binary-op-newspace.js
 === binary-operation-overwrite.js
 === bit-not.js
@@ -118,10 +94,6 @@ Failure: expected <true> found <false>
 === bool-concat.js
 === boolean.js
 === break.js
-=== call-cross-realm.js
-ReferenceError: 'Realm' is not defined
-    at <eval> (call-cross-realm.js:5:1)
-
 === call-non-function-call.js
 === call-non-function.js
 === call-stub.js
@@ -147,15 +119,7 @@ TypeError: not a function
 
 === constant-folding.js
 === context-variable-assignments.js
-=== contextual-calls.js
-ReferenceError: 'Realm' is not defined
-    at <eval> (contextual-calls.js:28:14)
-
 === copy-on-write-assert.js
-=== cross-realm-filtering.js
-ReferenceError: 'Realm' is not defined
-    at <eval> (cross-realm-filtering.js:5:14)
-
 === cyrillic.js
 Failure (7): expected <true> found <false>
 Failure (8): expected <true> found <false>
@@ -195,123 +159,17 @@ Failure (May 25 2008 1:30( )AM (PM) is not NaN.): expected <true> found <false>
 === delete-vars-from-eval.js
 === delete.js
 === deserialize-reference.js
-=== disallow-codegen-from-strings.js
-Did not throw exception
-Did not throw exception
-Did not throw exception
 === do-not-strip-fc.js
 === dont-enum-array-holes.js
 === dont-reinit-global-var.js
 === double-equals.js
 === dtoa.js
 === duplicate-parameters.js
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-<output elided>
 === eagerly-parsed-lazily-compiled-functions.js
 === elements-transition-and-store.js
 === empirical_max_arraybuffer.js
 === enumeration-order.js
 === error-accessors.js
-Failure: expected <"x is not defined"> found <"'x' is not defined">
-Failure: expected <"x is not defined"> found <"'x' is not defined">
 === error-constructors.js
 === error-tostring-omit.js
 Failure: expected <true> found <false>
@@ -609,12 +467,10 @@ expected:
 found:
 "invalid character in a JSON string"
 === json-parser-recursive.js
-Object <Error(SyntaxError: stack overflow)> is not an instance of <RangeError> but of <SyntaxError>
 === json-replacer-number-wrapper-tostring.js
 === json-replacer-order.js
 === json-stringify-holder.js
 === json-stringify-recursive.js
-Object <Error(InternalError: stack overflow)> is not an instance of <RangeError> but of <InternalError>
 Did not throw exception
 Did not throw exception
 === json-stringify-stack.js
@@ -639,10 +495,6 @@ found:
 === keyed-array-call.js
 === keyed-call-generic.js
 === keyed-call-ic.js
-Failure: expected <"[object global]"> found <"[object Object]">
-Failure: expected <"[object global]"> found <"[object Object]">
-Failure: expected <"[object global]"> found <"[object Object]">
-Failure: expected <"[object global]"> found <"[object Object]">
 === keyed-ic.js
 === keyed-storage-extend.js
 === keywords-and-reserved_words.js
@@ -655,19 +507,11 @@ Failure: expected <"[object global]"> found <"[object Object]">
 === load-callback-from-value-classic.js
 === local-load-from-eval.js
 === logical.js
-=== lookup-behind-property.js
-ReferenceError: 'Realm' is not defined
-    at <eval> (lookup-behind-property.js:5:9)
-
 === math-exp-precision.js
 === math-sqrt.js
 === md5.js
 === megamorphic-callbacks.js
 === mod.js
-=== modules-error-trace.js
-=== modules-preparse.js
-=== modules-this.js
-Failure: expected <undefined> found <Object()>
 === mul-exhaustive-part1.js
 === mul-exhaustive-part10.js
 === mul-exhaustive-part2.js
@@ -709,26 +553,10 @@ Failure: expected <true> found <false>
 === object-create.js
 Failure: expected <true> found <false>
 Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <1> found <0>
-Failure: expected <3> found <1>
-Failure: expected <0> found <2>
-Failure: expected <2> found <3>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
 === object-define-properties.js
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
 Failure: expected <undefined> found <1>
 === object-freeze-global.js
 === object-get-own-property-names.js
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
 === object-is.js
 === object-literal-conversions.js
 === object-literal-gc.js
@@ -756,10 +584,6 @@ Failure (printErr should be defined): expected <"function"> found <"undefined">
 === prototype.js
 === random-bit-correlations.js
 === readonly-accessor.js
-=== realm-property-access.js
-ReferenceError: 'Realm' is not defined
-    at <eval> (realm-property-access.js:5:9)
-
 === receiver-in-with-calls.js
 === regexp-UC16.js
 === regexp-cache-replace.js
@@ -778,43 +602,6 @@ SyntaxError: too many captures
     at RegExp (native)
     at <eval> (regexp-global.js:169:36)
 
-=== regexp-indexof.js
-Failure (lastMatch): expected <"abc"> found <undefined>
-Failure (leftContext): expected <"xxx"> found <undefined>
-Failure (rightContext): expected <"xxxabcxxx"> found <undefined>
-Failure (lastMatch): expected <"abc"> found <undefined>
-Failure (leftContext): expected <"xxxabcxxx"> found <undefined>
-Failure (rightContext): expected <"xxx"> found <undefined>
-Failure (lastMatch): expected <"abc"> found <undefined>
-Failure (leftContext): expected <"xxxabab"> found <undefined>
-Failure (rightContext): expected <"xxxabcxxx"> found <undefined>
-Failure (lastMatch): expected <"abc"> found <undefined>
-Failure (leftContext): expected <"abcabc"> found <undefined>
-Failure (rightContext): expected <""> found <undefined>
-Failure (lastMatch): expected <"aba"> found <undefined>
-Failure (leftContext): expected <"abab"> found <undefined>
-Failure (rightContext): expected <"ba"> found <undefined>
-Failure (lastMatch): expected <"foo"> found <undefined>
-Failure (leftContext): expected <"ofooofoooofo"> found <undefined>
-Failure (rightContext): expected <"ofo"> found <undefined>
-Failure (lastMatch): expected <""> found <undefined>
-Failure (leftContext): expected <""> found <undefined>
-Failure (rightContext): expected <"xxx"> found <undefined>
-Failure (lastMatch): expected <"ab"> found <undefined>
-Failure (leftContext): expected <"xyzzy"> found <undefined>
-Failure (rightContext): expected <"xyzzzyacxyzzy"> found <undefined>
-Failure (lastMatch): expected <"ac"> found <undefined>
-Failure (leftContext): expected <"xyzzyabxyzzy"> found <undefined>
-Failure (rightContext): expected <"xyzzy"> found <undefined>
-Failure (lastMatch): expected <""> found <undefined>
-Failure (leftContext): expected <"aba"> found <undefined>
-Failure (rightContext): expected <""> found <undefined>
-Failure (lastMatch): expected <""> found <undefined>
-Failure (leftContext): expected <"baba"> found <undefined>
-Failure (rightContext): expected <""> found <undefined>
-Failure (lastMatch): expected <""> found <undefined>
-Failure (leftContext): expected <"bab"> found <undefined>
-Failure (rightContext): expected <""> found <undefined>
 === regexp-lastIndex.js
 === regexp-lookahead.js
 === regexp-loop-capture.js
@@ -858,107 +645,6 @@ TypeError: regexp must have the 'g' flag
 === regexp-sort.js
 === regexp-stack-overflow.js
 === regexp-standalones.js
-=== regexp-static.js
-Failure: expected <"abc123.456def"> found <undefined>
-Failure: expected <"123.456"> found <undefined>
-Failure: expected <"456"> found <undefined>
-Failure: expected <"abc"> found <undefined>
-Failure: expected <"def"> found <undefined>
-Failure: expected <"abc123.456def"> found <undefined>
-Failure: expected <"123.456"> found <undefined>
-Failure: expected <"456"> found <undefined>
-Failure: expected <"abc"> found <undefined>
-Failure: expected <"def"> found <undefined>
-Failure: expected <"123.456"> found <undefined>
-Failure: expected <"123"> found <undefined>
-Failure: expected <"456"> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <"123.456"> found <"fisk">
-Failure: expected <"ghi789.012jkl"> found <undefined>
-Failure: expected <"789.012"> found <undefined>
-Failure: expected <"012"> found <undefined>
-Failure: expected <"ghi"> found <undefined>
-Failure: expected <"jkl"> found <undefined>
-Failure: expected <"ghi789.012jkl"> found <undefined>
-Failure: expected <"789.012"> found <undefined>
-Failure: expected <"012"> found <undefined>
-Failure: expected <"ghi"> found <undefined>
-Failure: expected <"jkl"> found <undefined>
-Failure: expected <"789.012"> found <"fisk">
-Failure: expected <"789"> found <undefined>
-Failure: expected <"012"> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <"abc123.456def"> found <undefined>
-Failure: expected <"123.456"> found <undefined>
-Failure: expected <"456"> found <undefined>
-Failure: expected <"abc"> found <undefined>
-Failure: expected <"def"> found <undefined>
-Failure: expected <"abc123.456def"> found <undefined>
-Failure: expected <"123.456"> found <undefined>
-Failure: expected <"456"> found <undefined>
-Failure: expected <"abc"> found <undefined>
-Failure: expected <"def"> found <undefined>
-Failure: expected <"123.456"> found <"fisk">
-Failure: expected <"123"> found <undefined>
-Failure: expected <"456"> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <"ghi789.012jkl"> found <undefined>
-Failure: expected <"789.012"> found <undefined>
-Failure: expected <"012"> found <undefined>
-Failure: expected <"ghi"> found <undefined>
-Failure: expected <"jkl"> found <undefined>
-Failure: expected <"ghi789.012jkl"> found <undefined>
-Failure: expected <"789.012"> found <undefined>
-Failure: expected <"012"> found <undefined>
-Failure: expected <"ghi"> found <undefined>
-Failure: expected <"jkl"> found <undefined>
-Failure: expected <"789.012"> found <"fisk">
-Failure: expected <"789"> found <undefined>
-Failure: expected <"012"> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <""> found <undefined>
-Failure: expected <"dddd"> found <"fiskfiskfiskfisk">
-Failure (lastParen): expected <""> found <undefined>
-Failure ($1): expected <""> found <"fisk">
-Failure ($2): expected <""> found <undefined>
-Failure ($1 in $3 setup): expected <"x"> found <"fisk">
-Failure ($3): expected <""> found <undefined>
-Failure ($1 in $4 setup): expected <"x"> found <"fisk">
-Failure ($2 in $4 setup): expected <"x"> found <undefined>
-Failure ($4): expected <""> found <undefined>
-Failure ($1 in $5 setup): expected <"x"> found <"fisk">
-Failure ($2 in $5 setup): expected <"x"> found <undefined>
-Failure ($3 in $5 setup): expected <"x"> found <undefined>
-Failure ($5): expected <""> found <undefined>
-Failure ($1 in $6 setup): expected <"x"> found <"fisk">
-Failure ($2 in $6 setup): expected <"x"> found <undefined>
-Failure ($3 in $6 setup): expected <"x"> found <undefined>
-Failure ($4 in $6 setup): expected <"x"> found <undefined>
-Failure ($6): expected <""> found <undefined>
-Failure ($1 in $7 setup): expected <"x"> found <"fisk">
-Failure ($2 in $7 setup): expected <"x"> found <undefined>
-Failure ($3 in $7 setup): expected <"x"> found <undefined>
-Failure ($4 in $7 setup): expected <"x"> found <undefined>
-<output elided>
 === regexp-string-methods.js
 === regress-regexp-functional-replace-slow.js
 === result-table-max.js
@@ -1029,7 +715,6 @@ TypeError: not a function
     at <eval> (stack-traces-custom.js:20:21)
 
 === stack-traces-overflow.js
-Object <Error(InternalError: stack overflow)> is not an instance of <RangeError> but of <InternalError>
 Failure: expected <true> found <false>
 Failure: expected <true> found <false>
 Failure: expected <undefined> found <"">
@@ -1298,7 +983,6 @@ Failure (Capture-Global-nocapture-2): expected <""> found <undefined>
 <output elided>
 === string-normalize.js
 === string-oom-concat.js
-Object <Error(InternalError: string too long)> is not an instance of <RangeError> but of <InternalError>
 === string-pad.js
 === string-replace-gc.js
 === string-replace-one-char.js
@@ -1413,7 +1097,6 @@ Failure (RegExp.$1): expected <"regexp"> found <undefined>
 === this-in-callbacks.js
 === this-property-assignment.js
 === this.js
-Failure: expected <"[object global]"> found <"[object Object]">
 === throw-and-catch-function.js
 === throw-exception-for-null-access.js
 === to-precision.js
