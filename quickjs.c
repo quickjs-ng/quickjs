@@ -40114,12 +40114,6 @@ static JSValue js_string_trim(JSContext *ctx, JSValue this_val,
     return ret;
 }
 
-static JSValue js_string___quote(JSContext *ctx, JSValue this_val,
-                                 int argc, JSValue *argv)
-{
-    return JS_ToQuotedString(ctx, this_val);
-}
-
 /* return 0 if before the first char */
 static int string_prevc(JSString *p, int *pidx)
 {
@@ -40530,7 +40524,6 @@ static const JSCFunctionListEntry js_string_proto_funcs[] = {
     JS_ALIAS_DEF("trimLeft", "trimStart" ),
     JS_CFUNC_DEF("toString", 0, js_string_toString ),
     JS_CFUNC_DEF("valueOf", 0, js_string_toString ),
-    JS_CFUNC_DEF("__quote", 1, js_string___quote ),
     JS_CFUNC_DEF("localeCompare", 1, js_string_localeCompare ),
     JS_CFUNC_DEF("normalize", 0, js_string_normalize ),
     JS_CFUNC_MAGIC_DEF("toLowerCase", 0, js_string_toLowerCase, 1 ),
@@ -40867,7 +40860,7 @@ static int getTimezoneOffset(int64_t time) {
     /* disable DST adjustment on the local tm struct */
     tm.tm_isdst = 0;
 
-    return difftime(mktime(&gmt), mktime(&tm)) / 60;
+    return (int)difftime(mktime(&gmt), mktime(&tm)) / 60;
 #else
     return -tm.tm_gmtoff / 60;
 #endif /* NO_TM_GMTOFF */
@@ -46875,7 +46868,8 @@ static char const month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
 static char const day_names[] = "SunMonTueWedThuFriSat";
 
 static __exception int get_date_fields(JSContext *ctx, JSValue obj,
-                                       double fields[9], int is_local, int force)
+                                       double fields[minimum_length(9)],
+                                       int is_local, int force)
 {
     double dval;
     int64_t d, days, wd, y, i, md, h, m, s, ms, tz = 0;
@@ -46936,7 +46930,7 @@ static double time_clip(double t) {
 
 /* The spec mandates the use of 'double' and it specifies the order
    of the operations */
-static double set_date_fields(double fields[], int is_local) {
+static double set_date_fields(double fields[minimum_length(7)], int is_local) {
     double y, m, dt, ym, mn, day, h, s, milli, time, tv;
     int yi, mi, i;
     int64_t days;
@@ -47259,145 +47253,418 @@ static JSValue js_Date_UTC(JSContext *ctx, JSValue this_val,
     return js_float64(set_date_fields(fields, 0));
 }
 
-static void string_skip_spaces(JSString *sp, int *pp) {
-    while (*pp < sp->len && string_get(sp, *pp) == ' ')
+/* Date string parsing */
+
+static BOOL string_skip_char(const uint8_t *sp, int *pp, int c) {
+    if (sp[*pp] == c) {
         *pp += 1;
+        return TRUE;
+    } else {
+        return FALSE;
+    }
 }
 
-static void string_skip_non_spaces(JSString *sp, int *pp) {
-    while (*pp < sp->len && string_get(sp, *pp) != ' ')
+/* skip spaces, update offset, return next char */
+static int string_skip_spaces(const uint8_t *sp, int *pp) {
+    int c;
+    while ((c = sp[*pp]) == ' ')
         *pp += 1;
+    return c;
 }
 
-/* parse a numeric field with an optional sign if accept_sign is TRUE */
-static int string_get_digits(JSString *sp, int *pp, int64_t *pval) {
-    int64_t v = 0;
+/* skip dashes dots and commas */
+static int string_skip_separators(const uint8_t *sp, int *pp) {
+    int c;
+    while ((c = sp[*pp]) == '-' || c == '/' || c == '.' || c == ',')
+        *pp += 1;
+    return c;
+}
+
+/* skip a word, stop on spaces, digits and separators, update offset */
+static int string_skip_until(const uint8_t *sp, int *pp, const char *stoplist) {
+    int c;
+    while (!strchr(stoplist, c = sp[*pp]))
+        *pp += 1;
+    return c;
+}
+
+/* parse a numeric field (max_digits = 0 -> no maximum) */
+static BOOL string_get_digits(const uint8_t *sp, int *pp, int *pval,
+                              int min_digits, int max_digits)
+{
+    int v = 0;
     int c, p = *pp, p_start;
 
-    if (p >= sp->len)
-        return -1;
     p_start = p;
-    while (p < sp->len) {
-        c = string_get(sp, p);
-        if (!(c >= '0' && c <= '9')) {
-            if (p == p_start)
-                return -1;
-            else
-                break;
-        }
+    while ((c = sp[p]) >= '0' && c <= '9') {
         v = v * 10 + c - '0';
         p++;
+        if (p - p_start == max_digits)
+            break;
     }
+    if (p - p_start < min_digits)
+        return FALSE;
     *pval = v;
     *pp = p;
-    return 0;
+    return TRUE;
 }
 
-static int string_get_signed_digits(JSString *sp, int *pp, int64_t *pval) {
-    int res, sgn, p = *pp;
+static BOOL string_get_milliseconds(const uint8_t *sp, int *pp, int *pval) {
+    /* parse optional fractional part as milliseconds and truncate. */
+    /* spec does not indicate which rounding should be used */
+    int mul = 100, ms = 0, c, p_start, p = *pp;
 
-    if (p >= sp->len)
-        return -1;
-
-    sgn = string_get(sp, p);
-    if (sgn == '-' || sgn == '+')
+    c = sp[p];
+    if (c == '.' || c == ',') {
         p++;
-
-    res = string_get_digits(sp, &p, pval);
-    if (res == 0 && sgn == '-') {
-        if (*pval == 0)
-            return -1; // reject negative zero
-        *pval = -*pval;
-    }
-    *pp = p;
-    return res;
-}
-
-/* parse a fixed width numeric field */
-static int string_get_fixed_width_digits(JSString *sp, int *pp, int n, int64_t *pval) {
-    int64_t v = 0;
-    int i, c, p = *pp;
-
-    for(i = 0; i < n; i++) {
-        if (p >= sp->len)
-            return -1;
-        c = string_get(sp, p);
-        if (!(c >= '0' && c <= '9'))
-            return -1;
-        v = v * 10 + c - '0';
-        p++;
-    }
-    *pval = v;
-    *pp = p;
-    return 0;
-}
-
-static int string_get_milliseconds(JSString *sp, int *pp, int64_t *pval) {
-    /* parse milliseconds as a fractional part, round to nearest */
-    /* XXX: the spec does not indicate which rounding should be used */
-    int mul = 1000, ms = 0, p = *pp, c, p_start;
-    if (p >= sp->len)
-        return -1;
-    p_start = p;
-    while (p < sp->len) {
-        c = string_get(sp, p);
-        if (!(c >= '0' && c <= '9')) {
-            if (p == p_start)
-                return -1;
-            else
+        p_start = p;
+        while ((c = sp[p]) >= '0' && c <= '9') {
+            ms += (c - '0') * mul;
+            mul /= 10;
+            p++;
+            if (p - p_start == 9)
                 break;
         }
-        if (mul == 1 && c >= '5')
-            ms += 1;
-        ms += (c - '0') * (mul /= 10);
-        p++;
+        if (p > p_start) {
+            /* only consume the separator if digits are present */
+            *pval = ms;
+            *pp = p;
+        }
     }
-    *pval = ms;
-    *pp = p;
-    return 0;
+    return TRUE;
 }
 
+static uint8_t upper_ascii(uint8_t c) {
+    return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
+}
 
-static int find_abbrev(JSString *sp, int p, const char *list, int count) {
+static BOOL string_get_tzoffset(const uint8_t *sp, int *pp, int *tzp, BOOL strict) {
+    int tz = 0, sgn, hh, mm, p = *pp;
+
+    sgn = sp[p++];
+    if (sgn == '+' || sgn == '-') {
+        int n = p;
+        if (!string_get_digits(sp, &p, &hh, 1, 9))
+            return FALSE;
+        n = p - n;
+        if (strict && n != 2 && n != 4)
+            return FALSE;
+        while (n > 4) {
+            n -= 2;
+            hh /= 100;
+        }
+        if (n > 2) {
+            mm = hh % 100;
+            hh = hh / 100;
+        } else {
+            mm = 0;
+            if (string_skip_char(sp, &p, ':')  /* optional separator */
+            &&  !string_get_digits(sp, &p, &mm, 2, 2))
+                return FALSE;
+        }
+        if (hh > 23 || mm > 59)
+            return FALSE;
+        tz = hh * 60 + mm;
+        if (sgn != '+')
+            tz = -tz;
+    } else
+    if (sgn != 'Z') {
+        return FALSE;
+    }
+    *pp = p;
+    *tzp = tz;
+    return TRUE;
+}
+
+static BOOL string_match(const uint8_t *sp, int *pp, const char *s) {
+    int p = *pp;
+    while (*s != '\0') {
+        if (upper_ascii(sp[p]) != upper_ascii(*s++))
+            return FALSE;
+        p++;
+    }
+    *pp = p;
+    return TRUE;
+}
+
+static int find_abbrev(const uint8_t *sp, int p, const char *list, int count) {
     int n, i;
 
-    if (p + 3 <= sp->len) {
-        for (n = 0; n < count; n++) {
-            for (i = 0; i < 3; i++) {
-                if (string_get(sp, p + i) != month_names[n * 3 + i])
-                    goto next;
-            }
-            return n;
-        next:;
+    for (n = 0; n < count; n++) {
+        for (i = 0;; i++) {
+            if (upper_ascii(sp[p + i]) != upper_ascii(list[n * 3 + i]))
+                break;
+            if (i == 2)
+                return n;
         }
     }
     return -1;
 }
 
-static int string_get_month(JSString *sp, int *pp, int64_t *pval) {
+static BOOL string_get_month(const uint8_t *sp, int *pp, int *pval) {
     int n;
 
-    string_skip_spaces(sp, pp);
     n = find_abbrev(sp, *pp, month_names, 12);
     if (n < 0)
-        return -1;
+        return FALSE;
 
-    *pval = n;
+    *pval = n + 1;
     *pp += 3;
-    return 0;
+    return TRUE;
+}
+
+/* parse toISOString format */
+static BOOL js_date_parse_isostring(const uint8_t *sp, int fields[9], BOOL *is_local) {
+    int sgn, i, p = 0;
+
+    /* initialize fields to the beginning of the Epoch */
+    for (i = 0; i < 9; i++) {
+        fields[i] = (i == 2);
+    }
+    *is_local = FALSE;
+
+    /* year is either yyyy digits or [+-]yyyyyy */
+    sgn = sp[p];
+    if (sgn == '-' || sgn == '+') {
+        p++;
+        if (!string_get_digits(sp, &p, &fields[0], 6, 6))
+            return FALSE;
+        if (sgn == '-') {
+            if (fields[0] == 0)
+                return FALSE; // reject -000000
+            fields[0] = -fields[0];
+        }
+    } else {
+        if (!string_get_digits(sp, &p, &fields[0], 4, 4))
+            return FALSE;
+    }
+    if (string_skip_char(sp, &p, '-')) {
+        if (!string_get_digits(sp, &p, &fields[1], 2, 2))  /* month */
+            return FALSE;
+        if (fields[1] < 1)
+            return FALSE;
+        fields[1] -= 1;
+        if (string_skip_char(sp, &p, '-')) {
+            if (!string_get_digits(sp, &p, &fields[2], 2, 2))  /* day */
+                return FALSE;
+            if (fields[2] < 1)
+                return FALSE;
+        }
+    }
+    if (string_skip_char(sp, &p, 'T')) {
+        *is_local = TRUE;
+        if (!string_get_digits(sp, &p, &fields[3], 2, 2)  /* hour */
+        ||  !string_skip_char(sp, &p, ':')
+        ||  !string_get_digits(sp, &p, &fields[4], 2, 2)) {  /* minute */
+            fields[3] = 100;  // reject unconditionally
+            return TRUE;
+        }
+        if (string_skip_char(sp, &p, ':')) {
+            if (!string_get_digits(sp, &p, &fields[5], 2, 2))  /* second */
+                return FALSE;
+            string_get_milliseconds(sp, &p, &fields[6]);
+        }
+    }
+    /* parse the time zone offset if present: [+-]HH:mm or [+-]HHmm */
+    if (sp[p]) {
+        *is_local = FALSE;
+        if (!string_get_tzoffset(sp, &p, &fields[8], TRUE))
+            return FALSE;
+    }
+    /* error if extraneous characters */
+    return sp[p] == '\0';
+}
+
+static struct {
+    char name[6];
+    int16_t offset;
+} const js_tzabbr[] = {
+    { "GMT",   0 },         // Greenwich Mean Time
+    { "UTC",   0 },         // Coordinated Universal Time
+    { "UT",    0 },         // Universal Time
+    { "Z",     0 },         // Zulu Time
+    { "EDT",  -4 * 60 },    // Eastern Daylight Time
+    { "EST",  -5 * 60 },    // Eastern Standard Time
+    { "CDT",  -5 * 60 },    // Central Daylight Time
+    { "CST",  -6 * 60 },    // Central Standard Time
+    { "MDT",  -6 * 60 },    // Mountain Daylight Time
+    { "MST",  -7 * 60 },    // Mountain Standard Time
+    { "PDT",  -7 * 60 },    // Pacific Daylight Time
+    { "PST",  -8 * 60 },    // Pacific Standard Time
+    { "WET",  +0 * 60 },    // Western European Time
+    { "WEST", +1 * 60 },    // Western European Summer Time
+    { "CET",  +1 * 60 },    // Central European Time
+    { "CEST", +2 * 60 },    // Central European Summer Time
+    { "EET",  +2 * 60 },    // Eastern European Time
+    { "EEST", +3 * 60 },    // Eastern European Summer Time
+};
+
+static BOOL string_get_tzabbr(const uint8_t *sp, int *pp, int *offset) {
+    for (size_t i = 0; i < countof(js_tzabbr); i++) {
+        if (string_match(sp, pp, js_tzabbr[i].name)) {
+            *offset = js_tzabbr[i].offset;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/* parse toString, toUTCString and other formats */
+static BOOL js_date_parse_otherstring(const uint8_t *sp,
+                                      int fields[minimum_length(9)],
+                                      BOOL *is_local) {
+    int c, i, val, p = 0, p_start;
+    int num[3];
+    BOOL has_year = FALSE;
+    BOOL has_mon = FALSE;
+    BOOL has_time = FALSE;
+    int num_index = 0;
+
+    /* initialize fields to the beginning of 2001-01-01 */
+    fields[0] = 2001;
+    fields[1] = 1;
+    fields[2] = 1;
+    for (i = 3; i < 9; i++) {
+        fields[i] = 0;
+    }
+    *is_local = TRUE;
+
+    while (string_skip_spaces(sp, &p)) {
+        p_start = p;
+        if ((c = sp[p]) == '+' || c == '-') {
+            if (has_time && string_get_tzoffset(sp, &p, &fields[8], FALSE)) {
+                *is_local = FALSE;
+            } else {
+                p++;
+                if (string_get_digits(sp, &p, &val, 1, 9)) {
+                    if (c == '-') {
+                        if (val == 0)
+                            return FALSE;
+                        val = -val;
+                    }
+                    fields[0] = val;
+                    has_year = TRUE;
+                }
+            }
+        } else
+        if (string_get_digits(sp, &p, &val, 1, 9)) {
+            if (string_skip_char(sp, &p, ':')) {
+                /* time part */
+                fields[3] = val;
+                if (!string_get_digits(sp, &p, &fields[4], 1, 2))
+                    return FALSE;
+                if (string_skip_char(sp, &p, ':')) {
+                    if (!string_get_digits(sp, &p, &fields[5], 1, 2))
+                        return FALSE;
+                    string_get_milliseconds(sp, &p, &fields[6]);
+                }
+                has_time = TRUE;
+            } else {
+                if (p - p_start > 2) {
+                    fields[0] = val;
+                    has_year = TRUE;
+                } else
+                if (val < 1 || val > 31) {
+                    fields[0] = val + (val < 100) * 1900 + (val < 50) * 100;
+                    has_year = TRUE;
+                } else {
+                    if (num_index == 3)
+                        return FALSE;
+                    num[num_index++] = val;
+                }
+            }
+        } else
+        if (string_get_month(sp, &p, &fields[1])) {
+            has_mon = TRUE;
+            string_skip_until(sp, &p, "0123456789 -/(");
+        } else
+        if (has_time && string_match(sp, &p, "PM")) {
+            if (fields[3] < 12)
+                fields[3] += 12;
+            continue;
+        } else
+        if (has_time && string_match(sp, &p, "AM")) {
+            if (fields[3] == 12)
+                fields[3] -= 12;
+            continue;
+        } else
+        if (string_get_tzabbr(sp, &p, &fields[8])) {
+            *is_local = FALSE;
+            continue;
+        } else
+        if (c == '(') {  /* skip parenthesized phrase */
+            int level = 0;
+            while ((c = sp[p]) != '\0') {
+                p++;
+                level += (c == '(');
+                level -= (c == ')');
+                if (!level)
+                    break;
+            }
+            if (level > 0)
+                return FALSE;
+        } else
+        if (c == ')') {
+            return FALSE;
+        } else {
+            if (has_year + has_mon + has_time + num_index)
+                return FALSE;
+            /* skip a word */
+            string_skip_until(sp, &p, " -/(");
+        }
+        string_skip_separators(sp, &p);
+    }
+    if (num_index + has_year + has_mon > 3)
+        return FALSE;
+
+    switch (num_index) {
+    case 0:
+        if (!has_year)
+            return FALSE;
+        break;
+    case 1:
+        if (has_mon)
+            fields[2] = num[0];
+        else
+            fields[1] = num[0];
+        break;
+    case 2:
+        if (has_year) {
+            fields[1] = num[0];
+            fields[2] = num[1];
+        } else
+        if (has_mon) {
+            fields[0] = num[1] + (num[1] < 100) * 1900 + (num[1] < 50) * 100;
+            fields[2] = num[0];
+        } else {
+            fields[1] = num[0];
+            fields[2] = num[1];
+        }
+        break;
+    case 3:
+        fields[0] = num[2] + (num[2] < 100) * 1900 + (num[2] < 50) * 100;
+        fields[1] = num[0];
+        fields[2] = num[1];
+        break;
+    default:
+        return FALSE;
+    }
+    if (fields[1] < 1 || fields[2] < 1)
+        return FALSE;
+    fields[1] -= 1;
+    return TRUE;
 }
 
 static JSValue js_Date_parse(JSContext *ctx, JSValue this_val,
                              int argc, JSValue *argv)
 {
-    // parse(s)
     JSValue s, rv;
-    int64_t fields[] = { 0, 1, 1, 0, 0, 0, 0 };
-    double fields1[7];
-    int64_t tz, hh, mm;
+    int fields[9];
+    double fields1[9];
     double d;
-    int p, i, c, sgn, l;
+    int i, c;
     JSString *sp;
+    uint8_t buf[128];
     BOOL is_local;
 
     rv = JS_NAN;
@@ -47407,145 +47674,33 @@ static JSValue js_Date_parse(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
 
     sp = JS_VALUE_GET_STRING(s);
-    p = 0;
-    if (p < sp->len && (((c = string_get(sp, p)) >= '0' && c <= '9') || c == '+' || c == '-')) {
-        /* ISO format */
-        /* year field can be negative */
-        if (string_get_signed_digits(sp, &p, &fields[0]))
-            goto done;
-
-        for (i = 1; i < 7; i++) {
-            if (p >= sp->len)
-                break;
-            switch(i) {
-            case 1:
-            case 2:
-                c = '-';
-                break;
-            case 3:
-                c = 'T';
-                break;
-            case 4:
-            case 5:
-                c = ':';
-                break;
-            case 6:
-                c = '.';
-                break;
-            }
-            if (string_get(sp, p) != c)
-                break;
-            p++;
-            if (i == 6) {
-                if (string_get_milliseconds(sp, &p, &fields[i]))
-                    goto done;
-            } else {
-                if (string_get_digits(sp, &p, &fields[i]))
-                    goto done;
-            }
+    /* convert the string as a byte array */
+    for (i = 0; i < sp->len && i < (int)countof(buf) - 1; i++) {
+        c = string_get(sp, i);
+        if (c > 255)
+            c = (c == 0x2212) ? '-' : 'x';
+        buf[i] = c;
+    }
+    buf[i] = '\0';
+    if (js_date_parse_isostring(buf, fields, &is_local)
+    ||  js_date_parse_otherstring(buf, fields, &is_local)) {
+        static int const field_max[6] = { 0, 11, 31, 24, 59, 59 };
+        BOOL valid = TRUE;
+        /* check field maximum values */
+        for (i = 1; i < 6; i++) {
+            if (fields[i] > field_max[i])
+                valid = FALSE;
         }
-        /* no time: UTC by default */
-        is_local = (i > 3);
-        fields[1] -= 1;
-
-        /* parse the time zone offset if present: [+-]HH:mm or [+-]HHmm */
-        tz = 0;
-        if (p < sp->len) {
-            sgn = string_get(sp, p);
-            if (sgn == '+' || sgn == '-') {
-                p++;
-                l = sp->len - p;
-                if (l != 4 && l != 5)
-                    goto done;
-                if (string_get_fixed_width_digits(sp, &p, 2, &hh))
-                    goto done;
-                if (l == 5) {
-                    if (string_get(sp, p) != ':')
-                        goto done;
-                    p++;
-                }
-                if (string_get_fixed_width_digits(sp, &p, 2, &mm))
-                    goto done;
-                tz = hh * 60 + mm;
-                if (sgn == '-')
-                    tz = -tz;
-                is_local = FALSE;
-            } else if (sgn == 'Z') {
-                p++;
-                is_local = FALSE;
-            } else {
-                goto done;
-            }
-            /* error if extraneous characters */
-            if (p != sp->len)
-                goto done;
-        }
-    } else {
-        /* toString or toUTCString format */
-        /* skip the day of the week */
-        string_skip_non_spaces(sp, &p);
-        string_skip_spaces(sp, &p);
-        if (p >= sp->len)
-            goto done;
-        c = string_get(sp, p);
-        if (c >= '0' && c <= '9') {
-            /* day of month first */
-            if (string_get_digits(sp, &p, &fields[2]))
-                goto done;
-            if (string_get_month(sp, &p, &fields[1]))
-                goto done;
-        } else {
-            /* month first */
-            if (string_get_month(sp, &p, &fields[1]))
-                goto done;
-            string_skip_spaces(sp, &p);
-            if (string_get_digits(sp, &p, &fields[2]))
-                goto done;
-        }
-        /* year */
-        string_skip_spaces(sp, &p);
-        if (string_get_signed_digits(sp, &p, &fields[0]))
-            goto done;
-
-        /* hour, min, seconds */
-        string_skip_spaces(sp, &p);
-        for(i = 0; i < 3; i++) {
-            if (i == 1 || i == 2) {
-                if (p >= sp->len)
-                    goto done;
-                if (string_get(sp, p) != ':')
-                    goto done;
-                p++;
-            }
-            if (string_get_digits(sp, &p, &fields[3 + i]))
-                goto done;
-        }
-        // XXX: parse optional milliseconds?
-
-        /* parse the time zone offset if present: [+-]HHmm */
-        is_local = FALSE;
-        tz = 0;
-        for (tz = 0; p < sp->len; p++) {
-            sgn = string_get(sp, p);
-            if (sgn == '+' || sgn == '-') {
-                p++;
-                if (string_get_fixed_width_digits(sp, &p, 2, &hh))
-                    goto done;
-                if (string_get_fixed_width_digits(sp, &p, 2, &mm))
-                    goto done;
-                tz = hh * 60 + mm;
-                if (sgn == '-')
-                    tz = -tz;
-                break;
-            }
+        /* special case 24:00:00.000 */
+        if (fields[3] == 24 && (fields[4] | fields[5] | fields[6]))
+            valid = FALSE;
+        if (valid) {
+            for(i = 0; i < 7; i++)
+                fields1[i] = fields[i];
+            d = set_date_fields(fields1, is_local) - fields[8] * 60000;
+            rv = JS_NewFloat64(ctx, d);
         }
     }
-    for(i = 0; i < 7; i++)
-        fields1[i] = fields[i];
-    d = set_date_fields(fields1, is_local) - tz * 60000;
-    rv = js_float64(d);
-
-done:
     JS_FreeValue(ctx, s);
     return rv;
 }
