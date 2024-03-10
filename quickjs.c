@@ -1308,7 +1308,7 @@ static JSValue js_int64(int64_t v)
 
 #define JS_NewInt64(ctx, val)  js_int64(val)
 
-static JSValue js_double(double d)
+static JSValue js_number(double d)
 {
     if (double_is_int32(d))
         return js_int32((int32_t)d);
@@ -10283,7 +10283,7 @@ static JSValue js_atof2(JSContext *ctx, const char *str, const char **pp,
             double d;
             d = js_strtod(buf, radix, is_float);
             /* return int or float64 */
-            val = js_double(d);
+            val = js_number(d);
         }
         break;
     case ATOD_TYPE_BIG_INT:
@@ -10492,7 +10492,7 @@ static __maybe_unused JSValue JS_ToIntegerFree(JSContext *ctx, JSValue val)
             } else {
                 /* convert -0 to +0 */
                 d = trunc(d) + 0.0;
-                ret = js_double(d);
+                ret = js_number(d);
             }
         }
         break;
@@ -11752,9 +11752,9 @@ static double js_pow(double a, double b)
     }
 }
 
-JSValue JS_NewDouble(JSContext *ctx, double d)
+JSValue JS_NewNumber(JSContext *ctx, double d)
 {
-    return js_double(d);
+    return js_number(d);
 }
 
 JSValue JS_NewBigInt64_1(JSContext *ctx, int64_t v)
@@ -12348,14 +12348,14 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
             return 0;
         case OP_mod:
             if (v1 < 0 || v2 <= 0) {
-                sp[-2] = js_double(fmod(v1, v2));
+                sp[-2] = js_number(fmod(v1, v2));
                 return 0;
             } else {
                 v = (int64_t)v1 % (int64_t)v2;
             }
             break;
         case OP_pow:
-            sp[-2] = js_double(js_pow(v1, v2));
+            sp[-2] = js_number(js_pow(v1, v2));
             return 0;
         default:
             abort();
@@ -14393,7 +14393,7 @@ static JSValue js_call_c_function(JSContext *ctx, JSValue func_obj,
                 ret_val = JS_EXCEPTION;
                 break;
             }
-            ret_val = js_double(func.f_f(d1));
+            ret_val = js_number(func.f_f(d1));
         }
         break;
     case JS_CFUNC_f_f_f:
@@ -14408,7 +14408,7 @@ static JSValue js_call_c_function(JSContext *ctx, JSValue func_obj,
                 ret_val = JS_EXCEPTION;
                 break;
             }
-            ret_val = js_double(func.f_f_f(d1, d2));
+            ret_val = js_number(func.f_f_f(d1, d2));
         }
         break;
     case JS_CFUNC_iterator_next:
@@ -16402,7 +16402,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     int v1, v2;
                     v1 = JS_VALUE_GET_INT(op1);
                     v2 = JS_VALUE_GET_INT(op2);
-                    sp[-2] = js_double((double)v1 / (double)v2);
+                    sp[-2] = js_number((double)v1 / (double)v2);
                     sp--;
                 } else {
                     goto binary_arith_slow;
@@ -36115,7 +36115,7 @@ static JSValue js_function_bind(JSContext *ctx, JSValue this_val,
                 else
                     d -= (double)arg_count; /* also converts -0 to +0 */
             }
-            len_val = js_double(d);
+            len_val = js_number(d);
         } else {
             JS_FreeValue(ctx, len_val);
             len_val = js_int32(0);
@@ -40633,7 +40633,7 @@ static JSValue js_math_min_max(JSContext *ctx, JSValue this_val,
             }
             i++;
         }
-        return js_double(r);
+        return js_number(r);
     }
 }
 
@@ -47006,7 +47006,7 @@ static JSValue get_date_field(JSContext *ctx, JSValue this_val,
     if (magic & 0x100) {    // getYear
         fields[0] -= 1900;
     }
-    return js_double(fields[n]);
+    return js_number(fields[n]);
 }
 
 static JSValue set_date_field(JSContext *ctx, JSValue this_val,
