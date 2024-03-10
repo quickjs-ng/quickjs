@@ -43,9 +43,14 @@ for (const file of files) {
     if (source.includes ("--allow-natives-syntax")) continue
     // exclude tests that use V8 extensions
     if (source.includes ("--expose-externalize-string")) continue
-    const env =
-        source.match(/environment variables:.*TZ=(?<TZ>[\S]+)/i)?.groups
-    print(`=== ${file}`)
+    let env = {}, envstr = ""
+    for (let s of source.matchAll(/environment variables:(.+)/ig)) {
+        for (let m of s[1].matchAll(/\s*([\S]+)=([\S]+)/g)) {
+            env[m[1]] = m[2]
+            envstr += ` ${m[1]}=${m[2]}`
+        }
+    }
+    print(`=== ${file}${envstr}`)
     // the fixed --stack-size is necessary to keep output of stack overflowing
     // tests stable; their stack traces are somewhat arbitrary otherwise
     const args = [argv0, "--stack-size", `${2048 * 1024}`,
