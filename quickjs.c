@@ -35637,28 +35637,6 @@ static JSValue js_object_fromEntries(JSContext *ctx, JSValue this_val,
     return JS_EXCEPTION;
 }
 
-/* return an empty string if not an object */
-static JSValue js_object___getClass(JSContext *ctx, JSValue this_val,
-                                    int argc, JSValue *argv)
-{
-    JSAtom atom;
-    JSObject *p;
-    uint32_t tag;
-    int class_id;
-
-    tag = JS_VALUE_GET_NORM_TAG(argv[0]);
-    if (tag == JS_TAG_OBJECT) {
-        p = JS_VALUE_GET_OBJ(argv[0]);
-        class_id = p->class_id;
-        if (class_id == JS_CLASS_PROXY && JS_IsFunction(ctx, argv[0]))
-            class_id = JS_CLASS_BYTECODE_FUNCTION;
-        atom = ctx->rt->class_array[class_id].class_name;
-    } else {
-        atom = JS_ATOM_empty_string;
-    }
-    return JS_AtomToString(ctx, atom);
-}
-
 static JSValue js_object_is(JSContext *ctx, JSValue this_val,
                             int argc, JSValue *argv)
 {
@@ -35857,7 +35835,6 @@ static const JSCFunctionListEntry js_object_funcs[] = {
     JS_CFUNC_MAGIC_DEF("freeze", 1, js_object_seal, 1 ),
     JS_CFUNC_MAGIC_DEF("isSealed", 1, js_object_isSealed, 0 ),
     JS_CFUNC_MAGIC_DEF("isFrozen", 1, js_object_isSealed, 1 ),
-    JS_CFUNC_DEF("__getClass", 1, js_object___getClass ),
     JS_CFUNC_DEF("fromEntries", 1, js_object_fromEntries ),
     JS_CFUNC_DEF("hasOwn", 2, js_object_hasOwn ),
 };

@@ -35,7 +35,9 @@ import * as os from "os";
     var String = g.String;
     var Array = g.Array;
     var Date = g.Date;
+    var RegExp = g.RegExp;
     var Math = g.Math;
+    var JSON = g.JSON;
     var isFinite = g.isFinite;
     var parseFloat = g.parseFloat;
 
@@ -959,7 +961,7 @@ import * as os from "os";
                             }
                         }
                         std.puts(" ]");
-                    } else if (Object.__getClass(a) === "RegExp") {
+                    } else if (a instanceof RegExp) {
                         std.puts(a.toString());
                     } else {
                         keys = Object.keys(a);
@@ -977,7 +979,7 @@ import * as os from "os";
                     stack.pop(a);
                 }
             } else if (type === "string") {
-                s = JSON.stringify(s);
+                s = JSON.stringify(a);
                 if (s.length > 79)
                     s = s.substring(0, 75) + "...\"";
                 std.puts(s);
