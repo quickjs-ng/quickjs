@@ -31278,7 +31278,7 @@ static int js_parse_function_check_names(JSParseState *s, JSFunctionDef *fd,
     return 0;
 
 duplicate:
-    return js_parse_error(s, "duplicate argument names not allowed in this context");
+    return js_parse_error(s, "Duplicate parameter name not allowed in this context");
 }
 
 /* create a function to initialize class fields */
