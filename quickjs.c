@@ -46,7 +46,7 @@
 #include "libregexp.h"
 #include "libbf.h"
 
-#if defined(EMSCRIPTEN) || defined(_MSC_VER) || defined(__wasi__)
+#if defined(EMSCRIPTEN) || defined(_MSC_VER)
 #define DIRECT_DISPATCH  0
 #else
 #define DIRECT_DISPATCH  1
