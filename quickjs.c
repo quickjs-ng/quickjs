@@ -37484,6 +37484,12 @@ static JSValue js_array_join(JSContext *ctx, JSValue this_val,
         if (JS_IsException(el))
             goto fail;
         if (!JS_IsNull(el) && !JS_IsUndefined(el)) {
+            // XXX: should have a more general cycle detection scheme
+            if (JS_VALUE_GET_TAG(el) == JS_TAG_OBJECT
+            &&  JS_VALUE_GET_OBJ(el) == JS_VALUE_GET_OBJ(obj)) {
+                JS_FreeValue(ctx, el);
+                continue;
+            }
             if (toLocaleString) {
                 el = JS_ToLocaleStringFree(ctx, el);
             }
