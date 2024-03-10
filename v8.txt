@@ -512,10 +512,6 @@ found:
 === keyed-array-call.js
 === keyed-call-generic.js
 === keyed-call-ic.js
-Failure: expected <"[object global]"> found <"[object Object]">
-Failure: expected <"[object global]"> found <"[object Object]">
-Failure: expected <"[object global]"> found <"[object Object]">
-Failure: expected <"[object global]"> found <"[object Object]">
 === keyed-ic.js
 === keyed-storage-extend.js
 === keywords-and-reserved_words.js
@@ -1118,7 +1114,6 @@ Failure (RegExp.$1): expected <"regexp"> found <undefined>
 === this-in-callbacks.js
 === this-property-assignment.js
 === this.js
-Failure: expected <"[object global]"> found <"[object Object]">
 === throw-and-catch-function.js
 === throw-exception-for-null-access.js
 === to-precision.js
