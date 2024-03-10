@@ -85,7 +85,7 @@ function toStr(a)
     case "undefined":
         return "undefined";
     case "string":
-        return a.__quote();
+        return JSON.stringify(a);
     case "number":
         if (a == 0 && 1 / a < 0)
             return "-0";

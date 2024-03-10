@@ -18,7 +18,7 @@ jobs:
   codegen:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           make codegen
@@ -31,7 +31,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - name: build
@@ -57,10 +57,30 @@ jobs:
       run:
         shell: alpine.sh {0}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: jirutka/setup-alpine@v1
         with:
           arch: x86
+          packages: "build-base make cmake"
+      - name: build
+        run: |
+          make
+      - name: stats
+        run: |
+          make stats
+      - name: test
+        run: |
+          make test
+  linux-s390x:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: alpine.sh {0}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: jirutka/setup-alpine@v1
+        with:
+          arch: s390x
           packages: "build-base make cmake"
       - name: build
         run: |
@@ -104,7 +124,7 @@ jobs:
   linux-examples:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           make BUILD_EXAMPLES=ON
@@ -126,7 +146,7 @@ jobs:
   linux-shared:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           make BUILD_SHARED_LIBS=ON
@@ -137,7 +157,7 @@ jobs:
   linux-asan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - name: build
@@ -156,7 +176,7 @@ jobs:
   linux-msan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - name: build
@@ -172,7 +192,7 @@ jobs:
   linux-ubsan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - name: build
@@ -196,7 +216,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           make BUILD_TYPE=${{matrix.buildType}}
@@ -209,7 +229,7 @@ jobs:
   macos-examples:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           make BUILD_EXAMPLES=ON
@@ -231,7 +251,7 @@ jobs:
   macos-shared:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           make BUILD_SHARED_LIBS=ON
@@ -242,7 +262,7 @@ jobs:
   macos-asan:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           make CONFIG_ASAN=ON
@@ -254,7 +274,7 @@ jobs:
   macos-ubsan:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           make CONFIG_UBSAN=ON
@@ -271,7 +291,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Visual Studio 17 2022"
@@ -299,7 +319,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Visual Studio 17 2022" -T ClangCL
@@ -335,7 +355,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
@@ -363,7 +383,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -385,7 +405,7 @@ jobs:
   emscripten:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: mymindstorm/setup-emsdk@v13
       - name: check emsdk
         run: emcc -v
@@ -398,7 +418,7 @@ jobs:
   wasi:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: jcbhmr/setup-wasmtime@v2
       - name: setup wasi-sdk
         run: |
@@ -426,7 +446,7 @@ jobs:
         with:
             packages: make cmake gcc-g++ bash
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: build
         run: make
@@ -440,7 +460,7 @@ jobs:
   openbsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build + test
         uses: vmactions/openbsd-vm@v1
         with:
@@ -454,7 +474,7 @@ jobs:
   freebsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build + test
         uses: vmactions/freebsd-vm@v1
         with:
@@ -468,7 +488,7 @@ jobs:
   netbsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: build + test
         uses: vmactions/netbsd-vm@v1
         with:
