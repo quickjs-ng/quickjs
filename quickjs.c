@@ -3589,7 +3589,7 @@ static no_inline int string_buffer_realloc(StringBuffer *s, int new_len, int c)
         return -1;
 
     if (new_len > JS_STRING_LEN_MAX) {
-        JS_ThrowInternalError(s->ctx, "string too long");
+        JS_ThrowRangeError(s->ctx, "invalid string length");
         return string_buffer_set_error(s);
     }
     new_size = min_int(max_int(new_len, s->size * 3 / 2), JS_STRING_LEN_MAX);
@@ -3859,7 +3859,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
         p++;
     len1 = p - p_start;
     if (len1 > JS_STRING_LEN_MAX)
-        return JS_ThrowInternalError(ctx, "string too long");
+        return JS_ThrowRangeError(ctx, "invalid string length");
     if (p == p_end) {
         /* ASCII string */
         return js_new_string8(ctx, (const uint8_t *)buf, buf_len);
@@ -4154,7 +4154,7 @@ static JSValue JS_ConcatString1(JSContext *ctx,
 
     len = p1->len + p2->len;
     if (len > JS_STRING_LEN_MAX)
-        return JS_ThrowInternalError(ctx, "string too long");
+        return JS_ThrowRangeError(ctx, "invalid string length");
     is_wide_char = p1->is_wide_char | p2->is_wide_char;
     p = js_alloc_string(ctx, len, is_wide_char);
     if (!p)
@@ -6758,7 +6758,7 @@ JSValue JS_ThrowOutOfMemory(JSContext *ctx)
 
 static JSValue JS_ThrowStackOverflow(JSContext *ctx)
 {
-    return JS_ThrowInternalError(ctx, "stack overflow");
+    return JS_ThrowRangeError(ctx, "Maximum call stack size exceeded");
 }
 
 static JSValue JS_ThrowTypeErrorNotAnObject(JSContext *ctx)
@@ -6774,7 +6774,7 @@ static JSValue JS_ThrowTypeErrorNotASymbol(JSContext *ctx)
 static JSValue JS_ThrowReferenceErrorNotDefined(JSContext *ctx, JSAtom name)
 {
     char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowReferenceError(ctx, "'%s' is not defined",
+    return JS_ThrowReferenceError(ctx, "%s is not defined",
                                   JS_AtomGetStr(ctx, buf, sizeof(buf), name));
 }
 
@@ -10332,7 +10332,7 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
     case JS_TAG_BIG_INT:
         if (flag != TON_FLAG_NUMERIC) {
             JS_FreeValue(ctx, val);
-            return JS_ThrowTypeError(ctx, "cannot convert bigint to number");
+            return JS_ThrowTypeError(ctx, "cannot convert BigInt to number");
         }
         ret = val;
         break;
@@ -11870,7 +11870,7 @@ static JSValue JS_StringToBigIntErr(JSContext *ctx, JSValue val)
 {
     val = JS_StringToBigInt(ctx, val);
     if (JS_VALUE_IS_NAN(val))
-        return JS_ThrowSyntaxError(ctx, "invalid bigint literal");
+        return JS_ThrowSyntaxError(ctx, "invalid BigInt literal");
     return val;
 }
 
@@ -11912,7 +11912,7 @@ static bf_t *JS_ToBigIntFree(JSContext *ctx, bf_t *buf, JSValue val)
     default:
     fail:
         JS_FreeValue(ctx, val);
-        JS_ThrowTypeError(ctx, "cannot convert to bigint");
+        JS_ThrowTypeError(ctx, "cannot convert to BigInt");
         return NULL;
     }
     return r;
@@ -12037,7 +12037,7 @@ static int js_unary_arith_bigint(JSContext *ctx,
     JSValue res;
 
     if (op == OP_plus) {
-        JS_ThrowTypeError(ctx, "bigint argument with unary +");
+        JS_ThrowTypeError(ctx, "BigInt argument with unary +");
         JS_FreeValue(ctx, op1);
         return -1;
     }
@@ -12515,7 +12515,7 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
         if (tag1 != tag2) {
             JS_FreeValue(ctx, op1);
             JS_FreeValue(ctx, op2);
-            JS_ThrowTypeError(ctx, "both operands must be bigint");
+            JS_ThrowTypeError(ctx, "both operands must be BigInt");
             goto exception;
         } else if (js_binary_arith_bigint(ctx, op, sp - 2, op1, op2)) {
             goto exception;
@@ -12873,7 +12873,7 @@ static no_inline int js_shr_slow(JSContext *ctx, JSValue *sp)
 
     if ((JS_VALUE_GET_TAG(op1) == JS_TAG_BIG_INT ||
          JS_VALUE_GET_TAG(op2) == JS_TAG_BIG_INT)) {
-        JS_ThrowTypeError(ctx, "bigint operands are forbidden for >>>");
+        JS_ThrowTypeError(ctx, "BigInt operands are forbidden for >>>");
         JS_FreeValue(ctx, op1);
         JS_FreeValue(ctx, op2);
         goto exception;
@@ -18968,8 +18968,9 @@ static __exception int next_token(JSParseState *s)
     BOOL ident_has_escape;
     JSAtom atom;
 
-    if (js_check_stack_overflow(s->ctx->rt, 0)) {
-        return js_parse_error(s, "stack overflow");
+    if (js_check_stack_overflow(s->ctx->rt, 1000)) {
+        JS_ThrowStackOverflow(s->ctx);
+        return -1;
     }
 
     free_token(s, &s->token);
@@ -19488,8 +19489,9 @@ static __exception int json_next_token(JSParseState *s)
     int c;
     JSAtom atom;
 
-    if (js_check_stack_overflow(s->ctx->rt, 0)) {
-        return js_parse_error(s, "stack overflow");
+    if (js_check_stack_overflow(s->ctx->rt, 1000)) {
+        JS_ThrowStackOverflow(s->ctx);
+        return -1;
     }
 
     free_token(s, &s->token);
@@ -20068,7 +20070,9 @@ static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
 
     /* the local variable indexes are currently stored on 16 bits */
     if (fd->var_count >= JS_MAX_LOCAL_VARS) {
-        JS_ThrowInternalError(ctx, "too many local variables");
+        // XXX: add_var() should take JSParseState *s and use js_parse_error
+        JS_ThrowSyntaxError(ctx, "too many variables declared (only %d allowed)",
+                            JS_MAX_LOCAL_VARS - 1);
         return -1;
     }
     if (js_resize_array(ctx, (void **)&fd->vars, sizeof(fd->vars[0]),
@@ -20148,7 +20152,9 @@ static int add_arg(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
 
     /* the local variable indexes are currently stored on 16 bits */
     if (fd->arg_count >= JS_MAX_LOCAL_VARS) {
-        JS_ThrowInternalError(ctx, "too many arguments");
+        // XXX: add_arg() should take JSParseState *s and use js_parse_error
+        JS_ThrowSyntaxError(ctx, "too many parameters in function definition (only %d allowed)",
+                            JS_MAX_LOCAL_VARS - 1);
         return -1;
     }
     if (js_resize_array(ctx, (void **)&fd->args, sizeof(fd->args[0]),
@@ -22171,7 +22177,7 @@ static int js_parse_check_duplicate_parameter(JSParseState *s, JSAtom name)
     return 0;
 
 duplicate:
-    return js_parse_error(s, "duplicate parameter names not allowed in this context");
+    return js_parse_error(s, "Duplicate parameter name not allowed in this context");
 }
 
 static JSAtom js_parse_destructuring_var(JSParseState *s, int tok, int is_arg)
@@ -23049,7 +23055,8 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             arg_count = 0;
             while (s->token.val != ')') {
                 if (arg_count >= 65535) {
-                    return js_parse_error(s, "Too many call arguments");
+                    return js_parse_error(s, "Too many arguments in function call (only %d allowed)",
+                                          65535 - 1);
                 }
                 if (s->token.val == TOK_ELLIPSIS)
                     break;
@@ -23421,10 +23428,8 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
                regarding the precedence of prefix operators and the
                postifx exponential, ES7 specifies that -2**2 is a
                syntax error. */
-            if (parse_flags & PF_POW_FORBIDDEN) {
-                JS_ThrowSyntaxError(s->ctx, "unparenthesized unary expression can't appear on the left-hand side of '**'");
-                return -1;
-            }
+            if (parse_flags & PF_POW_FORBIDDEN)
+                return js_parse_error(s, "unparenthesized unary expression can't appear on the left-hand side of '**'");
             if (next_token(s))
                 return -1;
             if (js_parse_unary(s, PF_POW_ALLOWED))
@@ -27683,7 +27688,9 @@ static int add_closure_var(JSContext *ctx, JSFunctionDef *s,
 
     /* the closure variable indexes are currently stored on 16 bits */
     if (s->closure_var_count >= JS_MAX_LOCAL_VARS) {
-        JS_ThrowInternalError(ctx, "too many closure variables");
+        // XXX: add_closure_var() should take JSParseState *s and use js_parse_error
+        JS_ThrowSyntaxError(ctx, "too many closure variables used (only %d allowed)",
+                            JS_MAX_LOCAL_VARS - 1);
         return -1;
     }
 
@@ -28468,6 +28475,7 @@ static int resolve_scope_private_field1(JSContext *ctx,
                 }
             }
             /* XXX: no line number info */
+            // XXX: resolve_scope_private_field1() should take JSParseState *s and use js_parse_error_atom
             JS_ThrowSyntaxErrorAtom(ctx, "undefined private field '%s'",
                                     var_name);
             return -1;
@@ -30886,6 +30894,7 @@ static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
         if (me->export_type == JS_EXPORT_TYPE_LOCAL) {
             idx = find_closure_var(ctx, fd, me->local_name);
             if (idx < 0) {
+                // XXX: add_module_variables() should take JSParseState *s and use js_parse_error_atom
                 JS_ThrowSyntaxErrorAtom(ctx, "exported variable '%s' does not exist",
                                         me->local_name);
                 return -1;
@@ -31269,7 +31278,7 @@ static int js_parse_function_check_names(JSParseState *s, JSFunctionDef *fd,
     return 0;
 
 duplicate:
-    return js_parse_error(s, "duplicate argument names not allowed in this context");
+    return js_parse_error(s, "Duplicate parameter name not allowed in this context");
 }
 
 /* create a function to initialize class fields */
@@ -31553,6 +31562,8 @@ static __exception int js_parse_function_decl2(JSParseState *s,
                     goto fail;
                 }
                 if (fd->has_parameter_expressions) {
+                    if (js_parse_check_duplicate_parameter(s, name))
+                        goto fail;
                     if (define_var(s, fd, name, JS_VAR_DEF_LET) < 0)
                         goto fail;
                 }
@@ -32330,7 +32341,7 @@ static const char * const bc_tag_str[] = {
     "string",
     "object",
     "array",
-    "bigint",
+    "BigInt",
     "template",
     "function",
     "module",
@@ -32591,7 +32602,7 @@ static int JS_WriteBigInt(BCWriterState *s, JSValue obj)
         e = a->expn;
     e = (e * 2) | a->sign;
     if (e < INT32_MIN || e > INT32_MAX) {
-        JS_ThrowInternalError(s->ctx, "bigint exponent is too large");
+        JS_ThrowRangeError(s->ctx, "maximum BigInt size exceeded");
         return -1;
     }
     bc_put_sleb128(s, e);
@@ -32611,7 +32622,7 @@ static int JS_WriteBigInt(BCWriterState *s, JSValue obj)
         i++;
         len = (a->len - i) * sizeof(limb_t) + n1;
         if (len > INT32_MAX) {
-            JS_ThrowInternalError(s->ctx, "bigint is too large");
+            JS_ThrowRangeError(s->ctx, "maximum BigInt size exceeded");
             return -1;
         }
         bc_put_leb128(s, len);
@@ -33469,7 +33480,7 @@ static JSValue JS_ReadBigInt(BCReaderState *s)
             goto fail;
         bc_read_trace(s, "len=%" PRId64 "\n", (int64_t)len);
         if (len == 0) {
-            JS_ThrowInternalError(s->ctx, "invalid bigint length");
+            JS_ThrowRangeError(s->ctx, "maximum BigInt size exceeded");
             goto fail;
         }
         l = (len + sizeof(limb_t) - 1) / sizeof(limb_t);
@@ -34620,7 +34631,7 @@ static JSValue JS_ToObject(JSContext *ctx, JSValue val)
     default:
     case JS_TAG_NULL:
     case JS_TAG_UNDEFINED:
-        return JS_ThrowTypeError(ctx, "cannot convert to object");
+        return JS_ThrowTypeError(ctx, "Cannot convert undefined or null to object");
     case JS_TAG_OBJECT:
     case JS_TAG_EXCEPTION:
         return js_dup(val);
@@ -34665,13 +34676,21 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
     int flags;
 
     if (!JS_IsObject(desc)) {
-        JS_ThrowTypeErrorNotAnObject(ctx);
+        JS_ThrowTypeError(ctx, "Property description must be an object");
         return -1;
     }
     flags = 0;
     val = JS_UNDEFINED;
     getter = JS_UNDEFINED;
     setter = JS_UNDEFINED;
+    if (JS_HasProperty(ctx, desc, JS_ATOM_enumerable)) {
+        JSValue prop = JS_GetProperty(ctx, desc, JS_ATOM_enumerable);
+        if (JS_IsException(prop))
+            goto fail;
+        flags |= JS_PROP_HAS_ENUMERABLE;
+        if (JS_ToBoolFree(ctx, prop))
+            flags |= JS_PROP_ENUMERABLE;
+    }
     if (JS_HasProperty(ctx, desc, JS_ATOM_configurable)) {
         JSValue prop = JS_GetProperty(ctx, desc, JS_ATOM_configurable);
         if (JS_IsException(prop))
@@ -34679,6 +34698,12 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
         flags |= JS_PROP_HAS_CONFIGURABLE;
         if (JS_ToBoolFree(ctx, prop))
             flags |= JS_PROP_CONFIGURABLE;
+    }
+    if (JS_HasProperty(ctx, desc, JS_ATOM_value)) {
+        flags |= JS_PROP_HAS_VALUE;
+        val = JS_GetProperty(ctx, desc, JS_ATOM_value);
+        if (JS_IsException(val))
+            goto fail;
     }
     if (JS_HasProperty(ctx, desc, JS_ATOM_writable)) {
         JSValue prop = JS_GetProperty(ctx, desc, JS_ATOM_writable);
@@ -34688,26 +34713,12 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
         if (JS_ToBoolFree(ctx, prop))
             flags |= JS_PROP_WRITABLE;
     }
-    if (JS_HasProperty(ctx, desc, JS_ATOM_enumerable)) {
-        JSValue prop = JS_GetProperty(ctx, desc, JS_ATOM_enumerable);
-        if (JS_IsException(prop))
-            goto fail;
-        flags |= JS_PROP_HAS_ENUMERABLE;
-        if (JS_ToBoolFree(ctx, prop))
-            flags |= JS_PROP_ENUMERABLE;
-    }
-    if (JS_HasProperty(ctx, desc, JS_ATOM_value)) {
-        flags |= JS_PROP_HAS_VALUE;
-        val = JS_GetProperty(ctx, desc, JS_ATOM_value);
-        if (JS_IsException(val))
-            goto fail;
-    }
     if (JS_HasProperty(ctx, desc, JS_ATOM_get)) {
         flags |= JS_PROP_HAS_GET;
         getter = JS_GetProperty(ctx, desc, JS_ATOM_get);
         if (JS_IsException(getter) ||
             !(JS_IsUndefined(getter) || JS_IsFunction(ctx, getter))) {
-            JS_ThrowTypeError(ctx, "invalid getter");
+            JS_ThrowTypeError(ctx, "Getter must be a function");
             goto fail;
         }
     }
@@ -34716,7 +34727,7 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
         setter = JS_GetProperty(ctx, desc, JS_ATOM_set);
         if (JS_IsException(setter) ||
             !(JS_IsUndefined(setter) || JS_IsFunction(ctx, setter))) {
-            JS_ThrowTypeError(ctx, "invalid setter");
+            JS_ThrowTypeError(ctx, "Setter must be a function");
             goto fail;
         }
     }
@@ -34764,7 +34775,7 @@ static __exception int JS_ObjectDefineProperties(JSContext *ctx,
     int ret = -1;
 
     if (!JS_IsObject(obj)) {
-        JS_ThrowTypeErrorNotAnObject(ctx);
+        JS_ThrowTypeError(ctx, "Object.defineProperties called on non-object");
         return -1;
     }
     desc = JS_UNDEFINED;
@@ -34774,6 +34785,9 @@ static __exception int JS_ObjectDefineProperties(JSContext *ctx,
     p = JS_VALUE_GET_OBJ(props);
     if (JS_GetOwnPropertyNamesInternal(ctx, &atoms, &len, p, JS_GPN_ENUM_ONLY | JS_GPN_STRING_MASK | JS_GPN_SYMBOL_MASK) < 0)
         goto exception;
+    // XXX: ECMA specifies that all descriptions should be validated before
+    //      modifying the object. This would require allocating an array
+    //      JSPropertyDescriptor and use 2 separate loops.
     for(i = 0; i < len; i++) {
         JS_FreeValue(ctx, desc);
         desc = JS_GetProperty(ctx, props, atoms[i].atom);
@@ -34823,7 +34837,7 @@ static JSValue js_object_create(JSContext *ctx, JSValue this_val,
 
     proto = argv[0];
     if (!JS_IsObject(proto) && !JS_IsNull(proto))
-        return JS_ThrowTypeError(ctx, "not a prototype");
+        return JS_ThrowTypeError(ctx, "object prototype may only be an Object or null");
     obj = JS_NewObjectProto(ctx, proto);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
@@ -35623,28 +35637,6 @@ static JSValue js_object_fromEntries(JSContext *ctx, JSValue this_val,
     return JS_EXCEPTION;
 }
 
-/* return an empty string if not an object */
-static JSValue js_object___getClass(JSContext *ctx, JSValue this_val,
-                                    int argc, JSValue *argv)
-{
-    JSAtom atom;
-    JSObject *p;
-    uint32_t tag;
-    int class_id;
-
-    tag = JS_VALUE_GET_NORM_TAG(argv[0]);
-    if (tag == JS_TAG_OBJECT) {
-        p = JS_VALUE_GET_OBJ(argv[0]);
-        class_id = p->class_id;
-        if (class_id == JS_CLASS_PROXY && JS_IsFunction(ctx, argv[0]))
-            class_id = JS_CLASS_BYTECODE_FUNCTION;
-        atom = ctx->rt->class_array[class_id].class_name;
-    } else {
-        atom = JS_ATOM_empty_string;
-    }
-    return JS_AtomToString(ctx, atom);
-}
-
 static JSValue js_object_is(JSContext *ctx, JSValue this_val,
                             int argc, JSValue *argv)
 {
@@ -35843,7 +35835,6 @@ static const JSCFunctionListEntry js_object_funcs[] = {
     JS_CFUNC_MAGIC_DEF("freeze", 1, js_object_seal, 1 ),
     JS_CFUNC_MAGIC_DEF("isSealed", 1, js_object_isSealed, 0 ),
     JS_CFUNC_MAGIC_DEF("isFrozen", 1, js_object_isSealed, 1 ),
-    JS_CFUNC_DEF("__getClass", 1, js_object___getClass ),
     JS_CFUNC_DEF("fromEntries", 1, js_object_fromEntries ),
     JS_CFUNC_DEF("hasOwn", 2, js_object_hasOwn ),
 };
@@ -35989,7 +35980,9 @@ static JSValue *build_arg_list(JSContext *ctx, uint32_t *plen,
     if (js_get_length32(ctx, &len, array_arg))
         return NULL;
     if (len > JS_MAX_LOCAL_VARS) {
-        JS_ThrowInternalError(ctx, "too many arguments");
+        // XXX: check for stack overflow?
+        JS_ThrowRangeError(ctx, "too many arguments in function call (only %d allowed)",
+                           JS_MAX_LOCAL_VARS);
         return NULL;
     }
     /* avoid allocating 0 bytes */
@@ -39444,7 +39437,7 @@ static JSValue js_string_includes(JSContext *ctx, JSValue this_val,
     ret = js_is_regexp(ctx, argv[0]);
     if (ret) {
         if (ret > 0)
-            JS_ThrowTypeError(ctx, "regex not supported");
+            JS_ThrowTypeError(ctx, "regexp not supported");
         goto fail;
     }
     v = JS_ToString(ctx, argv[0]);
@@ -40006,7 +39999,7 @@ static JSValue js_string_pad(JSContext *ctx, JSValue this_val,
         }
     }
     if (n > JS_STRING_LEN_MAX) {
-        JS_ThrowInternalError(ctx, "string too long");
+        JS_ThrowRangeError(ctx, "invalid string length");
         goto fail2;
     }
     if (string_buffer_init(ctx, b, n))
@@ -40069,7 +40062,7 @@ static JSValue js_string_repeat(JSContext *ctx, JSValue this_val,
     if (len == 0 || n == 1)
         return str;
     if (val * len > JS_STRING_LEN_MAX) {
-        JS_ThrowInternalError(ctx, "string too long");
+        JS_ThrowRangeError(ctx, "invalid string length");
         goto fail;
     }
     if (string_buffer_init2(ctx, b, n * len, p->is_wide_char))
@@ -42514,7 +42507,7 @@ static JSValue json_parse_value(JSParseState *s)
     default:
     def_token:
         if (s->token.val == TOK_EOF) {
-            js_parse_error(s, "unexpected end of input");
+            js_parse_error(s, "Unexpected end of JSON input");
         } else {
             js_parse_error(s, "unexpected token: '%.*s'",
                            (int)(s->buf_ptr - s->token.ptr), s->token.ptr);
@@ -42759,7 +42752,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
             JS_FreeValue(ctx, val);
             return ret;
         } else if (cl == JS_CLASS_BIG_INT) {
-            JS_ThrowTypeError(ctx, "bigint are forbidden in JSON.stringify");
+            JS_ThrowTypeError(ctx, "BigInt are forbidden in JSON.stringify");
             goto exception;
         }
         v = js_array_includes(ctx, jsc->stack, 1, &val);
@@ -42889,7 +42882,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
     concat_value:
         return string_buffer_concat_value_free(jsc->b, val);
     case JS_TAG_BIG_INT:
-        JS_ThrowTypeError(ctx, "bigint are forbidden in JSON.stringify");
+        JS_ThrowTypeError(ctx, "BigInt are forbidden in JSON.stringify");
         goto exception;
     default:
         JS_FreeValue(ctx, val);
@@ -46789,6 +46782,7 @@ static const JSCFunctionListEntry js_global_funcs[] = {
     JS_PROP_DOUBLE_DEF("Infinity", 1.0 / 0.0, 0 ),
     JS_PROP_DOUBLE_DEF("NaN", NAN, 0 ),
     JS_PROP_UNDEFINED_DEF("undefined", 0 ),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "global", JS_PROP_CONFIGURABLE ),
 };
 
 /* Date */
@@ -47946,7 +47940,7 @@ static JSValue JS_ToBigIntCtorFree(JSContext *ctx, JSValue val)
             a = JS_ToBigInt1(ctx, &a_s, val);
             if (!bf_is_finite(a)) {
                 JS_FreeValue(ctx, val);
-                val = JS_ThrowRangeError(ctx, "cannot convert NaN or Infinity to bigint");
+                val = JS_ThrowRangeError(ctx, "cannot convert NaN or Infinity to BigInt");
             } else {
                 JSValue val1 = JS_NewBigInt(ctx);
                 bf_t *r;
@@ -47964,7 +47958,7 @@ static JSValue JS_ToBigIntCtorFree(JSContext *ctx, JSValue val)
                     val = JS_ThrowOutOfMemory(ctx);
                 } else if (ret & BF_ST_INEXACT) {
                     JS_FreeValue(ctx, val1);
-                    val = JS_ThrowRangeError(ctx, "cannot convert to bigint: not an integer");
+                    val = JS_ThrowRangeError(ctx, "cannot convert to BigInt: not an integer");
                 } else {
                     val = JS_CompactBigInt(ctx, val1);
                 }
@@ -47985,7 +47979,7 @@ static JSValue JS_ToBigIntCtorFree(JSContext *ctx, JSValue val)
     case JS_TAG_UNDEFINED:
     default:
         JS_FreeValue(ctx, val);
-        return JS_ThrowTypeError(ctx, "cannot convert to bigint");
+        return JS_ThrowTypeError(ctx, "cannot convert to BigInt");
     }
     return val;
 }
@@ -48011,7 +48005,7 @@ static JSValue js_thisBigIntValue(JSContext *ctx, JSValue this_val)
                 return js_dup(p->u.object_data);
         }
     }
-    return JS_ThrowTypeError(ctx, "not a bigint");
+    return JS_ThrowTypeError(ctx, "not a BigInt");
 }
 
 static JSValue js_bigint_toString(JSContext *ctx, JSValue this_val,

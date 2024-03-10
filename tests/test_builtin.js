@@ -955,9 +955,9 @@ function test_proxy_is_array()
     /* Without ASAN */
     assert(Array.isArray(r));
   } catch(e) {
-    /* With ASAN expect InternalError "stack overflow" to be raised */
-    if (e instanceof InternalError) {
-      assert(e.message, "stack overflow", "Stack overflow error was not raised")
+    /* With ASAN expect RangeError "Maximum call stack size exceeded" to be raised */
+    if (e instanceof RangeError) {
+      assert(e.message, "Maximum call stack size exceeded", "Stack overflow error was not raised")
     } else {
       throw e;
     }
