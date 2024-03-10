@@ -31562,6 +31562,8 @@ static __exception int js_parse_function_decl2(JSParseState *s,
                     goto fail;
                 }
                 if (fd->has_parameter_expressions) {
+                    if (js_parse_check_duplicate_parameter(s, name))
+                        goto fail;
                     if (define_var(s, fd, name, JS_VAR_DEF_LET) < 0)
                         goto fail;
                 }

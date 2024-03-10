@@ -165,23 +165,6 @@ Failure (May 25 2008 1:30( )AM (PM) is not NaN.): expected <true> found <false>
 === double-equals.js
 === dtoa.js
 === duplicate-parameters.js
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
-Failure: expected <true> found <false>
 === eagerly-parsed-lazily-compiled-functions.js
 === elements-transition-and-store.js
 === empirical_max_arraybuffer.js
