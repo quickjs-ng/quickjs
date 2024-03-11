@@ -39,10 +39,28 @@ for (const file of files) {
     if (source.includes('Realm.create()')) continue // TODO support Realm object
     if (source.includes('// MODULE')) continue // TODO support modules
     if (source.includes('// Files:')) continue // TODO support includes
+
+    // the default --stack-size is necessary to keep output of stack overflowing
+    // tests stable; it will be overridden by a Flags comment
+    let flags = { '--stack-size': 2048 }, flagstr = ""
+    // parse command line flags
+    for (let s of source.matchAll(/\/\/ Flags:(.+)/g)) {
+        for (let m of s[1].matchAll(/\s*([\S]+)/g)) {
+            const v = m[1].match(/([\S]+)=([\S]+)/)
+            if (v) {
+                flags[v[1]] = v[2]
+                flagstr += ` ${v[1]}=${v[2]}`
+            } else {
+                flags[m[1]] = true
+                flagstr += ` ${m[1]}`
+            }
+        }
+    }
     // exclude tests that use V8 intrinsics like %OptimizeFunctionOnNextCall
-    if (source.includes ("--allow-natives-syntax")) continue
+    if (flags["--allow-natives-syntax"]) continue
     // exclude tests that use V8 extensions
-    if (source.includes ("--expose-externalize-string")) continue
+    if (flags["--expose-externalize-string"]) continue
+    // parse environment variables
     let env = {}, envstr = ""
     for (let s of source.matchAll(/environment variables:(.+)/ig)) {
         for (let m of s[1].matchAll(/\s*([\S]+)=([\S]+)/g)) {
@@ -50,11 +68,13 @@ for (const file of files) {
             envstr += ` ${m[1]}=${m[2]}`
         }
     }
+    //print(`=== ${file}${envstr}${flagstr}`)
     print(`=== ${file}${envstr}`)
-    // the fixed --stack-size is necessary to keep output of stack overflowing
-    // tests stable; their stack traces are somewhat arbitrary otherwise
-    const args = [argv0, "--stack-size", `${2048 * 1024}`,
-                  "-I", "mjsunit.js", "-I", tweak, file]
+    const args = [argv0,
+                  "--stack-size", `${flags["--stack-size"]*1024}`,
+                  "-I", "mjsunit.js",
+                  "-I", tweak,
+                  file]
     const opts = {block:true, cwd:dir, env:env, usePath:false}
     os.exec(args, opts)
 }
