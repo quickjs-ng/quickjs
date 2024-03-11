@@ -452,20 +452,16 @@ Object <Error(SyntaxError: invalid assignment left-hand side)> is not an instanc
 Object <Error(SyntaxError: invalid increment/decrement operand)> is not an instance of <ReferenceError> but of <SyntaxError>
 === invalid-source-element.js
 === json-errors.js
-Failure: expected <"Unexpected end of JSON input"> found <"unexpected end of string">
-Failure: expected <"Unexpected end of JSON input"> found <"unexpected end of string">
-Failure: expected <"Unexpected end of JSON input"> found <"unexpected end of string">
-Failure: expected <"Unexpected end of JSON input"> found <"unexpected end of string">
 Failure:
 expected:
 "Unexpected token \n in JSON at position 3"
 found:
-"invalid character in a JSON string"
+"Bad control character in string literal in JSON"
 Failure:
 expected:
 "Unexpected token \n in JSON at position 3"
 found:
-"invalid character in a JSON string"
+"Bad control character in string literal in JSON"
 === json-parser-recursive.js
 === json-replacer-number-wrapper-tostring.js
 === json-replacer-order.js
@@ -475,23 +471,6 @@ Did not throw exception
 Did not throw exception
 === json-stringify-stack.js
 === json.js
-Did not throw exception
-Did not throw exception
-Did not throw exception
-Did not throw exception
-Did not throw exception
-Did not throw exception
-Did not throw exception
-Failure:
-expected:
-"[37,null,1,\"foo\",\"37\",\"true\",null,\"has toJSON\",{},\"has toJSON\"]"
-found:
-"[37,NaN,1,\"foo\",\"37\",
-Failure:
-expected:
-"[37,null,1,\"foo\",\"37\",\"true\",null,\"has toJSON\",{},\"has toJSON\"]"
-found:
-"[37,NaN,1,\"foo\",\"37\",
 === keyed-array-call.js
 === keyed-call-generic.js
 === keyed-call-ic.js
