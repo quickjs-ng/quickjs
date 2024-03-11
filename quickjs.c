@@ -42833,7 +42833,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
                 goto exception;
             goto concat_primitive;
         } else if (cl == JS_CLASS_BOOLEAN || cl == JS_CLASS_BIG_INT) {
-            set_value(ctx, &val, p->u.object_data);
+            set_value(ctx, &val, js_dup(p->u.object_data));
             goto concat_primitive;
         }
         v = js_array_includes(ctx, jsc->stack, 1, &val);
