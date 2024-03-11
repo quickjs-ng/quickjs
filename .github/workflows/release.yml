@@ -22,6 +22,7 @@ jobs:
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
           cd ..
           cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
+          cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
           mv build/qjs build/qjs-linux-x86
           mv build/qjsc build/qjsc-linux-x86
       - name: check
@@ -50,6 +51,7 @@ jobs:
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
           cd ..
           cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
+          cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
           mv build/qjs build/qjs-linux-x86_64
           mv build/qjsc build/qjsc-linux-x86_64
       - name: check
@@ -167,7 +169,7 @@ jobs:
           path: build/qjs-wasi.wasm
 
   upload-to-release:
-    needs: [linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64]
+    needs: [linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64, wasi]
     runs-on: ubuntu-latest
     steps:
       - name: get assets
