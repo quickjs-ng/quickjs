@@ -1734,17 +1734,7 @@ static const JSMallocFunctions def_malloc_funcs = {
     js_def_malloc,
     js_def_free,
     js_def_realloc,
-#if defined(__APPLE__)
-    malloc_size,
-#elif defined(_WIN32)
-    (size_t (*)(const void *))_msize,
-#elif defined(__ANDROID__)
-    (size_t (*)(const void *))dlmalloc_usable_size,
-#elif defined(__linux__) || defined (__CYGWIN__)
-    (size_t (*)(const void *))malloc_usable_size,
-#else
-    NULL,
-#endif
+    js__malloc_usable_size
 };
 
 JSRuntime *JS_NewRuntime(void)
