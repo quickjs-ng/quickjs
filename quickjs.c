@@ -5457,7 +5457,7 @@ static void free_zero_refcount(JSRuntime *rt)
 }
 
 /* called with the ref_count of 'v' reaches zero. */
-void JS_FreeValueRT__(JSRuntime *rt, JSValue v)
+void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
 {
     uint32_t tag = JS_VALUE_GET_TAG(v);
 
@@ -5517,14 +5517,14 @@ void JS_FreeValueRT__(JSRuntime *rt, JSValue v)
         }
         break;
     default:
-        printf("JS_FreeValue: unknown tag=%d\n", tag);
+        printf("__JS_FreeValue: unknown tag=%d\n", tag);
         abort();
     }
 }
 
-void JS_FreeValue__(JSContext *ctx, JSValue v)
+void __JS_FreeValue(JSContext *ctx, JSValue v)
 {
-    JS_FreeValueRT__(ctx->rt, v);
+    __JS_FreeValueRT(ctx->rt, v);
 }
 
 /* garbage collection */
@@ -37484,12 +37484,6 @@ static JSValue js_array_join(JSContext *ctx, JSValue this_val,
         if (JS_IsException(el))
             goto fail;
         if (!JS_IsNull(el) && !JS_IsUndefined(el)) {
-            // XXX: should have a more general cycle detection scheme
-            if (JS_VALUE_GET_TAG(el) == JS_TAG_OBJECT
-            &&  JS_VALUE_GET_OBJ(el) == JS_VALUE_GET_OBJ(obj)) {
-                JS_FreeValue(ctx, el);
-                continue;
-            }
             if (toLocaleString) {
                 el = JS_ToLocaleStringFree(ctx, el);
             }

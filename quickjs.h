@@ -37,12 +37,12 @@ extern "C" {
 #if defined(__GNUC__) || defined(__clang__)
 #define js_unlikely(x)        __builtin_expect(!!(x), 0)
 #define js_force_inline       inline __attribute__((always_inline))
-#define js_printf_like(f, a)   __attribute__((format(printf, f, a)))
+#define __js_printf_like(f, a)   __attribute__((format(printf, f, a)))
 #define JS_EXTERN __attribute__((visibility("default")))
 #else
 #define js_unlikely(x)   (x)
 #define js_force_inline  inline
-#define js_printf_like(a, b)
+#define __js_printf_like(a, b)
 #define JS_EXTERN /* nothing */
 #endif
 
@@ -567,30 +567,30 @@ JS_EXTERN JSValue JS_GetException(JSContext *ctx);
 JS_EXTERN JS_BOOL JS_IsError(JSContext *ctx, JSValue val);
 JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
 JS_EXTERN JSValue JS_NewError(JSContext *ctx);
-JS_EXTERN JSValue js_printf_like(2, 3) JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue js_printf_like(2, 3) JS_ThrowTypeError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue js_printf_like(2, 3) JS_ThrowReferenceError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue js_printf_like(2, 3) JS_ThrowRangeError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue js_printf_like(2, 3) JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowTypeError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowReferenceError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowRangeError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
 JS_EXTERN JSValue JS_ThrowOutOfMemory(JSContext *ctx);
 
-JS_EXTERN void JS_FreeValue__(JSContext *ctx, JSValue v);
+JS_EXTERN void __JS_FreeValue(JSContext *ctx, JSValue v);
 static inline void JS_FreeValue(JSContext *ctx, JSValue v)
 {
     if (JS_VALUE_HAS_REF_COUNT(v)) {
         JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
         if (--p->ref_count <= 0) {
-            JS_FreeValue__(ctx, v);
+            __JS_FreeValue(ctx, v);
         }
     }
 }
-JS_EXTERN void JS_FreeValueRT__(JSRuntime *rt, JSValue v);
+JS_EXTERN void __JS_FreeValueRT(JSRuntime *rt, JSValue v);
 static inline void JS_FreeValueRT(JSRuntime *rt, JSValue v)
 {
     if (JS_VALUE_HAS_REF_COUNT(v)) {
         JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
         if (--p->ref_count <= 0) {
-            JS_FreeValueRT__(rt, v);
+            __JS_FreeValueRT(rt, v);
         }
     }
 }
@@ -670,9 +670,9 @@ JS_EXTERN JSValue JS_GetPropertyStr(JSContext *ctx, JSValue this_obj,
 JS_EXTERN JSValue JS_GetPropertyUint32(JSContext *ctx, JSValue this_obj,
                                        uint32_t idx);
 
-JS_EXTERN int JS_SetPropertyInternal(JSContext *ctx, JSValue this_obj,
-                                     JSAtom prop, JSValue val,
-                                     int flags);
+int JS_SetPropertyInternal(JSContext *ctx, JSValue this_obj,
+                           JSAtom prop, JSValue val,
+                           int flags);
 static inline int JS_SetProperty(JSContext *ctx, JSValue this_obj,
                                  JSAtom prop, JSValue val)
 {
@@ -806,7 +806,7 @@ JS_EXTERN void JS_SetModuleLoaderFunc(JSRuntime *rt,
 /* return the import.meta object of a module */
 JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
-JS_EXTERN JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
+JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
 
 /* JS Job support */
 
@@ -1009,7 +1009,7 @@ JS_EXTERN const char* JS_GetVersion(void);
 #undef JS_EXTERN
 #undef js_unlikely
 #undef js_force_inline
-#undef js_printf_like
+#undef __js_printf_like
 
 #ifdef __cplusplus
 } /* extern "C" { */

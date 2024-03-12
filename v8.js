@@ -9,7 +9,7 @@ const exclude = [
     "arguments-indirect.js",        // implementation-defined
     "array-concat.js",              // slow
     "array-isarray.js",             // unstable output due to stack overflow
-    "array-join.js",                // slow (defines an array of length 2**32-1)
+    "array-join.js",                // unstable output due to stack overflow
     "ascii-regexp-subject.js",      // slow
     "asm-directive.js",             // v8 specific
     "disallow-codegen-from-strings.js", // --disallow-code-generation-from-strings
