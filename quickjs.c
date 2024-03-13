@@ -6870,8 +6870,11 @@ static int JS_SetPrototypeInternal(JSContext *ctx, JSValue obj,
     if (sh->proto == proto)
         return TRUE;
     if (p == JS_VALUE_GET_OBJ(ctx->class_proto[JS_CLASS_OBJECT])) {
-        JS_ThrowTypeError(ctx, "'Immutable prototype object \'Object.prototype\' cannot have their prototype set'");
-        return -1;
+        if (throw_flag) {
+            JS_ThrowTypeError(ctx, "'Immutable prototype object \'Object.prototype\' cannot have their prototype set'");
+            return -1;
+        }
+        return FALSE;
     }
     if (!p->extensible) {
         if (throw_flag) {
