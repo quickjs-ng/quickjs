@@ -220,6 +220,8 @@ function test()
     assert(Object.isExtensible(a), false, "extensible");
     assert(typeof a.y, "undefined", "extensible");
     assert(err, true, "extensible");
+
+    assert_throws(TypeError, () => Object.setPrototypeOf(Object.prototype, {}));
 }
 
 function test_enum()
