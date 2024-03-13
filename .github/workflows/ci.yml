@@ -217,7 +217,7 @@ jobs:
       - name: install TCC
         run: |
           pushd /tmp
-          git clone --depth 1 https://repo.or.cz/tinycc.git
+          git clone https://repo.or.cz/tinycc.git
           cd tinycc
           git checkout 9d2068c6309dc50dfdbbc30a5d6757683d3f884c
           ./configure
