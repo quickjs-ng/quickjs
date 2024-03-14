@@ -18645,11 +18645,6 @@ static __exception int js_parse_string(JSParseState *s, int sep,
             goto invalid_char;
         c = *p;
         if (c < 0x20) {
-            if (!s->cur_func) {
-                if (do_throw)
-                    js_parse_error(s, "invalid character in a JSON string");
-                goto fail;
-            }
             if (sep == '`') {
                 if (c == '\r') {
                     if (p[1] == '\n')
@@ -18699,9 +18694,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 continue;
             default:
                 if (c >= '0' && c <= '9') {
-                    if (!s->cur_func)
-                        goto invalid_escape; /* JSON case */
-                    if (!(s->cur_func->js_mode & JS_MODE_STRICT) && sep != '`')
+                    if (s->cur_func && !(s->cur_func->js_mode & JS_MODE_STRICT) && sep != '`')
                         goto parse_escape;
                     if (c == '0' && !(p[1] >= '0' && p[1] <= '9')) {
                         p++;
@@ -18711,10 +18704,9 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                             /* Note: according to ES2021, \8 and \9 are not
                                accepted in strict mode or in templates. */
                             goto invalid_escape;
-                        } else {
-                            if (do_throw)
-                                js_parse_error(s, "octal escape sequences are not allowed in strict mode");
                         }
+                        if (do_throw)
+                            js_parse_error(s, "octal escape sequences are not allowed in strict mode");
                         goto fail;
                     }
                 } else if (c >= 0x80) {
@@ -18731,10 +18723,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 parse_escape:
                     ret = lre_parse_escape(&p, TRUE);
                     if (ret == -1) {
-                    invalid_escape:
-                        if (do_throw)
-                            js_parse_error(s, "malformed escape sequence in string literal");
-                        goto fail;
+                        goto invalid_escape;
                     } else if (ret < 0) {
                         /* ignore the '\' (could output a warning) */
                         p++;
@@ -18763,6 +18752,10 @@ static __exception int js_parse_string(JSParseState *s, int sep,
  invalid_utf8:
     if (do_throw)
         js_parse_error(s, "invalid UTF-8 sequence");
+    goto fail;
+ invalid_escape:
+    if (do_throw)
+        js_parse_error(s, "malformed escape sequence in string literal");
     goto fail;
  invalid_char:
     if (do_throw)
@@ -19439,6 +19432,107 @@ static __exception int next_token(JSParseState *s)
     return -1;
 }
 
+static int json_parse_string(JSParseState *s, const uint8_t **pp)
+{
+    const uint8_t *p = *pp;
+    int ret, i;
+    uint32_t c;
+    StringBuffer b_s, *b = &b_s;
+
+    if (string_buffer_init(s->ctx, b, 32))
+        goto fail;
+
+    for(;;) {
+        if (p >= s->buf_end) {
+            js_parse_error(s, "Unexpected end of JSON input");
+            goto fail;
+        }
+        c = *p++;
+        if (c == '"')
+            break;
+        if (c < 0x20) {
+            js_parse_error(s, "Bad control character in string literal in JSON");
+            goto fail;
+        }
+        if (c == '\\') {
+            c = *p++;
+            switch(c) {
+            case 'b':   c = '\b'; break;
+            case 'f':   c = '\f'; break;
+            case 'n':   c = '\n'; break;
+            case 'r':   c = '\r'; break;
+            case 't':   c = '\t'; break;
+            case '\"':  break;
+            case '\\':  break;
+            case '/':   break; /* for v8 compatibility */
+            case 'u':
+                c = 0;
+                for(i = 0; i < 4; i++) {
+                    int h = from_hex(*p++);
+                    if (h < 0)
+                        goto invalid_escape;
+                    c = (c << 4) | h;
+                }
+                break;
+            default:
+            invalid_escape:
+                js_parse_error(s, "Bad escaped character in JSON");
+                goto fail;
+            }
+        }
+        if (string_buffer_putc(b, c))
+            goto fail;
+    }
+    s->token.val = TOK_STRING;
+    s->token.u.str.sep = '"';
+    s->token.u.str.str = string_buffer_end(b);
+    *pp = p;
+    return 0;
+
+ fail:
+    string_buffer_free(b);
+    return -1;
+}
+
+static int json_parse_number(JSParseState *s, const uint8_t **pp)
+{
+    const uint8_t *p = *pp;
+    const uint8_t *p_start = p;
+
+    if (*p == '+' || *p == '-')
+        p++;
+
+    if (!is_digit(*p))
+        return js_parse_error(s, "Unexpected token '%c'", *p_start);
+
+    if (p[0] == '0' && is_digit(p[1]))
+        return js_parse_error(s, "Unexpected number in JSON");
+
+    while (is_digit(*p))
+        p++;
+
+    if (*p == '.') {
+        p++;
+        if (!is_digit(*p))
+            return js_parse_error(s, "Unterminated fractional number in JSON");
+        while (is_digit(*p))
+            p++;
+    }
+    if (*p == 'e' || *p == 'E') {
+        p++;
+        if (*p == '+' || *p == '-')
+            p++;
+        if (!is_digit(*p))
+            return js_parse_error(s, "Exponent part is missing a number in JSON");
+        while (is_digit(*p))
+            p++;
+    }
+    s->token.val = TOK_NUMBER;
+    s->token.u.num.val = js_float64(strtod((const char *)p_start, NULL));
+    *pp = p;
+    return 0;
+}
+
 /* 'c' is the first character. Return JS_ATOM_NULL in case of error */
 static JSAtom json_parse_ident(JSParseState *s, const uint8_t **pp, int c)
 {
@@ -19506,7 +19600,8 @@ static __exception int json_next_token(JSParseState *s)
         /* JSON does not accept single quoted strings */
         goto def_token;
     case '\"':
-        if (js_parse_string(s, c, TRUE, p + 1, &s->token, &p))
+        p++;
+        if (json_parse_string(s, &p))
             goto fail;
         break;
     case '\r':  /* accept DOS and MAC newline sequences */
@@ -19574,13 +19669,8 @@ static __exception int json_next_token(JSParseState *s)
     case '9':
         /* number */
     parse_number:
-        {
-            JSValue ret = js_atof(s->ctx, (const char *)p, (const char **)&p, 10, 0);
-            if (JS_IsException(ret))
-                goto fail;
-            s->token.val = TOK_NUMBER;
-            s->token.u.num.val = ret;
-        }
+        if (json_parse_number(s, &p))
+            goto fail;
         break;
     default:
         if (c >= 128) {
@@ -42719,30 +42809,22 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
     tab = JS_UNDEFINED;
     prop = JS_UNDEFINED;
 
-    switch (JS_VALUE_GET_NORM_TAG(val)) {
-    case JS_TAG_OBJECT:
+    if (JS_IsObject(val)) {
         p = JS_VALUE_GET_OBJ(val);
         cl = p->class_id;
         if (cl == JS_CLASS_STRING) {
             val = JS_ToStringFree(ctx, val);
             if (JS_IsException(val))
                 goto exception;
-            val = JS_ToQuotedStringFree(ctx, val);
-            if (JS_IsException(val))
-                goto exception;
-            return string_buffer_concat_value_free(jsc->b, val);
+            goto concat_primitive;
         } else if (cl == JS_CLASS_NUMBER) {
             val = JS_ToNumberFree(ctx, val);
             if (JS_IsException(val))
                 goto exception;
-            return string_buffer_concat_value_free(jsc->b, val);
-        } else if (cl == JS_CLASS_BOOLEAN) {
-            ret = string_buffer_concat_value(jsc->b, p->u.object_data);
-            JS_FreeValue(ctx, val);
-            return ret;
-        } else if (cl == JS_CLASS_BIG_INT) {
-            JS_ThrowTypeError(ctx, "BigInt are forbidden in JSON.stringify");
-            goto exception;
+            goto concat_primitive;
+        } else if (cl == JS_CLASS_BOOLEAN || cl == JS_CLASS_BIG_INT) {
+            set_value(ctx, &val, js_dup(p->u.object_data));
+            goto concat_primitive;
         }
         v = js_array_includes(ctx, jsc->stack, 1, &val);
         if (JS_IsException(v))
@@ -42855,6 +42937,9 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
         JS_FreeValue(ctx, indent1);
         JS_FreeValue(ctx, prop);
         return 0;
+    }
+ concat_primitive:
+    switch (JS_VALUE_GET_NORM_TAG(val)) {
     case JS_TAG_STRING:
         val = JS_ToQuotedStringFree(ctx, val);
         if (JS_IsException(val))
