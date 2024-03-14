@@ -7,7 +7,7 @@ on:
 
 jobs:
   linux-x86:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - uses: jirutka/setup-alpine@v1
@@ -36,7 +36,7 @@ jobs:
           path: build/*-linux-x86
 
   linux-x86_64:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - uses: jirutka/setup-alpine@v1
@@ -150,7 +150,7 @@ jobs:
           path: build/*-windows-x86_64.exe
 
   wasi:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - name: setup wasi-sdk
@@ -170,7 +170,7 @@ jobs:
 
   upload-to-release:
     needs: [linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64, wasi]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: get assets
         uses: actions/download-artifact@v3

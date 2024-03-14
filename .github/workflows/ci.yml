@@ -16,7 +16,7 @@ on:
 
 jobs:
   codegen:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -25,7 +25,7 @@ jobs:
       - name: Check if the git repository is clean
         run: $(exit $(git status --porcelain --untracked-files=no | head -255 | wc -l)) || (echo "Dirty git tree"; git diff; exit 1)
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +52,7 @@ jobs:
         run: |
           ./v8.sh
   linux-32bits:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     defaults:
       run:
         shell: alpine.sh {0}
@@ -72,7 +72,7 @@ jobs:
         run: |
           make test
   linux-s390x:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     defaults:
       run:
         shell: alpine.sh {0}
@@ -92,7 +92,7 @@ jobs:
         run: |
           make test
   linux-gcc48:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     container:
       image: ubuntu:14.04
     steps:
@@ -122,7 +122,7 @@ jobs:
         run: |
           time make test262
   linux-examples:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -144,7 +144,7 @@ jobs:
           ./build/qjs tests/test_bjson.js
           ./build/function_source
   linux-shared:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -155,7 +155,7 @@ jobs:
         run: |
           make stats
   linux-asan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -174,7 +174,7 @@ jobs:
         run: |
           time make test262
   linux-msan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -190,7 +190,7 @@ jobs:
         run: |
           make test
   linux-ubsan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -209,7 +209,7 @@ jobs:
         run: |
           time make test262
   linux-tcc:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -428,7 +428,7 @@ jobs:
           make stats
 
   emscripten:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - uses: mymindstorm/setup-emsdk@v13
@@ -441,7 +441,7 @@ jobs:
       - name: result
         run: ls -lh build
   wasi:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - uses: jcbhmr/setup-wasmtime@v2
@@ -483,7 +483,7 @@ jobs:
         run: make test
 
   openbsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - name: build + test
@@ -497,7 +497,7 @@ jobs:
             gmake stats
 
   freebsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - name: build + test
@@ -511,7 +511,7 @@ jobs:
             gmake stats
 
   netbsd:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - name: build + test
@@ -526,7 +526,7 @@ jobs:
             gmake test
 
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     container: reactnativecommunity/react-native-android:v13.0
     steps:
       - uses: actions/checkout@v4
