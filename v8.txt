@@ -79,7 +79,10 @@ async function two(x) {
   try {
     x = await x;
     throw new Error();
-  } 
+  } catch (e) {
+    return e.stack;
+  }
+}
 === async-stack-traces-prepare-stacktrace-3.js
 === async-stack-traces-prepare-stacktrace-4.js
 === big-array-literal.js
@@ -337,11 +340,7 @@ Failure: expected <null> found <undefined>
 Failure: expected <null> found <undefined>
 === function-length-accessor.js
 === function-name-eval-shadowed.js
-Failure:
-expected:
-200
-found:
-function f() { eval("var f = 100"); f = 200; return f }
+Failure: expected <200> found <function f() { eval("var f = 100"); f = 200; return f }>
 === function-names.js
 === function-property.js
 === function-prototype.js
@@ -349,14 +348,10 @@ function f() { eval("var f = 100"); f = 200; return f }
 === function-without-prototype.js
 === function.js
 Failure: expected <"undefined"> found <"function">
-Failure:
-expected:
-42
-found:
-function anonymous(
+Failure: expected <42> found <function anonymous(
 ) {
 return anonymous;
-}
+}>
 === fuzz-accessors.js
 === get-own-property-descriptor-non-objects.js
 === get-own-property-descriptor.js
@@ -381,9 +376,6 @@ return anonymous;
 === hex-parsing.js
 === holy-double-no-arg-array.js
 === html-comments.js
-SyntaxError: unexpected token in expression: '>'
-    at html-comments.js:1:1
-
 === html-string-funcs.js
 === icu-date-lord-howe.js TZ=Australia/Lord_Howe LC_ALL=en
 Failure:
@@ -456,12 +448,12 @@ Failure:
 expected:
 "Unexpected token \n in JSON at position 3"
 found:
-"Bad control character in string literal in JSON"
+"Bad control character in string literal in JSON at position 2 (line 1 column 3)"
 Failure:
 expected:
 "Unexpected token \n in JSON at position 3"
 found:
-"Bad control character in string literal in JSON"
+"Bad control character in string literal in JSON at position 2 (line 1 column 3)"
 === json-parser-recursive.js
 === json-replacer-number-wrapper-tostring.js
 === json-replacer-order.js
@@ -652,43 +644,17 @@ SyntaxError: invalid assignment left-hand side
 === spread-large-set.js
 === spread-large-string.js
 === stack-traces-2.js
-=== stack-traces-class-fields.js
-Failure (during class construction doesn't contain expected[1] stack =     at thrower (stack-traces-class-fields.js:35:3)
-    at
-Failure (during class construction contains unexpected[0]): expected <59> found <-1>
-Failure (during class instantiation doesn't contain expected[1] stack =     at thrower (stack-traces-class-fields.js:35:3)
-    a
-Failure (during class instantiation doesn't contain expected[2] stack =     at thrower (stack-traces-class-fields.js:35:3)
-    a
-Failure (during class instantiation contains unexpected[0]): expected <59> found <-1>
-Failure (during class instantiation with super doesn't contain expected[1] stack =     at thrower (stack-traces-class-fields.js:
-Failure (during class instantiation with super doesn't contain expected[2] stack =     at thrower (stack-traces-class-fields.js:
-Failure (during class instantiation with super contains unexpected[1]): expected <59> found <-1>
-Failure (during class instantiation with super2 doesn't contain expected[1] stack =     at thrower (stack-traces-class-fields.js
-Failure (during class instantiation with super2 doesn't contain expected[2] stack =     at thrower (stack-traces-class-fields.js
-Failure (during class instantiation with super2 contains unexpected[1]): expected <59> found <-1>
-Failure (during class instantiation with super3 doesn't contain expected[1] stack =     at thrower (stack-traces-class-fields.js
-Failure (during class instantiation with super3 doesn't contain expected[2] stack =     at thrower (stack-traces-class-fields.js
-Failure (during class instantiation with super3 doesn't contain expected[3] stack =     at thrower (stack-traces-class-fields.js
-Failure (during class instantiation with super3 contains unexpected[0]): expected <59> found <-1>
-Failure (during class field call doesn't contain expected[0] stack =     at thrower (stack-traces-class-fields.js:35:3)
-    at t
-Failure (during static class field call doesn't contain expected[0] stack =     at thrower (stack-traces-class-fields.js:35:3)
- 
-Failure (during class field call with FNI doesn't contain expected[0] stack =     at x (stack-traces-class-fields.js:208:7)
-    
-Failure (during static class field call with FNI doesn't contain expected[0] stack =     at x (stack-traces-class-fields.js:230:
 === stack-traces-custom-lazy.js
 Failure:
 expected:
 "bar"
 found:
-"    at <anonymous> (stack-traces-custom-lazy.js:47:46)\n    at testPrepareStackTrace (stack-tra
+"    at <anonymous> (stack-traces-custom-lazy.js:47:46)\n    at testPrepareStackTrace (stack-traces-custom-lazy.js:31:5)\n    at <eval> (stack-traces-custom-lazy.js:47:60)\n"
 Failure:
 expected:
 "bar"
 found:
-"    at f (stack-traces-custom-lazy.js:48:38)\n    at f (stack-traces-custom-lazy.js:48:38)\n   
+"    at f (stack-traces-custom-lazy.js:48:38)\n    at f (stack-traces-custom-lazy.js:48:38)\n    at f (stack-traces-custom-lazy.js:48:38)\n    at f (stack-traces-custom-lazy.js:48:38)\n    at f (stack-traces-custom-lazy.js:48:38)\n    at f (stack-traces-custom-lazy.js
 === stack-traces-custom.js
 TypeError: not a function
     at <eval> (stack-traces-custom.js:20:21)
@@ -700,58 +666,118 @@ Failure: expected <undefined> found <"">
 === stack-traces.js
 Failure (testArrayNative doesn't contain expected[0] stack =     at <anonymous> (stack-traces.js:48:31)
     at map (native)
-    
+    at testArrayNative (stack-traces.js:48:37)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:267:47)
+): expected <true> found <false>
 Failure (testMethodNameInference doesn't contain expected[0] stack =     at <anonymous> (stack-traces.js:30:37)
-    at testMetho
+    at testMethodNameInference (stack-traces.js:31:8)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:269:63)
+): expected <true> found <false>
 Failure (testImplicitConversion doesn't contain expected[0] stack =     at <anonymous> (stack-traces.js:53:42)
-    at testImplic
+    at testImplicitConversion (stack-traces.js:54:19)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:270:61)
+): expected <true> found <false>
 Failure (testEval doesn't contain expected[0] stack =     at Doo (<input>:1:17)
     at <eval> (<input>:1:26)
-    at testEval (st
+    at testEval (stack-traces.js:58:3)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:271:33)
+): expected <true> found <false>
 Failure (testNestedEval doesn't contain expected[0] stack =     at <eval> (<input>:1:1)
     at Inner (<input>:1:19)
-    at Outer
+    at Outer (<input>:1:58)
+    at <eval> (<input>:1:70)
+    at testNestedEval (stack-traces.js:63:3)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:272:45)
+):
 Failure (testEvalWithSourceURL doesn't contain expected[0] stack =     at Doo (<input>:1:17)
     at <eval> (<input>:1:26)
-    at
+    at testEvalWithSourceURL (stack-traces.js:67:3)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:274:34)
+): expected <true> found <false>
 Failure (testNestedEvalWithSourceURL doesn't contain expected[0] stack =     at <eval> (<input>:1:1)
     at Inner (<input>:1:19)
+    at Outer (<input>:1:36)
+    at <eval> (<input>:1:48)
+    at testNestedEvalWithSourceURL (stack-traces.js:73:3)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (
 Failure (testNestedEvalWithSourceURL doesn't contain expected[1] stack =     at <eval> (<input>:1:1)
     at Inner (<input>:1:19)
+    at Outer (<input>:1:36)
+    at <eval> (<input>:1:48)
+    at testNestedEvalWithSourceURL (stack-traces.js:73:3)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (
 Failure (testValue doesn't contain expected[0] stack =     at <anonymous> (stack-traces.js:77:47)
-    at testValue (stack-traces
+    at testValue (stack-traces.js:78:3)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:278:35)
+): expected <true> found <false>
 Failure (testConstructor doesn't contain expected[0] stack =     at Plonk (stack-traces.js:82:22)
-    at testConstructor (stack-
+    at testConstructor (stack-traces.js:83:7)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:279:47)
+): expected <true> found <false>
 Failure (testRenamedMethod doesn't contain expected[0] stack =     at a$b$c$d (stack-traces.js:87:31)
-    at testRenamedMethod (
+    at testRenamedMethod (stack-traces.js:90:8)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:280:51)
+): expected <true> found <false>
 Failure (testAnonymousMethod doesn't contain expected[0] stack =     at <anonymous> (stack-traces.js:94:18)
     at call (native)
+    at testAnonymousMethod (stack-traces.js:94:38)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:281:55)
+): expected <true> found <false>
 Failure (testFunctionName doesn't contain expected[2] stack =     at foo_0 (stack-traces.js:101:9)
-    at foo_1 (stack-traces.js
+    at foo_1 (stack-traces.js:103:27)
+    at <anonymous> (stack-traces.js:103:27)
+    at boo_3 (stack-traces.js:103:27)
+    at <anonymous> (stack-traces.js:103:27)
+    at testFunctionName (stack-traces
 Failure (testFunctionName doesn't contain expected[4] stack =     at foo_0 (stack-traces.js:101:9)
-    at foo_1 (stack-traces.js
+    at foo_1 (stack-traces.js:103:27)
+    at <anonymous> (stack-traces.js:103:27)
+    at boo_3 (stack-traces.js:103:27)
+    at <anonymous> (stack-traces.js:103:27)
+    at testFunctionName (stack-traces
 Failure (testDefaultCustomError doesn't contain expected[0] stack =     at CustomError (stack-traces.js:130:33)
-    at testDefau
+    at testDefaultCustomError (stack-traces.js:138:36)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:287:5)
+): expected <true> found <false>
 Failure (testDefaultCustomError doesn't contain expected[1] stack =     at CustomError (stack-traces.js:130:33)
-    at testDefau
+    at testDefaultCustomError (stack-traces.js:138:36)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:287:5)
+): expected <true> found <false>
 Failure (testStrippedCustomError doesn't contain expected[0] stack =     at CustomError (stack-traces.js:130:33)
-    at testStri
+    at testStrippedCustomError (stack-traces.js:142:36)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:289:25)
+): expected <true> found <false>
 Failure (testClassNames doesn't contain expected[0] stack =     at MyObj (stack-traces.js:145:22)
-    at <anonymous> (stack-trac
+    at <anonymous> (stack-traces.js:150:14)
+    at testClassNames (stack-traces.js:154:8)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:291:49)
+): expected <true> found <false>
 Failure (testClassNames doesn't contain expected[1] stack =     at MyObj (stack-traces.js:145:22)
-    at <anonymous> (stack-trac
+    at <anonymous> (stack-traces.js:150:14)
+    at testClassNames (stack-traces.js:154:8)
+    at testTrace (stack-traces.js:162:5)
+    at <eval> (stack-traces.js:291:49)
+): expected <true> found <false>
 Failure (UnintendedCallerCensorship didn't contain new ReferenceError): expected <true> found <false>
 Failure: expected <"abc"> found <undefined>
-Failure:
-expected:
-"abc"
-found:
-"    at <eval> (stack-traces.js:371:13)\n"
-Failure:
-expected:
-undefined
-found:
-"    at <eval> (stack-traces.js:375:13)\n"
+Failure: expected <"abc"> found <"    at <eval> (stack-traces.js:371:13)\n">
+Failure: expected <undefined> found <"    at <eval> (stack-traces.js:375:13)\n">
 TypeError: not a function
     at <eval> (stack-traces.js:381:1)
 
@@ -822,13 +848,9 @@ Did not throw exception
 Did not throw exception
 Did not throw exception
 Failure: expected <null> found <undefined>
-Failure:
-expected:
-undefined
-found:
-function non_strict() {
+Failure: expected <undefined> found <function non_strict() {
     return return_my_caller();
-  }
+  }>
 Failure: expected <null> found <undefined>
 Failure: expected <null> found <undefined>
 Failure: expected <null> found <undefined>
