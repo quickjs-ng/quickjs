@@ -18385,6 +18385,7 @@ typedef struct JSParseState {
     JSToken token;
     BOOL got_lf; /* true if got line feed before the current token */
     const uint8_t *last_ptr;
+    const uint8_t *buf_start;
     const uint8_t *buf_ptr;
     const uint8_t *buf_end;
     const uint8_t *eol;  // most recently seen end-of-line character
@@ -18666,8 +18667,6 @@ static __exception int js_parse_string(JSParseState *s, int sep,
         if (c == '\\') {
             const uint8_t *p0 = p;
             c = *p;
-            /* XXX: need a specific JSON case to avoid
-               accepting invalid escapes */
             switch(c) {
             case '\0':
                 if (p >= s->buf_end) {
@@ -19253,8 +19252,8 @@ static __exception int next_token(JSParseState *s)
             p += 2;
             s->token.val = TOK_MINUS_ASSIGN;
         } else if (p[1] == '-') {
-            if (s->allow_html_comments &&
-                p[2] == '>' && s->last_line_num != s->line_num) {
+            if (s->allow_html_comments && p[2] == '>' &&
+                (s->got_lf || s->last_ptr == s->buf_start)) {
                 /* Annex B: `-->` at beginning of line is an html comment end.
                    It extends to the end of the line.
                  */
@@ -19437,9 +19436,10 @@ static __exception int next_token(JSParseState *s)
 static int json_parse_error(JSParseState *s, const uint8_t *curp, const char *msg)
 {
     const uint8_t *p, *line_start;
-    int position = curp - s->buf_ptr;
+    int position = curp - s->buf_start;
     int line = 1;
-    for (line_start = p = s->buf_ptr; p < curp; p++) {
+    for (line_start = p = s->buf_start; p < curp; p++) {
+        /* column count does not account for TABs nor wide characters */
         if (*p == '\r' || *p == '\n') {
             p += 1 + (p[0] == '\r' && p[1] == '\n');
             line++;
@@ -19447,7 +19447,7 @@ static int json_parse_error(JSParseState *s, const uint8_t *curp, const char *ms
         }
     }
     return js_parse_error(s, "%s in JSON at position %d (line %d column %d)",
-                          msg, position, line, (int)(p - line_start + 1));
+                          msg, position, line, (int)(p - line_start) + 1);
 }
 
 static int json_parse_string(JSParseState *s, const uint8_t **pp)
@@ -32052,7 +32052,7 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->filename = filename;
     s->line_num = 1;
     s->col_num = 1;
-    s->buf_ptr = (const uint8_t *)input;
+    s->buf_start = s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
     s->mark = s->buf_ptr + min_int(1, input_len);
     s->eol = s->buf_ptr;
@@ -32201,7 +32201,6 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
     fd->module = m;
     s->is_module = (m != NULL);
     s->allow_html_comments = !s->is_module;
-    s->token.line_num = -1;  // detect html_comment on line 1
 
     push_scope(s); /* body scope */
     fd->body_scope = fd->scope_level;

@@ -435,12 +435,12 @@ Failure:
 expected:
 "Unexpected token \n in JSON at position 3"
 found:
-"Bad control character in string literal in JSON at position 2 (line 1 column 3)"
+"Bad control character in string literal in JSON at position 3 (line 1 column 4)"
 Failure:
 expected:
 "Unexpected token \n in JSON at position 3"
 found:
-"Bad control character in string literal in JSON at position 2 (line 1 column 3)"
+"Bad control character in string literal in JSON at position 3 (line 1 column 4)"
 === json-parser-recursive.js
 === json-replacer-number-wrapper-tostring.js
 === json-replacer-order.js
