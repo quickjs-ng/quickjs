@@ -23,19 +23,6 @@
 === array-join-element-tostring-prototype-side-effects.js
 === array-join-nesting.js
 === array-join-nonarray-length-getter-side-effects.js
-=== array-join.js
-RangeError: Maximum call stack size exceeded
-    at join (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-    at join (native)
-    at toString (native)
-
 === array-lastindexof.js
 === array-length-number-conversion.js
 === array-length.js
