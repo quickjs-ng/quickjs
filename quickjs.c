@@ -1277,7 +1277,7 @@ static inline BOOL double_is_int32(double d)
 
 static JSValue js_float64(double d)
 {
-    return JS_NewFloat64__(d);
+    return __JS_NewFloat64(d);
 }
 
 static int compare_u32(uint32_t a, uint32_t b)

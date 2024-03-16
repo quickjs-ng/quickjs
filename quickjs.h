@@ -115,7 +115,7 @@ static inline double JS_VALUE_GET_FLOAT64(JSValue v)
 
 #define JS_NAN (0x7ff8000000000000 - ((uint64_t)JS_FLOAT64_TAG_ADDEND << 32))
 
-static inline JSValue JS_NewFloat64__(double d)
+static inline JSValue __JS_NewFloat64(double d)
 {
     union {
         double d;
@@ -179,7 +179,7 @@ typedef struct JSValue {
 
 #define JS_NAN (JSValue){ .u.float64 = JS_FLOAT64_NAN, JS_TAG_FLOAT64 }
 
-static inline JSValue JS_NewFloat64__(double d)
+static inline JSValue __JS_NewFloat64(double d)
 {
     JSValue v;
     v.tag = JS_TAG_FLOAT64;
@@ -476,7 +476,7 @@ static js_force_inline JSValue JS_NewInt32(JSContext *ctx, int32_t val)
 
 static js_force_inline JSValue JS_NewFloat64(JSContext *ctx, double val)
 {
-    return JS_NewFloat64__(val);
+    return __JS_NewFloat64(val);
 }
 
 static js_force_inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
