@@ -273,7 +273,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                     string_arg = JS_ToCString(ctx, argv[i++]);
                     if (!string_arg)
                         goto fail;
-                    int32_arg = unicode_from_utf8((uint8_t *)string_arg, UTF8_CHAR_LEN_MAX, &p);
+                    int32_arg = unicode_from_utf8((const uint8_t *)string_arg, UTF8_CHAR_LEN_MAX, &p);
                     JS_FreeCString(ctx, string_arg);
                 } else {
                     if (JS_ToInt32(ctx, &int32_arg, argv[i++]))
@@ -3067,6 +3067,13 @@ static JSValue js_os_exec(JSContext *ctx, JSValue this_val,
     goto done;
 }
 
+/* getpid() -> pid */
+static JSValue js_os_getpid(JSContext *ctx, JSValue this_val,
+                            int argc, JSValue *argv)
+{
+    return JS_NewInt32(ctx, getpid());
+}
+
 /* waitpid(pid, block) -> [pid, status] */
 static JSValue js_os_waitpid(JSContext *ctx, JSValue this_val,
                              int argc, JSValue *argv)
@@ -3710,6 +3717,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
     JS_CFUNC_DEF("readlink", 1, js_os_readlink ),
     JS_CFUNC_DEF("exec", 1, js_os_exec ),
+    JS_CFUNC_DEF("getpid", 0, js_os_getpid ),
     JS_CFUNC_DEF("waitpid", 2, js_os_waitpid ),
     OS_FLAG(WNOHANG),
     JS_CFUNC_DEF("pipe", 0, js_os_pipe ),
