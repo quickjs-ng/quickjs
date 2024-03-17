@@ -16,7 +16,7 @@ on:
 
 jobs:
   codegen:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -25,7 +25,7 @@ jobs:
       - name: Check if the git repository is clean
         run: $(exit $(git status --porcelain --untracked-files=no | head -255 | wc -l)) || (echo "Dirty git tree"; git diff; exit 1)
   linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +52,7 @@ jobs:
         run: |
           ./v8.sh
   linux-32bits:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: alpine.sh {0}
@@ -72,7 +72,7 @@ jobs:
         run: |
           make test
   linux-s390x:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: alpine.sh {0}
@@ -92,7 +92,7 @@ jobs:
         run: |
           make test
   linux-gcc48:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container:
       image: ubuntu:14.04
     steps:
@@ -122,7 +122,7 @@ jobs:
         run: |
           time make test262
   linux-examples:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -144,7 +144,7 @@ jobs:
           ./build/qjs tests/test_bjson.js
           ./build/function_source
   linux-shared:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -155,11 +155,15 @@ jobs:
         run: |
           make stats
   linux-asan:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      # ASLR with big PIE slides does not work well with [AM]San
+      - name: disable ASLR
+        run: |
+          sudo sysctl -w kernel.randomize_va_space=0
       - name: build
         run: |
           make CONFIG_ASAN=ON
@@ -174,11 +178,15 @@ jobs:
         run: |
           time make test262
   linux-msan:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      # ASLR with big PIE slides does not work well with [AM]San
+      - name: disable ASLR
+        run: |
+          sudo sysctl -w kernel.randomize_va_space=0
       - name: build
         env:
           CC: clang
@@ -190,7 +198,7 @@ jobs:
         run: |
           make test
   linux-ubsan:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -209,7 +217,7 @@ jobs:
         run: |
           time make test262
   linux-tcc:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -428,7 +436,7 @@ jobs:
           make stats
 
   emscripten:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: mymindstorm/setup-emsdk@v13
@@ -441,7 +449,7 @@ jobs:
       - name: result
         run: ls -lh build
   wasi:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: jcbhmr/setup-wasmtime@v2
@@ -526,7 +534,7 @@ jobs:
             gmake test
 
   android:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     container: reactnativecommunity/react-native-android:v13.0
     steps:
       - uses: actions/checkout@v4
