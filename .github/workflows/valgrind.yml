@@ -1,0 +1,23 @@
+name: valgrind
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: install valgrind
+        run: sudo apt-get install valgrind
+      - name: build
+        run: |
+          make BUILD_TYPE=RelWithDebInfo
+      - name: test
+        run: |
+          valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1 ./build/run-test262 -m -c test262.conf -a
