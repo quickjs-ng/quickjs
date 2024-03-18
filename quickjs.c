@@ -19442,7 +19442,7 @@ static __exception int next_token(JSParseState *s)
 static int json_parse_string(JSParseState *s, const uint8_t **pp)
 {
     const uint8_t *p = *pp;
-    int ret, i;
+    int i;
     uint32_t c;
     StringBuffer b_s, *b = &b_s;
 
