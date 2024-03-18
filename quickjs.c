@@ -214,8 +214,6 @@ typedef enum {
     JS_GC_PHASE_REMOVE_CYCLES,
 } JSGCPhaseEnum;
 
-typedef enum OPCodeEnum OPCodeEnum;
-
 struct JSRuntime {
     JSMallocFunctions mf;
     JSMallocState malloc_state;
@@ -980,7 +978,7 @@ typedef enum OPCodeFormat {
 #undef FMT
 } OPCodeFormat;
 
-enum OPCodeEnum {
+typedef enum OPCodeEnum {
 #define FMT(f)
 #define DEF(id, size, n_pop, n_push, f) OP_ ## id,
 #define def(id, size, n_pop, n_push, f)
@@ -1000,7 +998,7 @@ enum OPCodeEnum {
 #undef DEF
 #undef FMT
     OP_TEMP_END,
-};
+} OPCodeEnum;
 
 static int JS_InitAtoms(JSRuntime *rt);
 static JSAtom __JS_NewAtomInit(JSRuntime *rt, const char *str, int len,
