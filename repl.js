@@ -942,6 +942,8 @@ import * as os from "os";
                     std.puts("[circular]");
                 } else if (a instanceof Date) {
                     std.puts(`Date ${JSON.stringify(a.toGMTString())}`);
+                } else if (a instanceof RegExp) {
+                    std.puts(a.toString());
                 } else {
                     stack.push(a);
                     if (Array.isArray(a)) {
@@ -961,8 +963,6 @@ import * as os from "os";
                             }
                         }
                         std.puts(" ]");
-                    } else if (a instanceof RegExp) {
-                        std.puts(a.toString());
                     } else {
                         keys = Object.keys(a);
                         n = keys.length;
