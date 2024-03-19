@@ -39,7 +39,6 @@ import * as os from "os";
     var Math = g.Math;
     var JSON = g.JSON;
     var isFinite = g.isFinite;
-    var parseFloat = g.parseFloat;
 
     var colors = {
         none:    "\x1b[0m",
@@ -79,9 +78,6 @@ import * as os from "os";
 
     var history = [];
     var clip_board = "";
-    var prec;
-    var expBits;
-    var log2_10;
     
     var pstate = "";
     var prompt = "";
@@ -1011,8 +1007,6 @@ import * as os from "os";
 
     /* return true if the string after cmd can be evaluted as JS */
     function handle_directive(cmd, expr) {
-        var param, prec1, expBits1;
-        
         if (cmd === "h" || cmd === "?" || cmd == "help") {
             help();
         } else if (cmd === "load") {
