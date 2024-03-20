@@ -20,6 +20,7 @@ const exclude = [
     "regexp-indexof.js",            // deprecated RegExp.lastMatch etc.
     "regexp-static.js",             // deprecated RegExp static properties.
     "string-replace.js",            // unstable output
+    "omit-default-ctors-array-iterator.js",
 
     "mjsunit.js",
     "mjsunit-assertion-error.js",
@@ -65,7 +66,6 @@ for (const file of files) {
     if (flags["--allow-natives-for-differential-fuzzing"]) continue
     if (flags["--dump-counters"]) continue
     if (flags["--expose-cputracemark"]) continue
-    if (flags["--omit-default-ctors"]) continue
     if (flags["--harmony-rab-gsab"]) continue
     if (flags["--harmony-class-fields"]) continue
     if (flags["--enable-experimental-regexp-engine"]) continue

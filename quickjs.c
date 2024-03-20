@@ -19462,7 +19462,6 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
 
     for(;;) {
         if (p >= s->buf_end) {
-            //json_parse_error(s, "Unterminated string");
             goto end_of_input;
         }
         c = *p++;
