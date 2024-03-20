@@ -152,7 +152,7 @@ size_t i64toa_##v(char buf[minimum_length(22)], int64_t n) \
         else \
             buf = (buf << 8) | (c)
 
-size_t u7toa_shift(char dest[minimum_length(8)], uint32_t n)
+static size_t u7toa_shift(char dest[minimum_length(8)], uint32_t n)
 {
     size_t len = 1;
     uint64_t buf = 0;
@@ -167,7 +167,7 @@ size_t u7toa_shift(char dest[minimum_length(8)], uint32_t n)
     return len;
 }
 
-size_t u07toa_shift(char dest[minimum_length(8)], uint32_t n, size_t len)
+static size_t u07toa_shift(char dest[minimum_length(8)], uint32_t n, size_t len)
 {
     size_t i;
     dest += len;
@@ -193,8 +193,9 @@ size_t u32toa_shift(char buf[minimum_length(11)], uint32_t n)
 #define TEN_POW_7 10000000
     if (n >= TEN_POW_7) {
         uint32_t quo = n / TEN_POW_7;
+        size_t len;
         n %= TEN_POW_7;
-        size_t len = u7toa_shift(buf, quo);
+        len = u7toa_shift(buf, quo);
         return u07toa_shift(buf, n, len);
     }
     return u7toa_shift(buf, n);
@@ -202,24 +203,25 @@ size_t u32toa_shift(char buf[minimum_length(11)], uint32_t n)
 
 size_t u64toa_shift(char buf[minimum_length(21)], uint64_t n)
 {
-    if (likely(n < 0x100000000))
-        return u32toa_shift(buf, n);
-
     size_t len;
+
+    if (likely(n < 0x100000000))
+        return u32toa_shift(buf, (uint32_t)n);
+
     if (n >= TEN_POW_7) {
         uint64_t n1 = n / TEN_POW_7;
         n %= TEN_POW_7;
         if (n1 >= TEN_POW_7) {
-            uint32_t quo = n1 / TEN_POW_7;
+            uint32_t quo = (uint32_t)(n1 / TEN_POW_7);
             n1 %= TEN_POW_7;
             len = u7toa_shift(buf, quo);
-            len = u07toa_shift(buf, n1, len);
+            len = u07toa_shift(buf, (uint32_t)n1, len);
         } else {
-            len = u7toa_shift(buf, n1);
+            len = u7toa_shift(buf, (uint32_t)n1);
         }
-        return u07toa_shift(buf, n, len);
+        return u07toa_shift(buf, (uint32_t)n, len);
     }
-    return u7toa_shift(buf, n);
+    return u7toa_shift(buf, (uint32_t)n);
 }
 
 define_i32toa(shift)
@@ -878,7 +880,7 @@ size_t u32toa_radix_length(char buf[minimum_length(33)], uint32_t n, unsigned ba
     shift = radix_shift[base & 63];
     if (shift) {
         uint32_t mask = (1 << shift) - 1;
-        size_t len = (32 - clz32(n) + shift - 1) / shift;
+        size_t len = (size_t)((32 - clz32(n) + shift - 1) / shift);
         size_t last = n & mask;
         char *end = buf + len;
         n >>= shift;
@@ -893,14 +895,15 @@ size_t u32toa_radix_length(char buf[minimum_length(33)], uint32_t n, unsigned ba
         return len;
     } else {
         size_t len = 2;
-        size_t last = n % base;
-        n /= base;
         uint32_t nbase = base;
+        size_t last = n % base;
+        char *end;
+        n /= base;
         while (n >= nbase) {
             nbase *= base;
             len++;
         }
-        char *end = buf + len;
+        end = buf + len;
         *end-- = '\0';
         *end-- = digits36[last];
         while (n >= base) {
@@ -927,33 +930,36 @@ size_t u64toa_radix_length(char buf[minimum_length(65)], uint64_t n, unsigned ba
             buf[0] = digits36[n];
             buf[1] = '\0';
             return 1;
-        }
-        uint64_t mask = (1 << shift) - 1;
-        size_t len = (64 - clz64(n) + shift - 1) / shift;
-        size_t last = n & mask;
-        char *end = buf + len;
-        n >>= shift;
-        *end-- = '\0';
-        *end-- = digits36[last];
-        while (n >= base) {
-            size_t quo = n & mask;
+        } else {
+            uint64_t mask = (1 << shift) - 1;
+            size_t len = (size_t)((64 - clz64(n) + shift - 1) / shift);
+            size_t last = n & mask;
+            char *end = buf + len;
             n >>= shift;
-            *end-- = digits36[quo];
+            *end-- = '\0';
+            *end-- = digits36[last];
+            while (n >= base) {
+                size_t quo = n & mask;
+                n >>= shift;
+                *end-- = digits36[quo];
+            }
+            *end = digits36[n];
+            return len;
         }
-        *end = digits36[n];
-        return len;
+    } else
+    if (likely(n < 0x100000000)) {
+        return u32toa_radix_length(buf, (uint32_t)n, base);
     } else {
-        if (likely(n < 0x100000000))
-            return u32toa_radix_length(buf, n, base);
         size_t last = n % base;
-        n /= base;
         uint64_t nbase = base;
         size_t len = 2;
+        char *end;
+        n /= base;
         while (n >= nbase) {
             nbase *= base;
             len++;
         }
-        char *end = buf + len;
+        end = buf + len;
         *end-- = '\0';
         *end-- = digits36[last];
         while (n >= base) {
