@@ -1264,14 +1264,19 @@ static const JSClassExoticMethods js_module_ns_exotic_methods;
 
 static inline BOOL double_is_int32(double d)
 {
-    JSFloat64Union t1, t2;
+    uint64_t u, e;
+    JSFloat64Union t;
 
-    if (d >= INT32_MIN && d <= INT32_MAX) {
-        t1.d = d;
-        t2.d = (int32_t)d;
-        return t1.u64 == t2.u64;
+    t.d = d;
+    u = t.u64;
+
+    e = ((u >> 52) & 0x7FF) - 1023;
+    if (e > 30) {
+        // accept 0, INT32_MIN, reject too large, too small, nan, inf, -0
+        return !u || (u == 0xc1e0000000000000);
     } else {
-        return FALSE;
+        // fractional if low bits are non-zero
+        return !(u << 12 << e);
     }
 }
 
