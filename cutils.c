@@ -34,6 +34,9 @@
 
 #include "cutils.h"
 
+#undef NANOSEC
+#define NANOSEC ((uint64_t) 1e9)
+
 #pragma GCC visibility push(default)
 
 void pstrcpy(char *buf, int buf_size, const char *str)
@@ -649,7 +652,7 @@ uint64_t js__hrtime_ns(void) {
    * performance counter interval, integer math could cause this computation
    * to overflow. Therefore we resort to floating point math.
    */
-  scaled_freq = (double) frequency.QuadPart / 1e9;
+  scaled_freq = (double) frequency.QuadPart / NANOSEC;
   result = (double) counter.QuadPart / scaled_freq;
   return (uint64_t) result;
 }
@@ -660,7 +663,7 @@ uint64_t js__hrtime_ns(void) {
   if (clock_gettime(CLOCK_MONOTONIC, &t))
     abort();
 
-  return t.tv_sec * (uint64_t) 1e9 + t.tv_nsec;
+  return t.tv_sec * NANOSEC + t.tv_nsec;
 }
 #endif
 
@@ -673,5 +676,220 @@ int64_t js__gettimeofday_us(void) {
 #endif
     return ((int64_t)tv.tv_sec * 1000000) + tv.tv_usec;
 }
+
+/* Cross-platform threading APIs. */
+
+#if !defined(EMSCRIPTEN) && !defined(__wasi__)
+
+#if defined(_WIN32)
+typedef void (*js__once_cb)(void);
+
+typedef struct {
+    js__once_cb callback;
+} js__once_data_t;
+
+static BOOL WINAPI js__once_inner(INIT_ONCE *once, void *param, void **context) {
+    js__once_data_t *data = param;
+
+    data->callback();
+
+    return TRUE;
+}
+
+void js_once(js_once_t *guard, js__once_cb callback) {
+    js__once_data_t data = { .callback = callback };
+    InitOnceExecuteOnce(guard, js__once_inner, (void*) &data, NULL);
+}
+
+void js_mutex_init(js_mutex_t *mutex) {
+    InitializeCriticalSection(mutex);
+}
+
+void js_mutex_destroy(js_mutex_t *mutex) {
+    DeleteCriticalSection(mutex);
+}
+
+void js_mutex_lock(js_mutex_t *mutex) {
+    EnterCriticalSection(mutex);
+}
+
+void js_mutex_unlock(js_mutex_t *mutex) {
+    LeaveCriticalSection(mutex);
+}
+
+void js_cond_init(js_cond_t *cond) {
+    InitializeConditionVariable(cond);
+}
+
+void js_cond_destroy(js_cond_t *cond) {
+  /* nothing to do */
+  (void) cond;
+}
+
+void js_cond_signal(js_cond_t *cond) {
+    WakeConditionVariable(cond);
+}
+
+void js_cond_broadcast(js_cond_t *cond) {
+    WakeAllConditionVariable(cond);
+}
+
+void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex) {
+    if (!SleepConditionVariableCS(cond, mutex, INFINITE))
+        abort();
+}
+
+int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
+    if (SleepConditionVariableCS(cond, mutex, (DWORD)(timeout / 1e6)))
+        return 0;
+    if (GetLastError() != ERROR_TIMEOUT)
+        abort();
+    return -1;
+}
+
+#else /* !defined(_WIN32) */
+
+void js_once(js_once_t *guard, void (*callback)(void)) {
+    if (pthread_once(guard, callback))
+        abort();
+}
+
+void js_mutex_init(js_mutex_t *mutex) {
+    if (pthread_mutex_init(mutex, NULL))
+        abort();
+}
+
+void js_mutex_destroy(js_mutex_t *mutex) {
+    if (pthread_mutex_destroy(mutex))
+        abort();
+}
+
+void js_mutex_lock(js_mutex_t *mutex) {
+    if (pthread_mutex_lock(mutex))
+        abort();
+}
+
+void js_mutex_unlock(js_mutex_t *mutex) {
+    if (pthread_mutex_unlock(mutex))
+        abort();
+}
+
+void js_cond_init(js_cond_t *cond) {
+#if defined(__APPLE__) && defined(__MACH__)
+    if (pthread_cond_init(cond, NULL))
+        abort();
+#else
+    pthread_condattr_t attr;
+    int err;
+
+    if (pthread_condattr_init(&attr))
+        abort();
+
+    if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC))
+        abort();
+
+    if (pthread_cond_init(cond, &attr))
+        abort();
+
+    if (pthread_condattr_destroy(&attr))
+        abort();
+#endif
+}
+
+void js_cond_destroy(js_cond_t *cond) {
+#if defined(__APPLE__) && defined(__MACH__)
+    /* It has been reported that destroying condition variables that have been
+     * signalled but not waited on can sometimes result in application crashes.
+     * See https://codereview.chromium.org/1323293005.
+     */
+    pthread_mutex_t mutex;
+    struct timespec ts;
+    int err;
+
+    if (pthread_mutex_init(&mutex, NULL))
+        abort();
+
+    if (pthread_mutex_lock(&mutex))
+        abort();
+
+    ts.tv_sec = 0;
+    ts.tv_nsec = 1;
+
+    err = pthread_cond_timedwait_relative_np(cond, &mutex, &ts);
+    if (err != 0 && err != ETIMEDOUT)
+        abort();
+
+    if (pthread_mutex_unlock(&mutex))
+        abort();
+
+    if (pthread_mutex_destroy(&mutex))
+        abort();
+#endif /* defined(__APPLE__) && defined(__MACH__) */
+
+    if (pthread_cond_destroy(cond))
+        abort();
+}
+
+void js_cond_signal(js_cond_t *cond) {
+    if (pthread_cond_signal(cond))
+        abort();
+}
+
+void js_cond_broadcast(js_cond_t *cond) {
+    if (pthread_cond_broadcast(cond))
+        abort();
+}
+
+void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex) {
+#if defined(__APPLE__) && defined(__MACH__)
+    int r;
+
+    errno = 0;
+    r = pthread_cond_wait(cond, mutex);
+
+    /* Workaround for a bug in OS X at least up to 13.6
+     * See https://github.com/libuv/libuv/issues/4165
+     */
+    if (r == EINVAL && errno == EBUSY)
+        return;
+    if (r)
+        abort();
+#else
+    if (pthread_cond_wait(cond, mutex))
+        abort();
+#endif
+}
+
+int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
+    int r;
+    struct timespec ts;
+
+#if !defined(__APPLE__)
+    timeout += js__hrtime_ns();
+#endif
+
+    ts.tv_sec = timeout / NANOSEC;
+    ts.tv_nsec = timeout % NANOSEC;
+#if defined(__APPLE__) && defined(__MACH__)
+    r = pthread_cond_timedwait_relative_np(cond, mutex, &ts);
+#else
+    r = pthread_cond_timedwait(cond, mutex, &ts);
+#endif
+
+    if (r == 0)
+        return 0;
+
+    if (r == ETIMEDOUT)
+        return -1;
+
+    abort();
+
+    /* Pacify some compilers. */
+    return -1;
+}
+
+#endif
+
+#endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
 
 #pragma GCC visibility pop
