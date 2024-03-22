@@ -1305,7 +1305,7 @@ static JSValue js_uint32(uint32_t v)
 
 static JSValue js_int64(int64_t v)
 {
-    if (v == (int32_t)v)
+    if (v >= INT32_MIN && v <= INT32_MAX)
         return js_int32(v);
     else
         return js_float64(v);
@@ -36177,7 +36177,6 @@ static JSValue js_function_bind(JSContext *ctx, JSValue this_val,
             goto exception;
         if (JS_VALUE_GET_TAG(len_val) == JS_TAG_INT) {
             /* most common case */
-            // XXX: potential overflow
             int len1 = JS_VALUE_GET_INT(len_val);
             if (len1 <= arg_count)
                 len1 = 0;

@@ -487,7 +487,7 @@ static js_force_inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
 static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
 {
     JSValue v;
-    if (val == (int32_t)val) {
+    if (val >= INT32_MIN && v <= INT32_MAX) {
         v = JS_NewInt32(ctx, val);
     } else {
         v = JS_NewFloat64(ctx, val);
