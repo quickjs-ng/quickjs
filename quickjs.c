@@ -6507,6 +6507,10 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
                 const char *atom_str;
                 int line_num1, col_num1;
 
+                /* Bytecode functions must have cur_pc set in the stack frame. */
+                if (sf->cur_pc == NULL)
+                    abort();
+
                 line_num1 = find_line_num(ctx, b,
                                           sf->cur_pc - b->byte_code_buf - 1,
                                           &col_num1);
@@ -14601,6 +14605,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
     stack_buf = var_buf + b->var_count;
     sp = stack_buf;
     pc = b->byte_code_buf;
+    sf->cur_pc = NULL; /* It's != NULL for bytecode functions. */
     sf->prev_frame = rt->current_stack_frame;
     rt->current_stack_frame = sf;
     ctx = b->realm; /* set the current realm */
@@ -15007,6 +15012,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 int magic;
                 magic = get_u16(pc);
                 pc += 2;
+                sf->cur_pc = pc;
 
                 ret_val = js_function_apply(ctx, sp[-3], 2, &sp[-2], magic);
                 if (unlikely(JS_IsException(ret_val)))
@@ -15827,6 +15833,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
+                sf->cur_pc = pc;
                 val = JS_GetPropertyInternal2(ctx, sp[-1], atom, sp[-1], ic, FALSE);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
@@ -15849,6 +15856,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 ic_offset = get_u32(pc);
                 atom = get_ic_atom(ic, ic_offset);
                 pc += 4;
+                sf->cur_pc = pc;
                 val = JS_GetPropertyInternalWithIC(ctx, sp[-1], atom, sp[-1], ic, ic_offset, FALSE);
                 ic->updated = FALSE;
                 if (unlikely(JS_IsException(val)))
@@ -15863,6 +15871,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
+                sf->cur_pc = pc;
                 val = JS_GetPropertyInternal2(ctx, sp[-1], atom, sp[-1], NULL, FALSE);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
@@ -15884,6 +15893,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 ic_offset = get_u32(pc);
                 atom = get_ic_atom(ic, ic_offset);
                 pc += 4;
+                sf->cur_pc = pc;
                 val = JS_GetPropertyInternalWithIC(ctx, sp[-1], atom, sp[-1], ic, ic_offset, FALSE);
                 ic->updated = FALSE;
                 if (unlikely(JS_IsException(val)))
@@ -15898,6 +15908,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
+                sf->cur_pc = pc;
                 ret = JS_SetPropertyInternal2(ctx,
                                               sp[-2], atom,
                                               sp[-1], sp[-2],
@@ -15923,6 +15934,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 ic_offset = get_u32(pc);
                 atom = get_ic_atom(ic, ic_offset);
                 pc += 4;
+                sf->cur_pc = pc;
                 ret = JS_SetPropertyInternalWithIC(ctx, sp[-2], atom, sp[-1], JS_PROP_THROW_STRICT, ic, ic_offset);
                 ic->updated = FALSE;
                 JS_FreeValue(ctx, sp[-2]);
@@ -16710,11 +16722,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             OP_CMP(OP_strict_neq, !=, js_strict_eq_slow(ctx, sp, 1));
 
         CASE(OP_in):
+            sf->cur_pc = pc;
             if (js_operator_in(ctx, sp))
                 goto exception;
             sp--;
             BREAK;
         CASE(OP_instanceof):
+            sf->cur_pc = pc;
             if (js_operator_instanceof(ctx, sp))
                 goto exception;
             sp--;
