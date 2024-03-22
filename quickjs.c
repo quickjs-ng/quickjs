@@ -18392,6 +18392,7 @@ typedef struct JSParseState {
     JSToken token;
     BOOL got_lf; /* true if got line feed before the current token */
     const uint8_t *last_ptr;
+    const uint8_t *buf_start;
     const uint8_t *buf_ptr;
     const uint8_t *buf_end;
     const uint8_t *eol;  // most recently seen end-of-line character
@@ -18671,13 +18672,17 @@ static __exception int js_parse_string(JSParseState *s, int sep,
             break;
         }
         if (c == '\\') {
+            const uint8_t *p0 = p;
             c = *p;
-            /* XXX: need a specific JSON case to avoid
-               accepting invalid escapes */
             switch(c) {
             case '\0':
-                if (p >= s->buf_end)
-                    goto invalid_char;
+                if (p >= s->buf_end) {
+                    if (sep != '`')
+                        goto invalid_char;
+                    if (do_throw)
+                        js_parse_error(s, "Unexpected end of input");
+                    goto fail;
+                }
                 p++;
                 break;
             case '\'':
@@ -18700,22 +18705,19 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 }
                 continue;
             default:
-                if (c >= '0' && c <= '9') {
-                    if (s->cur_func && !(s->cur_func->js_mode & JS_MODE_STRICT) && sep != '`')
-                        goto parse_escape;
-                    if (c == '0' && !(p[1] >= '0' && p[1] <= '9')) {
-                        p++;
-                        c = '\0';
-                    } else {
-                        if (c >= '8' || sep == '`') {
-                            /* Note: according to ES2021, \8 and \9 are not
-                               accepted in strict mode or in templates. */
-                            goto invalid_escape;
-                        }
-                        if (do_throw)
-                            js_parse_error(s, "octal escape sequences are not allowed in strict mode");
-                        goto fail;
+                if (c == '0' && !(p[1] >= '0' && p[1] <= '9')) {
+                    /* accept isolated \0 */
+                    p++;
+                    c = '\0';
+                } else
+                if ((c >= '0' && c <= '9')
+                &&  ((s->cur_func->js_mode & JS_MODE_STRICT) || sep == '`')) {
+                    if (do_throw) {
+                        js_parse_error(s, "%s are not allowed in %s",
+                                       (c >= '8') ? "\\8 and \\9" : "Octal escape sequences",
+                                       (sep == '`') ? "template strings" : "strict mode");
                     }
+                    goto fail;
                 } else if (c >= 0x80) {
                     const uint8_t *p_next;
                     c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
@@ -18727,10 +18729,13 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     if (c == CP_LS || c == CP_PS)
                         continue;
                 } else {
-                parse_escape:
                     ret = lre_parse_escape(&p, TRUE);
                     if (ret == -1) {
-                        goto invalid_escape;
+                        if (do_throw) {
+                            js_parse_error(s, "Invalid %s escape sequence",
+                                           c == 'u' ? "Unicode" : "hexadecimal");
+                        }
+                        goto fail;
                     } else if (ret < 0) {
                         /* ignore the '\' (could output a warning) */
                         p++;
@@ -18759,10 +18764,6 @@ static __exception int js_parse_string(JSParseState *s, int sep,
  invalid_utf8:
     if (do_throw)
         js_parse_error(s, "invalid UTF-8 sequence");
-    goto fail;
- invalid_escape:
-    if (do_throw)
-        js_parse_error(s, "malformed escape sequence in string literal");
     goto fail;
  invalid_char:
     if (do_throw)
@@ -19258,8 +19259,8 @@ static __exception int next_token(JSParseState *s)
             p += 2;
             s->token.val = TOK_MINUS_ASSIGN;
         } else if (p[1] == '-') {
-            if (s->allow_html_comments &&
-                p[2] == '>' && s->last_line_num != s->line_num) {
+            if (s->allow_html_comments && p[2] == '>' &&
+                (s->got_lf || s->last_ptr == s->buf_start)) {
                 /* Annex B: `-->` at beginning of line is an html comment end.
                    It extends to the end of the line.
                  */
@@ -19439,6 +19440,23 @@ static __exception int next_token(JSParseState *s)
     return -1;
 }
 
+static int json_parse_error(JSParseState *s, const uint8_t *curp, const char *msg)
+{
+    const uint8_t *p, *line_start;
+    int position = curp - s->buf_start;
+    int line = 1;
+    for (line_start = p = s->buf_start; p < curp; p++) {
+        /* column count does not account for TABs nor wide characters */
+        if (*p == '\r' || *p == '\n') {
+            p += 1 + (p[0] == '\r' && p[1] == '\n');
+            line++;
+            line_start = p;
+        }
+    }
+    return js_parse_error(s, "%s in JSON at position %d (line %d column %d)",
+                          msg, position, line, (int)(p - line_start) + 1);
+}
+
 static int json_parse_string(JSParseState *s, const uint8_t **pp)
 {
     const uint8_t *p = *pp;
@@ -19451,14 +19469,13 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
 
     for(;;) {
         if (p >= s->buf_end) {
-            js_parse_error(s, "Unexpected end of JSON input");
-            goto fail;
+            goto end_of_input;
         }
         c = *p++;
         if (c == '"')
             break;
         if (c < 0x20) {
-            js_parse_error(s, "Bad control character in string literal in JSON");
+            json_parse_error(s, p - 1, "Bad control character in string literal");
             goto fail;
         }
         if (c == '\\') {
@@ -19476,16 +19493,28 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
                 c = 0;
                 for(i = 0; i < 4; i++) {
                     int h = from_hex(*p++);
-                    if (h < 0)
-                        goto invalid_escape;
+                    if (h < 0) {
+                        json_parse_error(s, p - 1, "Bad Unicode escape");
+                        goto fail;
+                    }
                     c = (c << 4) | h;
                 }
                 break;
             default:
-            invalid_escape:
-                js_parse_error(s, "Bad escaped character in JSON");
+                if (p > s->buf_end)
+                    goto end_of_input;
+                json_parse_error(s, p - 1, "Bad escaped character");
                 goto fail;
             }
+        } else
+        if (c >= 0x80) {
+            const uint8_t *p_next;
+            c = unicode_from_utf8(p - 1, s->buf_end - p, &p_next);
+            if (c > 0x10FFFF) {
+                json_parse_error(s, p - 1, "Bad UTF-8 sequence");
+                goto fail;
+            }
+            p = p_next;
         }
         if (string_buffer_putc(b, c))
             goto fail;
@@ -19496,6 +19525,8 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
     *pp = p;
     return 0;
 
+ end_of_input:
+    js_parse_error(s, "Unexpected end of JSON input");
  fail:
     string_buffer_free(b);
     return -1;
@@ -19513,7 +19544,7 @@ static int json_parse_number(JSParseState *s, const uint8_t **pp)
         return js_parse_error(s, "Unexpected token '%c'", *p_start);
 
     if (p[0] == '0' && is_digit(p[1]))
-        return js_parse_error(s, "Unexpected number in JSON");
+        return json_parse_error(s, p, "Unexpected number");
 
     while (is_digit(*p))
         p++;
@@ -19521,7 +19552,7 @@ static int json_parse_number(JSParseState *s, const uint8_t **pp)
     if (*p == '.') {
         p++;
         if (!is_digit(*p))
-            return js_parse_error(s, "Unterminated fractional number in JSON");
+            return json_parse_error(s, p, "Unterminated fractional number");
         while (is_digit(*p))
             p++;
     }
@@ -19530,7 +19561,7 @@ static int json_parse_number(JSParseState *s, const uint8_t **pp)
         if (*p == '+' || *p == '-')
             p++;
         if (!is_digit(*p))
-            return js_parse_error(s, "Exponent part is missing a number in JSON");
+            return json_parse_error(s, p, "Exponent part is missing a number");
         while (is_digit(*p))
             p++;
     }
@@ -19659,17 +19690,17 @@ static __exception int json_next_token(JSParseState *s)
         s->token.u.ident.is_reserved = FALSE;
         s->token.val = TOK_IDENT;
         break;
-    case '+':
-        if (!is_digit(p[1]))
-            goto def_token;
+    case '-':
+        if (!is_digit(p[1])) {
+            json_parse_error(s, p, "No number after minus sign");
+            goto fail;
+        }
         goto parse_number;
     case '0':
-        if (is_digit(p[1]))
-            goto def_token;
-        goto parse_number;
-    case '-':
-        if (!is_digit(p[1]))
-            goto def_token;
+        if (is_digit(p[1])) {
+            json_parse_error(s, p, "Unexpected number");
+            goto fail;
+        }
         goto parse_number;
     case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8':
@@ -19681,7 +19712,17 @@ static __exception int json_next_token(JSParseState *s)
         break;
     default:
         if (c >= 128) {
-            js_parse_error(s, "unexpected character");
+            const uint8_t *p_next;
+            c = unicode_from_utf8(p, s->buf_end - p, &p_next);
+            if (c == -1) {
+                js_parse_error(s, "Unexpected token '\\x%02x' in JSON", *p);
+            } else {
+                if (c > 0xFFFF) {
+                    /* get high surrogate */
+                    c = (c >> 10) - (0x10000 >> 10) + 0xD800;
+                }
+                js_parse_error(s, "Unexpected token '\\u%04x' in JSON", c);
+            }
             goto fail;
         }
     def_token:
@@ -32017,7 +32058,7 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->filename = filename;
     s->line_num = 1;
     s->col_num = 1;
-    s->buf_ptr = (const uint8_t *)input;
+    s->buf_start = s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
     s->mark = s->buf_ptr + min_int(1, input_len);
     s->eol = s->buf_ptr;
@@ -42476,15 +42517,6 @@ void JS_AddIntrinsicRegExp(JSContext *ctx)
 
 /* JSON */
 
-static int json_parse_expect(JSParseState *s, int tok)
-{
-    if (s->token.val != tok) {
-        /* XXX: dump token correctly in all cases */
-        return js_parse_error(s, "expecting '%c'", tok);
-    }
-    return json_next_token(s);
-}
-
 static JSValue json_parse_value(JSParseState *s)
 {
     JSContext *ctx = s->ctx;
@@ -42509,12 +42541,16 @@ static JSValue json_parse_value(JSParseState *s)
                         if (prop_name == JS_ATOM_NULL)
                             goto fail;
                     } else {
-                        js_parse_error(s, "expecting property name");
+                        json_parse_error(s, s->token.ptr, "Expected property name or '}'");
                         goto fail;
                     }
                     if (json_next_token(s))
                         goto fail1;
-                    if (json_parse_expect(s, ':'))
+                    if (s->token.val != ':') {
+                        json_parse_error(s, s->token.ptr, "Expected ':' after property name");
+                        goto fail1;
+                    }
+                    if (json_next_token(s))
                         goto fail1;
                     prop_val = json_parse_value(s);
                     if (JS_IsException(prop_val)) {
@@ -42528,13 +42564,17 @@ static JSValue json_parse_value(JSParseState *s)
                     if (ret < 0)
                         goto fail;
 
-                    if (s->token.val != ',')
+                    if (s->token.val == '}')
                         break;
+                    if (s->token.val != ',') {
+                        json_parse_error(s, s->token.ptr, "Expected ',' or '}' after property value");
+                        goto fail;
+                    }
                     if (json_next_token(s))
                         goto fail;
                 }
             }
-            if (json_parse_expect(s, '}'))
+            if (json_next_token(s))
                 goto fail;
         }
         break;
@@ -42549,22 +42589,24 @@ static JSValue json_parse_value(JSParseState *s)
             if (JS_IsException(val))
                 goto fail;
             if (s->token.val != ']') {
-                idx = 0;
-                for(;;) {
+                for(idx = 0;; idx++) {
                     el = json_parse_value(s);
                     if (JS_IsException(el))
                         goto fail;
                     ret = JS_DefinePropertyValueUint32(ctx, val, idx, el, JS_PROP_C_W_E);
                     if (ret < 0)
                         goto fail;
-                    if (s->token.val != ',')
+                    if (s->token.val == ']')
                         break;
+                    if (s->token.val != ',') {
+                        json_parse_error(s, s->token.ptr, "Expected ',' or ']' after array element");
+                        goto fail;
+                    }
                     if (json_next_token(s))
                         goto fail;
-                    idx++;
                 }
             }
-            if (json_parse_expect(s, ']'))
+            if (json_next_token(s))
                 goto fail;
         }
         break;

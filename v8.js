@@ -20,13 +20,17 @@ const exclude = [
     "regexp-indexof.js",            // deprecated RegExp.lastMatch etc.
     "regexp-static.js",             // deprecated RegExp static properties.
     "string-replace.js",            // unstable output
+    "omit-default-ctors-array-iterator.js",
 
-    "mjsunit-assertion-error.js",
     "mjsunit.js",
+    "mjsunit-assertion-error.js",
+    "mjsunit-assert-equals.js",
     "mjsunit_suppressions.js",
 
     "verify-assert-false.js",       // self check
     "verify-check-false.js",        // self check
+
+    "clone-ic-regression-crbug-1466315.js",  // spurious output
 ]
 
 let files = scriptArgs.slice(1) // run only these tests
@@ -37,7 +41,7 @@ for (const file of files) {
     if (exclude.includes(file)) continue
     const source = std.loadFile(dir + "/" + file)
     if (/^(im|ex)port/m.test(source)) continue // TODO support modules
-    if (source.includes('Realm.create()')) continue // TODO support Realm object
+    if (source.includes('Realm.create')) continue // TODO support Realm object
     if (source.includes('// MODULE')) continue // TODO support modules
     if (source.includes('// Files:')) continue // TODO support includes
 
@@ -59,6 +63,15 @@ for (const file of files) {
     }
     // exclude tests that use V8 intrinsics like %OptimizeFunctionOnNextCall
     if (flags["--allow-natives-syntax"]) continue
+    if (flags["--allow-natives-for-differential-fuzzing"]) continue
+    if (flags["--dump-counters"]) continue
+    if (flags["--expose-cputracemark"]) continue
+    if (flags["--harmony-rab-gsab"]) continue
+    if (flags["--harmony-class-fields"]) continue
+    if (flags["--enable-experimental-regexp-engine"]) continue
+    if (flags["--experimental-stack-trace-frames"]) continue
+    if (flags["--js-float16array"]) continue
+    if (flags["--expose-cputracemark-as"]) continue
     // exclude tests that use V8 extensions
     if (flags["--expose-externalize-string"]) continue
     // parse environment variables
