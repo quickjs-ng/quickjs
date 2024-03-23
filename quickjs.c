@@ -1275,7 +1275,8 @@ static inline BOOL double_is_int32(double d)
         // accept 0, INT32_MIN, reject too large, too small, nan, inf, -0
         return !u || (u == 0xc1e0000000000000);
     } else {
-        // fractional if low bits are non-zero
+        // shift out sign, exponent and whole part bits
+        // value is fractional if remaining low bits are non-zero
         return !(u << 12 << e);
     }
 }
