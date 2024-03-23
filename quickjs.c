@@ -7124,9 +7124,9 @@ static int JS_AutoInitProperty(JSContext *ctx, JSObject *p, JSAtom prop,
     return 0;
 }
 
-JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
-                               JSAtom prop, JSValue this_obj,
-                               JSInlineCache* ic, BOOL throw_ref_error)
+static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
+                                       JSAtom prop, JSValue this_obj,
+                                       JSInlineCache* ic, BOOL throw_ref_error)
 {
     JSObject *p;
     JSProperty *pr;
@@ -7276,13 +7276,17 @@ JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
     }
 }
 
-JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj,
-                               JSAtom prop, JSValue this_obj,
-                               BOOL throw_ref_error)
+static JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj,
+                                      JSAtom prop, JSValue this_obj,
+                                      BOOL throw_ref_error)
 {
     return JS_GetPropertyInternal2(ctx, obj, prop, this_obj, NULL, throw_ref_error);
 }
 
+JSValue JS_GetProperty(JSContext *ctx, JSValue this_obj, JSAtom prop)
+{
+    return JS_GetPropertyInternal2(ctx, this_obj, prop, this_obj, NULL, FALSE);
+}
 
 static JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue obj,
                                             JSAtom prop, JSValue this_obj,
@@ -8412,9 +8416,9 @@ static void js_free_desc(JSContext *ctx, JSPropertyDescriptor *desc)
    the new property is not added and an error is raised.
    'obj' must be an object when obj != this_obj.
    */
-int JS_SetPropertyInternal2(JSContext *ctx, JSValue obj,
-                            JSAtom prop, JSValue val, JSValue this_obj,
-                            int flags, JSInlineCache *ic)
+static int JS_SetPropertyInternal2(JSContext *ctx, JSValue obj,
+                                   JSAtom prop, JSValue val, JSValue this_obj,
+                                   int flags, JSInlineCache *ic)
 {
     JSObject *p, *p1;
     JSShapeProperty *prs;
@@ -8665,11 +8669,16 @@ fail:
     return -1;
 }
 
-int JS_SetPropertyInternal(JSContext *ctx, JSValue this_obj,
-                           JSAtom prop, JSValue val, int flags)
+static int JS_SetPropertyInternal(JSContext *ctx, JSValue this_obj,
+                                  JSAtom prop, JSValue val, int flags)
 {
     return JS_SetPropertyInternal2(ctx, this_obj, prop, val, this_obj,
                                    flags, NULL);
+}
+
+int JS_SetProperty(JSContext *ctx, JSValue this_obj, JSAtom prop, JSValue val)
+{
+    return JS_SetPropertyInternal2(ctx, this_obj, prop, val, this_obj, JS_PROP_THROW, NULL);
 }
 
 static int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValue this_obj,
