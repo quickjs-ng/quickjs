@@ -769,6 +769,8 @@ JS_EXTERN void JS_SetSharedArrayBufferFunctions(JSRuntime *rt, const JSSharedArr
 
 JS_EXTERN JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs);
 
+JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, JS_BOOL is_global);
+
 /* is_handled = TRUE means that the rejection is handled */
 typedef void JSHostPromiseRejectionTracker(JSContext *ctx, JSValue promise,
                                            JSValue reason,
