@@ -208,6 +208,8 @@ typedef struct JSShape JSShape;
 typedef struct JSString JSString;
 typedef struct JSString JSAtomStruct;
 
+#define JS_VALUE_GET_STRING(v) ((JSString *)JS_VALUE_GET_PTR(v))
+
 typedef enum {
     JS_GC_PHASE_NONE,
     JS_GC_PHASE_DECREF,
