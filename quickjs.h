@@ -656,27 +656,14 @@ JS_EXTERN int JS_IsArray(JSContext *ctx, JSValue val);
 
 JS_EXTERN JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
 
-JS_EXTERN JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj,
-                                         JSAtom prop, JSValue receiver,
-                                         JS_BOOL throw_ref_error);
-static js_force_inline JSValue JS_GetProperty(JSContext *ctx, JSValue this_obj,
-                                              JSAtom prop)
-{
-    return JS_GetPropertyInternal(ctx, this_obj, prop, this_obj, 0);
-}
+JS_EXTERN JSValue JS_GetProperty(JSContext *ctx, JSValue this_obj, JSAtom prop);
 JS_EXTERN JSValue JS_GetPropertyStr(JSContext *ctx, JSValue this_obj,
                                     const char *prop);
 JS_EXTERN JSValue JS_GetPropertyUint32(JSContext *ctx, JSValue this_obj,
                                        uint32_t idx);
 
-int JS_SetPropertyInternal(JSContext *ctx, JSValue this_obj,
-                           JSAtom prop, JSValue val,
-                           int flags);
-static inline int JS_SetProperty(JSContext *ctx, JSValue this_obj,
-                                 JSAtom prop, JSValue val)
-{
-    return JS_SetPropertyInternal(ctx, this_obj, prop, val, JS_PROP_THROW);
-}
+JS_EXTERN int JS_SetProperty(JSContext *ctx, JSValue this_obj,
+                             JSAtom prop, JSValue val);
 JS_EXTERN int JS_SetPropertyUint32(JSContext *ctx, JSValue this_obj,
                                    uint32_t idx, JSValue val);
 JS_EXTERN int JS_SetPropertyInt64(JSContext *ctx, JSValue this_obj,
