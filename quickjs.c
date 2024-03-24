@@ -14661,6 +14661,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
         CASE(OP_get_length):
             {
+                sf->cur_pc = pc;
                 JSValue val;
 
                 val = JS_GetProperty(ctx, sp[-1], JS_ATOM_length);
