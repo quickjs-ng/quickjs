@@ -16288,6 +16288,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 JSValue op1, op2;
                 op1 = sp[-2];
                 op2 = sp[-1];
+                sf->cur_pc = pc;
                 if (likely(JS_VALUE_IS_BOTH_INT(op1, op2))) {
                     int64_t r;
                     r = (int64_t)JS_VALUE_GET_INT(op1) + JS_VALUE_GET_INT(op2);
@@ -16313,6 +16314,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 int idx;
                 idx = *pc;
                 pc += 1;
+                sf->cur_pc = pc;
 
                 pv = &var_buf[idx];
                 if (likely(JS_VALUE_IS_BOTH_INT(*pv, sp[-1]))) {
