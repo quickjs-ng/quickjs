@@ -966,6 +966,54 @@ function test_proxy_is_array()
   }
 }
 
+function test_cur_pc()
+{
+    var a = [];
+    Object.defineProperty(a, '1', {
+            get: function() { throw Error("a[1]_get"); },
+            set: function(x) { throw Error("a[1]_set"); }
+            });
+    assert_throws(Error, function() { return a[1]; });
+    assert_throws(Error, function() { a[1] = 1; });
+    assert_throws(Error, function() { return [...a]; });
+    assert_throws(Error, function() { return ({...b} = a); });
+
+    var o = {};
+    Object.defineProperty(o, 'x', {
+            get: function() { throw Error("o.x_get"); },
+            set: function(x) { throw Error("o.x_set"); }
+            });
+    o.valueOf = function() { throw Error("o.valueOf"); };
+    assert_throws(Error, function() { return +o; });
+    assert_throws(Error, function() { return -o; });
+    assert_throws(Error, function() { return o+1; });
+    assert_throws(Error, function() { return o-1; });
+    assert_throws(Error, function() { return o*1; });
+    assert_throws(Error, function() { return o/1; });
+    assert_throws(Error, function() { return o%1; });
+    assert_throws(Error, function() { return o**1; });
+    assert_throws(Error, function() { return o<<1; });
+    assert_throws(Error, function() { return o>>1; });
+    assert_throws(Error, function() { return o>>>1; });
+    assert_throws(Error, function() { return o&1; });
+    assert_throws(Error, function() { return o|1; });
+    assert_throws(Error, function() { return o^1; });
+    assert_throws(Error, function() { return o<1; });
+    assert_throws(Error, function() { return o==1; });
+    assert_throws(Error, function() { return o++; });
+    assert_throws(Error, function() { return o--; });
+    assert_throws(Error, function() { return ++o; });
+    assert_throws(Error, function() { return --o; });
+    assert_throws(Error, function() { return ~o; });
+
+    Object.defineProperty(globalThis, 'xxx', {
+            get: function() { throw Error("xxx_get"); },
+            set: function(x) { throw Error("xxx_set"); }
+            });
+    assert_throws(Error, function() { return xxx; });
+    assert_throws(Error, function() { xxx = 1; });
+}
+
 test();
 test_function();
 test_enum();
@@ -989,3 +1037,4 @@ test_exception_source_pos();
 test_function_source_pos();
 test_exception_prepare_stack();
 test_exception_stack_size_limit();
+test_cur_pc();
