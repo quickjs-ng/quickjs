@@ -657,10 +657,12 @@ JS_EXTERN int JS_IsArray(JSContext *ctx, JSValue val);
 JS_EXTERN JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
 
 JS_EXTERN JSValue JS_GetProperty(JSContext *ctx, JSValue this_obj, JSAtom prop);
-JS_EXTERN JSValue JS_GetPropertyStr(JSContext *ctx, JSValue this_obj,
-                                    const char *prop);
 JS_EXTERN JSValue JS_GetPropertyUint32(JSContext *ctx, JSValue this_obj,
                                        uint32_t idx);
+JS_EXTERN JSValue JS_GetPropertyInt64(JSContext *ctx, JSValue this_obj,
+                                      int64_t idx);
+JS_EXTERN JSValue JS_GetPropertyStr(JSContext *ctx, JSValue this_obj,
+                                    const char *prop);
 
 JS_EXTERN int JS_SetProperty(JSContext *ctx, JSValue this_obj,
                              JSAtom prop, JSValue val);
