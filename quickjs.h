@@ -473,6 +473,11 @@ static js_force_inline JSValue JS_NewInt32(JSContext *ctx, int32_t val)
     return JS_MKVAL(JS_TAG_INT, val);
 }
 
+static js_force_inline JSValue JS_NewFloat64(JSContext *ctx, double val)
+{
+    return __JS_NewFloat64(val);
+}
+
 static js_force_inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
 {
     return JS_MKVAL(JS_TAG_CATCH_OFFSET, val);
@@ -481,10 +486,10 @@ static js_force_inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
 static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
 {
     JSValue v;
-    if (val == (int32_t)val) {
+    if (val >= INT32_MIN && val <= INT32_MAX) {
         v = JS_NewInt32(ctx, val);
     } else {
-        v = __JS_NewFloat64(val);
+        v = JS_NewFloat64(ctx, val);
     }
     return v;
 }
@@ -495,12 +500,12 @@ static js_force_inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
     if (val <= 0x7fffffff) {
         v = JS_NewInt32(ctx, val);
     } else {
-        v = __JS_NewFloat64(val);
+        v = JS_NewFloat64(ctx, val);
     }
     return v;
 }
 
-JS_EXTERN JSValue JS_NewFloat64(JSContext *ctx, double d);
+JS_EXTERN JSValue JS_NewNumber(JSContext *ctx, double d);
 JS_EXTERN JSValue JS_NewBigInt64(JSContext *ctx, int64_t v);
 JS_EXTERN JSValue JS_NewBigUint64(JSContext *ctx, uint64_t v);
 
