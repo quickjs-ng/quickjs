@@ -8044,7 +8044,7 @@ static int JS_TryGetPropertyInt64(JSContext *ctx, JSValue obj, int64_t idx, JSVa
     return present;
 }
 
-static JSValue JS_GetPropertyInt64(JSContext *ctx, JSValue obj, int64_t idx)
+JSValue JS_GetPropertyInt64(JSContext *ctx, JSValue obj, int64_t idx)
 {
     JSAtom prop;
     JSValue val;
