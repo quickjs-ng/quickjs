@@ -762,6 +762,12 @@ Failure (testClassNames doesn't contain expected[1] stack =     at MyObj (stack-
     at <eval> (stack-traces.js:291:49)
 ): expected <true> found <false>
 Failure (UnintendedCallerCensorship didn't contain new ReferenceError): expected <true> found <false>
+Failure: expected <"abc"> found <undefined>
+Failure: expected <"abc"> found <"    at <eval> (stack-traces.js:371:13)\n">
+Failure: expected <undefined> found <"    at <eval> (stack-traces.js:375:13)\n">
+TypeError: not a function
+    at <eval> (stack-traces.js:381:1)
+
 === str-to-num.js
 Failure: expected <7.922816251426436e+28> found <7.922816251426434e+28>
 === stress-array-push.js
