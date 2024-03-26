@@ -14625,7 +14625,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
     stack_buf = var_buf + b->var_count;
     sp = stack_buf;
     pc = b->byte_code_buf;
-    sf->cur_pc = NULL; /* It's != NULL for bytecode functions. */
+    /* sf->cur_pc must we set to pc before any recursive calls to JS_CallInternal. */
+    sf->cur_pc = NULL;
     sf->prev_frame = rt->current_stack_frame;
     rt->current_stack_frame = sf;
     ctx = b->realm; /* set the current realm */
@@ -14681,9 +14682,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
         CASE(OP_get_length):
             {
-                sf->cur_pc = pc;
                 JSValue val;
 
+                sf->cur_pc = pc;
                 val = JS_GetProperty(ctx, sp[-1], JS_ATOM_length);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
@@ -15156,6 +15157,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
 
                 scope_idx = get_u16(pc) - 1;
                 pc += 2;
+                sf->cur_pc = pc;
                 tab = build_arg_list(ctx, &len, sp[-1]);
                 if (!tab)
                     goto exception;
@@ -15202,6 +15204,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         CASE(OP_import):
             {
                 JSValue val;
+                sf->cur_pc = pc;
                 val = js_dynamic_import(ctx, sp[-1]);
                 if (JS_IsException(val))
                     goto exception;
@@ -15231,6 +15234,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
+                sf->cur_pc = pc;
 
                 val = JS_GetGlobalVar(ctx, atom, opcode - OP_get_var_undef);
                 if (unlikely(JS_IsException(val)))
@@ -15246,6 +15250,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
+                sf->cur_pc = pc;
 
                 ret = JS_SetGlobalVar(ctx, atom, sp[-1], opcode - OP_put_var);
                 sp--;
@@ -15260,6 +15265,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 JSAtom atom;
                 atom = get_u32(pc);
                 pc += 4;
+                sf->cur_pc = pc;
 
                 /* sp[-2] is JS_TRUE or JS_FALSE */
                 if (unlikely(!JS_VALUE_GET_INT(sp[-2]))) {
@@ -15716,15 +15722,18 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
 
         CASE(OP_for_in_start):
+            sf->cur_pc = pc;
             if (js_for_in_start(ctx, sp))
                 goto exception;
             BREAK;
         CASE(OP_for_in_next):
+            sf->cur_pc = pc;
             if (js_for_in_next(ctx, sp))
                 goto exception;
             sp += 2;
             BREAK;
         CASE(OP_for_of_start):
+            sf->cur_pc = pc;
             if (js_for_of_start(ctx, sp, FALSE))
                 goto exception;
             sp += 1;
@@ -15734,18 +15743,21 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             {
                 int offset = -3 - pc[0];
                 pc += 1;
+                sf->cur_pc = pc;
                 if (js_for_of_next(ctx, sp, offset))
                     goto exception;
                 sp += 2;
             }
             BREAK;
         CASE(OP_for_await_of_start):
+            sf->cur_pc = pc;
             if (js_for_of_start(ctx, sp, TRUE))
                 goto exception;
             sp += 1;
             *sp++ = JS_NewCatchOffset(ctx, 0);
             BREAK;
         CASE(OP_iterator_get_value_done):
+            sf->cur_pc = pc;
             if (js_iterator_get_value_done(ctx, sp))
                 goto exception;
             sp += 1;
@@ -15763,6 +15775,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             JS_FreeValue(ctx, sp[-1]); /* drop the next method */
             sp--;
             if (!JS_IsUndefined(sp[-1])) {
+                sf->cur_pc = pc;
                 if (JS_IteratorClose(ctx, sp[-1], FALSE))
                     goto exception;
                 JS_FreeValue(ctx, sp[-1]);
@@ -15791,8 +15804,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             /* stack: iter_obj next catch_offset val */
             {
                 JSValue ret;
-                ret = JS_Call(ctx, sp[-3], sp[-4],
-                              1, (sp - 1));
+                sf->cur_pc = pc;
+                ret = JS_Call(ctx, sp[-3], sp[-4], 1, (sp - 1));
                 if (JS_IsException(ret))
                     goto exception;
                 JS_FreeValue(ctx, sp[-1]);
@@ -15807,6 +15820,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 BOOL ret_flag;
                 int flags;
                 flags = *pc++;
+                sf->cur_pc = pc;
                 method = JS_GetProperty(ctx, sp[-4], (flags & 1) ?
                                         JS_ATOM_throw : JS_ATOM_return);
                 if (JS_IsException(method))
@@ -15982,7 +15996,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         CASE(OP_get_private_field):
             {
                 JSValue val;
-
+                sf->cur_pc = pc;
                 val = JS_GetPrivateField(ctx, sp[-2], sp[-1]);
                 JS_FreeValue(ctx, sp[-1]);
                 JS_FreeValue(ctx, sp[-2]);
@@ -15996,6 +16010,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         CASE(OP_put_private_field):
             {
                 int ret;
+                sf->cur_pc = pc;
                 ret = JS_SetPrivateField(ctx, sp[-3], sp[-1], sp[-2]);
                 JS_FreeValue(ctx, sp[-3]);
                 JS_FreeValue(ctx, sp[-1]);
@@ -16146,6 +16161,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             {
                 JSValue val;
 
+                sf->cur_pc = pc;
                 val = JS_GetPropertyValue(ctx, sp[-2], sp[-1]);
                 JS_FreeValue(ctx, sp[-2]);
                 sp[-2] = val;
@@ -16159,6 +16175,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             {
                 JSValue val;
 
+                sf->cur_pc = pc;
                 val = JS_GetPropertyValue(ctx, sp[-2], sp[-1]);
                 sp[-1] = val;
                 if (unlikely(JS_IsException(val)))
@@ -16169,6 +16186,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         CASE(OP_get_ref_value):
             {
                 JSValue val;
+                sf->cur_pc = pc;
                 if (unlikely(JS_IsUndefined(sp[-2]))) {
                     JSAtom atom = JS_ValueToAtom(ctx, sp[-1]);
                     if (atom != JS_ATOM_NULL) {
@@ -16190,6 +16208,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             {
                 JSValue val;
                 JSAtom atom;
+                sf->cur_pc = pc;
                 atom = JS_ValueToAtom(ctx, sp[-1]);
                 if (unlikely(atom == JS_ATOM_NULL))
                     goto exception;
@@ -16208,7 +16227,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         CASE(OP_put_array_el):
             {
                 int ret;
-
+                sf->cur_pc = pc;
                 ret = JS_SetPropertyValue(ctx, sp[-3], sp[-2], sp[-1], JS_PROP_THROW_STRICT);
                 JS_FreeValue(ctx, sp[-3]);
                 sp -= 3;
@@ -16220,6 +16239,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         CASE(OP_put_ref_value):
             {
                 int ret, flags;
+                sf->cur_pc = pc;
                 flags = JS_PROP_THROW_STRICT;
                 if (unlikely(JS_IsUndefined(sp[-3]))) {
                     if (is_strict_mode(ctx)) {
@@ -16248,6 +16268,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             {
                 int ret;
                 JSAtom atom;
+                sf->cur_pc = pc;
                 if (JS_VALUE_GET_TAG(sp[-3]) != JS_TAG_OBJECT) {
                     JS_ThrowTypeErrorNotAnObject(ctx);
                     goto exception;
@@ -16282,6 +16303,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
 
         CASE(OP_append):    /* array pos enumobj -- array pos */
             {
+                sf->cur_pc = pc;
                 if (js_append_enumerate(ctx, sp))
                     goto exception;
                 JS_FreeValue(ctx, *--sp);
@@ -16297,6 +16319,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 int mask;
 
                 mask = *pc++;
+                sf->cur_pc = pc;
                 if (JS_CopyDataProperties(ctx, sp[-1 - (mask & 3)],
                                           sp[-1 - ((mask >> 2) & 7)],
                                           sp[-1 - ((mask >> 5) & 7)], 0))
@@ -16309,7 +16332,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 JSValue op1, op2;
                 op1 = sp[-2];
                 op2 = sp[-1];
-                sf->cur_pc = pc;
                 if (likely(JS_VALUE_IS_BOTH_INT(op1, op2))) {
                     int64_t r;
                     r = (int64_t)JS_VALUE_GET_INT(op1) + JS_VALUE_GET_INT(op2);
@@ -16323,6 +16345,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp--;
                 } else {
                 add_slow:
+                    sf->cur_pc = pc;
                     if (js_add_slow(ctx, sp))
                         goto exception;
                     sp--;
@@ -16335,7 +16358,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 int idx;
                 idx = *pc;
                 pc += 1;
-                sf->cur_pc = pc;
 
                 pv = &var_buf[idx];
                 if (likely(JS_VALUE_IS_BOTH_INT(*pv, sp[-1]))) {
@@ -16350,6 +16372,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     JSValue op1;
                     op1 = sp[-1];
                     sp--;
+                    sf->cur_pc = pc;
                     op1 = JS_ToPrimitiveFree(ctx, op1, HINT_NONE);
                     if (JS_IsException(op1))
                         goto exception;
@@ -16362,6 +16385,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 add_loc_slow:
                     /* In case of exception, js_add_slow frees ops[0]
                        and ops[1], so we must duplicate *pv */
+                    sf->cur_pc = pc;
                     ops[0] = js_dup(*pv);
                     ops[1] = sp[-1];
                     sp--;
@@ -16464,6 +16488,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
         CASE(OP_pow):
         binary_arith_slow:
+            sf->cur_pc = pc;
             if (js_binary_arith_slow(ctx, sp, opcode))
                 goto exception;
             sp--;
@@ -16477,6 +16502,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 tag = JS_VALUE_GET_TAG(op1);
                 if (tag == JS_TAG_INT || JS_TAG_IS_FLOAT64(tag)) {
                 } else {
+                    sf->cur_pc = pc;
                     if (js_unary_arith_slow(ctx, sp, opcode))
                         goto exception;
                 }
@@ -16507,6 +16533,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 neg_fp_res:
                     sp[-1] = js_float64(d);
                 } else {
+                    sf->cur_pc = pc;
                     if (js_unary_arith_slow(ctx, sp, opcode))
                         goto exception;
                 }
@@ -16524,6 +16551,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-1] = js_int32(val + 1);
                 } else {
                 inc_slow:
+                    sf->cur_pc = pc;
                     if (js_unary_arith_slow(ctx, sp, opcode))
                         goto exception;
                 }
@@ -16541,6 +16569,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-1] = js_int32(val - 1);
                 } else {
                 dec_slow:
+                    sf->cur_pc = pc;
                     if (js_unary_arith_slow(ctx, sp, opcode))
                         goto exception;
                 }
@@ -16548,6 +16577,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
         CASE(OP_post_inc):
         CASE(OP_post_dec):
+            sf->cur_pc = pc;
             if (js_post_inc_slow(ctx, sp, opcode))
                 goto exception;
             sp++;
@@ -16568,6 +16598,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     var_buf[idx] = js_int32(val + 1);
                 } else {
                 inc_loc_slow:
+                    sf->cur_pc = pc;
                     /* must duplicate otherwise the variable value may
                        be destroyed before JS code accesses it */
                     op1 = js_dup(op1);
@@ -16593,6 +16624,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     var_buf[idx] = js_int32(val - 1);
                 } else {
                 dec_loc_slow:
+                    sf->cur_pc = pc;
                     /* must duplicate otherwise the variable value may
                        be destroyed before JS code accesses it */
                     op1 = js_dup(op1);
@@ -16609,6 +16641,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 if (JS_VALUE_GET_TAG(op1) == JS_TAG_INT) {
                     sp[-1] = js_int32(~JS_VALUE_GET_INT(op1));
                 } else {
+                    sf->cur_pc = pc;
                     if (js_not_slow(ctx, sp))
                         goto exception;
                 }
@@ -16627,6 +16660,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_int32(v1 << v2);
                     sp--;
                 } else {
+                    sf->cur_pc = pc;
                     if (js_binary_logic_slow(ctx, sp, opcode))
                         goto exception;
                     sp--;
@@ -16645,6 +16679,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_uint32((uint32_t)JS_VALUE_GET_INT(op1) >> v2);
                     sp--;
                 } else {
+                    sf->cur_pc = pc;
                     if (js_shr_slow(ctx, sp))
                         goto exception;
                     sp--;
@@ -16665,6 +16700,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_int32((int)JS_VALUE_GET_INT(op1) >> v2);
                     sp--;
                 } else {
+                    sf->cur_pc = pc;
                     if (js_binary_logic_slow(ctx, sp, opcode))
                         goto exception;
                     sp--;
@@ -16680,6 +16716,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_int32(JS_VALUE_GET_INT(op1) & JS_VALUE_GET_INT(op2));
                     sp--;
                 } else {
+                    sf->cur_pc = pc;
                     if (js_binary_logic_slow(ctx, sp, opcode))
                         goto exception;
                     sp--;
@@ -16695,6 +16732,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_int32(JS_VALUE_GET_INT(op1) | JS_VALUE_GET_INT(op2));
                     sp--;
                 } else {
+                    sf->cur_pc = pc;
                     if (js_binary_logic_slow(ctx, sp, opcode))
                         goto exception;
                     sp--;
@@ -16710,6 +16748,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_int32(JS_VALUE_GET_INT(op1) ^ JS_VALUE_GET_INT(op2));
                     sp--;
                 } else {
+                    sf->cur_pc = pc;
                     if (js_binary_logic_slow(ctx, sp, opcode))
                         goto exception;
                     sp--;
@@ -16728,6 +16767,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     sp[-2] = js_bool(JS_VALUE_GET_INT(op1) binary_op JS_VALUE_GET_INT(op2)); \
                     sp--;                                               \
                 } else {                                                \
+                    sf->cur_pc = pc;                                    \
                     if (slow_call)                                      \
                         goto exception;                                 \
                     sp--;                                               \
@@ -16780,6 +16820,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 atom = get_u32(pc);
                 pc += 4;
 
+                sf->cur_pc = pc;
                 ret = JS_DeleteProperty(ctx, ctx->global_obj, atom, 0);
                 if (unlikely(ret < 0))
                     goto exception;
@@ -16789,6 +16830,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
 
         CASE(OP_to_object):
             if (JS_VALUE_GET_TAG(sp[-1]) != JS_TAG_OBJECT) {
+                sf->cur_pc = pc;
                 ret_val = JS_ToObject(ctx, sp[-1]);
                 if (JS_IsException(ret_val))
                     goto exception;
@@ -16804,6 +16846,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             case JS_TAG_SYMBOL:
                 break;
             default:
+                sf->cur_pc = pc;
                 ret_val = JS_ToPropertyKey(ctx, sp[-1]);
                 if (JS_IsException(ret_val))
                     goto exception;
@@ -16825,6 +16868,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             case JS_TAG_SYMBOL:
                 break;
             default:
+                sf->cur_pc = pc;
                 ret_val = JS_ToPropertyKey(ctx, sp[-1]);
                 if (JS_IsException(ret_val))
                     goto exception;
@@ -16848,6 +16892,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 diff = get_u32(pc + 4);
                 is_with = pc[8];
                 pc += 9;
+                sf->cur_pc = pc;
 
                 obj = sp[-1];
                 ret = JS_HasProperty(ctx, obj, atom);
@@ -38833,8 +38878,10 @@ static JSValue js_number_toFixed(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     if (JS_ToInt32Sat(ctx, &f, argv[0]))
         return JS_EXCEPTION;
-    if (f < 0 || f > 100)
-        return JS_ThrowRangeError(ctx, "invalid number of digits");
+    if (f < 0 || f > 100) {
+        return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
+                                  "toFixed");
+    }
     if (fabs(d) >= 1e21) {
         return JS_ToStringFree(ctx, js_float64(d));
     } else {
@@ -38863,8 +38910,10 @@ static JSValue js_number_toExponential(JSContext *ctx, JSValue this_val,
         flags = 0;
         f = 0;
     } else {
-        if (f < 0 || f > 100)
-            return JS_ThrowRangeError(ctx, "invalid number of digits");
+        if (f < 0 || f > 100) {
+            return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
+                                      "toExponential");
+        }
         f++;
         flags = JS_DTOA_FIXED_FORMAT;
     }
@@ -38891,8 +38940,10 @@ static JSValue js_number_toPrecision(JSContext *ctx, JSValue this_val,
     to_string:
         return JS_ToStringFree(ctx, js_float64(d));
     }
-    if (p < 1 || p > 100)
-        return JS_ThrowRangeError(ctx, "invalid number of digits");
+    if (p < 1 || p > 100) {
+        return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
+                                  "toPrecision");
+    }
     return js_dtoa(ctx, d, 10, p, JS_DTOA_FIXED_FORMAT);
 }
 
