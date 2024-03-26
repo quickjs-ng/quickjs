@@ -43,6 +43,7 @@
 #include "cutils.h"
 #include "list.h"
 #include "quickjs.h"
+#include "quickjs-c-atomics.h"
 #include "libregexp.h"
 #include "libbf.h"
 
@@ -98,12 +99,6 @@
 
 /* test the GC by forcing it before each object allocation */
 //#define FORCE_GC_AT_MALLOC
-
-#ifdef CONFIG_ATOMICS
-#include <pthread.h>
-#include "quickjs-c-atomics.h"
-#include <errno.h>
-#endif
 
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x)  STRINGIFY_(x)
@@ -32518,7 +32513,7 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
 } BCTagEnum;
 
-#define BC_VERSION 8
+#define BC_VERSION 9
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -51181,7 +51176,6 @@ JS_BOOL JS_IsUint8Array(JSValue obj) {
 }
 
 /* Atomics */
-#ifdef CONFIG_ATOMICS
 
 typedef enum AtomicsOpEnum {
     ATOMICS_OP_ADD,
@@ -51464,11 +51458,12 @@ static JSValue js_atomics_isLockFree(JSContext *ctx,
 typedef struct JSAtomicsWaiter {
     struct list_head link;
     BOOL linked;
-    pthread_cond_t cond;
+    js_cond_t cond;
     int32_t *ptr;
 } JSAtomicsWaiter;
 
-static pthread_mutex_t js_atomics_mutex = PTHREAD_MUTEX_INITIALIZER;
+static js_once_t js_atomics_once = JS_ONCE_INIT;
+static js_mutex_t js_atomics_mutex;
 static struct list_head js_atomics_waiter_list =
     LIST_HEAD_INIT(js_atomics_waiter_list);
 
@@ -51510,44 +51505,34 @@ static JSValue js_atomics_wait(JSContext *ctx,
 
     /* XXX: inefficient if large number of waiters, should hash on
        'ptr' value */
-    /* XXX: use Linux futexes when available ? */
-    pthread_mutex_lock(&js_atomics_mutex);
+    js_mutex_lock(&js_atomics_mutex);
     if (size_log2 == 3) {
         res = *(int64_t *)ptr != v;
     } else {
         res = *(int32_t *)ptr != v;
     }
     if (res) {
-        pthread_mutex_unlock(&js_atomics_mutex);
+        js_mutex_unlock(&js_atomics_mutex);
         return JS_AtomToString(ctx, JS_ATOM_not_equal);
     }
 
     waiter = &waiter_s;
     waiter->ptr = ptr;
-    pthread_cond_init(&waiter->cond, NULL);
+    js_cond_init(&waiter->cond);
     waiter->linked = TRUE;
     list_add_tail(&waiter->link, &js_atomics_waiter_list);
 
     if (timeout == INT64_MAX) {
-        pthread_cond_wait(&waiter->cond, &js_atomics_mutex);
+        js_cond_wait(&waiter->cond, &js_atomics_mutex);
         ret = 0;
     } else {
-        /* XXX: use clock monotonic */
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += timeout / 1000;
-        ts.tv_nsec += (timeout % 1000) * 1000000;
-        if (ts.tv_nsec >= 1000000000) {
-            ts.tv_nsec -= 1000000000;
-            ts.tv_sec++;
-        }
-        ret = pthread_cond_timedwait(&waiter->cond, &js_atomics_mutex,
-                                     &ts);
+        ret = js_cond_timedwait(&waiter->cond, &js_atomics_mutex, timeout);
     }
     if (waiter->linked)
         list_del(&waiter->link);
-    pthread_mutex_unlock(&js_atomics_mutex);
-    pthread_cond_destroy(&waiter->cond);
-    if (ret == ETIMEDOUT) {
+    js_mutex_unlock(&js_atomics_mutex);
+    js_cond_destroy(&waiter->cond);
+    if (ret == -1) {
         return JS_AtomToString(ctx, JS_ATOM_timed_out);
     } else {
         return JS_AtomToString(ctx, JS_ATOM_ok);
@@ -51579,7 +51564,7 @@ static JSValue js_atomics_notify(JSContext *ctx,
 
     n = 0;
     if (abuf->shared && count > 0) {
-        pthread_mutex_lock(&js_atomics_mutex);
+        js_mutex_lock(&js_atomics_mutex);
         init_list_head(&waiter_list);
         list_for_each_safe(el, el1, &js_atomics_waiter_list) {
             waiter = list_entry(el, JSAtomicsWaiter, link);
@@ -51594,9 +51579,9 @@ static JSValue js_atomics_notify(JSContext *ctx,
         }
         list_for_each(el, &waiter_list) {
             waiter = list_entry(el, JSAtomicsWaiter, link);
-            pthread_cond_signal(&waiter->cond);
+            js_cond_signal(&waiter->cond);
         }
-        pthread_mutex_unlock(&js_atomics_mutex);
+        js_mutex_unlock(&js_atomics_mutex);
     }
     return js_int32(n);
 }
@@ -51621,13 +51606,18 @@ static const JSCFunctionListEntry js_atomics_obj[] = {
     JS_OBJECT_DEF("Atomics", js_atomics_funcs, countof(js_atomics_funcs), JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE ),
 };
 
+static void js__atomics_init(void) {
+    js_mutex_init(&js_atomics_mutex);
+}
+
+/* TODO(saghul) make this public and not dependant on typed arrays? */
 void JS_AddIntrinsicAtomics(JSContext *ctx)
 {
+    js_once(&js_atomics_once, js__atomics_init);
+
     /* add Atomics as autoinit object */
     JS_SetPropertyFunctionList(ctx, ctx->global_obj, js_atomics_obj, countof(js_atomics_obj));
 }
-
-#endif /* CONFIG_ATOMICS */
 
 void JS_AddIntrinsicTypedArrays(JSContext *ctx)
 {
@@ -51712,9 +51702,7 @@ void JS_AddIntrinsicTypedArrays(JSContext *ctx)
                                  js_dataview_constructor, 1,
                                  ctx->class_proto[JS_CLASS_DATAVIEW]);
     /* Atomics */
-#ifdef CONFIG_ATOMICS
     JS_AddIntrinsicAtomics(ctx);
-#endif
 }
 
 /* Performance */

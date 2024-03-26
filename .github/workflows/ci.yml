@@ -459,11 +459,11 @@ jobs:
           sudo apt install /tmp/wasi-sdk*.deb
       - name: test
         run: |
-          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk-pthread.cmake
           make -C build qjs_exe
-          wasmtime run build/qjs -qd
+          wasmtime run -S threads build/qjs -qd
           echo "console.log('hello wasi!');" > t.js
-          wasmtime run --dir . build/qjs t.js
+          wasmtime run -S threads --dir . build/qjs t.js
 
   cygwin:
     runs-on: windows-latest

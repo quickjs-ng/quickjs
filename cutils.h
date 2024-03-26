@@ -29,8 +29,10 @@
 #include <string.h>
 #include <inttypes.h>
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 #include <windows.h>
+#endif
+#if defined(_MSC_VER)
 #include <winsock2.h>
 #include <malloc.h>
 #define alloca _alloca
@@ -43,7 +45,10 @@
 #elif defined(__FreeBSD__)
 #include <malloc_np.h>
 #endif
-
+#if !defined(_WIN32)
+#include <errno.h>
+#include <pthread.h>
+#endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #  define likely(x)       (x)
@@ -425,5 +430,32 @@ static inline size_t js__malloc_usable_size(const void *ptr)
     return 0;
 #endif
 }
+
+/* Cross-platform threading APIs. */
+#if defined(_WIN32)
+#define JS_ONCE_INIT INIT_ONCE_STATIC_INIT
+typedef INIT_ONCE js_once_t;
+typedef CRITICAL_SECTION js_mutex_t;
+typedef CONDITION_VARIABLE js_cond_t;
+#else
+#define JS_ONCE_INIT PTHREAD_ONCE_INIT
+typedef pthread_once_t js_once_t;
+typedef pthread_mutex_t js_mutex_t;
+typedef pthread_cond_t js_cond_t;
+#endif
+
+void js_once(js_once_t* guard, void (*callback)(void));
+
+void js_mutex_init(js_mutex_t* mutex);
+void js_mutex_destroy(js_mutex_t* mutex);
+void js_mutex_lock(js_mutex_t* mutex);
+void js_mutex_unlock(js_mutex_t* mutex);
+
+void js_cond_init(js_cond_t* cond);
+void js_cond_destroy(js_cond_t* cond);
+void js_cond_signal(js_cond_t* cond);
+void js_cond_broadcast(js_cond_t* cond);
+void js_cond_wait(js_cond_t* cond, js_mutex_t* mutex);
+int js_cond_timedwait(js_cond_t* cond, js_mutex_t* mutex, uint64_t timeout);
 
 #endif  /* CUTILS_H */
