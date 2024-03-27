@@ -47763,7 +47763,9 @@ static BOOL js_date_parse_otherstring(const uint8_t *sp,
                     if (!string_get_digits(sp, &p, &fields[5], 1, 2))
                         return FALSE;
                     string_get_milliseconds(sp, &p, &fields[6]);
-                }
+                } else
+                if (sp[p] != '\0' && sp[p] != ' ')
+                    return FALSE;
                 has_time = TRUE;
             } else {
                 if (p - p_start > 2) {
@@ -47785,11 +47787,13 @@ static BOOL js_date_parse_otherstring(const uint8_t *sp,
             string_skip_until(sp, &p, "0123456789 -/(");
         } else
         if (has_time && string_match(sp, &p, "PM")) {
-            if (fields[3] < 12)
+            if (fields[3] != 12)
                 fields[3] += 12;
             continue;
         } else
         if (has_time && string_match(sp, &p, "AM")) {
+            if (fields[3] > 12)
+                return FALSE;
             if (fields[3] == 12)
                 fields[3] -= 12;
             continue;
