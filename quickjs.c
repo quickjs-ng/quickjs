@@ -47787,11 +47787,15 @@ static BOOL js_date_parse_otherstring(const uint8_t *sp,
             string_skip_until(sp, &p, "0123456789 -/(");
         } else
         if (has_time && string_match(sp, &p, "PM")) {
+            /* hours greater than 12 will be incremented and
+               rejected by the range check in js_Date_parse */
+            /* 00:00 PM will be silently converted as 12:00 */
             if (fields[3] != 12)
                 fields[3] += 12;
             continue;
         } else
         if (has_time && string_match(sp, &p, "AM")) {
+            /* 00:00 AM will be silently accepted */
             if (fields[3] > 12)
                 return FALSE;
             if (fields[3] == 12)
