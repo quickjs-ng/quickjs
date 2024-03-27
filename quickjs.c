@@ -593,7 +593,6 @@ static int resize_ic_hash(JSContext *ctx, JSInlineCache *ic);
 static int free_ic(JSRuntime *rt, JSInlineCache *ic);
 static uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *object,
                             uint32_t prop_offset);
-static uint32_t add_ic_slot1(JSContext *ctx, JSInlineCache *ic, JSAtom atom);
 
 static int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
                                   JSShape *shape)
@@ -19995,8 +19994,34 @@ static void emit_atom(JSParseState *s, JSAtom name)
     emit_u32(s, JS_DupAtom(s->ctx, name));
 }
 
-static void emit_ic(JSParseState *s, JSAtom atom) {
-  add_ic_slot1(s->ctx, s->cur_func->ic, atom);
+static force_inline uint32_t get_index_hash(JSAtom atom, int hash_bits)
+{
+    return (atom * 0x9e370001) >> (32 - hash_bits);
+}
+
+static void emit_ic(JSParseState *s, JSAtom atom)
+{
+    uint32_t h;
+    JSContext *ctx;
+    JSInlineCache *ic;
+    JSInlineCacheHashSlot *ch;
+
+    ic = s->cur_func->ic;
+    ctx = s->ctx;
+    if (ic->count + 1 >= ic->capacity && resize_ic_hash(ctx, ic))
+        return;
+    h = get_index_hash(atom, ic->hash_bits);
+    for (ch = ic->hash[h]; ch != NULL; ch = ch->next)
+        if (ch->atom == atom)
+            return;
+    ch = js_malloc(ctx, sizeof(*ch));
+    if (unlikely(!ch))
+        return;
+    ch->atom = JS_DupAtom(ctx, atom);
+    ch->index = 0;
+    ch->next = ic->hash[h];
+    ic->hash[h] = ch;
+    ic->count += 1;
 }
 
 static int update_label(JSFunctionDef *s, int label, int delta)
@@ -32518,7 +32543,7 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
 } BCTagEnum;
 
-#define BC_VERSION 8
+#define BC_VERSION 9
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -32722,18 +32747,24 @@ static void bc_byte_swap(uint8_t *bc_buf, int bc_len)
     }
 }
 
-static int JS_WriteFunctionBytecode(BCWriterState *s,
-                                    const uint8_t *bc_buf1, int bc_len)
+static BOOL is_ic_op(uint8_t op)
 {
-    int pos, len, op;
+    return op >= OP_get_field_ic && op <= OP_put_field_ic;
+}
+
+static int JS_WriteFunctionBytecode(BCWriterState *s,
+                                    const JSFunctionBytecode *b)
+{
+    int pos, len, bc_len, op;
     JSAtom atom;
     uint8_t *bc_buf;
     uint32_t val;
 
+    bc_len = b->byte_code_len;
     bc_buf = js_malloc(s->ctx, bc_len);
     if (!bc_buf)
         return -1;
-    memcpy(bc_buf, bc_buf1, bc_len);
+    memcpy(bc_buf, b->byte_code_buf, bc_len);
 
     pos = 0;
     while (pos < bc_len) {
@@ -32751,6 +32782,16 @@ static int JS_WriteFunctionBytecode(BCWriterState *s,
             put_u32(bc_buf + pos + 1, val);
             break;
         default:
+            // IC (inline cache) opcodes should not end up in the serialized
+            // bytecode; translate them to their non-IC counterparts here
+            if (is_ic_op(op)) {
+                val = get_u32(bc_buf + pos + 1);
+                atom = get_ic_atom(b->ic, val);
+                if (bc_atom_to_idx(s, &val, atom))
+                    goto fail;
+                put_u32(bc_buf + pos + 1, val);
+                bc_buf[pos] -= (OP_get_field_ic - OP_get_field);
+            }
             break;
         }
         pos += len;
@@ -32918,7 +32959,7 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
         bc_put_u8(s, flags);
     }
 
-    if (JS_WriteFunctionBytecode(s, b->byte_code_buf, b->byte_code_len))
+    if (JS_WriteFunctionBytecode(s, b))
         goto fail;
 
     bc_put_atom(s, b->filename);
@@ -32928,19 +32969,6 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
     dbuf_put(&s->dbuf, b->pc2line_buf, b->pc2line_len);
     bc_put_leb128(s, b->source_len);
     dbuf_put(&s->dbuf, b->source, b->source_len);
-
-    /* compatibility */
-    dbuf_putc(&s->dbuf, 255);
-    dbuf_putc(&s->dbuf, 73); // 'I'
-    dbuf_putc(&s->dbuf, 67); // 'C'
-    if (b->ic == NULL) {
-        bc_put_leb128(s, 0);
-    } else {
-        bc_put_leb128(s, b->ic->count);
-        for (i = 0; i < b->ic->count; i++) {
-            bc_put_atom(s, b->ic->cache[i].atom);
-        }
-    }
 
     for(i = 0; i < b->cpool_count; i++) {
         if (JS_WriteObjectRec(s, b->cpool[i]))
@@ -33643,6 +33671,7 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
 #endif
             break;
         default:
+            assert(!is_ic_op(op)); // should not end up in serialized bytecode
             break;
         }
         pos += len;
@@ -33918,28 +33947,6 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             goto fail;
         if (bc_get_buf(s, b->source, b->source_len))
             goto fail;
-    }
-    if (s->buf_end - s->ptr > 3 && s->ptr[0] == 255 &&
-        s->ptr[1] == 73 && s->ptr[2] == 67) {
-        s->ptr += 3;
-        bc_get_leb128(s, &ic_len);
-        if (ic_len == 0) {
-            b->ic = NULL;
-        } else {
-            b->ic = init_ic(ctx);
-            if (b->ic == NULL)
-                goto fail;
-            for (i = 0; i < ic_len; i++) {
-                bc_get_atom(s, &atom);
-                add_ic_slot1(ctx, b->ic, atom);
-                JS_FreeAtom(ctx, atom);
-            }
-            rebuild_ic(ctx, b->ic);
-        }
-#ifdef DUMP_READ_OBJECT
-        bc_read_trace(s, "filename: "); print_atom(s->ctx, b->filename); printf("\n");
-#endif
-        bc_read_trace(s, "}\n");
     }
     if (b->cpool_count != 0) {
         bc_read_trace(s, "cpool {\n");
@@ -52120,11 +52127,6 @@ static void insert_weakref_record(JSValue target, struct JSWeakRefRecord *wr)
 
 /* Poly IC */
 
-static force_inline uint32_t get_index_hash(JSAtom atom, int hash_bits)
-{
-    return (atom * 0x9e370001) >> (32 - hash_bits);
-}
-
 JSInlineCache *init_ic(JSContext *ctx)
 {
     JSInlineCache *ic;
@@ -52256,28 +52258,6 @@ uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *o
     cr->prop_offset[i] = prop_offset;
 end:
     return ch->index;
-}
-
-uint32_t add_ic_slot1(JSContext *ctx, JSInlineCache *ic, JSAtom atom)
-{
-    uint32_t h;
-    JSInlineCacheHashSlot *ch;
-    if (ic->count + 1 >= ic->capacity && resize_ic_hash(ctx, ic))
-        goto end;
-    h = get_index_hash(atom, ic->hash_bits);
-    for (ch = ic->hash[h]; ch != NULL; ch = ch->next)
-        if (ch->atom == atom)
-            goto end;
-    ch = js_malloc(ctx, sizeof(*ch));
-    if (unlikely(!ch))
-        goto end;
-    ch->atom = JS_DupAtom(ctx, atom);
-    ch->index = 0;
-    ch->next = ic->hash[h];
-    ic->hash[h] = ch;
-    ic->count += 1;
-end:
-    return 0;
 }
 
 /* CallSite */

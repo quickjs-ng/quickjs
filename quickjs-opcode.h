@@ -136,9 +136,12 @@ DEF(  put_ref_value, 1, 3, 0, none)
 DEF(     define_var, 6, 0, 0, atom_u8)
 DEF(check_define_var, 6, 0, 0, atom_u8)
 DEF(    define_func, 6, 1, 0, atom_u8)
+
+// order matters, see IC counterparts
 DEF(      get_field, 5, 1, 1, atom)
 DEF(     get_field2, 5, 1, 2, atom)
 DEF(      put_field, 5, 2, 0, atom)
+
 DEF( get_private_field, 1, 2, 1, none) /* obj prop -> value */
 DEF( put_private_field, 1, 3, 0, none) /* obj value prop -> */
 DEF(define_private_field, 1, 3, 1, none) /* obj prop value -> obj */
@@ -358,6 +361,7 @@ DEF(        is_null, 1, 1, 1, none)
 DEF(typeof_is_undefined, 1, 1, 1, none)
 DEF( typeof_is_function, 1, 1, 1, none)
 
+// order matters, see non-IC counterparts
 DEF(      get_field_ic, 5, 1, 1, none)
 DEF(     get_field2_ic, 5, 1, 2, none)
 DEF(      put_field_ic, 5, 2, 0, none)
