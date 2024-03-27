@@ -593,7 +593,6 @@ static int resize_ic_hash(JSContext *ctx, JSInlineCache *ic);
 static int free_ic(JSRuntime *rt, JSInlineCache *ic);
 static uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *object,
                             uint32_t prop_offset);
-static uint32_t add_ic_slot1(JSContext *ctx, JSInlineCache *ic, JSAtom atom);
 
 static int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
                                   JSShape *shape)
@@ -19995,8 +19994,34 @@ static void emit_atom(JSParseState *s, JSAtom name)
     emit_u32(s, JS_DupAtom(s->ctx, name));
 }
 
-static void emit_ic(JSParseState *s, JSAtom atom) {
-  add_ic_slot1(s->ctx, s->cur_func->ic, atom);
+static force_inline uint32_t get_index_hash(JSAtom atom, int hash_bits)
+{
+    return (atom * 0x9e370001) >> (32 - hash_bits);
+}
+
+static void emit_ic(JSParseState *s, JSAtom atom)
+{
+    uint32_t h;
+    JSContext *ctx;
+    JSInlineCache *ic;
+    JSInlineCacheHashSlot *ch;
+
+    ic = s->cur_func->ic;
+    ctx = s->ctx;
+    if (ic->count + 1 >= ic->capacity && resize_ic_hash(ctx, ic))
+        return;
+    h = get_index_hash(atom, ic->hash_bits);
+    for (ch = ic->hash[h]; ch != NULL; ch = ch->next)
+        if (ch->atom == atom)
+            return;
+    ch = js_malloc(ctx, sizeof(*ch));
+    if (unlikely(!ch))
+        return;
+    ch->atom = JS_DupAtom(ctx, atom);
+    ch->index = 0;
+    ch->next = ic->hash[h];
+    ic->hash[h] = ch;
+    ic->count += 1;
 }
 
 static int update_label(JSFunctionDef *s, int label, int delta)
@@ -52102,11 +52127,6 @@ static void insert_weakref_record(JSValue target, struct JSWeakRefRecord *wr)
 
 /* Poly IC */
 
-static force_inline uint32_t get_index_hash(JSAtom atom, int hash_bits)
-{
-    return (atom * 0x9e370001) >> (32 - hash_bits);
-}
-
 JSInlineCache *init_ic(JSContext *ctx)
 {
     JSInlineCache *ic;
@@ -52238,28 +52258,6 @@ uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *o
     cr->prop_offset[i] = prop_offset;
 end:
     return ch->index;
-}
-
-uint32_t add_ic_slot1(JSContext *ctx, JSInlineCache *ic, JSAtom atom)
-{
-    uint32_t h;
-    JSInlineCacheHashSlot *ch;
-    if (ic->count + 1 >= ic->capacity && resize_ic_hash(ctx, ic))
-        goto end;
-    h = get_index_hash(atom, ic->hash_bits);
-    for (ch = ic->hash[h]; ch != NULL; ch = ch->next)
-        if (ch->atom == atom)
-            goto end;
-    ch = js_malloc(ctx, sizeof(*ch));
-    if (unlikely(!ch))
-        goto end;
-    ch->atom = JS_DupAtom(ctx, atom);
-    ch->index = 0;
-    ch->next = ic->hash[h];
-    ic->hash[h] = ch;
-    ic->count += 1;
-end:
-    return 0;
 }
 
 /* CallSite */
