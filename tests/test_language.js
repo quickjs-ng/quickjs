@@ -422,7 +422,9 @@ function test_argument_scope()
     var c = "global";
 
     f = function(a = eval("var arguments")) {};
-    assert_throws(SyntaxError, f);
+    // for some reason v8 does not throw an exception here
+    if (typeof require === 'undefined')
+        assert_throws(SyntaxError, f);
 
     f = function(a = eval("1"), b = arguments[0]) { return b; };
     assert(f(12), 12);
@@ -537,29 +539,44 @@ function test_function_expr_name()
     assert_throws(TypeError, f);
 }
 
+function test_expr(expr, err) {
+    if (err)
+        assert_throws(err, () => eval(expr), `for ${expr}`);
+    else
+        assert(1, eval(expr), `for ${expr}`);
+}
+
 function test_name(name, err)
 {
-    var s1 = `(function() { var ${name}; ${name} = 1; return ${name}; })()`;
-    assert(1, eval(s1), `for ${s1}`);
-    var s1 = `(function(${name}) { ${name} = 1; return ${name}; })()`;
-    assert(1, eval(s1), `for ${s1}`);
-    var s1 = `(function ${name}() { return ${name} ? 1 : 0; })()`;
-    assert(1, eval(s1), `for ${s1}`);
-    var s2 = `"use strict"; (function() { var ${name}; ${name} = 1; return ${name}; })()`;
-    if (err)
-        assert_throws(err, () => eval(s2), `for ${s2}`);
-    else
-        assert(1, eval(s2));
-    var s2 = `"use strict"; (function(${name}) { ${name} = 1; return ${name}; })()`;
-    if (err)
-        assert_throws(err, () => eval(s2), `for ${s2}`);
-    else
-        assert(1, eval(s2));
-    var s2 = `"use strict"; (function ${name}() { return ${name} ? 1 : 0; })()`;
-    if (err)
-        assert_throws(err, () => eval(s2), `for ${s2}`);
-    else
-        assert(1, eval(s2));
+    test_expr(`(function() { return typeof ${name} ? 1 : 1; })()`);
+    test_expr(`(function() { var ${name}; ${name} = 1; return ${name}; })()`);
+    test_expr(`(function() { let ${name}; ${name} = 1; return ${name}; })()`, name == 'let' ? SyntaxError : undefined);
+    test_expr(`(function() { const ${name} = 1; return ${name}; })()`, name == 'let' ? SyntaxError : undefined);
+    test_expr(`(function(${name}) { ${name} = 1; return ${name}; })()`);
+    test_expr(`(function({${name}}) { ${name} = 1; return ${name}; })({})`);
+    test_expr(`(function ${name}() { return ${name} ? 1 : 0; })()`);
+    test_expr(`"use strict"; (function() { return typeof ${name} ? 1 : 1; })()`, err);
+    test_expr(`"use strict"; (function() { if (0) ${name} = 1; return 1; })()`, err);
+    test_expr(`"use strict"; (function() { var x; if (0) x = ${name}; return 1; })()`, err);
+    test_expr(`"use strict"; (function() { var ${name}; return 1; })()`, err);
+    test_expr(`"use strict"; (function() { let ${name}; return 1; })()`, err);
+    test_expr(`"use strict"; (function() { const ${name} = 1; return 1; })()`, err);
+    test_expr(`"use strict"; (function() { var ${name}; ${name} = 1; return 1; })()`, err);
+    test_expr(`"use strict"; (function() { var ${name}; ${name} = 1; return ${name}; })()`, err);
+    test_expr(`"use strict"; (function(${name}) { return 1; })()`, err);
+    test_expr(`"use strict"; (function({${name}}) { return 1; })({})`, err);
+    test_expr(`"use strict"; (function ${name}() { return 1; })()`, err);
+    test_expr(`(function() { "use strict"; return typeof ${name} ? 1 : 1; })()`, err);
+    test_expr(`(function() { "use strict"; if (0) ${name} = 1; return 1; })()`, err);
+    test_expr(`(function() { "use strict"; var x; if (0) x = ${name}; return 1; })()`, err);
+    test_expr(`(function() { "use strict"; var ${name}; return 1; })()`, err);
+    test_expr(`(function() { "use strict"; let ${name}; return 1; })()`, err);
+    test_expr(`(function() { "use strict"; const ${name} = 1; return 1; })()`, err);
+    test_expr(`(function() { "use strict"; var ${name}; ${name} = 1; return 1; })()`, err);
+    test_expr(`(function() { "use strict"; var ${name}; ${name} = 1; return ${name}; })()`, err);
+    test_expr(`(function(${name}) { "use strict"; return 1; })()`, err);
+    test_expr(`(function({${name}}) { "use strict"; return 1; })({})`, SyntaxError);
+    test_expr(`(function ${name}() { "use strict"; return 1; })()`, err);
 }
 
 function test_reserved_names()

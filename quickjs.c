@@ -34968,7 +34968,7 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
     }
     if ((flags & (JS_PROP_HAS_SET | JS_PROP_HAS_GET)) &&
         (flags & (JS_PROP_HAS_VALUE | JS_PROP_HAS_WRITABLE))) {
-        JS_ThrowTypeError(ctx, "Invalid property descriptor. Cannot both specify accessors and a value or writable attribute");
+        JS_ThrowTypeError(ctx, "cannot have setter/getter and value or writable");
         goto fail;
     }
     d->flags = flags;
