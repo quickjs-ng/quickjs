@@ -31466,6 +31466,25 @@ static __exception int js_parse_directives(JSParseState *s)
     return js_parse_seek_token(s, &pos);
 }
 
+static BOOL js_invalid_strict_name(JSAtom name) {
+    switch (name) {
+    case JS_ATOM_eval:
+    case JS_ATOM_arguments:
+    case JS_ATOM_implements: // future strict reserved words
+    case JS_ATOM_interface:
+    case JS_ATOM_let:
+    case JS_ATOM_package:
+    case JS_ATOM_private:
+    case JS_ATOM_protected:
+    case JS_ATOM_public:
+    case JS_ATOM_static:
+    case JS_ATOM_yield:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 static int js_parse_function_check_names(JSParseState *s, JSFunctionDef *fd,
                                          JSAtom func_name)
 {
@@ -31476,13 +31495,12 @@ static int js_parse_function_check_names(JSParseState *s, JSFunctionDef *fd,
         if (!fd->has_simple_parameter_list && fd->has_use_strict) {
             return js_parse_error(s, "\"use strict\" not allowed in function with default or destructuring parameter");
         }
-        if (func_name == JS_ATOM_eval || func_name == JS_ATOM_arguments) {
+        if (js_invalid_strict_name(func_name)) {
             return js_parse_error(s, "invalid function name in strict code");
         }
         for (idx = 0; idx < fd->arg_count; idx++) {
             name = fd->args[idx].var_name;
-
-            if (name == JS_ATOM_eval || name == JS_ATOM_arguments) {
+            if (js_invalid_strict_name(name)) {
                 return js_parse_error(s, "invalid argument name in strict code");
             }
         }
@@ -34950,7 +34968,7 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
     }
     if ((flags & (JS_PROP_HAS_SET | JS_PROP_HAS_GET)) &&
         (flags & (JS_PROP_HAS_VALUE | JS_PROP_HAS_WRITABLE))) {
-        JS_ThrowTypeError(ctx, "cannot have setter/getter and value or writable");
+        JS_ThrowTypeError(ctx, "Invalid property descriptor. Cannot both specify accessors and a value or writable attribute");
         goto fail;
     }
     d->flags = flags;

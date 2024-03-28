@@ -10,24 +10,25 @@ function assert(actual, expected, message) {
     &&  actual.toString() === expected.toString())
         return;
 
+    var msg = message ? " (" + message + ")" : "";
     throw Error("assertion failed: got |" + actual + "|" +
-                ", expected |" + expected + "|" +
-                (message ? " (" + message + ")" : ""));
+                ", expected |" + expected + "|" + msg);
 }
 
-function assert_throws(expected_error, func)
+function assert_throws(expected_error, func, message)
 {
     var err = false;
+    var msg = message ? " (" + message + ")" : "";
     try {
         func();
     } catch(e) {
         err = true;
         if (!(e instanceof expected_error)) {
-            throw Error("unexpected exception type");
+            throw Error(`expected ${expected_error.name}, got ${e.name}${msg}`);
         }
     }
     if (!err) {
-        throw Error("expected exception");
+        throw Error(`expected ${expected_error.name}${msg}`);
     }
 }
 
@@ -536,6 +537,45 @@ function test_function_expr_name()
     assert_throws(TypeError, f);
 }
 
+function test_name(name, err)
+{
+    var s1 = `(function() { var ${name}; ${name} = 1; return ${name}; })()`;
+    assert(1, eval(s1), `for ${s1}`);
+    var s1 = `(function(${name}) { ${name} = 1; return ${name}; })()`;
+    assert(1, eval(s1), `for ${s1}`);
+    var s1 = `(function ${name}() { return ${name} ? 1 : 0; })()`;
+    assert(1, eval(s1), `for ${s1}`);
+    var s2 = `"use strict"; (function() { var ${name}; ${name} = 1; return ${name}; })()`;
+    if (err)
+        assert_throws(err, () => eval(s2), `for ${s2}`);
+    else
+        assert(1, eval(s2));
+    var s2 = `"use strict"; (function(${name}) { ${name} = 1; return ${name}; })()`;
+    if (err)
+        assert_throws(err, () => eval(s2), `for ${s2}`);
+    else
+        assert(1, eval(s2));
+    var s2 = `"use strict"; (function ${name}() { return ${name} ? 1 : 0; })()`;
+    if (err)
+        assert_throws(err, () => eval(s2), `for ${s2}`);
+    else
+        assert(1, eval(s2));
+}
+
+function test_reserved_names()
+{
+    test_name('await');
+    test_name('yield', SyntaxError);
+    test_name('implements', SyntaxError);
+    test_name('interface', SyntaxError);
+    test_name('let', SyntaxError);
+    test_name('package', SyntaxError);
+    test_name('private', SyntaxError);
+    test_name('protected', SyntaxError);
+    test_name('public', SyntaxError);
+    test_name('static', SyntaxError);
+}
+
 test_op1();
 test_cvt();
 test_eq();
@@ -555,3 +595,4 @@ test_spread();
 test_function_length();
 test_argument_scope();
 test_function_expr_name();
+test_reserved_names();
