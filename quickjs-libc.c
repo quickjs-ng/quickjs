@@ -2104,7 +2104,6 @@ static JSValue js_os_clearTimeout(JSContext *ctx, JSValue this_val,
     unlink_timer(JS_GetRuntime(ctx), th);
     JS_FreeValue(ctx, th->func);
     th->func = JS_UNDEFINED;
-    th->repeats = FALSE;
     return JS_UNDEFINED;
 }
 
@@ -2133,7 +2132,6 @@ static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts)
     JSOSTimer *th;
     int min_delay;
     int64_t cur_time, delay;
-    JSOSRWHandler *rh;
     struct list_head *el;
 
     if (list_empty(&ts->os_timers))
