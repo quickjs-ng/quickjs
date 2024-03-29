@@ -112,8 +112,10 @@ typedef struct {
 
 typedef struct {
     struct list_head link;
-    BOOL has_object;
+    uint8_t has_object:1;
+    uint8_t repeats:1;
     int64_t timeout;
+    int64_t delay;
     JSValue func;
 } JSOSTimer;
 
@@ -2016,6 +2018,11 @@ static JSValue js_os_now(JSContext *ctx, JSValue this_val,
     return JS_NewInt64(ctx, js__hrtime_ns() / 1000);
 }
 
+static uint64_t js__hrtime_ms(void)
+{
+    return js__hrtime_ns() / (1000 * 1000);
+}
+
 static void unlink_timer(JSRuntime *rt, JSOSTimer *th)
 {
     if (th->link.prev) {
@@ -2051,8 +2058,10 @@ static void js_os_timer_mark(JSRuntime *rt, JSValue val,
     }
 }
 
+// TODO(bnoordhuis) accept string as first arg and eval at timer expiry
+// TODO(bnoordhuis) retain argv[2..] as args for callback if argc > 2
 static JSValue js_os_setTimeout(JSContext *ctx, JSValue this_val,
-                                int argc, JSValue *argv)
+                                int argc, JSValue *argv, int magic)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = JS_GetRuntimeOpaque(rt);
@@ -2066,6 +2075,8 @@ static JSValue js_os_setTimeout(JSContext *ctx, JSValue this_val,
         return JS_ThrowTypeError(ctx, "not a function");
     if (JS_ToInt64(ctx, &delay, argv[1]))
         return JS_EXCEPTION;
+    if (delay < 1)
+        delay = 1;
     obj = JS_NewObjectClass(ctx, js_os_timer_class_id);
     if (JS_IsException(obj))
         return obj;
@@ -2075,7 +2086,9 @@ static JSValue js_os_setTimeout(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     }
     th->has_object = TRUE;
-    th->timeout = js__hrtime_ns() / 1e6 + delay;
+    th->repeats = (magic > 0);
+    th->timeout = js__hrtime_ms() + delay;
+    th->delay = delay;
     th->func = JS_DupValue(ctx, func);
     list_add_tail(&th->link, &ts->os_timers);
     JS_SetOpaque(obj, th);
@@ -2089,6 +2102,9 @@ static JSValue js_os_clearTimeout(JSContext *ctx, JSValue this_val,
     if (!th)
         return JS_EXCEPTION;
     unlink_timer(JS_GetRuntime(ctx), th);
+    JS_FreeValue(ctx, th->func);
+    th->func = JS_UNDEFINED;
+    th->repeats = FALSE;
     return JS_UNDEFINED;
 }
 
@@ -2111,6 +2127,44 @@ static void call_handler(JSContext *ctx, JSValue func)
     JS_FreeValue(ctx, ret);
 }
 
+static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts)
+{
+    JSValue func;
+    JSOSTimer *th;
+    int min_delay;
+    int64_t cur_time, delay;
+    JSOSRWHandler *rh;
+    struct list_head *el;
+
+    if (list_empty(&ts->os_timers))
+        return -1;
+
+    cur_time = js__hrtime_ms();
+    min_delay = 10000;
+
+    list_for_each(el, &ts->os_timers) {
+        th = list_entry(el, JSOSTimer, link);
+        delay = th->timeout - cur_time;
+        if (delay > 0) {
+            min_delay = min_int(min_delay, delay);
+        } else {
+            func = JS_DupValueRT(rt, th->func);
+            unlink_timer(rt, th);
+            if (th->repeats) {
+                th->timeout = cur_time + th->delay;
+                list_add_tail(&th->link, &ts->os_timers);
+            } else if (!th->has_object) {
+                free_timer(rt, th);
+            }
+            call_handler(ctx, func);
+            JS_FreeValueRT(rt, func);
+            return 0;
+        }
+    }
+
+    return min_delay;
+}
+
 #if defined(_WIN32)
 
 static int js_os_poll(JSContext *ctx)
@@ -2118,40 +2172,17 @@ static int js_os_poll(JSContext *ctx)
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = JS_GetRuntimeOpaque(rt);
     int min_delay, console_fd;
-    int64_t cur_time, delay;
     JSOSRWHandler *rh;
     struct list_head *el;
 
     /* XXX: handle signals if useful */
 
-    if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->os_timers))
-        return -1; /* no more events */
-
-    /* XXX: only timers and basic console input are supported */
-    if (!list_empty(&ts->os_timers)) {
-        cur_time = js__hrtime_ns() / 1e6;
-        min_delay = 10000;
-        list_for_each(el, &ts->os_timers) {
-            JSOSTimer *th = list_entry(el, JSOSTimer, link);
-            delay = th->timeout - cur_time;
-            if (delay <= 0) {
-                JSValue func;
-                /* the timer expired */
-                func = th->func;
-                th->func = JS_UNDEFINED;
-                unlink_timer(rt, th);
-                if (!th->has_object)
-                    free_timer(rt, th);
-                call_handler(ctx, func);
-                JS_FreeValue(ctx, func);
-                return 0;
-            } else if (delay < min_delay) {
-                min_delay = delay;
-            }
-        }
-    } else {
-        min_delay = -1;
-    }
+    min_delay = js_os_run_timers(rt, ctx, ts);
+    if (min_delay == 0)
+        return 0; // expired timer
+    if (min_delay < 0)
+        if (list_empty(&ts->os_rw_handlers))
+            return -1; /* no more events */
 
     console_fd = -1;
     list_for_each(el, &ts->os_rw_handlers) {
@@ -2270,7 +2301,6 @@ static int js_os_poll(JSContext *ctx)
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = JS_GetRuntimeOpaque(rt);
     int ret, fd_max, min_delay;
-    int64_t cur_time, delay;
     fd_set rfds, wfds;
     JSOSRWHandler *rh;
     struct list_head *el;
@@ -2293,36 +2323,18 @@ static int js_os_poll(JSContext *ctx)
         }
     }
 
-    if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->os_timers) &&
-        list_empty(&ts->port_list))
-        return -1; /* no more events */
+    min_delay = js_os_run_timers(rt, ctx, ts);
+    if (min_delay == 0)
+        return 0; // expired timer
+    if (min_delay < 0)
+        if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))
+            return -1; /* no more events */
 
-    if (!list_empty(&ts->os_timers)) {
-        cur_time = js__hrtime_ns() / 1e6;
-        min_delay = 10000;
-        list_for_each(el, &ts->os_timers) {
-            JSOSTimer *th = list_entry(el, JSOSTimer, link);
-            delay = th->timeout - cur_time;
-            if (delay <= 0) {
-                JSValue func;
-                /* the timer expired */
-                func = th->func;
-                th->func = JS_UNDEFINED;
-                unlink_timer(rt, th);
-                if (!th->has_object)
-                    free_timer(rt, th);
-                call_handler(ctx, func);
-                JS_FreeValue(ctx, func);
-                return 0;
-            } else if (delay < min_delay) {
-                min_delay = delay;
-            }
-        }
+    tvp = NULL;
+    if (min_delay >= 0) {
         tv.tv_sec = min_delay / 1000;
         tv.tv_usec = (min_delay % 1000) * 1000;
         tvp = &tv;
-    } else {
-        tvp = NULL;
     }
 
     FD_ZERO(&rfds);
@@ -3686,8 +3698,11 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("cputime", 0, js_os_cputime ),
 #endif
     JS_CFUNC_DEF("now", 0, js_os_now ),
-    JS_CFUNC_DEF("setTimeout", 2, js_os_setTimeout ),
+    JS_CFUNC_MAGIC_DEF("setTimeout", 2, js_os_setTimeout, 0 ),
+    JS_CFUNC_MAGIC_DEF("setInterval", 2, js_os_setTimeout, 1 ),
+    // per spec: both functions can cancel timeouts and intervals
     JS_CFUNC_DEF("clearTimeout", 1, js_os_clearTimeout ),
+    JS_CFUNC_DEF("clearInterval", 1, js_os_clearTimeout ),
     JS_PROP_STRING_DEF("platform", OS_PLATFORM, 0 ),
     JS_CFUNC_DEF("getcwd", 0, js_os_getcwd ),
     JS_CFUNC_DEF("chdir", 0, js_os_chdir ),
