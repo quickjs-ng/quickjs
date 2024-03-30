@@ -254,7 +254,16 @@ function test_os_exec()
     }
 }
 
-function test_timer()
+function test_interval()
+{
+    var t = os.setInterval(f, 1);
+    function f() {
+        if (++f.count === 3) os.clearInterval(t);
+    }
+    f.count = 0;
+}
+
+function test_timeout()
 {
     var th, i;
 
@@ -266,6 +275,18 @@ function test_timer()
         os.clearTimeout(th[i]);
 }
 
+function test_timeout_order()
+{
+    var s = "";
+    os.setTimeout(a, 1);
+    os.setTimeout(b, 2);
+    os.setTimeout(d, 5);
+    function a() { s += "a"; os.setTimeout(c, 0); }
+    function b() { s += "b"; }
+    function c() { s += "c"; }
+    function d() { assert(s === "abc"); } // not "acb"
+}
+
 test_printf();
 test_file1();
 test_file2();
@@ -273,4 +294,6 @@ test_getline();
 test_popen();
 test_os();
 !isWin && test_os_exec();
-test_timer();
+test_interval();
+test_timeout();
+test_timeout_order();
