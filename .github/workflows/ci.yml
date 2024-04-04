@@ -325,9 +325,10 @@ jobs:
         buildType: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
       - name: build
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Visual Studio 17 2022"
+          cmake -B build -DCMAKE_BUILD_TYPE=${{matrix.buildType}}
           cmake --build build --target qjs_exe
           cmake --build build --target function_source
       - name: stats
