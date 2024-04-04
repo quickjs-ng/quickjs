@@ -560,7 +560,7 @@ import * as os from "os";
         return s;
     }
     function get_context_object(line, pos) {
-        var obj, base, c;
+        var obj, base, base_pos, c;
         if (pos <= 0 || " ~!%^&*(-+={[|:;,<>?/".indexOf(line[pos - 1]) >= 0)
             return g;
         if (pos >= 2 && line[pos - 1] === ".") {
@@ -569,9 +569,10 @@ import * as os from "os";
             switch (c = line[pos - 1]) {
             case '\'':
             case '\"':
+            case '`':
                 return "a";
             case ']':
-                return [];
+                return [];  // incorrect for a[b].<TAB>
             case '}':
                 return {};
             case '/':
@@ -579,18 +580,27 @@ import * as os from "os";
             default:
                 if (is_word(c)) {
                     base = get_context_word(line, pos);
-                    if (["true", "false", "null", "this"].includes(base) || !isNaN(+base))
-                        return eval(base);
-                    // Check if `base` is a set of regexp flags
-                    if (pos - base.length >= 3 && line[pos - base.length - 1] === '/')
-                        return new RegExp('', base);
-                    obj = get_context_object(line, pos - base.length);
+                    base_pos = pos - base.length;
+                    if (base == 'true' || base == 'false')
+                        return true;
+                    if (base == 'null')
+                        return null;
+                    if (base == 'this')
+                        return g;
+                    if (!isNaN(+base))  // incorrect for 1.<TAB>
+                        return 0;
+                    obj = get_context_object(line, base_pos);
                     if (obj === null || obj === void 0)
                         return obj;
-                    if (obj === g && obj[base] === void 0)
-                        return eval(base);
-                    else
+                    if (typeof obj[base] !== 'undefined')
                         return obj[base];
+                    // Check if `base` is a set of regexp flags
+                    // TODO(chqrlie): this is incorrect for a/i<TAB>...
+                    // Should use colorizer to determine the token type
+                    if (base_pos >= 3 && line[base_pos - 1] === '/' && base.match(/^[dgimsuvy]+$/))
+                        return RegExp();
+                    // base is a local identifier, cannot complete
+                    return void 0;
                 }
                 return {};
             }
