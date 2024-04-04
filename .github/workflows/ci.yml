@@ -243,11 +243,12 @@ jobs:
           make stats
 
   macos:
-    runs-on: [macos-12, macos-14]
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         buildType: [Debug, Release]
+        os: [macos-12, macos-14]
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -260,7 +261,11 @@ jobs:
         run: |
           make test
   macos-examples:
-    runs-on: [macos-12, macos-14]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-12, macos-14]
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -282,7 +287,11 @@ jobs:
           ./build/qjs tests/test_bjson.js
           ./build/function_source
   macos-shared:
-    runs-on: [macos-12, macos-14]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-12, macos-14]
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -293,7 +302,11 @@ jobs:
         run: |
           make stats
   macos-asan:
-    runs-on: [macos-12, macos-14]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-12, macos-14]
     steps:
       - uses: actions/checkout@v4
       - name: build
@@ -305,7 +318,11 @@ jobs:
         run: |
           make test
   macos-ubsan:
-    runs-on: [macos-12, macos-14]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-12, macos-14]
     steps:
       - uses: actions/checkout@v4
       - name: build
