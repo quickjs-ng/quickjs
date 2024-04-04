@@ -289,6 +289,7 @@ int main(int argc, char **argv)
     char *expr = NULL;
     int interactive = 0;
     int dump_memory = 0;
+    int dump_flags = 0;
     int trace_memory = 0;
     int empty_run = 0;
     int module = -1;
@@ -308,12 +309,16 @@ int main(int argc, char **argv)
     while (optind < argc && *argv[optind] == '-') {
         char *arg = argv[optind] + 1;
         const char *longopt = "";
+        char *opt_arg = NULL;
         /* a single - is not an option, it also stops argument scanning */
         if (!*arg)
             break;
         optind++;
         if (*arg == '-') {
             longopt = arg + 1;
+            opt_arg = strchr(longopt, '=');
+            if (opt_arg)
+                *opt_arg++ = '\0';
             arg += strlen(arg);
             /* -- stops argument scanning */
             if (!*longopt)
@@ -321,23 +326,25 @@ int main(int argc, char **argv)
         }
         for (; *arg || *longopt; longopt = "") {
             char opt = *arg;
-            if (opt)
+            if (opt) {
                 arg++;
+                if (!opt_arg && *arg)
+                    opt_arg = arg;
+            }
             if (opt == 'h' || opt == '?' || !strcmp(longopt, "help")) {
                 help();
                 continue;
             }
             if (opt == 'e' || !strcmp(longopt, "eval")) {
-                if (*arg) {
-                    expr = arg;
-                    break;
+                if (!opt_arg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "qjs: missing expression for -e\n");
+                        exit(2);
+                    }
+                    opt_arg = argv[optind++];
                 }
-                if (optind < argc) {
-                    expr = argv[optind++];
-                    break;
-                }
-                fprintf(stderr, "qjs: missing expression for -e\n");
-                exit(2);
+                expr = opt_arg;
+                break;
             }
             if (opt == 'I' || !strcmp(longopt, "include")) {
                 if (optind >= argc) {
@@ -364,6 +371,10 @@ int main(int argc, char **argv)
                 continue;
             }
             if (opt == 'd' || !strcmp(longopt, "dump")) {
+                if (opt_arg) {
+                    dump_flags = strtol(opt_arg, NULL, 16);
+                    break;
+                }
                 dump_memory++;
                 continue;
             }
@@ -384,20 +395,28 @@ int main(int argc, char **argv)
                 continue;
             }
             if (!strcmp(longopt, "memory-limit")) {
-                if (optind >= argc) {
-                    fprintf(stderr, "expecting memory limit");
-                    exit(1);
+                if (!opt_arg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "expecting memory limit");
+                        exit(1);
+                    }
+                    opt_arg = argv[optind++];
                 }
-                memory_limit = (size_t)strtod(argv[optind++], NULL);
-                continue;
+                // TODO(chqrlie): accept kmg suffixes
+                memory_limit = (size_t)strtod(opt_arg, NULL);
+                break;
             }
             if (!strcmp(longopt, "stack-size")) {
-                if (optind >= argc) {
-                    fprintf(stderr, "expecting stack size");
-                    exit(1);
+                if (!opt_arg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "expecting stack size");
+                        exit(1);
+                    }
+                    opt_arg = argv[optind++];
                 }
-                stack_size = (size_t)strtod(argv[optind++], NULL);
-                continue;
+                // TODO(chqrlie): accept kmg suffixes
+                stack_size = (size_t)strtod(opt_arg, NULL);
+                break;
             }
             if (opt) {
                 fprintf(stderr, "qjs: unknown option '-%c'\n", opt);
@@ -422,6 +441,8 @@ int main(int argc, char **argv)
         JS_SetMemoryLimit(rt, memory_limit);
     if (stack_size != 0)
         JS_SetMaxStackSize(rt, stack_size);
+    if (dump_flags != 0)
+        JS_SetDumpFlags(rt, dump_flags);
     js_std_set_worker_new_context_func(JS_NewCustomContext);
     js_std_init_handlers(rt);
     ctx = JS_NewCustomContext(rt);
