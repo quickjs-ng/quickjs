@@ -1503,7 +1503,9 @@ void update_stats(JSRuntime *rt, const char *filename) {
     JS_ComputeMemoryUsage(rt, &stats);
     if (stats_count++ == 0) {
         stats_avg = stats_all = stats_min = stats_max = stats;
+        free(stats_min_filename);
         stats_min_filename = strdup(filename);
+        free(stats_max_filename);
         stats_max_filename = strdup(filename);
     } else {
         if (stats_max.malloc_size < stats.malloc_size) {
@@ -2178,7 +2180,12 @@ int main(int argc, char **argv)
     free(harness_dir);
     free(harness_features);
     free(harness_exclude);
+    free(harness_skip_features);
     free(error_file);
+    free(error_filename);
+    free(report_filename);
+    free(stats_min_filename);
+    free(stats_max_filename);
 
     /* Signal that the error file is out of date. */
     return new_errors || changed_errors || fixed_errors;
