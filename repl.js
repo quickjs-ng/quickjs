@@ -551,21 +551,22 @@ import * as os from "os";
         cursor_pos = 0;
     }
 
-    function get_context_word(line, pos) {
-        var s = "";
-        while (pos > 0 && is_word(line[pos - 1])) {
+    function get_context_word(line, end) {
+        var pos = end;
+        while (pos > 0 && is_word(line[pos - 1]))
             pos--;
-            s = line[pos] + s;
-        }
-        return s;
+        return line.slice(pos, end);
     }
     function get_context_object(line, pos) {
-        var obj, base, base_pos, c;
-        if (pos <= 0 || " ~!%^&*(-+={[|:;,<>?/".indexOf(line[pos - 1]) >= 0)
+        if (pos <= 0)
             return g;
-        if (pos >= 2 && line[pos - 1] === ".") {
+        var c = line[pos - 1];
+        if (pos === 1 && c === '\\')
+            return directives;
+        if ("'\"`@#)]}\\".indexOf(c) >= 0)
+            return void 0;
+        if (pos >= 2 && c === ".") {
             pos--;
-            obj = {};
             switch (c = line[pos - 1]) {
             case '\'':
             case '\"':
@@ -573,23 +574,21 @@ import * as os from "os";
                 return "a";
             case ']':
                 return [];  // incorrect for a[b].<TAB>
-            case '}':
-                return {};
             case '/':
                 return / /;
             default:
                 if (is_word(c)) {
-                    base = get_context_word(line, pos);
-                    base_pos = pos - base.length;
-                    if (base == 'true' || base == 'false')
+                    var base = get_context_word(line, pos);
+                    var base_pos = pos - base.length;
+                    if (base === 'true' || base === 'false')
                         return true;
-                    if (base == 'null')
+                    if (base === 'null')
                         return null;
-                    if (base == 'this')
+                    if (base === 'this')
                         return g;
-                    if (!isNaN(+base))  // incorrect for 1.<TAB>
+                    if (!isNaN(+base))  // number literal, incorrect for 1.<TAB>
                         return 0;
-                    obj = get_context_object(line, base_pos);
+                    var obj = get_context_object(line, base_pos);
                     if (obj === null || obj === void 0)
                         return obj;
                     if (typeof obj[base] !== 'undefined')
@@ -599,13 +598,13 @@ import * as os from "os";
                     // Should use colorizer to determine the token type
                     if (base_pos >= 3 && line[base_pos - 1] === '/' && base.match(/^[dgimsuvy]+$/))
                         return RegExp();
-                    // base is a local identifier, cannot complete
-                    return void 0;
+                    // base is a local identifier, complete as generic object
                 }
-                return {};
+                break;
             }
+            return {};
         }
-        return void 0;
+        return g;
     }
 
     function get_completions(line, pos) {
@@ -1053,6 +1052,10 @@ import * as os from "os";
                   "\\clear      clear the terminal\n" +
                   "\\q          exit\n");
     }
+
+    var directives = Object.setPrototypeOf({
+        h: "h", help: "help", load: "load", x: "x", d: "d", t: "t",
+        clear: "clear", q: "q" }, null);
 
     function eval_and_print(expr) {
         var result;
