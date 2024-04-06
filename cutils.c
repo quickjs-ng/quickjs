@@ -658,12 +658,19 @@ uint64_t js__hrtime_ns(void) {
 }
 #else
 uint64_t js__hrtime_ns(void) {
-  struct timespec t;
+#if defined(__APPLE__)
+    int r = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
+    if (r == 0)
+        abort();
+    return r;
+#else
+    struct timespec t;
 
-  if (clock_gettime(CLOCK_MONOTONIC, &t))
-    abort();
+    if (clock_gettime(CLOCK_MONOTONIC, &t))
+        abort();
 
-  return t.tv_sec * NANOSEC + t.tv_nsec;
+    return t.tv_sec * NANOSEC + t.tv_nsec;
+#endif
 }
 #endif
 
