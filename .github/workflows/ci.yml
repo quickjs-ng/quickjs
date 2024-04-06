@@ -390,6 +390,38 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe tests\test_queue_microtask.js
           build\${{matrix.buildType}}\function_source.exe
 
+  windows-ninja:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        buildType: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: install ninja
+        run: |
+          choco install ninja
+          ninja.exe --version
+      - name: build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Ninja"
+          cmake --build build --target qjs_exe
+          cmake --build build --target function_source
+      - name: stats
+        run: |
+          build\qjs.exe -qd
+      - name: test
+        run: |
+          build\qjs.exe tests\test_bigint.js
+          build\qjs.exe tests\test_closure.js
+          build\qjs.exe tests\test_language.js
+          build\qjs.exe tests\test_builtin.js
+          build\qjs.exe tests\test_loop.js
+          build\qjs.exe tests\test_std.js
+          build\qjs.exe tests\test_worker.js
+          build\qjs.exe tests\test_queue_microtask.js
+          build\function_source.exe
+
   windows-mingw:
     runs-on: windows-latest
     strategy:
