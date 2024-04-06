@@ -217,7 +217,7 @@ import * as os from "os";
             var style = style_names[i = j];
             while (++j < str.length && style_names[j] == style)
                 continue;
-            std.puts(colors[styles[style] || 'default']);
+            std.puts(colors[styles[style] || 'none']);
             std.puts(str.substring(i, j));
             std.puts(colors['none']);
         }
@@ -561,11 +561,11 @@ import * as os from "os";
         if (pos <= 0)
             return g;
         var c = line[pos - 1];
-        if (pos === 1 && c === '\\')
+        if (pos === 1 && (c === '\\' || c === '.'))
             return directives;
         if ("'\"`@#)]}\\".indexOf(c) >= 0)
             return void 0;
-        if (pos >= 2 && c === ".") {
+        if (c === ".") {
             pos--;
             switch (c = line[pos - 1]) {
             case '\'':
@@ -1002,60 +1002,72 @@ import * as os from "os";
         }
         print_rec(a);
     }
-    
-    function extract_directive(a) {
-        var pos;
-        if (a[0] !== '\\')
-            return "";
-        for (pos = 1; pos < a.length; pos++) {
-            if (!is_alpha(a[pos]))
-                break;
-        }
-        return a.substring(1, pos);
-    }
 
-    /* return true if the string after cmd can be evaluted as JS */
-    function handle_directive(cmd, expr) {
-        if (cmd === "h" || cmd === "?" || cmd == "help") {
+    /* return true if the string was a directive */
+    function handle_directive(a) {
+        var pos;
+        if (a === "?") {
             help();
-        } else if (cmd === "load") {
-            var filename = expr.substring(cmd.length + 1).trim();
-            if (filename.lastIndexOf(".") <= filename.lastIndexOf("/"))
-                filename += ".js";
-            std.loadScript(filename);
+            return true;
+        }
+        if (a[0] !== '\\' && a[0] !== '.')
             return false;
-        } else if (cmd === "x") {
-            hex_mode = true;
-        } else if (cmd === "d") {
-            hex_mode = false;
-        } else if (cmd === "t") {
-            show_time = !show_time;
-        } else if (cmd === "clear") {
-            std.puts("\x1b[H\x1b[J");
-        } else if (cmd === "q") {
-            std.exit(0);
+        var pos = 1;
+        while (pos < a.length && is_alpha(a[pos])) {
+            pos++;
+        }
+        var cmd = a.substring(1, pos);
+        var partial = 0;
+        var fun;
+        for (var p in directives) {
+            if (p.startsWith(cmd)) {
+                fun = directives[p];
+                partial++;
+                if (p === cmd) {
+                    partial = 0;
+                    break;
+                }
+            }
+        }
+        if (fun && partial < 2) {
+            fun(a.substring(pos).trim());
         } else {
-            std.puts("Unknown directive: " + cmd + "\n");
-            return false;
+            std.puts(`Unknown directive: ${cmd}\n`);
         }
         return true;
     }
 
     function help() {
-        function sel(n) {
-            return n ? "*": " ";
-        }
-        std.puts("\\h          this help\n" +
-                 "\\x         " + sel(hex_mode) + "hexadecimal number display\n" +
-                 "\\d         " + sel(!hex_mode) + "decimal number display\n" +
-                 "\\t         " + sel(show_time) + "toggle timing display\n" +
-                  "\\clear      clear the terminal\n" +
-                  "\\q          exit\n");
+        var sel = (n) => n ? "*": " ";
+        std.puts(".help   this help\n" +
+                 ".x     " + sel(hex_mode) + "hexadecimal number display\n" +
+                 ".dec   " + sel(!hex_mode) + "decimal number display\n" +
+                 ".time  " + sel(show_time) + "toggle timing display\n" +
+                 ".color " + sel(show_colors) + "toggle colored output\n" +
+                 ".clear  clear the terminal\n" +
+                 ".quit   exit\n");
+    }
+
+    function load(s) {
+        if (s.lastIndexOf(".") <= s.lastIndexOf("/"))
+            s += ".js";
+        std.loadScript(s);
+    }
+
+    function to_bool(s, def) {
+        return s ? "1 true yes Yes".includes(s) : def;
     }
 
     var directives = Object.setPrototypeOf({
-        h: "h", help: "help", load: "load", x: "x", d: "d", t: "t",
-        clear: "clear", q: "q" }, null);
+        "help":   help,
+        "load":   load,
+        "x":      (s) => { hex_mode = to_bool(s, true); },
+        "dec":    (s) => { hex_mode = !to_bool(s, true); },
+        "time":   (s) => { show_time = to_bool(s, !show_time); },
+        "color":  (s) => { show_colors = to_bool(s, !show_colors); },
+        "clear":  () => { std.puts("\x1b[H\x1b[J") },
+        "quit":   () => { std.exit(0); },
+    }, null);
 
     function eval_and_print(expr) {
         var result;
@@ -1103,28 +1115,15 @@ import * as os from "os";
     }
 
     function handle_cmd(expr) {
-        var colorstate, cmd;
-        
-        if (expr === null) {
-            expr = "";
+        if (!expr)
             return;
-        }
-        if (expr === "?") {
-            help();
-            return;
-        }
-        cmd = extract_directive(expr);
-        if (cmd.length > 0) {
-            if (!handle_directive(cmd, expr))
-                return;
-            expr = expr.substring(cmd.length + 1);
-        }
-        if (expr === "")
-            return;
-        
-        if (mexpr)
+        if (mexpr) {
             expr = mexpr + '\n' + expr;
-        colorstate = colorize_js(expr);
+        } else {
+            if (handle_directive(expr))
+                return;
+        }
+        var colorstate = colorize_js(expr);
         pstate = colorstate[0];
         level = colorstate[1];
         if (pstate) {
