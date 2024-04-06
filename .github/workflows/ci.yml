@@ -377,18 +377,18 @@ jobs:
           cmake --build build --config ${{matrix.buildType}} --target function_source
       - name: stats
         run: |
-          cmd /r build\${{matrix.buildType}}\qjs.exe -qd
+          build\${{matrix.buildType}}\qjs.exe -qd
       - name: test
         run: |
-          cmd /r build\${{matrix.buildType}}\qjs.exe tests\test_bigint.js
-          cmd /r build\${{matrix.buildType}}\qjs.exe tests\test_closure.js
-          cmd /r build\${{matrix.buildType}}\qjs.exe tests\test_language.js
-          cmd /r build\${{matrix.buildType}}\qjs.exe tests\test_builtin.js
-          cmd /r build\${{matrix.buildType}}\qjs.exe tests\test_loop.js
-          cmd /r build\${{matrix.buildType}}\qjs.exe tests\test_std.js
-          cmd /r build\${{matrix.buildType}}\qjs.exe tests\test_worker.js
-          cmd /r build\${{matrix.buildType}}\qjs.exe tests\test_queue_microtask.js
-          cmd /r build\${{matrix.buildType}}\function_source.exe
+          build\${{matrix.buildType}}\qjs.exe tests\test_bigint.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_closure.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_language.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_builtin.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_loop.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_std.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_worker.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_queue_microtask.js
+          build\${{matrix.buildType}}\function_source.exe
 
   windows-mingw:
     runs-on: windows-latest
