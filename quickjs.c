@@ -11789,7 +11789,7 @@ int JS_IsArray(JSContext *ctx, JSValue val)
     }
 }
 
-static double js_pow(double a, double b)
+static double js_math_pow(double a, double b)
 {
     if (unlikely(!isfinite(b)) && fabs(a) == 1) {
         /* not compatible with IEEE 754 */
@@ -12392,7 +12392,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
             }
             break;
         case OP_pow:
-            sp[-2] = js_number(js_pow(v1, v2));
+            sp[-2] = js_number(js_math_pow(v1, v2));
             return 0;
         default:
             abort();
@@ -12425,7 +12425,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
             dr = fmod(d1, d2);
             break;
         case OP_pow:
-            dr = js_pow(d1, d2);
+            dr = js_math_pow(d1, d2);
             break;
         default:
             abort();
@@ -41032,39 +41032,69 @@ static JSValue js_math_random(JSContext *ctx, JSValue this_val,
     return js_float64(u.d - 1.0);
 }
 
+/* use local wrappers for math functions to
+   - avoid initializing data with dynamic library entry points.
+   - avoid some overhead if the call can be inlined at compile or link time.
+ */
+static double js_math_fabs(double d) { return fabs(d); }
+static double js_math_floor(double d) { return floor(d); }
+static double js_math_ceil(double d) { return ceil(d); }
+static double js_math_sqrt(double d) { return sqrt(d); }
+static double js_math_acos(double d) { return acos(d); }
+static double js_math_asin(double d) { return asin(d); }
+static double js_math_atan(double d) { return atan(d); }
+static double js_math_atan2(double a, double b) { return atan2(a, b); }
+static double js_math_cos(double d) { return cos(d); }
+static double js_math_exp(double d) { return exp(d); }
+static double js_math_log(double d) { return log(d); }
+static double js_math_sin(double d) { return sin(d); }
+static double js_math_tan(double d) { return tan(d); }
+static double js_math_trunc(double d) { return trunc(d); }
+static double js_math_cosh(double d) { return cosh(d); }
+static double js_math_sinh(double d) { return sinh(d); }
+static double js_math_tanh(double d) { return tanh(d); }
+static double js_math_acosh(double d) { return acosh(d); }
+static double js_math_asinh(double d) { return asinh(d); }
+static double js_math_atanh(double d) { return atanh(d); }
+static double js_math_expm1(double d) { return expm1(d); }
+static double js_math_log1p(double d) { return log1p(d); }
+static double js_math_log2(double d) { return log2(d); }
+static double js_math_log10(double d) { return log10(d); }
+static double js_math_cbrt(double d) { return cbrt(d); }
+
 static const JSCFunctionListEntry js_math_funcs[] = {
     JS_CFUNC_MAGIC_DEF("min", 2, js_math_min_max, 0 ),
     JS_CFUNC_MAGIC_DEF("max", 2, js_math_min_max, 1 ),
-    JS_CFUNC_SPECIAL_DEF("abs", 1, f_f, fabs ),
-    JS_CFUNC_SPECIAL_DEF("floor", 1, f_f, floor ),
-    JS_CFUNC_SPECIAL_DEF("ceil", 1, f_f, ceil ),
+    JS_CFUNC_SPECIAL_DEF("abs", 1, f_f, js_math_fabs ),
+    JS_CFUNC_SPECIAL_DEF("floor", 1, f_f, js_math_floor ),
+    JS_CFUNC_SPECIAL_DEF("ceil", 1, f_f, js_math_ceil ),
     JS_CFUNC_SPECIAL_DEF("round", 1, f_f, js_math_round ),
-    JS_CFUNC_SPECIAL_DEF("sqrt", 1, f_f, sqrt ),
+    JS_CFUNC_SPECIAL_DEF("sqrt", 1, f_f, js_math_sqrt ),
 
-    JS_CFUNC_SPECIAL_DEF("acos", 1, f_f, acos ),
-    JS_CFUNC_SPECIAL_DEF("asin", 1, f_f, asin ),
-    JS_CFUNC_SPECIAL_DEF("atan", 1, f_f, atan ),
-    JS_CFUNC_SPECIAL_DEF("atan2", 2, f_f_f, atan2 ),
-    JS_CFUNC_SPECIAL_DEF("cos", 1, f_f, cos ),
-    JS_CFUNC_SPECIAL_DEF("exp", 1, f_f, exp ),
-    JS_CFUNC_SPECIAL_DEF("log", 1, f_f, log ),
-    JS_CFUNC_SPECIAL_DEF("pow", 2, f_f_f, js_pow ),
-    JS_CFUNC_SPECIAL_DEF("sin", 1, f_f, sin ),
-    JS_CFUNC_SPECIAL_DEF("tan", 1, f_f, tan ),
+    JS_CFUNC_SPECIAL_DEF("acos", 1, f_f, js_math_acos ),
+    JS_CFUNC_SPECIAL_DEF("asin", 1, f_f, js_math_asin ),
+    JS_CFUNC_SPECIAL_DEF("atan", 1, f_f, js_math_atan ),
+    JS_CFUNC_SPECIAL_DEF("atan2", 2, f_f_f, js_math_atan2 ),
+    JS_CFUNC_SPECIAL_DEF("cos", 1, f_f, js_math_cos ),
+    JS_CFUNC_SPECIAL_DEF("exp", 1, f_f, js_math_exp ),
+    JS_CFUNC_SPECIAL_DEF("log", 1, f_f, js_math_log ),
+    JS_CFUNC_SPECIAL_DEF("pow", 2, f_f_f, js_math_pow ),
+    JS_CFUNC_SPECIAL_DEF("sin", 1, f_f, js_math_sin ),
+    JS_CFUNC_SPECIAL_DEF("tan", 1, f_f, js_math_tan ),
     /* ES6 */
-    JS_CFUNC_SPECIAL_DEF("trunc", 1, f_f, trunc ),
+    JS_CFUNC_SPECIAL_DEF("trunc", 1, f_f, js_math_trunc ),
     JS_CFUNC_SPECIAL_DEF("sign", 1, f_f, js_math_sign ),
-    JS_CFUNC_SPECIAL_DEF("cosh", 1, f_f, cosh ),
-    JS_CFUNC_SPECIAL_DEF("sinh", 1, f_f, sinh ),
-    JS_CFUNC_SPECIAL_DEF("tanh", 1, f_f, tanh ),
-    JS_CFUNC_SPECIAL_DEF("acosh", 1, f_f, acosh ),
-    JS_CFUNC_SPECIAL_DEF("asinh", 1, f_f, asinh ),
-    JS_CFUNC_SPECIAL_DEF("atanh", 1, f_f, atanh ),
-    JS_CFUNC_SPECIAL_DEF("expm1", 1, f_f, expm1 ),
-    JS_CFUNC_SPECIAL_DEF("log1p", 1, f_f, log1p ),
-    JS_CFUNC_SPECIAL_DEF("log2", 1, f_f, log2 ),
-    JS_CFUNC_SPECIAL_DEF("log10", 1, f_f, log10 ),
-    JS_CFUNC_SPECIAL_DEF("cbrt", 1, f_f, cbrt ),
+    JS_CFUNC_SPECIAL_DEF("cosh", 1, f_f, js_math_cosh ),
+    JS_CFUNC_SPECIAL_DEF("sinh", 1, f_f, js_math_sinh ),
+    JS_CFUNC_SPECIAL_DEF("tanh", 1, f_f, js_math_tanh ),
+    JS_CFUNC_SPECIAL_DEF("acosh", 1, f_f, js_math_acosh ),
+    JS_CFUNC_SPECIAL_DEF("asinh", 1, f_f, js_math_asinh ),
+    JS_CFUNC_SPECIAL_DEF("atanh", 1, f_f, js_math_atanh ),
+    JS_CFUNC_SPECIAL_DEF("expm1", 1, f_f, js_math_expm1 ),
+    JS_CFUNC_SPECIAL_DEF("log1p", 1, f_f, js_math_log1p ),
+    JS_CFUNC_SPECIAL_DEF("log2", 1, f_f, js_math_log2 ),
+    JS_CFUNC_SPECIAL_DEF("log10", 1, f_f, js_math_log10 ),
+    JS_CFUNC_SPECIAL_DEF("cbrt", 1, f_f, js_math_cbrt ),
     JS_CFUNC_DEF("hypot", 2, js_math_hypot ),
     JS_CFUNC_DEF("random", 0, js_math_random ),
     JS_CFUNC_SPECIAL_DEF("fround", 1, f_f, js_math_fround ),
