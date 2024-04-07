@@ -3668,10 +3668,9 @@ static int string_buffer_putc(StringBuffer *s, uint32_t c)
 {
     if (unlikely(c >= 0x10000)) {
         /* surrogate pair */
-        c -= 0x10000;
-        if (string_buffer_putc16(s, (c >> 10) + 0xd800))
+        if (string_buffer_putc16(s, get_hi_surrogate(c)))
             return -1;
-        c = (c & 0x3ff) + 0xdc00;
+        c = get_lo_surrogate(c);
     }
     return string_buffer_putc16(s, c);
 }
@@ -3887,9 +3886,8 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
                 } else if (c <= 0x10FFFF) {
                     p = p_next;
                     /* surrogate pair */
-                    c -= 0x10000;
-                    string_buffer_putc16(b, (c >> 10) + 0xd800);
-                    c = (c & 0x3ff) + 0xdc00;
+                    string_buffer_putc16(b, get_hi_surrogate(c));
+                    c = get_lo_surrogate(c);
                 } else {
                     /* invalid char */
                     c = 0xfffd;
@@ -11512,7 +11510,7 @@ static JSValue JS_ToQuotedString(JSContext *ctx, JSValue val1)
                 goto fail;
             break;
         default:
-            if (c < 32 || is_hi_surrogate(c) || is_lo_surrogate(c)) {
+            if (c < 32 || is_surrogate(c)) {
                 snprintf(buf, sizeof(buf), "\\u%04x", c);
                 if (string_buffer_puts8(b, buf))
                     goto fail;
@@ -19816,8 +19814,7 @@ static __exception int json_next_token(JSParseState *s)
                 js_parse_error(s, "Unexpected token '\\x%02x' in JSON", *p);
             } else {
                 if (c > 0xFFFF) {
-                    /* get high surrogate */
-                    c = (c >> 10) - (0x10000 >> 10) + 0xD800;
+                    c = get_hi_surrogate(c);
                 }
                 js_parse_error(s, "Unexpected token '\\u%04x' in JSON", c);
             }
@@ -39573,12 +39570,12 @@ static JSValue js_string_isWellFormed(JSContext *ctx, JSValue this_val,
 
     for (i = 0, n = p->len; i < n; i++) {
         c = p->u.str16[i];
-        if (c < 0xD800 || c > 0xDFFF)
+        if (!is_surrogate(c))
             continue;
-        if (c > 0xDBFF || i+1 == n)
+        if (is_lo_surrogate(c) || i + 1 == n)
             break;
         c = p->u.str16[++i];
-        if (c < 0xDC00 || c > 0xDFFF)
+        if (!is_lo_surrogate(c))
             break;
     }
 
@@ -39615,14 +39612,14 @@ static JSValue js_string_toWellFormed(JSContext *ctx, JSValue this_val,
     p = JS_VALUE_GET_STRING(ret);
     for (i = 0, n = p->len; i < n; i++) {
         c = p->u.str16[i];
-        if (c < 0xD800 || c > 0xDFFF)
+        if (!is_surrogate(c))
             continue;
-        if (c > 0xDBFF || i+1 == n) {
+        if (is_lo_surrogate(c) || i + 1 == n) {
             p->u.str16[i] = 0xFFFD;
             continue;
         }
         c = p->u.str16[++i];
-        if (c < 0xDC00 || c > 0xDFFF)
+        if (!is_lo_surrogate(c))
             p->u.str16[--i] = 0xFFFD;
     }
 
@@ -46883,8 +46880,7 @@ static JSValue js_global_decodeURI(JSContext *ctx, JSValue this_val,
                     }
                     c = (c << 6) | (c1 & 0x3f);
                 }
-                if (c < c_min || c > 0x10FFFF ||
-                    is_hi_surrogate(c) || is_lo_surrogate(c)) {
+                if (c < c_min || c > 0x10FFFF || is_surrogate(c)) {
                     js_throw_URIError(ctx, "malformed UTF-8");
                     goto fail;
                 }

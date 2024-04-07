@@ -384,14 +384,29 @@ static inline void dbuf_set_error(DynBuf *s)
 int unicode_to_utf8(uint8_t *buf, unsigned int c);
 int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp);
 
+static inline BOOL is_surrogate(uint32_t c)
+{
+    return (c >> 11) == (0xD800 >> 11); // 0xD800-0xDFFF
+}
+
 static inline BOOL is_hi_surrogate(uint32_t c)
 {
-    return 54 == (c >> 10); // 0xD800-0xDBFF
+    return (c >> 10) == (0xD800 >> 10); // 0xD800-0xDBFF
 }
 
 static inline BOOL is_lo_surrogate(uint32_t c)
 {
-    return 55 == (c >> 10); // 0xDC00-0xDFFF
+    return (c >> 10) == (0xDC00 >> 10); // 0xDC00-0xDFFF
+}
+
+static inline uint32_t get_hi_surrogate(uint32_t c)
+{
+    return (c >> 10) - (0x10000 >> 10) + 0xD800;
+}
+
+static inline uint32_t get_lo_surrogate(uint32_t c)
+{
+    return (c & 0x3FF) | 0xDC00;
 }
 
 static inline uint32_t from_surrogate(uint32_t hi, uint32_t lo)
