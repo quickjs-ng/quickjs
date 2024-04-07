@@ -3012,19 +3012,22 @@ static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
 {
     if (__JS_AtomIsTaggedInt(atom)) {
         snprintf(buf, buf_size, "%u", __JS_AtomToUInt32(atom));
-    } else {
-        JSAtomStruct *p;
+    } else if (atom == JS_ATOM_NULL) {
+        snprintf(buf, buf_size, "<null>");
+    } else if (atom >= rt->atom_size) {
         assert(atom < rt->atom_size);
-        if (atom == JS_ATOM_NULL) {
-            snprintf(buf, buf_size, "<null>");
+        snprintf(buf, buf_size, "<invalid %x>", atom);
+    } else {
+        JSAtomStruct *p = rt->atom_array[atom];
+        if (atom_is_free(p)) {
+            assert(!atom_is_free(p));
+            snprintf(buf, buf_size, "<free %x>", atom);
         } else {
             int i, c;
             char *q;
             JSString *str;
 
             q = buf;
-            p = rt->atom_array[atom];
-            assert(!atom_is_free(p));
             str = p;
             if (str) {
                 if (!str->is_wide_char) {
@@ -5454,12 +5457,16 @@ void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
 
 #ifdef DUMP_FREE
     {
-        printf("Freeing ");
-        if (tag == JS_TAG_OBJECT) {
-            JS_DumpObject(rt, JS_VALUE_GET_OBJ(v));
-        } else {
-            JS_DumpValue(rt, v);
-            printf("\n");
+        /* Prevent invalid object access during GC */
+        if ((rt->gc_phase != JS_GC_PHASE_REMOVE_CYCLES)
+        ||  (tag != JS_TAG_OBJECT && tag != JS_TAG_FUNCTION_BYTECODE)) {
+            printf("Freeing ");
+            if (tag == JS_TAG_OBJECT) {
+                JS_DumpObject(rt, JS_VALUE_GET_OBJ(v));
+            } else {
+                JS_DumpValue(rt, v);
+                printf("\n");
+            }
         }
     }
 #endif
@@ -11708,7 +11715,11 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValue val)
         {
             JSFunctionBytecode *b = JS_VALUE_GET_PTR(val);
             char buf[ATOM_GET_STR_BUF_SIZE];
-            printf("[bytecode %s]", JS_AtomGetStrRT(rt, buf, sizeof(buf), b->func_name));
+            if (b->func_name) {
+                printf("[bytecode %s]", JS_AtomGetStrRT(rt, buf, sizeof(buf), b->func_name));
+            } else {
+                printf("[bytecode (anonymous)]");
+            }
         }
         break;
     case JS_TAG_OBJECT:
@@ -27476,7 +27487,7 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
 
 #ifdef DUMP_BYTECODE
 static const char *skip_lines(const char *p, int n) {
-    while (n-- > 0 && *p) {
+    while (p && n-- > 0 && *p) {
         while (*p && *p++ != '\n')
             continue;
     }
@@ -27486,7 +27497,7 @@ static const char *skip_lines(const char *p, int n) {
 static void print_lines(const char *source, int line, int line1) {
     const char *s = source;
     const char *p = skip_lines(s, line);
-    if (*p) {
+    if (p && *p) {
         while (line++ < line1) {
             p = skip_lines(s = p, 1);
             printf(";; %.*s", (int)(p - s), s);
