@@ -1029,19 +1029,15 @@ static __exception int JS_ToArrayLengthFree(JSContext *ctx, uint32_t *plen,
 static JSValue JS_EvalObject(JSContext *ctx, JSValue this_obj,
                              JSValue val, int flags, int scope_idx);
 JSValue __attribute__((format(printf, 2, 3))) JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
-static __maybe_unused void JS_DumpAtoms(JSRuntime *rt);
-static __maybe_unused void JS_DumpString(JSRuntime *rt,
-                                                  const JSString *p);
+
+static __maybe_unused void JS_DumpString(JSRuntime *rt, const JSString *p);
 static __maybe_unused void JS_DumpObjectHeader(JSRuntime *rt);
 static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p);
 static __maybe_unused void JS_DumpGCObject(JSRuntime *rt, JSGCObjectHeader *p);
-static __maybe_unused void JS_DumpValueShort(JSRuntime *rt,
-                                                      JSValue val);
-static __maybe_unused void JS_DumpValue(JSContext *ctx, JSValue val);
-static __maybe_unused void JS_PrintValue(JSContext *ctx,
-                                                  const char *str,
-                                                  JSValue val);
+static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValue val);
+static __maybe_unused void JS_DumpAtoms(JSRuntime *rt);
 static __maybe_unused void JS_DumpShapes(JSRuntime *rt);
+
 static JSValue js_function_apply(JSContext *ctx, JSValue this_val,
                                  int argc, JSValue *argv, int magic);
 static void js_array_finalizer(JSRuntime *rt, JSValue val);
@@ -5476,7 +5472,7 @@ void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
         if (tag == JS_TAG_OBJECT) {
             JS_DumpObject(rt, JS_VALUE_GET_OBJ(v));
         } else {
-            JS_DumpValueShort(rt, v);
+            JS_DumpValue(rt, v);
             printf("\n");
         }
     }
@@ -11572,7 +11568,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
             switch (p->class_id) {
             case JS_CLASS_ARRAY:
             case JS_CLASS_ARGUMENTS:
-                JS_DumpValueShort(rt, p->u.array.u.values[i]);
+                JS_DumpValue(rt, p->u.array.u.values[i]);
                 break;
             case JS_CLASS_UINT8C_ARRAY:
             case JS_CLASS_INT8_ARRAY:
@@ -11617,7 +11613,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
                            js_autoinit_get_id(pr),
                            (void *)pr->u.init.opaque);
                 } else {
-                    JS_DumpValueShort(rt, pr->u.value);
+                    JS_DumpValue(rt, pr->u.value);
                 }
                 is_first = FALSE;
             }
@@ -11633,11 +11629,11 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
             printf(" Closure:");
             for(i = 0; i < b->closure_var_count; i++) {
                 printf(" ");
-                JS_DumpValueShort(rt, var_refs[i]->value);
+                JS_DumpValue(rt, var_refs[i]->value);
             }
             if (p->u.func.home_object) {
                 printf(" HomeObject: ");
-                JS_DumpValueShort(rt, JS_MKPTR(JS_TAG_OBJECT, p->u.func.home_object));
+                JS_DumpValue(rt, JS_MKPTR(JS_TAG_OBJECT, p->u.func.home_object));
             }
         }
     }
@@ -11676,8 +11672,7 @@ static __maybe_unused void JS_DumpGCObject(JSRuntime *rt, JSGCObjectHeader *p)
     }
 }
 
-static __maybe_unused void JS_DumpValueShort(JSRuntime *rt,
-                                                      JSValue val)
+static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValue val)
 {
     uint32_t tag = JS_VALUE_GET_NORM_TAG(val);
     const char *str;
@@ -11757,21 +11752,6 @@ static __maybe_unused void JS_DumpValueShort(JSRuntime *rt,
         printf("[unknown tag %d]", tag);
         break;
     }
-}
-
-static __maybe_unused void JS_DumpValue(JSContext *ctx,
-                                                 JSValue val)
-{
-    JS_DumpValueShort(ctx->rt, val);
-}
-
-static __maybe_unused void JS_PrintValue(JSContext *ctx,
-                                                  const char *str,
-                                                  JSValue val)
-{
-    printf("%s=", str);
-    JS_DumpValueShort(ctx->rt, val);
-    printf("\n");
 }
 
 /* return -1 if exception (proxy case) or TRUE/FALSE */
@@ -27695,7 +27675,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
         has_pool_idx:
             printf(" %u: ", idx);
             if (idx < cpool_count) {
-                JS_DumpValue(ctx, cpool[idx]);
+                JS_DumpValue(ctx->rt, cpool[idx]);
             }
             break;
         case OP_FMT_atom:
@@ -45738,7 +45718,7 @@ static JSValue js_promise_resolve_function_call(JSContext *ctx,
         resolution = JS_UNDEFINED;
 #ifdef DUMP_PROMISE
     printf("js_promise_resolving_function_call: is_reject=%d resolution=", is_reject);
-    JS_DumpValue(ctx, resolution);
+    JS_DumpValue(ctx->rt, resolution);
     printf("\n");
 #endif
     if (is_reject || !JS_IsObject(resolution)) {
