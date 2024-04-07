@@ -1513,6 +1513,10 @@ static inline int is_digit(int c) {
     return c >= '0' && c <= '9';
 }
 
+static inline int string_get(const JSString *p, int idx) {
+    return p->is_wide_char ? p->u.str16[idx] : p->u.str8[idx];
+}
+
 static inline BOOL is_be(void)
 {
     union {
@@ -2404,10 +2408,7 @@ static inline BOOL is_num_string(uint32_t *pval, const JSString *p)
     len = p->len;
     if (len == 0 || len > 10)
         return FALSE;
-    if (p->is_wide_char)
-        c = p->u.str16[0];
-    else
-        c = p->u.str8[0];
+    c = string_get(p, 0);
     if (is_num(c)) {
         if (c == '0') {
             if (len != 1)
@@ -2416,10 +2417,7 @@ static inline BOOL is_num_string(uint32_t *pval, const JSString *p)
         } else {
             n = c - '0';
             for(i = 1; i < len; i++) {
-                if (p->is_wide_char)
-                    c = p->u.str16[i];
-                else
-                    c = p->u.str8[i];
+                c = string_get(p, i);
                 if (!is_num(c))
                     return FALSE;
                 n64 = (uint64_t)n * 10 + (c - '0');
@@ -2477,10 +2475,7 @@ static __maybe_unused void JS_DumpString(JSRuntime *rt,
     sep = (p->header.ref_count == 1) ? '\"' : '\'';
     putchar(sep);
     for(i = 0; i < p->len; i++) {
-        if (p->is_wide_char)
-            c = p->u.str16[i];
-        else
-            c = p->u.str8[i];
+        c = string_get(p, i);
         if (c == sep || c == '\\') {
             putchar('\\');
             putchar(c);
@@ -3042,10 +3037,7 @@ static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
                         return (const char *)str->u.str8;
                 }
                 for(i = 0; i < str->len; i++) {
-                    if (str->is_wide_char)
-                        c = str->u.str16[i];
-                    else
-                        c = str->u.str8[i];
+                    c = string_get(str, i);
                     if ((q - buf) >= buf_size - UTF8_CHAR_LEN_MAX)
                         break;
                     if (c < 128) {
@@ -3669,10 +3661,6 @@ static int string_buffer_putc(StringBuffer *s, uint32_t c)
         c = get_lo_surrogate(c);
     }
     return string_buffer_putc16(s, c);
-}
-
-static int string_get(const JSString *p, int idx) {
-    return p->is_wide_char ? p->u.str16[idx] : p->u.str8[idx];
 }
 
 static int string_getc(const JSString *p, int *pidx)
@@ -7142,10 +7130,7 @@ static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
                     uint32_t idx, ch;
                     idx = __JS_AtomToUInt32(prop);
                     if (idx < p1->len) {
-                        if (p1->is_wide_char)
-                            ch = p1->u.str16[idx];
-                        else
-                            ch = p1->u.str8[idx];
+                        ch = string_get(p1, idx);
                         return js_new_string_char(ctx, ch);
                     }
                 } else if (prop == JS_ATOM_length) {
@@ -39106,10 +39091,7 @@ static int js_string_get_own_property(JSContext *ctx,
             idx = __JS_AtomToUInt32(prop);
             if (idx < p1->len) {
                 if (desc) {
-                    if (p1->is_wide_char)
-                        ch = p1->u.str16[idx];
-                    else
-                        ch = p1->u.str8[idx];
+                    ch = string_get(p1, idx);
                     desc->flags = JS_PROP_ENUMERABLE;
                     desc->value = js_new_string_char(ctx, ch);
                     desc->getter = JS_UNDEFINED;
@@ -39264,7 +39246,7 @@ static JSValue js_string_fromCodePoint(JSContext *ctx, JSValue this_val,
         } else {
             if (JS_ToFloat64(ctx, &d, argv[i]))
                 goto fail;
-            if (d < 0 || d > 0x10ffff || (c = (int)d) != d)
+            if (!(d >= 0 && d <= 0x10ffff) || (c = (int)d) != d)
                 goto range_error;
         }
         if (string_buffer_putc(b, c))
@@ -39366,10 +39348,7 @@ static JSValue js_string_at(JSContext *ctx, JSValue this_val,
     if (idx < 0 || idx >= p->len) {
         ret = JS_UNDEFINED;
     } else {
-        if (p->is_wide_char)
-            c = p->u.str16[idx];
-        else
-            c = p->u.str8[idx];
+        c = string_get(p, idx);
         ret = js_new_string_char(ctx, c);
     }
     JS_FreeValue(ctx, val);
@@ -39394,10 +39373,7 @@ static JSValue js_string_charCodeAt(JSContext *ctx, JSValue this_val,
     if (idx < 0 || idx >= p->len) {
         ret = JS_NAN;
     } else {
-        if (p->is_wide_char)
-            c = p->u.str16[idx];
-        else
-            c = p->u.str8[idx];
+        c = string_get(p, idx);
         ret = js_int32(c);
     }
     JS_FreeValue(ctx, val);
@@ -39422,10 +39398,7 @@ static JSValue js_string_charAt(JSContext *ctx, JSValue this_val,
     if (idx < 0 || idx >= p->len) {
         ret = js_new_string8(ctx, NULL, 0);
     } else {
-        if (p->is_wide_char)
-            c = p->u.str16[idx];
-        else
-            c = p->u.str8[idx];
+        c = string_get(p, idx);
         ret = js_new_string_char(ctx, c);
     }
     JS_FreeValue(ctx, val);
