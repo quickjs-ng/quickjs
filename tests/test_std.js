@@ -281,10 +281,10 @@ function test_timeout_order()
     os.setTimeout(a, 1);
     os.setTimeout(b, 2);
     os.setTimeout(d, 5);
-    function a() { s += "a"; os.setTimeout(c, 0); }
-    function b() { s += "b"; }
-    function c() { s += "c"; }
-    function d() { assert(s === "abc"); } // not "acb"
+    function a() { console.log("a:", s); s += "a"; os.setTimeout(c, 0); }
+    function b() { console.log("b:", s); s += "b"; }
+    function c() { console.log("c:", s); s += "c"; }
+    function d() { console.log("d:", s); assert(s === "abc"); } // not "acb"
 }
 
 test_printf();
