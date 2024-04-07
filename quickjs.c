@@ -37487,7 +37487,7 @@ static JSValue js_array_includes(JSContext *ctx, JSValue this_val,
     if (js_get_length64(ctx, &len, obj))
         goto exception;
 
-    res = FALSE;
+    res = TRUE;
     if (len > 0) {
         n = 0;
         if (argc > 1) {
@@ -37498,7 +37498,6 @@ static JSValue js_array_includes(JSContext *ctx, JSValue this_val,
             for (; n < count; n++) {
                 if (js_strict_eq2(ctx, js_dup(argv[0]), js_dup(arrp[n]),
                                   JS_EQ_SAME_VALUE_ZERO)) {
-                    res = TRUE;
                     goto done;
                 }
             }
@@ -37509,11 +37508,11 @@ static JSValue js_array_includes(JSContext *ctx, JSValue this_val,
                 goto exception;
             if (js_strict_eq2(ctx, js_dup(argv[0]), val,
                               JS_EQ_SAME_VALUE_ZERO)) {
-                res = TRUE;
-                break;
+                goto done;
             }
         }
     }
+    res = FALSE;
  done:
     JS_FreeValue(ctx, obj);
     return js_bool(res);
@@ -37527,7 +37526,7 @@ static JSValue js_array_indexOf(JSContext *ctx, JSValue this_val,
                                 int argc, JSValue *argv)
 {
     JSValue obj, val;
-    int64_t len, n, res;
+    int64_t len, n;
     JSValue *arrp;
     uint32_t count;
 
@@ -37535,7 +37534,6 @@ static JSValue js_array_indexOf(JSContext *ctx, JSValue this_val,
     if (js_get_length64(ctx, &len, obj))
         goto exception;
 
-    res = -1;
     if (len > 0) {
         n = 0;
         if (argc > 1) {
@@ -37546,7 +37544,6 @@ static JSValue js_array_indexOf(JSContext *ctx, JSValue this_val,
             for (; n < count; n++) {
                 if (js_strict_eq2(ctx, js_dup(argv[0]), js_dup(arrp[n]),
                                   JS_EQ_STRICT)) {
-                    res = n;
                     goto done;
                 }
             }
@@ -37557,15 +37554,15 @@ static JSValue js_array_indexOf(JSContext *ctx, JSValue this_val,
                 goto exception;
             if (present) {
                 if (js_strict_eq2(ctx, js_dup(argv[0]), val, JS_EQ_STRICT)) {
-                    res = n;
-                    break;
+                    goto done;
                 }
             }
         }
     }
+    n = -1;
  done:
     JS_FreeValue(ctx, obj);
-    return JS_NewInt64(ctx, res);
+    return JS_NewInt64(ctx, n);
 
  exception:
     JS_FreeValue(ctx, obj);
@@ -37576,35 +37573,43 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValue this_val,
                                     int argc, JSValue *argv)
 {
     JSValue obj, val;
-    int64_t len, n, res;
-    int present;
+    int64_t len, n;
+    JSValue *arrp;
+    uint32_t count;
 
     obj = JS_ToObject(ctx, this_val);
     if (js_get_length64(ctx, &len, obj))
         goto exception;
 
-    res = -1;
     if (len > 0) {
         n = len - 1;
         if (argc > 1) {
             if (JS_ToInt64Clamp(ctx, &n, argv[1], -1, len - 1, len))
                 goto exception;
         }
-        /* XXX: should special case fast arrays */
+        if (js_get_fast_array(ctx, obj, &arrp, &count) && count == len) {
+            for (; n >= 0; n--) {
+                if (js_strict_eq2(ctx, js_dup(argv[0]), js_dup(arrp[n]),
+                                  JS_EQ_STRICT)) {
+                    goto done;
+                }
+            }
+        }
         for (; n >= 0; n--) {
-            present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
+            int present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
             if (present < 0)
                 goto exception;
             if (present) {
                 if (js_strict_eq2(ctx, js_dup(argv[0]), val, JS_EQ_STRICT)) {
-                    res = n;
-                    break;
+                    goto done;
                 }
             }
         }
     }
+    n = -1;
+ done:
     JS_FreeValue(ctx, obj);
-    return JS_NewInt64(ctx, res);
+    return JS_NewInt64(ctx, n);
 
  exception:
     JS_FreeValue(ctx, obj);
