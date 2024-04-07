@@ -40974,16 +40974,16 @@ static double js_math_fround(double a)
 static JSValue js_math_imul(JSContext *ctx, JSValue this_val,
                             int argc, JSValue *argv)
 {
-    int a, b;
+    uint32_t a, b, c;
+    int32_t d;
 
-    if (JS_ToInt32(ctx, &a, argv[0]))
+    if (JS_ToUint32(ctx, &a, argv[0]))
         return JS_EXCEPTION;
-    if (JS_ToInt32(ctx, &b, argv[1]))
+    if (JS_ToUint32(ctx, &b, argv[1]))
         return JS_EXCEPTION;
-    /* TODO(bnoordhuis) Signed integral narrowing has implementation-defined
-     * behavior but that's a step up from the undefined behavior it replaced.
-     */
-    return js_int32((int64_t)a * (int64_t)b);
+    c = a * b;
+    memcpy(&d, &c, sizeof(d));
+    return js_int32(d);
 }
 
 static JSValue js_math_clz32(JSContext *ctx, JSValue this_val,
