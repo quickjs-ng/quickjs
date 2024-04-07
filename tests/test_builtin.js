@@ -697,6 +697,14 @@ function test_date()
     assert(Date.UTC(2017, 9, 22, 18 - 1e10, 10 + 60e10), 1508695800000);
     assert(Date.UTC(2017, 9, 22, 18, 10 - 1e10, 11 + 60e10), 1508695811000);
     assert(Date.UTC(2017, 9, 22, 18, 10, 11 - 1e12, 91 + 1000e12), 1508695811091);
+    assert(new Date("2024 Apr 7 1:00 AM").toLocaleString(), "04/07/2024, 01:00:00 AM");
+    assert(new Date("2024 Apr 7 2:00 AM").toLocaleString(), "04/07/2024, 02:00:00 AM");
+    assert(new Date("2024 Apr 7 11:00 AM").toLocaleString(), "04/07/2024, 11:00:00 AM");
+    assert(new Date("2024 Apr 7 12:00 AM").toLocaleString(), "04/07/2024, 12:00:00 AM");
+    assert(new Date("2024 Apr 7 1:00 PM").toLocaleString(), "04/07/2024, 01:00:00 PM");
+    assert(new Date("2024 Apr 7 2:00 PM").toLocaleString(), "04/07/2024, 02:00:00 PM");
+    assert(new Date("2024 Apr 7 11:00 PM").toLocaleString(), "04/07/2024, 11:00:00 PM");
+    assert(new Date("2024 Apr 7 12:00 PM").toLocaleString(), "04/07/2024, 12:00:00 PM");
 }
 
 function test_regexp()
