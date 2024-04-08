@@ -1013,7 +1013,7 @@ import * as os from "os";
         if (a[0] !== '\\' && a[0] !== '.')
             return false;
         var pos = 1;
-        while (pos < a.length && is_alpha(a[pos])) {
+        while (pos < a.length && a[pos] !== ' ') {
             pos++;
         }
         var cmd = a.substring(1, pos);
@@ -1039,12 +1039,13 @@ import * as os from "os";
 
     function help() {
         var sel = (n) => n ? "*": " ";
-        std.puts(".help   this help\n" +
+        std.puts(".help   print this help\n" +
                  ".x     " + sel(hex_mode) + "hexadecimal number display\n" +
                  ".dec   " + sel(!hex_mode) + "decimal number display\n" +
                  ".time  " + sel(show_time) + "toggle timing display\n" +
                  ".color " + sel(show_colors) + "toggle colored output\n" +
                  ".clear  clear the terminal\n" +
+                 ".load   load source code from a file\n" +
                  ".quit   exit\n");
     }
 
@@ -1101,7 +1102,7 @@ import * as os from "os";
     }
 
     function cmd_start() {
-        std.puts('QuickJS-ng - Type "\\h" for help\n');
+        std.puts('QuickJS-ng - Type ".help" for help\n');
         cmd_readline_start();
     }
 
