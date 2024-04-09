@@ -213,6 +213,8 @@ void dbuf_free(DynBuf *s)
     memset(s, 0, sizeof(*s));
 }
 
+/*--- Unicode / UTF-8 utility functions --*/
+
 /* Note: at most 31 bits are encoded. At most UTF8_CHAR_LEN_MAX bytes
    are output. */
 int unicode_to_utf8(uint8_t *buf, unsigned int c)
@@ -314,6 +316,153 @@ int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp)
     *pp = p;
     return c;
 }
+
+/*--- integer to string conversions --*/
+
+/* All conversion functions:
+   - require a destination array `buf` of sufficient length
+   - write the string representation at the beginning of `buf`
+   - null terminate the string
+   - return the string length
+ */
+
+#define USE_SINGLE_CASE  1  // special case single digit numbers
+//#define USE_DIV_TABLE    1  // use multiplier table instead of divisions
+//#define USE_DIGIT_PAIRS  1  // generate 2 decimal digits at a time
+//#define USE_DIGIT_1PASS  1  // generate left to right decimal digits
+
+/* 2 <= base <= 36 */
+char const digits36[36] = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+size_t u32toa(char buf[minimum_length(11)], uint32_t n)
+{
+#ifdef USE_SINGLE_CASE
+    if (likely(n < 10)) {
+        buf[0] = '0' + n;
+        buf[1] = '\0';
+        return 1;
+    }
+#endif
+    char *p = buf;
+    char *q = buf + 10;
+    while (n >= 10) {
+        uint32_t quo = n % 10;
+        n /= 10;
+        *--q = '0' + quo;
+    }
+    *p++ = '0' + n;
+    while (q < buf + 10) {
+        *p++ = *q++;
+    }
+    *p = '\0';
+    return p - buf;
+}
+
+size_t u64toa(char buf[minimum_length(21)], uint64_t n)
+{
+    if (likely(n < 0x100000000))
+        return u32toa(buf, n);
+
+    char *p = buf;
+    char *q = buf + 20;
+    while (n >= 10) {
+        uint32_t quo = n % 10;
+        n /= 10;
+        *--q = '0' + quo;
+    }
+    *p++ = '0' + n;
+    while (q < buf + 20) {
+        *p++ = *q++;
+    }
+    *p = '\0';
+    return p - buf;
+}
+
+size_t i32toa(char buf[minimum_length(12)], int32_t n)
+{
+    if (likely(n >= 0))
+        return u32toa(buf, n);
+
+    buf[0] = '-';
+    return 1 + u32toa(buf + 1, -(uint32_t)n);
+}
+
+size_t i64toa(char buf[minimum_length(22)], int64_t n)
+{
+    if (likely(n >= 0))
+        return u64toa(buf, n);
+
+    buf[0] = '-';
+    return 1 + u64toa(buf + 1, -(uint64_t)n);
+}
+
+size_t u32toa_radix(char buf[minimum_length(33)], uint32_t n, unsigned int base)
+{
+    if (likely(base == 10))
+        return u32toa(buf, n);
+
+    char *q = buf + 32;
+    char *p = buf;
+#ifdef USE_SINGLE_CASE
+    if (n < base) {
+        buf[0] = digits36[n];
+        buf[1] = '\0';
+        return 1;
+    }
+#endif
+    while (n >= base) {
+        size_t digit = n % base;
+        n /= base;
+        *--q = digits36[digit];
+    }
+    *p++ = digits36[n];
+    while (q < buf + 32) {
+        *p++ = *q++;
+    }
+    *p = '\0';
+    return p - buf;
+}
+
+size_t u64toa_radix(char buf[minimum_length(65)], uint64_t n, unsigned int base)
+{
+    if (likely(n < 0x100000000))
+        return u32toa_radix(buf, n, base);
+
+    if (likely(base == 10))
+        return u64toa(buf, n);
+
+    char *q = buf + 64;
+    char *p = buf;
+#ifdef USE_SINGLE_CASE
+    if (n < base) {
+        buf[0] = digits36[n];
+        buf[1] = '\0';
+        return 1;
+    }
+#endif
+    while (n >= base) {
+        size_t digit = n % base;
+        n /= base;
+        *--q = digits36[digit];
+    }
+    *p++ = digits36[n];
+    while (q < buf + 64) {
+        *p++ = *q++;
+    }
+    *p = '\0';
+    return p - buf;
+}
+
+size_t i64toa_radix(char buf[minimum_length(66)], int64_t n, unsigned int base)
+{
+    if (likely(n >= 0))
+        return u64toa_radix(buf, n, base);
+
+    buf[0] = '-';
+    return 1 + u64toa_radix(buf + 1, -(uint64_t)n, base);
+}
+
+/*---- sorting with opaque argument ----*/
 
 typedef void (*exchange_f)(void *a, void *b, size_t size);
 typedef int (*cmp_f)(const void *, const void *, void *opaque);
@@ -614,6 +763,8 @@ void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
     }
 }
 
+/*---- Portable time functions ----*/
+
 #if defined(_MSC_VER)
  // From: https://stackoverflow.com/a/26085827
 static int gettimeofday_msvc(struct timeval *tp, struct timezone *tzp)
@@ -677,7 +828,7 @@ int64_t js__gettimeofday_us(void) {
     return ((int64_t)tv.tv_sec * 1000000) + tv.tv_usec;
 }
 
-/* Cross-platform threading APIs. */
+/*--- Cross-platform threading APIs. ----*/
 
 #if !defined(EMSCRIPTEN) && !defined(__wasi__)
 

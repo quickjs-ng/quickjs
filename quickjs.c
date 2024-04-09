@@ -2944,10 +2944,9 @@ JSAtom JS_NewAtomUInt32(JSContext *ctx, uint32_t n)
     if (n <= JS_ATOM_MAX_INT) {
         return __JS_AtomFromUInt32(n);
     } else {
-        char buf[11];
-        JSValue val;
-        snprintf(buf, sizeof(buf), "%u", n);
-        val = JS_NewString(ctx, buf);
+        char buf[16];
+        size_t len = u32toa(buf, n);
+        JSValue val = JS_NewStringLen(ctx, buf, len);
         if (JS_IsException(val))
             return JS_ATOM_NULL;
         return __JS_NewAtom(ctx->rt, JS_VALUE_GET_STRING(val),
@@ -2961,9 +2960,8 @@ static JSAtom JS_NewAtomInt64(JSContext *ctx, int64_t n)
         return __JS_AtomFromUInt32((uint32_t)n);
     } else {
         char buf[24];
-        JSValue val;
-        snprintf(buf, sizeof(buf), "%" PRId64 , n);
-        val = JS_NewString(ctx, buf);
+        size_t len = i64toa(buf, n);
+        JSValue val = JS_NewStringLen(ctx, buf, len);
         if (JS_IsException(val))
             return JS_ATOM_NULL;
         return __JS_NewAtom(ctx->rt, JS_VALUE_GET_STRING(val),
@@ -3066,8 +3064,8 @@ static JSValue __JS_AtomToValue(JSContext *ctx, JSAtom atom, BOOL force_string)
     char buf[ATOM_GET_STR_BUF_SIZE];
 
     if (__JS_AtomIsTaggedInt(atom)) {
-        snprintf(buf, sizeof(buf), "%u", __JS_AtomToUInt32(atom));
-        return JS_NewString(ctx, buf);
+        size_t len = u32toa(buf, __JS_AtomToUInt32(atom));
+        return JS_NewStringLen(ctx, buf, len);
     } else {
         JSRuntime *rt = ctx->rt;
         JSAtomStruct *p;
@@ -3334,7 +3332,7 @@ static JSAtom js_atom_concat_str(JSContext *ctx, JSAtom name, const char *str1)
 static JSAtom js_atom_concat_num(JSContext *ctx, JSAtom name, uint32_t n)
 {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%u", n);
+    u32toa(buf, n);
     return js_atom_concat_str(ctx, name, buf);
 }
 
@@ -11015,39 +11013,6 @@ static JSValue js_bigint_to_string(JSContext *ctx, JSValue val)
     return js_bigint_to_string1(ctx, val, 10);
 }
 
-/* 2 <= base <= 36 */
-static char const digits[36] = "0123456789abcdefghijklmnopqrstuvwxyz";
-
-static char *i64toa(char *buf_end, int64_t n, unsigned int base)
-{
-    char *q = buf_end;
-    int digit, is_neg;
-
-    is_neg = 0;
-    if (n < 0) {
-        is_neg = 1;
-        n = -n;
-    }
-    *--q = '\0';
-    if (base == 10) {
-        /* division by known base uses multiplication */
-        do {
-            digit = (uint64_t)n % 10;
-            n = (uint64_t)n / 10;
-            *--q = '0' + digit;
-        } while (n != 0);
-    } else {
-        do {
-            digit = (uint64_t)n % base;
-            n = (uint64_t)n / base;
-            *--q = digits[digit];
-        } while (n != 0);
-    }
-    if (is_neg)
-        *--q = '-';
-    return q;
-}
-
 /* buf1 contains the printf result */
 static void js_ecvt1(double d, int n_digits, int *decpt, int *sign, char *buf,
                      int rounding_mode, char *buf1, int buf1_size)
@@ -11132,10 +11097,10 @@ static int js_ecvt(double d, int n_digits, int *decpt, int *sign, char *buf,
     return n_digits;
 }
 
-static int js_fcvt1(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits,
-                    int rounding_mode)
+static size_t js_fcvt1(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits,
+                       int rounding_mode)
 {
-    int n;
+    size_t n;
     if (rounding_mode != FE_TONEAREST)
         fesetround(rounding_mode);
     n = snprintf(*buf, sizeof(*buf), "%.*f", n_digits, d);
@@ -11145,7 +11110,7 @@ static int js_fcvt1(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits,
     return n;
 }
 
-static void js_fcvt(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits)
+static size_t js_fcvt(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits)
 {
     int rounding_mode;
     rounding_mode = FE_TONEAREST;
@@ -11175,7 +11140,7 @@ static void js_fcvt(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits)
         }
     }
 #endif /* CONFIG_PRINTF_RNDN */
-    js_fcvt1(buf, d, n_digits, rounding_mode);
+    return js_fcvt1(buf, d, n_digits, rounding_mode);
 }
 
 /* radix != 10 is only supported with flags = JS_DTOA_VAR_FORMAT */
@@ -11191,35 +11156,37 @@ static void js_fcvt(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits)
 /* XXX: slow and maybe not fully correct. Use libbf when it is fast enough.
    XXX: radix != 10 is only supported for small integers
 */
-static void js_dtoa1(char (*buf)[JS_DTOA_BUF_SIZE], double d,
-                     int radix, int n_digits, int flags)
+static size_t js_dtoa1(char (*buf)[JS_DTOA_BUF_SIZE], double d,
+                       int radix, int n_digits, int flags)
 {
     char *q;
 
     if (!isfinite(d)) {
         if (isnan(d)) {
-            pstrcpy(*buf, sizeof(*buf), "NaN");
+            memcpy(*buf, "NaN", sizeof "NaN");
+            return sizeof("NaN") - 1;
         } else if (d < 0) {
-            pstrcpy(*buf, sizeof(*buf), "-Infinity");
+            memcpy(*buf, "-Infinity", sizeof "-Infinity");
+            return sizeof("-Infinity") - 1;
         } else {
-            pstrcpy(*buf, sizeof(*buf), "Infinity");
+            memcpy(*buf, "Infinity", sizeof "Infinity");
+            return sizeof("Infinity") - 1;
         }
     } else if (flags == JS_DTOA_VAR_FORMAT) {
         int64_t i64;
-        char buf1[70], *ptr;
+        char buf1[72], *ptr;
         if (d > (double)MAX_SAFE_INTEGER || d < (double)-MAX_SAFE_INTEGER)
             goto generic_conv;
         i64 = (int64_t)d;
         if (d != i64)
             goto generic_conv;
         /* fast path for integers */
-        ptr = i64toa(buf1 + sizeof(buf1), i64, radix);
-        pstrcpy(*buf, sizeof(*buf), ptr);
+        return i64toa_radix(*buf, i64, radix);
     } else {
         if (d == 0.0)
             d = 0.0; /* convert -0 to 0 */
         if (flags == JS_DTOA_FRAC_FORMAT) {
-            js_fcvt(buf, d, n_digits);
+            return js_fcvt(buf, d, n_digits);
         } else {
             char buf1[JS_DTOA_BUF_SIZE];
             int sign, decpt, k, n, i, p, n_max;
@@ -11276,8 +11243,9 @@ static void js_dtoa1(char (*buf)[JS_DTOA_BUF_SIZE], double d,
                 p = n - 1;
                 if (p >= 0)
                     *q++ = '+';
-                snprintf(q, *buf + sizeof(*buf) - q, "%d", p);
+                q += snprintf(q, *buf + sizeof(*buf) - q, "%d", p);
             }
+            return q - *buf;
         }
     }
 }
@@ -11286,8 +11254,8 @@ static JSValue js_dtoa(JSContext *ctx,
                        double d, int radix, int n_digits, int flags)
 {
     char buf[JS_DTOA_BUF_SIZE];
-    js_dtoa1(&buf, d, radix, n_digits, flags);
-    return JS_NewString(ctx, buf);
+    size_t len = js_dtoa1(&buf, d, radix, n_digits, flags);
+    return JS_NewStringLen(ctx, buf, len);
 }
 
 static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
@@ -11308,9 +11276,9 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
         while (n >= radix) {
             digit = n % radix;
             n = n / radix;
-            *--ptr = digits[digit];
+            *--ptr = digits36[digit];
         }
-        *--ptr = digits[(int)n];
+        *--ptr = digits36[(size_t)n];
     } else {
         /* no decimals */
         while (d0 >= radix) {
@@ -11318,9 +11286,9 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
             d0 = trunc(d0 / radix);
             if (d0 >= MAX_SAFE_INTEGER)
                 digit = 0;
-            *--ptr = digits[digit];
+            *--ptr = digits36[digit];
         }
-        *--ptr = digits[(int)d0];
+        *--ptr = digits36[(size_t)d0];
         goto done;
     }
     if (frac != 0) {
@@ -11332,13 +11300,13 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
             frac *= radix;
             digit = trunc(frac);
             frac -= digit;
-            *ptr2++ = digits[digit];
+            *ptr2++ = digits36[digit];
             n0 = n0 * radix + digit;
             prec -= log2_radix;
         }
         *ptr2 = '\0';
         if (frac * radix >= radix / 2) {
-            char nine = digits[radix - 1];
+            char nine = digits36[radix - 1];
             // round to closest
             while (ptr2[-1] == nine)
                 *--ptr2 = '\0';
@@ -11369,13 +11337,14 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
     uint32_t tag;
     const char *str;
     char buf[32];
+    size_t len;
 
     tag = JS_VALUE_GET_NORM_TAG(val);
     switch(tag) {
     case JS_TAG_STRING:
         return js_dup(val);
     case JS_TAG_INT:
-        snprintf(buf, sizeof(buf), "%d", JS_VALUE_GET_INT(val));
+        len = i32toa(buf, JS_VALUE_GET_INT(val));
         str = buf;
         goto new_string;
     case JS_TAG_BOOL:
@@ -11400,6 +11369,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
         break;
     case JS_TAG_FUNCTION_BYTECODE:
         str = "[function bytecode]";
+        len = sizeof("[function bytecode]") - 1;
         goto new_string;
     case JS_TAG_SYMBOL:
         if (is_ToPropertyKey) {
@@ -11414,8 +11384,9 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
         return js_bigint_to_string(ctx, val);
     default:
         str = "[unsupported type]";
+        len = sizeof("[unsupported type]") - 1;
     new_string:
-        return JS_NewString(ctx, str);
+        return JS_NewStringLen(ctx, str, len);
     }
 }
 
@@ -11500,7 +11471,7 @@ static JSValue JS_ToQuotedString(JSContext *ctx, JSValue val1)
         default:
             if (c < 32 || is_surrogate(c)) {
                 snprintf(buf, sizeof(buf), "\\u%04x", c);
-                if (string_buffer_puts8(b, buf))
+                if (string_buffer_write8(b, (uint8_t*)buf, 6))
                     goto fail;
             } else {
                 if (string_buffer_putc(b, c))
@@ -38879,6 +38850,7 @@ static int js_get_radix(JSContext *ctx, JSValue val)
 static JSValue js_number_toString(JSContext *ctx, JSValue this_val,
                                   int argc, JSValue *argv, int magic)
 {
+    char buf[72];
     JSValue val;
     int base;
     double d;
@@ -38887,6 +38859,10 @@ static JSValue js_number_toString(JSContext *ctx, JSValue this_val,
     if (JS_IsException(val))
         return val;
     if (magic || JS_IsUndefined(argv[0])) {
+        if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
+            size_t len = i32toa(buf, JS_VALUE_GET_INT(val));
+            return JS_NewStringLen(ctx, buf, len);
+        }
         base = 10;
     } else {
         base = js_get_radix(ctx, argv[0]);
@@ -38894,9 +38870,8 @@ static JSValue js_number_toString(JSContext *ctx, JSValue this_val,
             goto fail;
     }
     if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
-        char buf1[70], *ptr;
-        ptr = i64toa(buf1 + sizeof(buf1), JS_VALUE_GET_INT(val), base);
-        return JS_NewString(ctx, ptr);
+        size_t len = i64toa_radix(buf, JS_VALUE_GET_INT(val), base);
+        return JS_NewStringLen(ctx, buf, len);
     }
     if (JS_ToFloat64Free(ctx, &d, val))
         return JS_EXCEPTION;
@@ -47602,10 +47577,6 @@ static BOOL string_get_milliseconds(const uint8_t *sp, int *pp, int *pval) {
     return TRUE;
 }
 
-static uint8_t upper_ascii(uint8_t c) {
-    return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
-}
-
 static BOOL string_get_tzoffset(const uint8_t *sp, int *pp, int *tzp, BOOL strict) {
     int tz = 0, sgn, hh, mm, p = *pp;
 
@@ -47647,7 +47618,7 @@ static BOOL string_get_tzoffset(const uint8_t *sp, int *pp, int *tzp, BOOL stric
 static BOOL string_match(const uint8_t *sp, int *pp, const char *s) {
     int p = *pp;
     while (*s != '\0') {
-        if (upper_ascii(sp[p]) != upper_ascii(*s++))
+        if (to_upper_ascii(sp[p]) != to_upper_ascii(*s++))
             return FALSE;
         p++;
     }
@@ -47660,7 +47631,7 @@ static int find_abbrev(const uint8_t *sp, int p, const char *list, int count) {
 
     for (n = 0; n < count; n++) {
         for (i = 0;; i++) {
-            if (upper_ascii(sp[p + i]) != upper_ascii(list[n * 3 + i]))
+            if (to_upper_ascii(sp[p + i]) != to_upper_ascii(list[n * 3 + i]))
                 break;
             if (i == 2)
                 return n;
