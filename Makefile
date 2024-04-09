@@ -89,6 +89,9 @@ test: $(QJS)
 test262: $(QJS)
 	$(RUN262) -m -c test262.conf -a
 
+test262-fast: $(QJS)
+	$(RUN262) -m -c test262.conf -c test262-fast.conf -a
+
 test262-update: $(QJS)
 	$(RUN262) -u -c test262.conf -a
 
