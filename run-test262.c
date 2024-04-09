@@ -1922,12 +1922,12 @@ void show_progress(int force) {
             fputc(c, stderr);
             if (force || ++dots % 60 == 0) {
                 fprintf(stderr, " %d/%d/%d\n",
-                        test_failed, test_index, test_skipped);
+                        test_failed, test_count, test_skipped);
             }
         } else {
             /* output progress indicator: erase end of line and return to col 0 */
             fprintf(stderr, "%d/%d/%d\033[K\r",
-                    test_failed, test_index, test_skipped);
+                    test_failed, test_count, test_skipped);
         }
         fflush(stderr);
     }
