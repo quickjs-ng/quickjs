@@ -27,7 +27,7 @@ macro(xcheck_add_c_compiler_flag FLAG)
 endmacro()
 
 xcheck_add_c_compiler_flag(-Wall)
-if(NOT MSVC)
+if(NOT MSVC AND NOT IOS)
     xcheck_add_c_compiler_flag(-Werror)
     xcheck_add_c_compiler_flag(-Wextra)
 endif()
