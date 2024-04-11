@@ -49,7 +49,6 @@ import * as os from "os";
         blue:    "\x1b[34m",
         magenta: "\x1b[35m",
         cyan:    "\x1b[36m",
-        white:   "\x1b[37m",
         gray:    "\x1b[30;1m",
         grey:    "\x1b[30;1m",
         bright_red:     "\x1b[31;1m",
@@ -58,21 +57,20 @@ import * as os from "os";
         bright_blue:    "\x1b[34;1m",
         bright_magenta: "\x1b[35;1m",
         bright_cyan:    "\x1b[36;1m",
-        bright_white:   "\x1b[37;1m",
     };
 
     var styles = {
         'default':    'bright_green',
-        'comment':    'white',
+        'comment':    'grey',
         'string':     'bright_cyan',
         'regex':      'cyan',
         'number':     'green',
-        'keyword':    'bright_white',
+        'keyword':    'bright_magenta',
         'function':   'bright_yellow',
         'type':       'bright_magenta',
         'identifier': 'bright_green',
         'error':      'red',
-        'result':     'bright_white',
+        'result':     'grey',
         'error_msg':  'bright_red',
     };
 
