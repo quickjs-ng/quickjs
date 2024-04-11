@@ -52141,11 +52141,16 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             fre = wr->u.fin_rec_entry;
             JSFinalizationRegistryData *frd = JS_GetOpaque(fre->obj, JS_CLASS_FINALIZATION_REGISTRY);
             assert(frd != NULL);
-            JSValue func = js_dup(frd->cb);
-            JSValue ret = JS_Call(frd->ctx, func, JS_UNDEFINED, 1, &fre->held_val);
-            JS_FreeValueRT(rt, func);
-            JS_FreeValueRT(rt, ret);
-            JS_FreeValueRT(rt, fre->held_val);
+            /**
+             * During the GC sweep phase the held object might be collected first.
+             */
+            if (JS_IsLiveObject(frd->ctx->rt, fre->held_val)) {
+                JSValue func = js_dup(frd->cb);
+                JSValue ret = JS_Call(frd->ctx, func, JS_UNDEFINED, 1, &fre->held_val);
+                JS_FreeValueRT(rt, func);
+                JS_FreeValueRT(rt, ret);
+                JS_FreeValueRT(rt, fre->held_val);
+            }
             JS_FreeValueRT(rt, fre->token);
             js_free_rt(rt, fre);
             break;
