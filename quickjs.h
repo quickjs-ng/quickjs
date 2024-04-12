@@ -35,12 +35,10 @@ extern "C" {
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
-#define js_unlikely(x)        __builtin_expect(!!(x), 0)
 #define js_force_inline       inline __attribute__((always_inline))
 #define __js_printf_like(f, a)   __attribute__((format(printf, f, a)))
 #define JS_EXTERN __attribute__((visibility("default")))
 #else
-#define js_unlikely(x)   (x)
 #define js_force_inline  inline
 #define __js_printf_like(a, b)
 #define JS_EXTERN /* nothing */
@@ -124,7 +122,7 @@ static inline JSValue __JS_NewFloat64(double d)
     JSValue v;
     u.d = d;
     /* normalize NaN */
-    if (js_unlikely((u.u64 & 0x7fffffffffffffff) > 0x7ff0000000000000))
+    if ((u.u64 & 0x7fffffffffffffff) > 0x7ff0000000000000)
         v = JS_NAN;
     else
         v = u.u64 - ((uint64_t)JS_FLOAT64_TAG_ADDEND << 32);
@@ -538,12 +536,12 @@ static inline JS_BOOL JS_IsUndefined(JSValue v)
 
 static inline JS_BOOL JS_IsException(JSValue v)
 {
-    return js_unlikely(JS_VALUE_GET_TAG(v) == JS_TAG_EXCEPTION);
+    return JS_VALUE_GET_TAG(v) == JS_TAG_EXCEPTION;
 }
 
 static inline JS_BOOL JS_IsUninitialized(JSValue v)
 {
-    return js_unlikely(JS_VALUE_GET_TAG(v) == JS_TAG_UNINITIALIZED);
+    return JS_VALUE_GET_TAG(v) == JS_TAG_UNINITIALIZED;
 }
 
 static inline JS_BOOL JS_IsString(JSValue v)
@@ -997,7 +995,6 @@ JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 JS_EXTERN const char* JS_GetVersion(void);
 
 #undef JS_EXTERN
-#undef js_unlikely
 #undef js_force_inline
 #undef __js_printf_like
 
