@@ -335,6 +335,12 @@ JS_EXTERN void JS_AddIntrinsicBigInt(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicWeakRef(JSContext *ctx);
 JS_EXTERN void JS_AddPerformance(JSContext *ctx);
 
+/* for equality comparisons and sameness */
+JS_EXTERN JS_BOOL JS_IsLooselyEqual(JSContext *ctx, JSValue op1, JSValue op2);
+JS_EXTERN JS_BOOL JS_IsStrictlyEqual(JSContext *ctx, JSValue op1, JSValue op2);
+JS_EXTERN JS_BOOL JS_IsSameValue(JSContext *ctx, JSValue op1, JSValue op2);
+JS_EXTERN JS_BOOL JS_IsSameValueZero(JSContext *ctx, JSValue op1, JSValue op2);
+
 /* Only used for running 262 tests. TODO(saghul) add build time flag. */
 JS_EXTERN JSValue js_string_codePointRange(JSContext *ctx, JSValue this_val,
                                  int argc, JSValue *argv);
