@@ -597,3 +597,15 @@ jobs:
         run: |
           $ANDROID_HOME/cmake/3.22.1/bin/cmake --build build --target qjs
           ls -lh build
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: |
+          cmake -B build -GXcode -DCMAKE_SYSTEM_NAME:STRING=iOS -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED:BOOL=NO -DBUILD_QJS_LIBC=ON
+      - name: build
+        run: |
+          cmake --build build --config Release --target qjs
+          ls -lh build
