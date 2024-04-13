@@ -1271,7 +1271,11 @@ size_t u32toa_radix_snprintf(char buf[minimum_length(33)], uint32_t n, unsigned 
     case 8: return snprintf(buf, 33, "%"PRIo32, n);
     case 10: return snprintf(buf, 33, "%"PRIu32, n);
     case 16: return snprintf(buf, 33, "%"PRIx32, n);
+#ifdef TEST_NAIVE
     default: return u32toa_radix_naive(buf, n, base);
+#else
+    default: return u32toa_radix_reverse(buf, n, base);
+#endif
     }
 }
 
@@ -1284,7 +1288,11 @@ size_t u64toa_radix_snprintf(char buf[minimum_length(65)], uint64_t n, unsigned 
     case 8: return snprintf(buf, 65, "%"PRIo64, n);
     case 10: return snprintf(buf, 65, "%"PRIu64, n);
     case 16: return snprintf(buf, 65, "%"PRIx64, n);
+#ifdef TEST_NAIVE
     default: return u64toa_radix_naive(buf, n, base);
+#else
+    default: return u64toa_radix_reverse(buf, n, base);
+#endif
     }
 }
 
