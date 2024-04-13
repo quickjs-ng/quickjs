@@ -35,17 +35,22 @@
 #define USE_SPECIAL_RADIX_10  1  // special case single digit numbers
 #define USE_SINGLE_CASE_FAST  1  // special case single digit numbers
 
-#define USE_SNPRINTF     1  // use snprintf for specific bases (for reference)
-#define USE_NAIVE        1  // naive digit loop and copy loops
-#define USE_REVERSE      1  // naive digit loop and reverse digit string
-#define USE_DIGIT_PAIRS  1  // generate 2 decimal digits at a time
-#define USE_DIGIT_1PASS  1  // generate left to right decimal digits
-#define USE_LENGTH_LOOP  1  // compute length before digit loop using loop
-#define USE_LENGTH_EXPR  1  // compute length before digit loop using expression
-#define USE_SHIFTBUF     1  // generate up to 7 byte chunks in a register
-#define USE_BLOCKMOV     1  // move all digits together
-#define USE_DIV_TABLE    1  // use multiplier table instead of radix divisions
-#define USE_DISPATCH     1  // use dispatch table to optimal 64-bit radix converters
+#define TEST_SNPRINTF     1  // use snprintf for specific bases (for reference)
+#define TEST_NAIVE        1  // naive digit loop and copy loops
+#define TEST_REVERSE      1  // naive digit loop and reverse digit string
+#define TEST_DIGIT_PAIRS  1  // generate 2 decimal digits at a time
+#define TEST_DIGIT_1PASS  1  // generate left to right decimal digits
+#define TEST_LENGTH_LOOP  1  // compute length before digit loop using loop
+#define TEST_LENGTH_EXPR  1  // compute length before digit loop using expression
+#define TEST_SHIFTBUF     1  // generate up to 7 byte chunks in a register
+#define TEST_BLOCKMOV     1  // move all digits together
+#define TEST_DIV_TABLE    1  // use multiplier table instead of radix divisions
+#define TEST_DISPATCH     1  // use dispatch table to optimal 64-bit radix converters
+
+#if SIZE_MAX < UINT64_MAX   // 32-bit gcc overoptimizes this code
+#undef TEST_NAIVE
+#undef TEST_DIGIT_PAIRS
+#endif
 
 /* definitions from cutils.h */
 
@@ -140,7 +145,7 @@ size_t i64toa_##v(char buf[minimum_length(22)], int64_t n) \
     return 1 + u64toa_##v(buf + 1, -(uint64_t)n); \
 }
 
-#ifdef USE_SHIFTBUF
+#ifdef TEST_SHIFTBUF
 
 #define gen_digit(buf, c)  if (is_be()) \
             buf = (buf >> 8) | ((uint64_t)(c) << ((sizeof(buf) - 1) * 8)); \
@@ -220,9 +225,9 @@ size_t u64toa_shift(char buf[minimum_length(21)], uint64_t n)
 define_i32toa(shift)
 define_i64toa(shift)
 
-#endif /* USE_SHIFTBUF */
+#endif /* TEST_SHIFTBUF */
 
-#if defined(USE_DIGIT_PAIRS) || defined(USE_DIGIT_1PASS)
+#if defined(TEST_DIGIT_PAIRS) || defined(TEST_DIGIT_1PASS)
 static char const digits100[200] =
     "00010203040506070809"
     "10111213141516171819"
@@ -236,7 +241,7 @@ static char const digits100[200] =
     "90919293949596979899";
 #endif
 
-#ifdef USE_DIGIT_PAIRS
+#ifdef TEST_DIGIT_PAIRS
 size_t u32toa_pair(char buf[minimum_length(11)], uint32_t n)
 {
 #ifdef USE_SINGLE_CASE
@@ -292,9 +297,9 @@ size_t u64toa_pair(char buf[minimum_length(21)], uint64_t n)
 define_i32toa(pair)
 define_i64toa(pair)
 
-#endif /* USE_DIGIT_PAIRS */
+#endif /* TEST_DIGIT_PAIRS */
 
-#if USE_DIGIT_1PASS
+#if TEST_DIGIT_1PASS
 static char *u4toa(char p[minimum_length(4)], uint32_t n)
 {
     const char *digits = digits100;
@@ -404,9 +409,9 @@ size_t u64toa_pair_1pass(char buf[minimum_length(21)], uint64_t n)
 define_i32toa(pair_1pass)
 define_i64toa(pair_1pass)
 
-#endif /* USE_DIGIT_1PASS */
+#endif /* TEST_DIGIT_1PASS */
 
-#ifdef USE_SNPRINTF
+#ifdef TEST_SNPRINTF
 size_t u32toa_snprintf(char buf[minimum_length(11)], uint32_t n)
 {
     return snprintf(buf, 11, "%"PRIu32, n);
@@ -426,9 +431,9 @@ size_t i64toa_snprintf(char buf[minimum_length(22)], int64_t n)
 {
     return snprintf(buf, 22, "%"PRId64, n);
 }
-#endif /* USE_SNPRINTF */
+#endif /* TEST_SNPRINTF */
 
-#ifdef USE_NAIVE
+#ifdef TEST_NAIVE
 size_t u32toa_naive(char buf[minimum_length(11)], uint32_t n)
 {
 #ifdef USE_SINGLE_CASE
@@ -474,9 +479,9 @@ size_t u64toa_naive(char buf[minimum_length(21)], uint64_t n)
 define_i32toa(naive)
 define_i64toa(naive)
 
-#endif /* USE_NAIVE */
+#endif /* TEST_NAIVE */
 
-#ifdef USE_LENGTH_EXPR
+#ifdef TEST_LENGTH_EXPR
 size_t u32toa_length_expr(char buf[minimum_length(11)], uint32_t n)
 {
 #ifdef USE_SINGLE_CASE_FAST /* 8% */
@@ -546,9 +551,9 @@ size_t u64toa_length_expr(char buf[minimum_length(21)], uint64_t n)
 define_i32toa(length_expr)
 define_i64toa(length_expr)
 
-#endif /* USE_LENGTH_EXPR */
+#endif /* TEST_LENGTH_EXPR */
 
-#ifdef USE_LENGTH_LOOP
+#ifdef TEST_LENGTH_LOOP
 size_t u32toa_length_loop(char buf[minimum_length(11)], uint32_t n)
 {
     if (n < 10) {
@@ -604,9 +609,9 @@ size_t u64toa_length_loop(char buf[minimum_length(21)], uint64_t n)
 define_i32toa(length_loop)
 define_i64toa(length_loop)
 
-#endif /* USE_LENGTH_LOOP */
+#endif /* TEST_LENGTH_LOOP */
 
-#if defined(USE_REVERSE) || defined(USE_DISPATCH)
+#if defined(TEST_REVERSE) || defined(TEST_DISPATCH)
 size_t u32toa_reverse(char buf[minimum_length(11)], uint32_t n)
 {
 #ifdef USE_SINGLE_CASE
@@ -658,9 +663,9 @@ size_t u64toa_reverse(char buf[minimum_length(21)], uint64_t n)
 define_i32toa(reverse)
 define_i64toa(reverse)
 
-#endif /* USE_REVERSE */
+#endif /* TEST_REVERSE */
 
-#ifdef USE_BLOCKMOV
+#ifdef TEST_BLOCKMOV
 size_t u32toa_blockmov(char buf[minimum_length(11)], uint32_t n)
 {
 #ifdef USE_SINGLE_CASE_FAST /* 6% */
@@ -706,7 +711,7 @@ size_t u64toa_blockmov(char buf[minimum_length(21)], uint64_t n)
 define_i32toa(blockmov)
 define_i64toa(blockmov)
 
-#endif /* USE_BLOCKMOV */
+#endif /* TEST_BLOCKMOV */
 
 /*---- radix conversion variants ----*/
 
@@ -728,7 +733,7 @@ size_t i64toa_radix_##v(char buf[minimum_length(66)], int64_t n, unsigned base) 
     return 1 + u64toa_radix_##v(buf + 1, -(uint64_t)n, base); \
 }
 
-#ifdef USE_NAIVE
+#ifdef TEST_NAIVE
 size_t u32toa_radix_naive(char buf[minimum_length(33)], uint32_t n, unsigned base)
 {
 #ifdef USE_SPECIAL_RADIX_10
@@ -785,9 +790,9 @@ size_t u64toa_radix_naive(char buf[minimum_length(65)], uint64_t n, unsigned bas
 define_i32toa_radix(naive)
 define_i64toa_radix(naive)
 
-#endif // USE_NAIVE
+#endif // TEST_NAIVE
 
-#if defined(USE_REVERSE) || defined(USE_DISPATCH)
+#if defined(TEST_REVERSE) || defined(TEST_DISPATCH)
 size_t u32toa_radix_reverse(char buf[minimum_length(33)], uint32_t n, unsigned base)
 {
 #ifdef USE_SPECIAL_RADIX_10
@@ -846,9 +851,9 @@ size_t u64toa_radix_reverse(char buf[minimum_length(65)], uint64_t n, unsigned b
 define_i32toa_radix(reverse)
 define_i64toa_radix(reverse)
 
-#endif // USE_REVERSE
+#endif // TEST_REVERSE
 
-#ifdef USE_LENGTH_LOOP
+#ifdef TEST_LENGTH_LOOP
 
 static uint8_t const radix_shift[64] = {
     0, 0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0,
@@ -960,9 +965,9 @@ size_t u64toa_radix_length(char buf[minimum_length(65)], uint64_t n, unsigned ba
 define_i32toa_radix(length)
 define_i64toa_radix(length)
 
-#endif // USE_LENGTH_LOOP
+#endif // TEST_LENGTH_LOOP
 
-#ifdef USE_DIV_TABLE
+#ifdef TEST_DIV_TABLE
 static struct {
     uint32_t chunk : 27;
     uint32_t ndig : 5;
@@ -1094,9 +1099,9 @@ size_t u64toa_radix_div_table(char buf[minimum_length(65)], uint64_t n, unsigned
 define_i32toa_radix(div_table)
 define_i64toa_radix(div_table)
 
-#endif // USE_DIV_TABLE
+#endif // TEST_DIV_TABLE
 
-#ifdef USE_DISPATCH
+#ifdef TEST_DISPATCH
 
 static size_t u64toa_radix_d10(char buf[minimum_length(65)], uint64_t n, unsigned base)
 {
@@ -1254,9 +1259,9 @@ size_t u64toa_radix_dispatch(char buf[minimum_length(65)], uint64_t n, unsigned 
 define_i32toa_radix(dispatch)
 define_i64toa_radix(dispatch)
 
-#endif // USE_DISPATCH
+#endif // TEST_DISPATCH
 
-#ifdef USE_SNPRINTF
+#ifdef TEST_SNPRINTF
 size_t u32toa_radix_snprintf(char buf[minimum_length(33)], uint32_t n, unsigned base)
 {
     switch (base) {
@@ -1286,7 +1291,7 @@ size_t u64toa_radix_snprintf(char buf[minimum_length(65)], uint64_t n, unsigned 
 define_i32toa_radix(snprintf)
 define_i64toa_radix(snprintf)
 
-#endif // USE_SNPRINTF
+#endif // TEST_SNPRINTF
 
 /*---- Benchmarking framework ----*/
 
@@ -1307,31 +1312,31 @@ struct {
 } impl[] =
 {
 #define TESTCASE(v) { #v, 2, u32toa_##v, i32toa_##v, u64toa_##v, i64toa_##v }
-#ifdef USE_SNPRINTF
+#ifdef TEST_SNPRINTF
     TESTCASE(snprintf),
 #endif
-#ifdef USE_NAIVE
+#ifdef TEST_NAIVE
     TESTCASE(naive),
 #endif
-#ifdef USE_BLOCKMOV
+#ifdef TEST_BLOCKMOV
     TESTCASE(blockmov),
 #endif
-#ifdef USE_REVERSE
+#ifdef TEST_REVERSE
     TESTCASE(reverse),
 #endif
-#ifdef USE_LENGTH_EXPR
+#ifdef TEST_LENGTH_EXPR
     TESTCASE(length_expr),
 #endif
-#ifdef USE_LENGTH_LOOP
+#ifdef TEST_LENGTH_LOOP
     TESTCASE(length_loop),
 #endif
-#ifdef USE_SHIFTBUF
+#ifdef TEST_SHIFTBUF
     TESTCASE(shift),
 #endif
-#ifdef USE_DIGIT_PAIRS
+#ifdef TEST_DIGIT_PAIRS
     TESTCASE(pair),
 #endif
-#ifdef USE_DIGIT_1PASS
+#ifdef TEST_DIGIT_1PASS
     TESTCASE(pair_1pass),
 #endif
 #undef TESTCASE
@@ -1347,22 +1352,22 @@ struct {
 } impl1[] =
 {
 #define TESTCASE(v) { #v, 2, u32toa_radix_##v, i32toa_radix_##v, u64toa_radix_##v, i64toa_radix_##v }
-#ifdef USE_SNPRINTF
+#ifdef TEST_SNPRINTF
     TESTCASE(snprintf),
 #endif
-#ifdef USE_NAIVE
+#ifdef TEST_NAIVE
     TESTCASE(naive),
 #endif
-#ifdef USE_REVERSE
+#ifdef TEST_REVERSE
     TESTCASE(reverse),
 #endif
-#ifdef USE_DIV_TABLE
+#ifdef TEST_DIV_TABLE
     TESTCASE(div_table),
 #endif
-#ifdef USE_LENGTH_LOOP
+#ifdef TEST_LENGTH_LOOP
     TESTCASE(length),
 #endif
-#ifdef USE_DISPATCH
+#ifdef TEST_DISPATCH
     TESTCASE(dispatch),
 #endif
 #undef TESTCASE
@@ -1456,37 +1461,37 @@ void show_usage(void) {
            "  filters are words that must be contained in variant names\n"
            "     examples:  naive  pri  len  rev\n"
            "  variants:\n"
-#ifdef USE_SNPRINTF
+#ifdef TEST_SNPRINTF
            "    snprintf     use snprintf for supported bases for reference\n"
 #endif
-#ifdef USE_NAIVE
+#ifdef TEST_NAIVE
            "    naive        naive digit loop and copy loops\n"
 #endif
-#ifdef USE_BLOCKMOV
+#ifdef TEST_BLOCKMOV
            "    blockmov     same but move all digits together\n"
 #endif
-#ifdef USE_REVERSE
+#ifdef TEST_REVERSE
            "    reverse      naive digit loop and reverse digit string\n"
 #endif
-#ifdef USE_LENGTH_LOOP
+#ifdef TEST_LENGTH_LOOP
            "    length_loop  compute length before digit loop using loop\n"
 #endif
-#ifdef USE_LENGTH_EXPR
+#ifdef TEST_LENGTH_EXPR
            "    length_expr  compute length before digit loop using expression\n"
 #endif
-#ifdef USE_SHIFTBUF
+#ifdef TEST_SHIFTBUF
            "    shift        generate up to 7 digit chunks in a register\n"
 #endif
-#ifdef USE_DIGIT_PAIRS
+#ifdef TEST_DIGIT_PAIRS
            "    pair         generate 2 decimal digits at a time\n"
 #endif
-#ifdef USE_DIGIT_1PASS
+#ifdef TEST_DIGIT_1PASS
            "    pair_1pass   same but as a single left to right pass\n"
 #endif
-#ifdef USE_DIV_TABLE
+#ifdef TEST_DIV_TABLE
            "    div_table    use multiplier table instead of radix divisions\n"
 #endif
-#ifdef USE_DISPATCH
+#ifdef TEST_DISPATCH
            "    dispatch     use dispatch table to optimal 64-bit radix converters\n"
 #endif
            );
@@ -1494,13 +1499,16 @@ void show_usage(void) {
 
 int main(int argc, char *argv[]) {
     clock_t t;
-    clock_t times[countof(impl)][4] = { 0 };
-    clock_t times1[countof(impl1)][4][37] = { 0 };
+    clock_t times[countof(impl)][4];
+    clock_t times1[countof(impl1)][4][37];
     char buf[100];
     uint64_t bases = 0;
     int verbose = 0;
     int average = 1;
     int enabled = 3;
+
+    memset(times, 0, sizeof times);
+    memset(times1, 0, sizeof times1);
 
     for (int a = 1; a < argc; a++) {
         char *arg = argv[a];
@@ -1600,7 +1608,7 @@ int main(int argc, char *argv[]) {
             for (size_t i = 0; i < countof(impl); i++) {
                 if (impl[i].enabled & enabled) {
                     numvariant++;
-#ifdef USE_SNPRINTF
+#ifdef TEST_SNPRINTF
                     if (strstr(impl[i].name, "snprintf")) { // avoid function call overhead
                         TIME(times[i][0], 1000, 0, 32, snprintf(buf, 11, "%"PRIu32, x));
                         TIME(times[i][1], 1000, 1, 32, snprintf(buf, 12, "%"PRIi32, x));
@@ -1622,7 +1630,7 @@ int main(int argc, char *argv[]) {
         for (size_t i = 0; i < countof(impl1); i++) {
             if (impl1[i].enabled & enabled) {
                 numvariant1++;
-#ifdef USE_SNPRINTF
+#ifdef TEST_SNPRINTF
                 if (strstr(impl[i].name, "snprintf")) { // avoid function call overhead
 #ifdef PRIb32
                     if (bases & (1ULL << 1)) {
