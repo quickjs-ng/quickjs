@@ -10265,7 +10265,8 @@ static JSValue js_atof2(JSContext *ctx, const char *str, const char **pp,
         p++;
     }
     if (!(flags & ATOD_INT_ONLY)) {
-        if (*p == '.' && (p > p_start || to_digit((uint8_t)p[1]) < radix)) {
+        if (*p == '.' && radix == 10 &&
+            (p > p_start || to_digit((uint8_t)p[1]) < radix)) {
             is_float = TRUE;
             p++;
             if (*p == sep)

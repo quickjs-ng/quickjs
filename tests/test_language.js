@@ -593,6 +593,16 @@ function test_reserved_names()
     test_name('static', SyntaxError);
 }
 
+function test_number_literals()
+{
+    assert(0.1.a, undefined);
+    assert(0x1.a, undefined);
+    assert(0b1.a, undefined);
+    assert(01.a, undefined);
+    assert(0o1.a, undefined);
+    test_expr('0.a', SyntaxError);
+}
+
 test_op1();
 test_cvt();
 test_eq();
@@ -613,3 +623,4 @@ test_function_length();
 test_argument_scope();
 test_function_expr_name();
 test_reserved_names();
+test_number_literals();
