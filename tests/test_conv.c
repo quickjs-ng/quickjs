@@ -47,8 +47,8 @@
 #define TEST_DIV_TABLE    1  // use multiplier table instead of radix divisions
 #define TEST_DISPATCH     1  // use dispatch table to optimal 64-bit radix converters
 
-#if SIZE_MAX < UINT64_MAX   // 32-bit gcc overoptimizes this code
-#undef TEST_NAIVE
+#if (defined(__GNUC__) && !defined(__clang__))
+#undef TEST_NAIVE            // 32-bit gcc overoptimizes this code
 #undef TEST_DIGIT_PAIRS
 #endif
 
