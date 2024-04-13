@@ -1517,15 +1517,6 @@ static inline int string_get(const JSString *p, int idx) {
     return p->is_wide_char ? p->u.str16[idx] : p->u.str8[idx];
 }
 
-static inline BOOL is_be(void)
-{
-    union {
-        uint16_t a;
-        uint8_t  b;
-    } u = {0x100};
-    return u.b;
-}
-
 typedef struct JSClassShortDef {
     JSAtom class_name;
     JSClassFinalizer *finalizer;

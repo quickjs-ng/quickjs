@@ -324,6 +324,9 @@ if(BUILD_EXAMPLES AND NOT WIN32)
     target_link_libraries(test_fib ${qjs_libs})
 endif()
 
+add_executable(test_conv
+    tests/test_conv.c
+)
 
 # Install target
 #

@@ -131,6 +131,14 @@ char *pstrcat(char *buf, int buf_size, const char *s);
 int strstart(const char *str, const char *val, const char **ptr);
 int has_suffix(const char *str, const char *suffix);
 
+static inline uint8_t is_be(void) {
+    union {
+        uint16_t a;
+        uint8_t  b;
+    } u = { 0x100 };
+    return u.b;
+}
+
 static inline int max_int(int a, int b)
 {
     if (a > b)
