@@ -1419,7 +1419,7 @@ static clock_t stop_timer(clock_t t) {
                         size_t len = tab.e;                             \
                         errno = 0;                                      \
                         int64_t y = check;                              \
-                        if (errno || x != y | len != strlen(buf)) {     \
+                        if (errno || x != y || len != strlen(buf)) {    \
                             printf("error: %.*s_%s(%lld) base=%d -> %s -> %lld (errno=%d)\n", \
                                    (int)strcspn(#e, "("), #e, tab.name, \
                                    (long long)x, base, buf, (long long)y, errno); \
@@ -1430,7 +1430,7 @@ static clock_t stop_timer(clock_t t) {
                         size_t len = tab.e;                             \
                         errno = 0;                                      \
                         uint64_t y = check;                             \
-                        if (errno || x != y | len != strlen(buf)) {     \
+                        if (errno || x != y || len != strlen(buf)) {    \
                             printf("error: %.*s_%s(%llu) base=%d -> %s -> %llu (errno=%d)\n", \
                                    (int)strcspn(#e, "("), #e, tab.name, \
                                    (unsigned long long)x, base, buf, (unsigned long long)y, errno); \
