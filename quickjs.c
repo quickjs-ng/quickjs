@@ -50327,9 +50327,9 @@ static JSValue js_typed_array_slice(JSContext *ctx, JSValue this_val,
         if (p1 != NULL && p->class_id == p1->class_id &&
             typed_array_get_length(ctx, p1) >= count &&
             typed_array_get_length(ctx, p) >= start + count) {
-            memcpy(p1->u.array.u.uint8_ptr,
-                   p->u.array.u.uint8_ptr + (start << shift),
-                   count << shift);
+            memmove(p1->u.array.u.uint8_ptr,
+                    p->u.array.u.uint8_ptr + (start << shift),
+                    count << shift);
         } else {
             for (n = 0; n < count; n++) {
                 val = JS_GetPropertyValue(ctx, this_val, js_int32(start + n));

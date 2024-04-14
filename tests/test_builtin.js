@@ -516,7 +516,7 @@ function test_eval()
 
 function test_typed_array()
 {
-    var buffer, a, i, str;
+    var buffer, a, i, str, b;
 
     a = new Uint8Array(4);
     assert(a.length, 4);
@@ -569,6 +569,17 @@ function test_typed_array()
     assert(a.toString(), "1,2,3,4");
     a.set([10, 11], 2);
     assert(a.toString(), "1,2,10,11");
+
+    a = new Uint8Array(buffer, 0, 4);
+    a.constructor = {
+      [Symbol.species]: function (len) {
+        return new Uint8Array(buffer, 1, len);
+      },
+    };
+    b = a.slice();
+    assert(a.buffer, b.buffer);
+    assert(a.toString(), "0,0,0,255");
+    assert(b.toString(), "0,0,255,255");
 }
 
 function test_json()
