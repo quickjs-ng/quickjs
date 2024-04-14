@@ -51817,20 +51817,16 @@ void JS_AddPerformance(JSContext *ctx)
 }
 
 /* Equality comparisons and sameness */
-JS_BOOL JS_IsLooselyEqual(JSContext *ctx, JSValue op1, JSValue op2)
+JS_BOOL JS_IsEqual(JSContext *ctx, JSValue op1, JSValue op2)
 {
-    JSValue* sp = js_malloc(ctx, sizeof(JSValue) * 3);
-    sp[0] = js_dup(op1);
-    sp[1] = js_dup(op2);
-    int res = js_eq_slow(ctx, &(sp[2]), 0);
-    if (res == -1) return res;
-    JSValue isEqual = sp[0];
-    res = JS_ToBool(ctx, isEqual);
-    js_free(ctx, sp);
+    JSValue sp[2] = { js_dup(op1), js_dup(op2) };
+    int res = js_eq_slow(ctx, endof(sp), 0);
+    if (res == 0)
+        res = JS_ToBoolFree(ctx, sp[0]);
     return res;
 }
 
-JS_BOOL JS_IsStrictlyEqual(JSContext *ctx, JSValue op1, JSValue op2)
+JS_BOOL JS_IsStrictEqual(JSContext *ctx, JSValue op1, JSValue op2)
 {
     return js_strict_eq2(ctx, js_dup(op1), js_dup(op2), JS_EQ_STRICT);
 }
