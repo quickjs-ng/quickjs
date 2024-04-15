@@ -400,7 +400,7 @@ struct JSContext {
     JSValue global_obj; /* global object */
     JSValue global_var_obj; /* contains the global let/const definitions */
 
-    uint64_t time_origin;
+    double time_origin;
 
     uint64_t random_state;
     bf_context_t *bf_ctx;   /* points to rt->bf_ctx, shared by all contexts */
@@ -51884,7 +51884,7 @@ void JS_AddIntrinsicTypedArrays(JSContext *ctx)
 
 /* Performance */
 
-static uint64_t js__now_ms(void)
+static double js__now_ms(void)
 {
     return js__hrtime_ns() / 1e6;
 }
