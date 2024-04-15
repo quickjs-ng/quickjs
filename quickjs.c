@@ -33883,7 +33883,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     if (bc_get_u8(s, &v8))
         goto fail;
     bc.js_mode = v8;
-    if (bc_get_atom(s, &bc.func_name))  //@ atom leak if failure
+    if (bc_get_atom(s, &bc.func_name))
         goto fail;
     if (bc_get_leb128_u16(s, &bc.arg_count))
         goto fail;
@@ -33914,9 +33914,10 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
 
     b = js_mallocz(ctx, function_size);
     if (!b)
-        return JS_EXCEPTION;
+        goto fail;
 
     memcpy(b, &bc, sizeof(*b));
+    bc.func_name = JS_ATOM_NULL;
     b->header.ref_count = 1;
     if (local_count != 0) {
         b->vardefs = (void *)((uint8_t*)b + vardefs_offset);
@@ -34059,6 +34060,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     b->realm = JS_DupContext(ctx);
     return obj;
  fail:
+    JS_FreeAtom(ctx, bc.func_name);
     JS_FreeValue(ctx, obj);
     return JS_EXCEPTION;
 }
