@@ -2480,8 +2480,11 @@ static __maybe_unused void JS_DumpString(JSRuntime *rt,
         printf("<null>");
         return;
     }
-    printf("%d", p->header.ref_count);
-    sep = (p->header.ref_count == 1) ? '\"' : '\'';
+    if (p->header.ref_count != 1)
+        printf("%d", p->header.ref_count);
+    if (p->is_wide_char)
+        putchar('L');
+    sep = '\"';
     putchar(sep);
     for(i = 0; i < p->len; i++) {
         c = string_get(p, i);
@@ -14510,7 +14513,7 @@ typedef enum {
 
 #ifdef DUMP_BYTECODE
 static void dump_single_byte_code(JSContext *ctx, const uint8_t *pc,
-                                  JSFunctionBytecode *b);
+                                  JSFunctionBytecode *b, int start_pos);
 static void print_func_name(JSFunctionBytecode *b);
 #endif
 
@@ -14533,7 +14536,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
 
 #ifdef DUMP_BYTECODE_STEP
 #define DUMP_BYTECODE_OR_DONT(pc) \
-    if (check_dump_flag(ctx->rt, DUMP_BYTECODE_STEP)) dump_single_byte_code(ctx, pc, b);
+    if (check_dump_flag(ctx->rt, DUMP_BYTECODE_STEP)) dump_single_byte_code(ctx, pc, b, 0);
 #else
 #define DUMP_BYTECODE_OR_DONT(pc)
 #endif
@@ -27557,12 +27560,16 @@ static void dump_byte_code(JSContext *ctx, int pass,
                            const JSClosureVar *closure_var, int closure_var_count,
                            const JSValue *cpool, uint32_t cpool_count,
                            const char *source, int line_num,
-                           const LabelSlot *label_slots, JSFunctionBytecode *b)
+                           const LabelSlot *label_slots, JSFunctionBytecode *b,
+                           int start_pos)
 {
     const JSOpCode *oi;
     int pos, pos_next, op, size, idx, addr, line, line1, in_source;
     uint8_t *bits = js_mallocz(ctx, len * sizeof(*bits));
     BOOL use_short_opcodes = (b != NULL);
+
+    if (start_pos != 0 || bits == NULL)
+        goto no_labels;
 
     /* scan for jump targets */
     for (pos = 0; pos < len; pos = pos_next) {
@@ -27604,6 +27611,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
             }
         }
     }
+ no_labels:
     in_source = 0;
     if (source) {
         /* Always print first line: needed if single line */
@@ -27660,12 +27668,12 @@ static void dump_byte_code(JSContext *ctx, int pass,
             printf("%*s", x0 + 20 - x, "");
         }
 #endif
-        if (bits[pos]) {
+        if (bits && bits[pos]) {
             printf("%5d:  ", pos);
         } else {
             printf("        ");
         }
-        printf("%s", oi->name);
+        printf("%-15s", oi->name);  /* align opcode arguments */
         pos++;
         switch(oi->fmt) {
         case OP_FMT_none_int:
@@ -27706,25 +27714,21 @@ static void dump_byte_code(JSContext *ctx, int pass,
             addr = get_i16(tab + pos);
             goto has_addr1;
         case OP_FMT_label:
-            addr = get_u32(tab + pos);
-            goto has_addr1;
-        has_addr1:
-            if (pass == 1)
-                printf(" %u:%u", addr, label_slots[addr].pos);
-            if (pass == 2)
-                printf(" %u:%u", addr, label_slots[addr].pos2);
-            if (pass == 3)
-                printf(" %u", addr + pos);
-            break;
         case OP_FMT_label_u16:
             addr = get_u32(tab + pos);
+        has_addr1:
             if (pass == 1)
-                printf(" %u:%u", addr, label_slots[addr].pos);
+                printf(" %d:%u", addr, label_slots[addr].pos);
             if (pass == 2)
-                printf(" %u:%u", addr, label_slots[addr].pos2);
-            if (pass == 3)
-                printf(" %u", addr + pos);
-            printf(",%u", get_u16(tab + pos + 4));
+                printf(" %d:%u", addr, label_slots[addr].pos2);
+            if (pass == 3) {
+                if (start_pos)
+                    printf(" %04x", addr + pos + start_pos);
+                else
+                    printf(" %d", addr + pos);
+            }
+            if (oi->fmt == OP_FMT_label_u16)
+                printf(",%u", get_u16(tab + pos + 4));
             break;
         case OP_FMT_const8:
             idx = get_u8(tab + pos);
@@ -27733,7 +27737,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
             idx = get_u32(tab + pos);
             goto has_pool_idx;
         has_pool_idx:
-            printf(" %u: ", idx);
+            printf(" %-4u ; ", idx);
             if (idx < cpool_count) {
                 JS_DumpValue(ctx->rt, cpool[idx]);
             }
@@ -27777,7 +27781,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
         case OP_FMT_loc:
             idx = get_u16(tab + pos);
         has_loc:
-            printf(" %d: ", idx);
+            printf(" %-4d ; ", idx);
             if (idx < var_count) {
                 print_atom(ctx, vars[idx].var_name);
             }
@@ -27788,7 +27792,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
         case OP_FMT_arg:
             idx = get_u16(tab + pos);
         has_arg:
-            printf(" %d: ", idx);
+            printf(" %-4d ; ", idx);
             if (idx < arg_count) {
                 print_atom(ctx, args[idx].var_name);
             }
@@ -27799,7 +27803,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
         case OP_FMT_var_ref:
             idx = get_u16(tab + pos);
         has_var_ref:
-            printf(" %d: ", idx);
+            printf(" %-4d ; ", idx);
             if (idx < closure_var_count) {
                 print_atom(ctx, closure_var[idx].var_name);
             }
@@ -27822,7 +27826,8 @@ static void dump_byte_code(JSContext *ctx, int pass,
 // and only works for pass3 bytecode
 static __maybe_unused void dump_single_byte_code(JSContext *ctx,
                                                  const uint8_t *pc,
-                                                 JSFunctionBytecode *b)
+                                                 JSFunctionBytecode *b,
+                                                 int start_pos)
 {
     JSVarDef *args, *vars;
 
@@ -27835,7 +27840,7 @@ static __maybe_unused void dump_single_byte_code(JSContext *ctx,
                    b->closure_var, b->closure_var_count,
                    b->cpool, b->cpool_count,
                    NULL, b->line_num,
-                   NULL, b);
+                   NULL, b, start_pos);
 }
 
 static __maybe_unused void print_func_name(JSFunctionBytecode *b)
@@ -27962,7 +27967,7 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
                    b->vardefs ? b->vardefs + b->arg_count : NULL, b->var_count,
                    b->closure_var, b->closure_var_count,
                    b->cpool, b->cpool_count,
-                   b->source, b->line_num, NULL, b);
+                   b->source, b->line_num, NULL, b, 0);
 #ifdef DUMP_BYTECODE_PC2LINE
     if (check_dump_flag(ctx->rt, DUMP_BYTECODE_PC2LINE))
         dump_pc2line(ctx, b->pc2line_buf, b->pc2line_len, b->line_num, b->col_num);
@@ -31272,7 +31277,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
                        fd->args, fd->arg_count, fd->vars, fd->var_count,
                        fd->closure_var, fd->closure_var_count,
                        fd->cpool, fd->cpool_count, fd->source, fd->line_num,
-                       fd->label_slots, NULL);
+                       fd->label_slots, NULL, 0);
         printf("\n");
     }
 #endif
@@ -31287,7 +31292,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
                        fd->args, fd->arg_count, fd->vars, fd->var_count,
                        fd->closure_var, fd->closure_var_count,
                        fd->cpool, fd->cpool_count, fd->source, fd->line_num,
-                       fd->label_slots, NULL);
+                       fd->label_slots, NULL, 0);
         printf("\n");
     }
 #endif
@@ -32600,7 +32605,7 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
 } BCTagEnum;
 
-#define BC_VERSION 10
+#define BC_VERSION 11
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -33016,6 +33021,13 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
         bc_put_u8(s, flags);
     }
 
+    // write constant pool before code so code can be disassembled
+    // on the fly at read time
+    for(i = 0; i < b->cpool_count; i++) {
+        if (JS_WriteObjectRec(s, b->cpool[i]))
+            goto fail;
+    }
+
     if (JS_WriteFunctionBytecode(s, b))
         goto fail;
 
@@ -33026,11 +33038,6 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
     dbuf_put(&s->dbuf, b->pc2line_buf, b->pc2line_len);
     bc_put_leb128(s, b->source_len);
     dbuf_put(&s->dbuf, b->source, b->source_len);
-
-    for(i = 0; i < b->cpool_count; i++) {
-        if (JS_WriteObjectRec(s, b->cpool[i]))
-            goto fail;
-    }
     return 0;
  fail:
     return -1;
@@ -33461,10 +33468,9 @@ typedef struct BCReaderState {
     int objects_count;
     int objects_size;
 
-#ifdef DUMP_READ_OBJECT
+    /* used for DUMP_READ_OBJECT */
     const uint8_t *ptr_last;
     int level;
-#endif
 } BCReaderState;
 
 #ifdef DUMP_READ_OBJECT
@@ -33736,18 +33742,23 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
                 return -1;
             }
             put_u32(bc_buf + pos + 1, atom);
-#ifdef DUMP_READ_OBJECT
-            if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-                bc_read_trace(s, "at %d, fixup atom: ", pos + 1);
-                print_atom(s->ctx, atom);
-                printf("\n");
-            }
-#endif
             break;
         default:
             assert(!is_ic_op(op)); // should not end up in serialized bytecode
             break;
         }
+#ifdef DUMP_READ_OBJECT
+        if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
+            const uint8_t *save_ptr = s->ptr;
+            s->ptr = s->ptr_last + len;
+            s->level -= 4;
+            bc_read_trace(s, "");   // hex dump + indent
+            dump_single_byte_code(s->ctx, bc_buf + pos, b,
+                                  s->ptr - s->buf_start - len);
+            s->level += 4;
+            s->ptr = save_ptr;
+        }
+#endif
         pos += len;
     }
     return 0;
@@ -33950,6 +33961,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
 
     if (local_count != 0) {
         bc_read_trace(s, "vars {\n");
+        bc_read_trace(s, "off flags scope name\n");
         for(i = 0; i < local_count; i++) {
             JSVarDef *vd = &b->vardefs[i];
             if (bc_get_atom(s, &vd->var_name))
@@ -33968,7 +33980,12 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             vd->is_captured = bc_get_flags(v8, &idx, 1);
 #ifdef DUMP_READ_OBJECT
             if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-                bc_read_trace(s, "name: ");
+                bc_read_trace(s, "%3d  %d%c%c%c %4d  ",
+                              i, vd->var_kind,
+                              vd->is_const ? 'C' : '.',
+                              vd->is_lexical ? 'L' : '.',
+                              vd->is_captured ? 'X' : '.',
+                              vd->scope_level);
                 print_atom(s->ctx, vd->var_name);
                 printf("\n");
             }
@@ -33978,6 +33995,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     }
     if (b->closure_var_count != 0) {
         bc_read_trace(s, "closure vars {\n");
+        bc_read_trace(s, "off  flags idx  name\n");
         for(i = 0; i < b->closure_var_count; i++) {
             JSClosureVar *cv = &b->closure_var[i];
             int var_idx;
@@ -33996,11 +34014,28 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             cv->var_kind = bc_get_flags(v8, &idx, 4);
 #ifdef DUMP_READ_OBJECT
             if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-                bc_read_trace(s, "name: ");
+                bc_read_trace(s, "%3d  %d%c%c%c%c %3d  ",
+                              i, cv->var_kind,
+                              cv->is_local ? 'L' : '.',
+                              cv->is_arg ? 'A' : '.',
+                              cv->is_const ? 'C' : '.',
+                              cv->is_lexical ? 'X' : '.',
+                              cv->var_idx);
                 print_atom(s->ctx, cv->var_name);
                 printf("\n");
             }
 #endif
+        }
+        bc_read_trace(s, "}\n");
+    }
+    if (b->cpool_count != 0) {
+        bc_read_trace(s, "cpool {\n");
+        for(i = 0; i < b->cpool_count; i++) {
+            JSValue val;
+            val = JS_ReadObjectRec(s);
+            if (JS_IsException(val))
+                goto fail;
+            b->cpool[i] = val;
         }
         bc_read_trace(s, "}\n");
     }
@@ -34039,22 +34074,12 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         goto fail;
     if (b->source_len) {
         bc_read_trace(s, "source: %d bytes\n", b->source_len);
+        s->ptr_last += b->source_len;  // omit source code hex dump
         b->source = js_mallocz(ctx, b->source_len);
         if (!b->source)
             goto fail;
         if (bc_get_buf(s, b->source, b->source_len))
             goto fail;
-    }
-    if (b->cpool_count != 0) {
-        bc_read_trace(s, "cpool {\n");
-        for(i = 0; i < b->cpool_count; i++) {
-            JSValue val;
-            val = JS_ReadObjectRec(s);
-            if (JS_IsException(val))
-                goto fail;
-            b->cpool[i] = val;
-        }
-        bc_read_trace(s, "}\n");
     }
     bc_read_trace(s, "}\n");
     b->realm = JS_DupContext(ctx);
