@@ -61,20 +61,37 @@ import * as os from "os";
         bright_white:   "\x1b[37;1m",
     };
 
-    var styles = {
-        'default':    'bright_green',
-        'comment':    'white',
-        'string':     'bright_cyan',
-        'regex':      'cyan',
-        'number':     'green',
-        'keyword':    'bright_white',
-        'function':   'bright_yellow',
-        'type':       'bright_magenta',
-        'identifier': 'bright_green',
-        'error':      'red',
-        'result':     'bright_white',
-        'error_msg':  'bright_red',
+    var themes = {
+        dark: {
+            'default':    'bright_green',
+            'comment':    'white',
+            'string':     'bright_cyan',
+            'regex':      'cyan',
+            'number':     'green',
+            'keyword':    'bright_white',
+            'function':   'bright_yellow',
+            'type':       'bright_magenta',
+            'identifier': 'bright_green',
+            'error':      'red',
+            'result':     'bright_white',
+            'error_msg':  'bright_red',
+        },
+        light: {
+            'default':    'bright_green',
+            'comment':    'grey',
+            'string':     'bright_cyan',
+            'regex':      'cyan',
+            'number':     'green',
+            'keyword':    'bright_magenta',
+            'function':   'bright_yellow',
+            'type':       'bright_magenta',
+            'identifier': 'bright_green',
+            'error':      'red',
+            'result':     'grey',
+            'error_msg':  'bright_red',
+        },
     };
+    var styles = themes.dark;
 
     var history = [];
     var clip_board = "";
@@ -1044,6 +1061,8 @@ import * as os from "os";
                  ".dec   " + sel(!hex_mode) + "decimal number display\n" +
                  ".time  " + sel(show_time) + "toggle timing display\n" +
                  ".color " + sel(show_colors) + "toggle colored output\n" +
+                 ".dark  " + sel(styles == themes.dark) + "select dark color theme\n" +
+                 ".light " + sel(styles == themes.light) + "select light color theme\n" +
                  ".clear  clear the terminal\n" +
                  ".load   load source code from a file\n" +
                  ".quit   exit\n");
@@ -1052,7 +1071,11 @@ import * as os from "os";
     function load(s) {
         if (s.lastIndexOf(".") <= s.lastIndexOf("/"))
             s += ".js";
-        std.loadScript(s);
+        try {
+            std.loadScript(s);
+        } catch (e) {
+            std.puts(`${e}\n`);
+        }
     }
 
     function to_bool(s, def) {
@@ -1066,6 +1089,8 @@ import * as os from "os";
         "dec":    (s) => { hex_mode = !to_bool(s, true); },
         "time":   (s) => { show_time = to_bool(s, !show_time); },
         "color":  (s) => { show_colors = to_bool(s, !show_colors); },
+        "dark":   () => { styles = themes.dark; },
+        "light":  () => { styles = themes.light; },
         "clear":  () => { std.puts("\x1b[H\x1b[J") },
         "quit":   () => { std.exit(0); },
     }, null);
@@ -1369,6 +1394,13 @@ import * as os from "os";
         }
         set_style(n, n);
         return [ state, level, r ];
+    }
+
+    var m, s = std.getenv("COLORFGBG");
+    if (s && (m = s.match(/(\d+);(\d+)/))) {
+        if (+m[2] !== 0) { // light background
+            styles = themes.light;
+        }
     }
 
     termInit();
