@@ -51915,6 +51915,30 @@ void JS_AddPerformance(JSContext *ctx)
     JS_FreeValue(ctx, performance);
 }
 
+/* Equality comparisons and sameness */
+int JS_IsEqual(JSContext *ctx, JSValue op1, JSValue op2)
+{
+    JSValue sp[2] = { js_dup(op1), js_dup(op2) };
+    if (js_eq_slow(ctx, endof(sp), 0))
+        return -1;
+    return JS_VALUE_GET_BOOL(sp[0]);
+}
+
+JS_BOOL JS_IsStrictEqual(JSContext *ctx, JSValue op1, JSValue op2)
+{
+    return js_strict_eq2(ctx, js_dup(op1), js_dup(op2), JS_EQ_STRICT);
+}
+
+JS_BOOL JS_IsSameValue(JSContext *ctx, JSValue op1, JSValue op2)
+{
+    return js_same_value(ctx, op1, op2);
+}
+
+JS_BOOL JS_IsSameValueZero(JSContext *ctx, JSValue op1, JSValue op2)
+{
+    return js_same_value_zero(ctx, op1, op2);
+}
+
 /* WeakRef */
 
 typedef struct JSWeakRefData {
