@@ -10890,6 +10890,8 @@ static __exception int JS_ToArrayLengthFree(JSContext *ctx, uint32_t *plen,
         if (JS_TAG_IS_FLOAT64(tag)) {
             double d;
             d = JS_VALUE_GET_FLOAT64(val);
+            if (!(d >= 0 && d <= UINT32_MAX))
+                goto fail;
             len = (uint32_t)d;
             if (len != d)
                 goto fail;
@@ -37576,9 +37578,10 @@ static JSValue js_array_includes(JSContext *ctx, JSValue this_val,
                                  int argc, JSValue *argv)
 {
     JSValue obj, val;
-    int64_t len, n, res;
+    int64_t len, n;
     JSValue *arrp;
     uint32_t count;
+    int res;
 
     obj = JS_ToObject(ctx, this_val);
     if (js_get_length64(ctx, &len, obj))
@@ -50006,8 +50009,10 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValue this_val,
     } else
     if (tag == JS_TAG_FLOAT64) {
         d = JS_VALUE_GET_FLOAT64(argv[0]);
-        v64 = d;
-        is_int = (v64 == d);
+        if (d >= INT64_MIN && d < 0x1p63) {
+            v64 = d;
+            is_int = (v64 == d);
+        }
     } else
     if (tag == JS_TAG_BIG_INT) {
         JSBigInt *p1 = JS_VALUE_GET_PTR(argv[0]);
