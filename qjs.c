@@ -199,7 +199,8 @@ static void *js_trace_malloc(JSMallocState *s, size_t size)
     /* Do not allocate zero bytes: behavior is platform dependent */
     assert(size != 0);
 
-    if (unlikely(s->malloc_size + size > s->malloc_limit))
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (unlikely(s->malloc_size + size > s->malloc_limit - 1))
         return NULL;
     ptr = malloc(size);
     js_trace_malloc_printf(s, "A %zd -> %p\n", size, ptr);
@@ -238,7 +239,8 @@ static void *js_trace_realloc(JSMallocState *s, void *ptr, size_t size)
         free(ptr);
         return NULL;
     }
-    if (s->malloc_size + size - old_size > s->malloc_limit)
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (s->malloc_size + size - old_size > s->malloc_limit - 1)
         return NULL;
 
     js_trace_malloc_printf(s, "R %zd %p", size, ptr);
@@ -295,10 +297,10 @@ int main(int argc, char **argv)
     int module = -1;
     int load_std = 0;
     int dump_unhandled_promise_rejection = 0;
-    size_t memory_limit = 0;
     char *include_list[32];
     int i, include_count = 0;
-    size_t stack_size = 0;
+    int64_t memory_limit = -1;
+    int64_t stack_size = -1;
 
     argv0 = (JSCFunctionListEntry)JS_PROP_STRING_DEF("argv0", argv[0],
                                                      JS_PROP_C_W_E);
@@ -403,7 +405,7 @@ int main(int argc, char **argv)
                     opt_arg = argv[optind++];
                 }
                 // TODO(chqrlie): accept kmg suffixes
-                memory_limit = (size_t)strtod(opt_arg, NULL);
+                memory_limit = strtoull(opt_arg, NULL, 0);
                 break;
             }
             if (!strcmp(longopt, "stack-size")) {
@@ -415,7 +417,7 @@ int main(int argc, char **argv)
                     opt_arg = argv[optind++];
                 }
                 // TODO(chqrlie): accept kmg suffixes
-                stack_size = (size_t)strtod(opt_arg, NULL);
+                stack_size = strtoull(opt_arg, NULL, 0);
                 break;
             }
             if (opt) {
@@ -437,10 +439,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "qjs: cannot allocate JS runtime\n");
         exit(2);
     }
-    if (memory_limit != 0)
-        JS_SetMemoryLimit(rt, memory_limit);
-    if (stack_size != 0)
-        JS_SetMaxStackSize(rt, stack_size);
+    if (memory_limit >= 0)
+        JS_SetMemoryLimit(rt, (size_t)memory_limit);
+    if (stack_size >= 0)
+        JS_SetMaxStackSize(rt, (size_t)stack_size);
     if (dump_flags != 0)
         JS_SetDumpFlags(rt, dump_flags);
     js_std_set_worker_new_context_func(JS_NewCustomContext);

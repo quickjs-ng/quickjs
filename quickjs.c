@@ -1608,7 +1608,7 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
 
     memset(&ms, 0, sizeof(ms));
     ms.opaque = opaque;
-    ms.malloc_limit = -1;
+    ms.malloc_limit = 0;
 
     rt = mf->js_malloc(&ms, sizeof(JSRuntime));
     if (!rt)
@@ -1685,7 +1685,8 @@ static void *js_def_malloc(JSMallocState *s, size_t size)
     /* Do not allocate zero bytes: behavior is platform dependent */
     assert(size != 0);
 
-    if (unlikely(s->malloc_size + size > s->malloc_limit))
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (unlikely(s->malloc_size + size > s->malloc_limit - 1))
         return NULL;
 
     ptr = malloc(size);
@@ -1723,7 +1724,8 @@ static void *js_def_realloc(JSMallocState *s, void *ptr, size_t size)
         free(ptr);
         return NULL;
     }
-    if (s->malloc_size + size - old_size > s->malloc_limit)
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (s->malloc_size + size - old_size > s->malloc_limit - 1)
         return NULL;
 
     ptr = realloc(ptr, size);
