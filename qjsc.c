@@ -56,7 +56,7 @@ static namelist_t cmodule_list;
 static namelist_t init_module_list;
 static FILE *outfile;
 static const char *c_ident_prefix = "qjsc_";
-
+static int strip;
 
 void namelist_add(namelist_t *lp, const char *name, const char *short_name,
                   int flags)
@@ -155,8 +155,15 @@ static void output_object_code(JSContext *ctx,
 {
     uint8_t *out_buf;
     size_t out_buf_len;
+    int flags = JS_WRITE_OBJ_BYTECODE;
 
-    out_buf = JS_WriteObject(ctx, &out_buf_len, obj, JS_WRITE_OBJ_BYTECODE);
+    if (strip) {
+        flags |= JS_WRITE_OBJ_STRIP_SOURCE;
+        if (strip > 1)
+            flags |= JS_WRITE_OBJ_STRIP_DEBUG;
+    }
+
+    out_buf = JS_WriteObject(ctx, &out_buf_len, obj, flags);
     if (!out_buf) {
         js_std_dump_error(ctx);
         exit(1);
@@ -354,6 +361,7 @@ int main(int argc, char **argv)
     cname = NULL;
     module = -1;
     verbose = 0;
+    strip = 0;
     stack_size = 0;
     memset(&dynamic_module_list, 0, sizeof(dynamic_module_list));
 
@@ -362,7 +370,7 @@ int main(int argc, char **argv)
     namelist_add(&cmodule_list, "os", "os", 0);
 
     for(;;) {
-        c = getopt(argc, argv, "ho:N:mxevM:p:S:D:");
+        c = getopt(argc, argv, "ho:N:mxesvM:p:S:D:");
         if (c == -1)
             break;
         switch(c) {
@@ -398,6 +406,9 @@ int main(int argc, char **argv)
             break;
         case 'D':
             namelist_add(&dynamic_module_list, optarg, NULL, 0);
+            break;
+        case 's':
+            strip++;
             break;
         case 'v':
             verbose++;

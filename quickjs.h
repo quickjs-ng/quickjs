@@ -816,9 +816,9 @@ JS_EXTERN int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx);
 #define JS_WRITE_OBJ_BYTECODE  (1 << 0) /* allow function/module */
 #define JS_WRITE_OBJ_BSWAP     (0)      /* byte swapped output (obsolete, handled transparently) */
 #define JS_WRITE_OBJ_SAB       (1 << 2) /* allow SharedArrayBuffer */
-#define JS_WRITE_OBJ_REFERENCE (1 << 3) /* allow object references to
-                                           encode arbitrary object
-                                           graph */
+#define JS_WRITE_OBJ_REFERENCE (1 << 3) /* allow object references to encode arbitrary object graph */
+#define JS_WRITE_OBJ_STRIP_SOURCE  (1 << 4) /* do not write source code information */
+#define JS_WRITE_OBJ_STRIP_DEBUG   (1 << 5) /* do not write debug information */
 JS_EXTERN uint8_t *JS_WriteObject(JSContext *ctx, size_t *psize, JSValue obj, int flags);
 JS_EXTERN uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValue obj,
                                    int flags, uint8_t ***psab_tab, size_t *psab_tab_len);

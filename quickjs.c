@@ -32601,7 +32601,7 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
 } BCTagEnum;
 
-#define BC_VERSION 11
+#define BC_VERSION 12
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -32609,6 +32609,8 @@ typedef struct BCWriterState {
     BOOL allow_bytecode : 8;
     BOOL allow_sab : 8;
     BOOL allow_reference : 8;
+    BOOL allow_source : 1;
+    BOOL allow_debug : 1;
     uint32_t first_atom;
     uint32_t *atom_to_idx;
     int atom_to_idx_size;
@@ -32971,6 +32973,7 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
     bc_set_flags(&flags, &idx, b->super_allowed, 1);
     bc_set_flags(&flags, &idx, b->arguments_allowed, 1);
     bc_set_flags(&flags, &idx, b->backtrace_barrier, 1);
+    bc_set_flags(&flags, &idx, s->allow_debug, 1);
     assert(idx <= 16);
     bc_put_u16(s, flags);
     bc_put_u8(s, b->js_mode);
@@ -33027,13 +33030,19 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValue obj)
     if (JS_WriteFunctionBytecode(s, b))
         goto fail;
 
-    bc_put_atom(s, b->filename);
-    bc_put_leb128(s, b->line_num);
-    bc_put_leb128(s, b->col_num);
-    bc_put_leb128(s, b->pc2line_len);
-    dbuf_put(&s->dbuf, b->pc2line_buf, b->pc2line_len);
-    bc_put_leb128(s, b->source_len);
-    dbuf_put(&s->dbuf, b->source, b->source_len);
+    if (s->allow_debug) {
+        bc_put_atom(s, b->filename);
+        bc_put_leb128(s, b->line_num);
+        bc_put_leb128(s, b->col_num);
+        bc_put_leb128(s, b->pc2line_len);
+        dbuf_put(&s->dbuf, b->pc2line_buf, b->pc2line_len);
+        if (s->allow_source && b->source) {
+            bc_put_leb128(s, b->source_len);
+            dbuf_put(&s->dbuf, b->source, b->source_len);
+        } else {
+            bc_put_leb128(s, 0);
+        }
+    }
     return 0;
  fail:
     return -1;
@@ -33409,6 +33418,8 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValue obj,
     s->allow_bytecode = ((flags & JS_WRITE_OBJ_BYTECODE) != 0);
     s->allow_sab = ((flags & JS_WRITE_OBJ_SAB) != 0);
     s->allow_reference = ((flags & JS_WRITE_OBJ_REFERENCE) != 0);
+    s->allow_source = ((flags & JS_WRITE_OBJ_STRIP_SOURCE) == 0);
+    s->allow_debug = ((flags & JS_WRITE_OBJ_STRIP_DEBUG) == 0);
     /* XXX: could use a different version when bytecode is included */
     if (s->allow_bytecode)
         s->first_atom = JS_ATOM_END;
@@ -33864,7 +33875,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     JSValue obj = JS_UNDEFINED;
     uint16_t v16;
     uint8_t v8;
-    int idx, i, local_count;
+    int idx, i, local_count, has_debug_info;
     int function_size, cpool_offset, byte_code_offset;
     int closure_var_offset, vardefs_offset;
     uint32_t ic_len;
@@ -33887,6 +33898,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     bc.super_allowed = bc_get_flags(v16, &idx, 1);
     bc.arguments_allowed = bc_get_flags(v16, &idx, 1);
     bc.backtrace_barrier = bc_get_flags(v16, &idx, 1);
+    has_debug_info = bc_get_flags(v16, &idx, 1);
     if (bc_get_u8(s, &v8))
         goto fail;
     bc.js_mode = v8;
@@ -34041,6 +34053,9 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             goto fail;
         bc_read_trace(s, "}\n");
     }
+    if (!has_debug_info)
+        goto nodebug;
+
     /* read optional debug information */
     bc_read_trace(s, "debug {\n");
     if (bc_get_atom(s, &b->filename))
@@ -34078,8 +34093,11 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             goto fail;
     }
     bc_read_trace(s, "}\n");
+
+ nodebug:
     b->realm = JS_DupContext(ctx);
     return obj;
+
  fail:
     JS_FreeAtom(ctx, bc.func_name);
     JS_FreeValue(ctx, obj);
@@ -36510,7 +36528,8 @@ static JSValue js_function_toString(JSContext *ctx, JSValue this_val,
     p = JS_VALUE_GET_OBJ(this_val);
     if (js_class_has_bytecode(p->class_id)) {
         JSFunctionBytecode *b = p->u.func.function_bytecode;
-        return JS_NewStringLen(ctx, b->source, b->source_len);
+        if (b->source)
+            return JS_NewStringLen(ctx, b->source, b->source_len);
     }
     {
         JSValue name;
