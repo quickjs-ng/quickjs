@@ -53,6 +53,9 @@ $(QJS): $(BUILD_DIR)
 $(QJSC): $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) --target qjsc -j $(JOBS)
 
+$(BUILD_DIR)/test_conv: $(BUILD_DIR) tests/test_conv.c
+	cmake --build $(BUILD_DIR) --target test_conv
+
 install: $(QJS) $(QJSC)
 	cmake --build $(BUILD_DIR) --target install
 
@@ -85,6 +88,9 @@ test: $(QJS)
 	$(QJS) tests/test_std.js
 	$(QJS) tests/test_worker.js
 	$(QJS) tests/test_queue_microtask.js
+
+testconv: $(BUILD_DIR)/test_conv
+	$(BUILD_DIR)/test_conv
 
 test262: $(QJS)
 	$(RUN262) -m -c test262.conf -a

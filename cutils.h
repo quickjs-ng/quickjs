@@ -131,6 +131,14 @@ char *pstrcat(char *buf, int buf_size, const char *s);
 int strstart(const char *str, const char *val, const char **ptr);
 int has_suffix(const char *str, const char *suffix);
 
+static inline uint8_t is_be(void) {
+    union {
+        uint16_t a;
+        uint8_t  b;
+    } u = { 0x100 };
+    return u.b;
+}
+
 static inline int max_int(int a, int b)
 {
     if (a > b)
@@ -425,6 +433,23 @@ static inline int from_hex(int c)
     else
         return -1;
 }
+
+static inline uint8_t is_upper_ascii(uint8_t c) {
+    return c >= 'A' && c <= 'Z';
+}
+
+static inline uint8_t to_upper_ascii(uint8_t c) {
+    return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
+}
+
+extern char const digits36[36];
+size_t u32toa(char buf[minimum_length(11)], uint32_t n);
+size_t i32toa(char buf[minimum_length(12)], int32_t n);
+size_t u64toa(char buf[minimum_length(21)], uint64_t n);
+size_t i64toa(char buf[minimum_length(22)], int64_t n);
+size_t u32toa_radix(char buf[minimum_length(33)], uint32_t n, unsigned int base);
+size_t u64toa_radix(char buf[minimum_length(65)], uint64_t n, unsigned int base);
+size_t i64toa_radix(char buf[minimum_length(66)], int64_t n, unsigned int base);
 
 void rqsort(void *base, size_t nmemb, size_t size,
             int (*cmp)(const void *, const void *, void *),
