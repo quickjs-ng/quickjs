@@ -39335,6 +39335,17 @@ static JSValue js_string_fromCharCode(JSContext *ctx, JSValue this_val,
     int i;
     StringBuffer b_s, *b = &b_s;
 
+    // shortcut for single argument common case
+    if (argc == 1 && JS_VALUE_GET_TAG(argv[0]) == JS_TAG_INT) {
+        uint16_t c16 = JS_VALUE_GET_INT(argv[0]);
+        if (c16 < 128) {
+            uint8_t c8 = c16;
+            return js_new_string8(ctx, &c8, 1);
+        } else {
+            return js_new_string16(ctx, &c16, 1);
+        }
+    }
+
     string_buffer_init(ctx, b, argc);
 
     for(i = 0; i < argc; i++) {
@@ -39352,10 +39363,30 @@ static JSValue js_string_fromCodePoint(JSContext *ctx, JSValue this_val,
 {
     double d;
     int i, c;
-    StringBuffer b_s, *b = &b_s;
+    StringBuffer b_s, *b = NULL;
+
+    // shortcut for single argument common case
+    if (argc == 1 && JS_VALUE_GET_TAG(argv[0]) == JS_TAG_INT) {
+        c = JS_VALUE_GET_INT(argv[0]);
+        if (c < 0 || c > 0x10ffff)
+            goto range_error;
+        if (c < 128) {
+            uint8_t c8 = c;
+            return js_new_string8(ctx, &c8, 1);
+        }
+        if (c < 0x10000) {
+            uint16_t c16 = c;
+            return js_new_string16(ctx, &c16, 1);
+        } else {
+            uint16_t c16[2];
+            c16[0] = get_hi_surrogate(c);
+            c16[1] = get_lo_surrogate(c);
+            return js_new_string16(ctx, c16, 2);
+        }
+    }
 
     /* XXX: could pre-compute string length if all arguments are JS_TAG_INT */
-
+    b = &b_s;
     if (string_buffer_init(ctx, b, argc))
         goto fail;
     for(i = 0; i < argc; i++) {
@@ -39377,7 +39408,7 @@ static JSValue js_string_fromCodePoint(JSContext *ctx, JSValue this_val,
  range_error:
     JS_ThrowRangeError(ctx, "invalid code point");
  fail:
-    string_buffer_free(b);
+    if (b) string_buffer_free(b);
     return JS_EXCEPTION;
 }
 
