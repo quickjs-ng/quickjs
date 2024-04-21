@@ -33,12 +33,21 @@ import * as os from "os";
     /* close global objects */
     var Object = g.Object;
     var String = g.String;
+    var Number = g.Number;
+    var Boolean = g.Boolean;
+    var BigInt = g.BigInt;
+    var Uint8Array = g.Uint8Array;
     var Array = g.Array;
     var Date = g.Date;
     var RegExp = g.RegExp;
+    var Error = g.Error;
+    var Symbol = g.Symbol;
     var Math = g.Math;
     var JSON = g.JSON;
     var isFinite = g.isFinite;
+    var isNaN = g.isNaN;
+    var Infinity = g.Infinity;
+    var console = g.console;
 
     var colors = {
         none:    "\x1b[0m",
@@ -63,56 +72,70 @@ import * as os from "os";
 
     var themes = {
         dark: {
-            'default':    'bright_green',
+            'annotation': 'cyan',
+            'boolean':    'bright_white',
             'comment':    'white',
-            'string':     'bright_cyan',
-            'regex':      'cyan',
-            'number':     'green',
-            'keyword':    'bright_white',
+            'date':       'magenta',
+            'default':    'bright_green',
+            'error':      'bright_red',
             'function':   'bright_yellow',
-            'type':       'bright_magenta',
             'identifier': 'bright_green',
-            'error':      'red',
-            'result':     'bright_white',
-            'error_msg':  'bright_red',
+            'keyword':    'bright_white',
+            'null':       'bright_white',
+            'number':     'green',
+            'other':      'white',
+            'propname':   'white',
+            'regexp':     'cyan',
+            'string':     'bright_cyan',
+            'symbol':     'bright_white',
+            'type':       'bright_magenta',
+            'undefined':  'bright_white',
         },
         light: {
-            'default':    'bright_green',
+            'annotation': 'cyan',
+            'boolean':    'bright_magenta',
             'comment':    'grey',
-            'string':     'bright_cyan',
-            'regex':      'cyan',
-            'number':     'green',
-            'keyword':    'bright_magenta',
-            'function':   'bright_yellow',
-            'type':       'bright_magenta',
-            'identifier': 'bright_green',
+            'date':       'magenta',
+            'default':    'black',
             'error':      'red',
-            'result':     'grey',
-            'error_msg':  'bright_red',
+            'function':   'bright_yellow',
+            'identifier': 'black',
+            'keyword':    'bright_magenta',
+            'null':       'bright_magenta',
+            'number':     'green',
+            'other':      'black',
+            'propname':   'black',
+            'regexp':     'cyan',
+            'string':     'bright_cyan',
+            'symbol':     'grey',
+            'type':       'bright_magenta',
+            'undefined':  'bright_magenta',
         },
     };
     var styles = themes.dark;
+    var utf8 = true;
+    var show_time = false;
+    var show_colors = true;
+    var show_hidden = false;
+    var show_depth = 2;
+    var hex_mode = false;
+    var use_strict = false;
 
     var history = [];
+    var history_index;
     var clip_board = "";
-    
     var pstate = "";
     var prompt = "";
     var plen = 0;
     var ps1 = "qjs > ";
     var ps2 = "  ... ";
-    var utf8 = true;
-    var show_time = false;
-    var show_colors = true;
     var eval_time = 0;
-    
     var mexpr = "";
     var level = 0;
     var cmd = "";
     var cursor_pos = 0;
     var last_cmd = "";
     var last_cursor_pos = 0;
-    var history_index;
     var this_fun, last_fun;
     var quote_flag = false;
 
@@ -393,7 +416,10 @@ import * as os from "os";
     }
 
     function history_add(str) {
+        str = str.trimRight();
         if (str) {
+            while (history.length && !history[history.length - 1])
+                history.length--;
             history.push(str);
         }
         history_index = history.length;
@@ -556,7 +582,7 @@ import * as os from "os";
     function control_c() {
         if (last_fun === control_c) {
             std.puts("\n");
-            std.exit(0);
+            exit(0);
         } else {
             std.puts("\n(Press Ctrl-C again to quit)\n");
             readline_print_prompt();
@@ -884,6 +910,7 @@ import * as os from "os";
                 os.signal(os.SIGINT, null);
                 /* uninstall the stdin read handler */
                 os.setReadHandler(term_fd, null);
+                save_history();
                 return;
             }
             last_fun = this_fun;
@@ -898,9 +925,6 @@ import * as os from "os";
             (cursor_pos > cmd.length) ? cmd.length : cursor_pos;
         update();
     }
-
-    var hex_mode = false;
-    var eval_mode = "std";
 
     function number_to_string(a, radix) {
         var s;
@@ -945,84 +969,461 @@ import * as os from "os";
         } else {
             s = a.toString();
         }
-        if (eval_mode === "std")
-            s += "n";
-        return s;
+        return s + "n";
     }
-    
-    function print(a) {
-        var stack = [];
 
-        function print_rec(a) {
-            var n, i, keys, key, type, s;
-            
-            type = typeof(a);
-            if (type === "object") {
+    var util = {};
+    util.inspect = function(val, show_hidden, max_depth, use_colors) {
+        var options = {};
+        if (typeof show_hidden === 'object' && show_hidden !== null) {
+            options = show_hidden;
+            show_hidden = options.showHidden;
+            max_depth = options.depth;
+            use_colors = options.colors;
+        }
+        function set(opt, def) {
+            return (typeof opt === 'undefined') ? def : (opt === null) ? Infinity : opt;
+        }
+        if (typeof show_hidden !== 'boolean')
+            show_hidden = false;
+        max_depth = set(max_depth, 2);
+        use_colors = set(use_colors, true);
+        var breakLength = set(options.breakLength, Math.min(term_width, 80));
+        var maxArrayLength = set(options.maxArrayLength, 100);
+        var maxObjectLength = set(options.maxObjectLength, maxArrayLength + 10);
+        var maxStringLength = set(options.maxStringLength, 78);
+        var refs = [{}];    /* list of circular references */
+        var stack = [];     /* stack of pending objects */
+        var tokens = [];    /* list of generated tokens */
+        var output = [];    /* list of output fragments */
+        var last_style = 'none';
+
+        function quote_str(s) {
+            if (s.includes("'"))
+                return JSON.stringify(s);
+            s = JSON.stringify(s).slice(1, -1).replaceAll('\\"', '"');
+            return `'${s}'`;
+        }
+        function push_token(s) {
+            tokens.push("" + s);
+        }
+        function append_token(s) {
+            tokens[tokens.length - 1] += s;
+        }
+        function class_tag(o) {
+            // get the class id of an object
+            // works for boxed objects, Math, JSON, globalThis...
+            return Object.prototype.toString.call(o).slice(8, -1);
+        }
+
+        function print_rec(a, level) {
+            var n, n0, i, k, keys, key, type, isarray, noindex, nokeys, brace, sep;
+
+            switch (type = typeof(a)) {
+            case "undefined":
+            case "boolean":
+                push_token(a);
+                break;
+            case "number":
+                push_token(number_to_string(a, hex_mode ? 16 : 10));
+                break;
+            case "bigint":
+                push_token(bigint_to_string(a, hex_mode ? 16 : 10));
+                break;
+            case "string":
+                if (a.length > maxStringLength)
+                    a = a.substring(0, maxStringLength) + "...";
+                push_token(quote_str(a));
+                break;
+            case "symbol":
+                push_token(String(a));
+                break;
+            case "object":
+            case "function":
                 if (a === null) {
-                    std.puts(a);
-                } else if (stack.indexOf(a) >= 0) {
-                    std.puts("[circular]");
-                } else if (a instanceof Date) {
-                    std.puts(`Date ${JSON.stringify(a.toGMTString())}`);
-                } else if (a instanceof RegExp) {
-                    std.puts(a.toString());
-                } else {
-                    stack.push(a);
-                    if (Array.isArray(a)) {
-                        n = a.length;
-                        std.puts("[ ");
-                        for(i = 0; i < n; i++) {
-                            if (i !== 0)
-                                std.puts(", ");
-                            if (i in a) {
-                                print_rec(a[i]);
-                            } else {
-                                std.puts("<empty>");
-                            }
-                            if (i > 20) {
-                                std.puts("...");
-                                break;
-                            }
-                        }
-                        std.puts(" ]");
-                    } else {
-                        keys = Object.keys(a);
-                        n = keys.length;
-                        std.puts("{ ");
-                        for(i = 0; i < n; i++) {
-                            if (i !== 0)
-                                std.puts(", ");
-                            key = keys[i];
-                            std.puts(key, ": ");
-                            print_rec(a[key]);
-                        }
-                        std.puts(" }");
-                    }
-                    stack.pop(a);
+                    push_token(a);
+                    break;
                 }
-            } else if (type === "string") {
-                s = JSON.stringify(a);
-                if (s.length > 79)
-                    s = s.substring(0, 75) + "...\"";
-                std.puts(s);
-            } else if (type === "number") {
-                std.puts(number_to_string(a, hex_mode ? 16 : 10));
-            } else if (type === "bigint") {
-                std.puts(bigint_to_string(a, hex_mode ? 16 : 10));
-            } else if (type === "symbol") {
-                std.puts(String(a));
-            } else if (type === "function") {
-                std.puts("function " + a.name + "()");
-            } else {
-                std.puts(a);
+                if ((n = refs.indexOf(a)) >= 0) {
+                    push_token(`[Circular *${n}]`);
+                    break;
+                }
+                if ((n = stack.indexOf(a)) >= 0) {
+                    push_token(`[Circular *${refs.length}]`);
+                    refs.push(stack[n]);
+                    break;
+                }
+                var obj_index = tokens.length;
+                var tag = class_tag(a);
+                stack.push(a);
+                // XXX: should have Proxy instances
+                if (a instanceof Date) {
+                    push_token(`Date ${JSON.stringify(a.toGMTString())}`);
+                } else if (a instanceof RegExp) {
+                    push_token(a.toString());
+                } else if (a instanceof Boolean || a instanceof Number || a instanceof BigInt) {
+                    push_token(`[${tag}: ${a}]`);
+                } else if (a instanceof String) {
+                    push_token(`[${tag}: ${quote_str(a)}]`);
+                    len = a.length;
+                    noindex = 1;
+                } else if (Array.isArray(a)) {
+                    push_token("[");
+                    isarray = 1;
+                } else if (tag.includes('Array') && a instanceof Uint8Array.__proto__) {
+                    push_token(`${tag}(${a.length}) [`);
+                    isarray = 1;
+                } else if (type === 'function') {
+                    if (a.name)
+                        push_token(`[Function: ${a.name}]`);
+                    else
+                        push_token(`[Function (anonymous)]`);
+                } else {
+                    var cons = (a.constructor && a.constructor.name) || 'Object';
+                    if (tag !== 'Object') {
+                        push_token(`${cons} [${tag}] {`);
+                    } else if (a.__proto__ === null) {
+                        push_token(`[${cons}: null prototype] {`);
+                    } else if (cons !== 'Object') {
+                        push_token(`${cons} {`);
+                    } else {
+                        push_token("{");
+                    }
+                    brace = "}";
+                }
+                keys = null;
+                n = 0;
+                n0 = 0;
+                k = 0;
+                if (isarray) {
+                    brace = "]";
+                    var len = a.length;
+                    if (level > max_depth && len) {
+                        push_token("...");
+                        push_token(brace);
+                        return;
+                    }
+                    for (i = 0; i < len; i++) {
+                        k++;
+                        if (i in a) {
+                            print_rec(a[i], level + 1);
+                        } else {
+                            var start = i;
+                            while (i + 1 < len && !((i + 1) in a))
+                                i++;
+                            if (i > start)
+                                push_token(`<${i - start + 1} empty items>`);
+                            else
+                                push_token("<empty>");
+                        }
+                        if (k >= maxArrayLength && len - k > 5) {
+                            push_token(`... ${len - k} more items`);
+                            break;
+                        }
+                    }
+                    noindex = 1;
+                    /* avoid using Object.keys for large arrays */
+                    if (i !== len && len > 1000)
+                        nokeys = 1;
+                }
+                if (!nokeys) {
+                    keys = show_hidden ? Object.getOwnPropertyNames(a) : Object.keys(a);
+                    n = keys.length;
+                }
+                if (noindex) {
+                    /* skip all index properties */
+                    for (; n0 < n; n0++) {
+                        i = +keys[n0];
+                        if (i !== (i >>> 0) || i >= len)
+                            break;
+                    }
+                }
+                if (n0 < n) {
+                    if (!brace) {
+                        append_token(" {");
+                        brace = "}";
+                    }
+                    if (level > max_depth && n0 < n) {
+                        push_token("...");
+                        push_token(brace);
+                        return;
+                    }
+                    for(i = n0; i < n; i++) {
+                        var key = keys[i];
+                        var desc = Object.getOwnPropertyDescriptor(a, key);
+                        if (!desc)
+                            continue;
+                        if (!desc.enumerable)
+                            push_token(`[${String(key)}]`);
+                        else
+                        if (+key === (key >>> 0) || key.match(/^[a-zA-Z_$][0-9a-zA-Z_$]*/))
+                            push_token(key);
+                        else
+                            push_token(quote_str(key));
+                        push_token(":");
+                        if ('value' in desc) {
+                            print_rec(desc.value, level + 1);
+                        } else {
+                            var fields = [];
+                            if (desc.get)
+                                fields.push("Getter");
+                            if (desc.set)
+                                fields.push("Setter");
+                            push_token(`[${fields.join('/')}]`);
+                        }
+                        k++;
+                        if (k > maxObjectLength && n - k > 5) {
+                            push_token(`... ${n - k} more properties`);
+                            break;
+                        }
+                    }
+                }
+                if (brace)
+                    push_token(brace);
+                stack.pop(a);
+                if ((i = refs.indexOf(a)) > 0)
+                    tokens[obj_index] = `<ref *${i}> ${tokens[obj_index]}`;
+                break;
+            default:
+                push_token(String(a));
+                break;
+            }
+        };
+        function output_str(s, style) {
+            if (use_colors) {
+                if (last_style !== style) {
+                    output.push(colors.none);
+                    last_style = style;
+                }
+                if (style) {
+                    var color = colors[styles[style]];
+                    if (color)
+                        output.push(color);
+                }
+            }
+            output.push(s);
+        }
+        function output_propname(s) {
+            if (s[0] >= '0' && s[0] <= '9')
+                output_str(s, 'number');
+            else
+                output_str(s, 'propname');
+            output_str(": ");
+        }
+        function output_pretty(s) {
+            if (!use_colors) {
+                output_str(s);
+                return;
+            }
+            while (s.length > 0) {
+                var style = 'none';
+                var chunk = s;
+                var len = 0;
+                var m = null;
+                switch (s[0]) {
+                case '"':
+                    style = 'string';
+                    m = s.match(/^"([^\\"]|\\.)*"/);
+                    break;
+                case '\'':
+                    style = 'string';
+                    m = s.match(/^'([^\\']|\\.)*'/);
+                    break;
+                case '/':
+                    style = 'regexp';
+                    break;
+                case '<':
+                    m = s.match(/^\<[^\>]+\>/);
+                    if (m)
+                        style = 'annotation';
+                    break;
+                case '[':
+                    m = s.match(/^\[[^\]]+\]/);
+                    if (m) {
+                        style = 'annotation';
+                        break;
+                    }
+                    /* fall thru */
+                case ']':
+                case '}':
+                case ',':
+                case ' ':
+                    style = 'other';
+                    len = 1;
+                    break;
+                case '.':
+                    style = 'annotation';
+                    break;
+                case '0': case '1': case '2': case '3': case '4':
+                case '5': case '6': case '7': case '8': case '9':
+                    style = 'number';
+                    m = s.match(/^[0-9a-z_]+[.]?[0-9a-z_]*[eEpP]?[+-]?[0-9]*/);
+                    break;
+                case '-':
+                    len = 1;
+                    break;
+                default:
+                    if (is_block(s))
+                        len = s.length - 1;
+                    if (s.startsWith('Date'))
+                        style = 'date';
+                    else if (s.startsWith('Symbol'))
+                        style = 'symbol';
+                    else if (s === 'Infinity' || s === 'NaN')
+                        style = 'keyword';
+                    else if (s === 'true' || s === 'false')
+                        style = 'boolean';
+                    else if (s === 'null')
+                        style = 'null';
+                    else if (s === 'undefined')
+                        style = 'undefined';
+                    break;
+                }
+                if (m)
+                    len = m[0].length;
+                if (len > 0)
+                    chunk = s.slice(0, len);
+                output_str(chunk, style);
+                s = s.slice(chunk.length);
             }
         }
-        print_rec(a);
+        function is_block(s) {
+            var c = s[s.length - 1];
+            return c === '[' || c === '{';
+        }
+        function block_width(i) {
+            var w = tokens[i].length;
+            if (tokens[i + 1] === ":") {
+                i += 2;
+                w += 2 + tokens[i].length;
+            }
+            var width = w;
+            if (is_block(tokens[i])) {
+                var seplen = 1;
+                while (++i < tokens.length) {
+                    width += seplen;
+                    var s = tokens[i];
+                    if (s === ']' || s === '}')
+                        break;
+                    [ i, w ] = block_width(i);
+                    width += w;
+                    seplen = 2;
+                }
+            }
+            return [ i, width ];
+        }
+        function output_single(i, last) {
+            var sep = "";
+            while (i <= last) {
+                var s = tokens[i++];
+                if (s === ']' || s === '}') {
+                    if (sep.length > 1)
+                        output_str(" ");
+                } else {
+                    output_str(sep);
+                    if (tokens[i] === ":") {
+                        output_propname(s);
+                        i++;
+                        s = tokens[i++];
+                    }
+                }
+                output_pretty(s);
+                sep = is_block(s) ? " " : ", ";
+            }
+        }
+        function output_spaces(s, count) {
+            if (count > 0)
+                s += " ".repeat(count);
+            output_str(s);
+        }
+        function output_indent(indent, from) {
+            var avail_width = breakLength - indent - 2;
+            var [ last, width ] = block_width(from);
+            if (width <= avail_width) {
+                output_single(from, last);
+                return [ last, width ];
+            }
+            if (tokens[from + 1] === ":") {
+                output_propname(tokens[from]);
+                from += 2;
+            }
+            output_pretty(tokens[from]);
+            if (!is_block(tokens[from])) {
+                return [ from, width ];
+            }
+            indent += 2;
+            avail_width -= 2;
+            var sep = "";
+            var first = from + 1;
+            var i, w;
+            if (tokens[from].endsWith('[')) {
+                /* array: try multiple columns for indexed values */
+                var k = 0, col, cols;
+                var tab = [];
+                for (i = first; i < last; i++) {
+                    if (tokens[i][0] === '.' || tokens[i + 1] === ':')
+                        break;
+                    [ i, w ] = block_width(i);
+                    tab[k++] = w;
+                }
+                var colwidth;
+                for (cols = Math.min(avail_width / 3, tab.length, 16); cols > 1; cols--) {
+                    colwidth = [];
+                    col = 0;
+                    for (k = 0; k < tab.length; k++) {
+                        colwidth[col] = Math.max(colwidth[col] || 0, tab[k] + 2);
+                        col = (col + 1) % cols;
+                    }
+                    w = 0;
+                    for (col = 0; col < cols; col++) {
+                        w += colwidth[col];
+                    }
+                    if (w <= avail_width)
+                        break;
+                }
+                if (cols > 1) {
+                    w = 0;
+                    col = cols - 1;
+                    for (i = first; i < last; i++) {
+                        if (tokens[i][0] === '.' || tokens[i + 1] === ':')
+                            break;
+                        w += sep.length;
+                        output_str(sep);
+                        sep = ",";
+                        if (col === cols - 1) {
+                            output_spaces("\n", indent);
+                            col = 0;
+                        } else {
+                            output_spaces("", colwidth[col++] - w);
+                        }
+                        [i, w] = output_indent(indent, i);
+                    }
+                    first = i;
+                }
+            }
+            for (i = first; i < last; i++) {
+                output_str(sep);
+                sep = ",";
+                output_spaces("\n", indent);
+                [i, w] = output_indent(indent, i);
+            }
+            output_spaces("\n", indent -= 2);
+            output_pretty(tokens[last]);
+            return [last, breakLength];
+        }
+        print_rec(val, 0);
+        output_indent(0, 0);
+        output_str("");
+        return output.join("");
+    };
+
+    function print(val) {
+        std.puts(util.inspect(val, { depth: show_depth, colors: show_colors, showHidden: show_hidden }));
+        std.puts("\n");
     }
 
     /* return true if the string was a directive */
     function handle_directive(a) {
-        var pos;
         if (a === "?") {
             help();
             return true;
@@ -1056,16 +1457,19 @@ import * as os from "os";
 
     function help() {
         var sel = (n) => n ? "*": " ";
-        std.puts(".help   print this help\n" +
-                 ".x     " + sel(hex_mode) + "hexadecimal number display\n" +
-                 ".dec   " + sel(!hex_mode) + "decimal number display\n" +
-                 ".time  " + sel(show_time) + "toggle timing display\n" +
-                 ".color " + sel(show_colors) + "toggle colored output\n" +
-                 ".dark  " + sel(styles == themes.dark) + "select dark color theme\n" +
-                 ".light " + sel(styles == themes.light) + "select light color theme\n" +
-                 ".clear  clear the terminal\n" +
-                 ".load   load source code from a file\n" +
-                 ".quit   exit\n");
+        std.puts(".help    print this help\n" +
+                 ".x      " + sel(hex_mode) + "hexadecimal number display\n" +
+                 ".dec    " + sel(!hex_mode) + "decimal number display\n" +
+                 ".time   " + sel(show_time) + "toggle timing display\n" +
+                 ".strict " + sel(use_strict) + "toggle strict mode evaluation\n" +
+                 `.depth   set object depth (current: ${show_depth})\n` +
+                 ".hidden " + sel(show_hidden) + "toggle hidden properties display\n" +
+                 ".color  " + sel(show_colors) + "toggle colored output\n" +
+                 ".dark   " + sel(styles == themes.dark) + "select dark color theme\n" +
+                 ".light  " + sel(styles == themes.light) + "select light color theme\n" +
+                 ".clear   clear the terminal\n" +
+                 ".load    load source code from a file\n" +
+                 ".quit    exit\n");
     }
 
     function load(s) {
@@ -1078,6 +1482,11 @@ import * as os from "os";
         }
     }
 
+    function exit(e) {
+        save_history();
+        std.exit(e);
+    }
+
     function to_bool(s, def) {
         return s ? "1 true yes Yes".includes(s) : def;
     }
@@ -1088,31 +1497,31 @@ import * as os from "os";
         "x":      (s) => { hex_mode = to_bool(s, true); },
         "dec":    (s) => { hex_mode = !to_bool(s, true); },
         "time":   (s) => { show_time = to_bool(s, !show_time); },
+        "strict": (s) => { use_strict = to_bool(s, !use_strict); },
+        "depth":  (s) => { show_depth = +s || 2; },
+        "hidden": (s) => { show_hidden = to_bool(s, !show_hidden); },
         "color":  (s) => { show_colors = to_bool(s, !show_colors); },
         "dark":   () => { styles = themes.dark; },
         "light":  () => { styles = themes.light; },
         "clear":  () => { std.puts("\x1b[H\x1b[J") },
-        "quit":   () => { std.exit(0); },
+        "quit":   () => { exit(0); },
     }, null);
 
     function eval_and_print(expr) {
         var result;
         
         try {
-            if (eval_mode === "math")
-                expr = '"use math"; void 0;' + expr;
-            var now = (new Date).getTime();
+            if (use_strict)
+                expr = '"use strict"; void 0;' + expr;
+            var now = Date.now();
             /* eval as a script */
             result = std.evalScript(expr, { backtrace_barrier: true });
-            eval_time = (new Date).getTime() - now;
-            std.puts(colors[styles.result]);
+            eval_time = Date.now() - now;
             print(result);
-            std.puts("\n");
-            std.puts(colors.none);
             /* set the last result */
             g._ = result;
         } catch (error) {
-            std.puts(colors[styles.error_msg]);
+            std.puts(colors[styles.error]);
             if (error instanceof Error) {
                 console.log(error);
                 if (error.stack) {
@@ -1222,7 +1631,7 @@ import * as os from "os";
         }
 
         function parse_regex() {
-            style = 'regex';
+            style = 'regexp';
             push_state('/');
             while (i < n) {
                 c = str[i++];
@@ -1260,6 +1669,8 @@ import * as os from "os";
 
         function parse_number() {
             style = 'number';
+            // TODO(chqrlie) parse partial number syntax
+            // TODO(chqrlie) special case bignum
             while (i < n && (is_word(str[i]) || (str[i] == '.' && (i == n - 1 || str[i + 1] != '.')))) {
                 i++;
             }
@@ -1285,10 +1696,19 @@ import * as os from "os";
             while (i < n && is_word(str[i]))
                 i++;
 
-            var w = '|' + str.substring(start, i) + '|';
+            var s = str.substring(start, i);
+            var w = '|' + s + '|';
 
             if (js_keywords.indexOf(w) >= 0) {
                 style = 'keyword';
+                if (s === 'true' || s === 'false')
+                    style = 'boolean';
+                else if (s === 'true' || s === 'false')
+                    style = 'boolean';
+                else if (s === 'null')
+                    style = 'null';
+                else if (s === 'undefined')
+                    style = 'undefined';
                 if (js_no_regex.indexOf(w) >= 0)
                     can_regex = 0;
                 return;
@@ -1382,7 +1802,7 @@ import * as os from "os";
                     can_regex = 0;
                     break;
                 }
-                if (is_word(c) || c == '$') {
+                if (is_word(c)) {
                     parse_identifier();
                     break;
                 }
@@ -1396,15 +1816,39 @@ import * as os from "os";
         return [ state, level, r ];
     }
 
-    var m, s = std.getenv("COLORFGBG");
-    if (s && (m = s.match(/(\d+);(\d+)/))) {
-        if (+m[2] !== 0) { // light background
-            styles = themes.light;
+    function config_file(s) {
+        return (std.getenv("HOME") || std.getenv("USERPROFILE") || ".") + "/" + s;
+    }
+    function save_history() {
+        var s = history.slice(-1000).join('\n').trim();
+        if (s) {
+            try {
+                var f = std.open(config_file(".qjs_history"), "w");
+                f.puts(s + '\n');
+                f.close();
+            } catch (e) {
+            }
+        }
+    }
+    function load_history() {
+        var a = std.loadFile(config_file(".qjs_history"));
+        if (a) {
+            history = a.trim().split('\n');
+            history_index = history.length;
+        }
+    }
+    function load_config() {
+        var m, s = std.getenv("COLORFGBG");
+        if (s && (m = s.match(/(\d+);(\d+)/))) {
+            if (+m[2] !== 0) { // light background
+                styles = themes.light;
+            }
         }
     }
 
+    load_config();
+    load_history();
     termInit();
-    
     cmd_start();
 
 })(globalThis);
