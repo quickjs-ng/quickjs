@@ -94,33 +94,32 @@ jobs:
   linux-gcc48:
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:14.04
+      image: ubuntu:18.04
     steps:
       - name: install dependencies
         run: |
-          apt update && apt -y install make gcc-4.8 wget time software-properties-common
-          # git in default ppa repository is too old to run submodule checkout
-          add-apt-repository -y ppa:git-core/ppa
-          apt update
-          apt install -y git
-          wget -nv https://github.com/Kitware/CMake/releases/download/v3.28.0-rc5/cmake-3.28.0-rc5-linux-x86_64.sh
-          sh cmake-3.28.0-rc5-linux-x86_64.sh --skip-license --prefix=/usr
+          apt update && apt -y install make gcc-4.8 cmake
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: build
         run: |
-          CC=gcc-4.8 make
+          CC=gcc-4.8
+          mkdir build
+          cd build
+          cmake ..
+          cd ..
+          make -j$(getconf _NPROCESSORS_ONLN)
       - name: stats
         run: |
-          make stats
+          ./build/qjs -qd
       - name: test
         run: |
           make test
       - name: test 262
         run: |
-          time make test262
+          ./build/run-test262 -m -c test262.conf -a
   linux-examples:
     runs-on: ubuntu-latest
     steps:
