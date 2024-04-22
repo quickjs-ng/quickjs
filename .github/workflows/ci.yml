@@ -107,8 +107,9 @@ jobs:
         with:
           submodules: true
       - name: build
+        env:
+          CC: gcc-4.8
         run: |
-          CC=gcc-4.8
           mkdir build
           cd build
           cmake ..
