@@ -100,7 +100,7 @@ jobs:
         run: |
           apt update && apt -y install make gcc-4.8 cmake
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           submodules: true
       - name: build
