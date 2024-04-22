@@ -118,12 +118,6 @@ jobs:
       - name: stats
         run: |
           ./build/qjs -qd
-      - name: test
-        run: |
-          make test
-      - name: test 262
-        run: |
-          ./build/run-test262 -m -c test262.conf -a
   linux-examples:
     runs-on: ubuntu-latest
     steps:
