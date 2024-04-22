@@ -98,7 +98,10 @@ jobs:
     steps:
       - name: install dependencies
         run: |
-          apt update && apt -y install make gcc-4.8 cmake
+          apt update && apt -y install make gcc-4.8 cmake software-properties-common
+          # git in default ppa repository is too old to run submodule checkout
+          add-apt-repository -y ppa:git-core/ppa
+          apt update && apt install -y git
       - name: checkout
         uses: actions/checkout@v3
         with:
