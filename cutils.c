@@ -1009,7 +1009,6 @@ void js_cond_init(js_cond_t *cond) {
         abort();
 #else
     pthread_condattr_t attr;
-    int err;
 
     if (pthread_condattr_init(&attr))
         abort();
