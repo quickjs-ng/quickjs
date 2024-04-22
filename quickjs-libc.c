@@ -778,12 +778,16 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
     JSValue ret;
     JSValue options_obj;
     BOOL backtrace_barrier = FALSE;
+    BOOL is_async = FALSE;
     int flags;
 
     if (argc >= 2) {
         options_obj = argv[1];
         if (get_bool_option(ctx, &backtrace_barrier, options_obj,
                             "backtrace_barrier"))
+            return JS_EXCEPTION;
+        if (get_bool_option(ctx, &is_async, options_obj,
+                            "async"))
             return JS_EXCEPTION;
     }
 
@@ -797,6 +801,8 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
     flags = JS_EVAL_TYPE_GLOBAL;
     if (backtrace_barrier)
         flags |= JS_EVAL_FLAG_BACKTRACE_BARRIER;
+    if (is_async)
+        flags |= JS_EVAL_FLAG_ASYNC;
     ret = JS_Eval(ctx, str, len, "<evalScript>", flags);
     JS_FreeCString(ctx, str);
     if (!ts->recv_pipe && --ts->eval_script_recurse == 0) {
@@ -2114,6 +2120,38 @@ static JSClassDef js_os_timer_class = {
     .gc_mark = js_os_timer_mark,
 };
 
+/* return a promise */
+static JSValue js_os_sleepAsync(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    int64_t delay;
+    JSOSTimer *th;
+    JSValue promise, resolving_funcs[2];
+
+    if (JS_ToInt64(ctx, &delay, argv[0]))
+        return JS_EXCEPTION;
+    promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+    if (JS_IsException(promise))
+        return JS_EXCEPTION;
+
+    th = js_mallocz(ctx, sizeof(*th));
+    if (!th) {
+        JS_FreeValue(ctx, promise);
+        JS_FreeValue(ctx, resolving_funcs[0]);
+        JS_FreeValue(ctx, resolving_funcs[1]);
+        return JS_EXCEPTION;
+    }
+    th->has_object = FALSE;
+    th->timeout = js__hrtime_ms() + delay;
+    th->func = JS_DupValue(ctx, resolving_funcs[0]);
+    list_add_tail(&th->link, &ts->os_timers);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+    return promise;
+}
+
 static void call_handler(JSContext *ctx, JSValue func)
 {
     JSValue ret, func1;
@@ -3329,6 +3367,7 @@ static void *worker_func(void *opaque)
     JSRuntime *rt;
     JSThreadState *ts;
     JSContext *ctx;
+    JSValue val;
 
     rt = JS_NewRuntime();
     if (rt == NULL) {
@@ -3355,11 +3394,14 @@ static void *worker_func(void *opaque)
 
     js_std_add_helpers(ctx, -1, NULL);
 
-    if (!JS_RunModule(ctx, args->basename, args->filename))
-        js_std_dump_error(ctx);
+    val = JS_LoadModule(ctx, args->basename, args->filename);
     free(args->filename);
     free(args->basename);
     free(args);
+    val = js_std_await(ctx, val);
+    if (JS_IsException(val))
+        js_std_dump_error(ctx);
+    JS_FreeValue(ctx, val);
 
     js_std_loop(ctx);
 
@@ -3702,6 +3744,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     // per spec: both functions can cancel timeouts and intervals
     JS_CFUNC_DEF("clearTimeout", 1, js_os_clearTimeout ),
     JS_CFUNC_DEF("clearInterval", 1, js_os_clearTimeout ),
+    JS_CFUNC_DEF("sleepAsync", 1, js_os_sleepAsync ),
     JS_PROP_STRING_DEF("platform", OS_PLATFORM, 0 ),
     JS_CFUNC_DEF("getcwd", 0, js_os_getcwd ),
     JS_CFUNC_DEF("chdir", 0, js_os_chdir ),
@@ -3980,6 +4023,42 @@ void js_std_loop(JSContext *ctx)
     }
 }
 
+/* Wait for a promise and execute pending jobs while waiting for
+   it. Return the promise result or JS_EXCEPTION in case of promise
+   rejection. */
+JSValue js_std_await(JSContext *ctx, JSValue obj)
+{
+    JSValue ret;
+    int state;
+
+    for(;;) {
+        state = JS_PromiseState(ctx, obj);
+        if (state == JS_PROMISE_FULFILLED) {
+            ret = JS_PromiseResult(ctx, obj);
+            JS_FreeValue(ctx, obj);
+            break;
+        } else if (state == JS_PROMISE_REJECTED) {
+            ret = JS_Throw(ctx, JS_PromiseResult(ctx, obj));
+            JS_FreeValue(ctx, obj);
+            break;
+        } else if (state == JS_PROMISE_PENDING) {
+            JSContext *ctx1;
+            int err;
+            err = JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx1);
+            if (err < 0) {
+                js_std_dump_error(ctx1);
+            }
+            if (os_poll_func)
+                os_poll_func(ctx);
+        } else {
+            /* not a promise */
+            ret = obj;
+            break;
+        }
+    }
+    return ret;
+}
+
 void js_std_eval_binary(JSContext *ctx, const uint8_t *buf, size_t buf_len,
                         int load_only)
 {
@@ -3998,8 +4077,11 @@ void js_std_eval_binary(JSContext *ctx, const uint8_t *buf, size_t buf_len,
                 goto exception;
             }
             js_module_set_import_meta(ctx, obj, FALSE, TRUE);
+            val = JS_EvalFunction(ctx, obj);
+            val = js_std_await(ctx, val);
+        } else {
+            val = JS_EvalFunction(ctx, obj);
         }
-        val = JS_EvalFunction(ctx, obj);
         if (JS_IsException(val)) {
         exception:
             js_std_dump_error(ctx);

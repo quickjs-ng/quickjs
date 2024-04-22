@@ -275,6 +275,9 @@ static inline JS_BOOL JS_VALUE_IS_NAN(JSValue v)
 #define JS_EVAL_FLAG_COMPILE_ONLY (1 << 5)
 /* don't include the stack frames before this eval in the Error() backtraces */
 #define JS_EVAL_FLAG_BACKTRACE_BARRIER (1 << 6)
+/* allow top-level await in normal script. JS_Eval() returns a
+   promise. Only allowed with JS_EVAL_TYPE_GLOBAL */
+#define JS_EVAL_FLAG_ASYNC (1 << 7)
 
 typedef JSValue JSCFunction(JSContext *ctx, JSValue this_val, int argc, JSValue *argv);
 typedef JSValue JSCFunctionMagic(JSContext *ctx, JSValue this_val, int argc, JSValue *argv, int magic);
@@ -782,7 +785,15 @@ typedef struct {
 } JSSharedArrayBufferFunctions;
 JS_EXTERN void JS_SetSharedArrayBufferFunctions(JSRuntime *rt, const JSSharedArrayBufferFunctions *sf);
 
+typedef enum JSPromiseStateEnum {
+    JS_PROMISE_PENDING,
+    JS_PROMISE_FULFILLED,
+    JS_PROMISE_REJECTED,
+} JSPromiseStateEnum;
+
 JS_EXTERN JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs);
+JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
+JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 
 JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, JS_BOOL is_global);
 
@@ -854,8 +865,8 @@ JS_EXTERN int JS_ResolveModule(JSContext *ctx, JSValue obj);
 /* only exported for os.Worker() */
 JS_EXTERN JSAtom JS_GetScriptOrModuleName(JSContext *ctx, int n_stack_levels);
 /* only exported for os.Worker() */
-JS_EXTERN JSModuleDef *JS_RunModule(JSContext *ctx, const char *basename,
-                                    const char *filename);
+JS_EXTERN JSValue JS_LoadModule(JSContext *ctx, const char *basename,
+                      const char *filename);
 
 /* C function definition */
 typedef enum JSCFunctionEnum {  /* XXX: should rename for namespace isolation */
@@ -993,21 +1004,6 @@ JS_EXTERN int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *exp
                                  JSValue val);
 JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
                                      const JSCFunctionListEntry *tab, int len);
-
-/* Promise */
-
-#define JS_INVALID_PROMISE_STATE (-1)
-
-typedef enum JSPromiseStateEnum {
-    JS_PROMISE_PENDING,
-    JS_PROMISE_FULFILLED,
-    JS_PROMISE_REJECTED,
-} JSPromiseStateEnum;
-
-/* Returns JSPromiseReactionEnum for the promise or JS_INVALID_PROMISE_STATE if the value is not a promise. */
-JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
-/* Return the result of the promise if the promise's state is in the FULFILLED or REJECTED state. Otherwise returns JS_UNDEFINED. */
-JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 
 /* Version */
 
