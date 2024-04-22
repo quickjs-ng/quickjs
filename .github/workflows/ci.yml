@@ -113,7 +113,7 @@ jobs:
           cd build
           cmake ..
           cd ..
-          make -j$(getconf _NPROCESSORS_ONLN)
+          make -C build -j$(getconf _NPROCESSORS_ONLN)
       - name: stats
         run: |
           ./build/qjs -qd
