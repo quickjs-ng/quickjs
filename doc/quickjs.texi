@@ -330,6 +330,11 @@ optional properties:
   @item backtrace_barrier
   Boolean (default = false). If true, error backtraces do not list the
   stack frames below the evalScript.
+  @item async
+  Boolean (default = false). If true, @code{await} is accepted in the
+  script and a promise is returned. The promise is resolved with an
+  object whose @code{value} property holds the value returned by the
+  script.
   @end table
 
 @item loadScript(filename)
@@ -716,6 +721,12 @@ write_fd]} or null in case of error.
 
 @item sleep(delay_ms)
 Sleep during @code{delay_ms} milliseconds.
+
+@item sleepAsync(delay_ms)
+Asynchronouse sleep during @code{delay_ms} milliseconds. Returns a promise. Example:
+@example
+await os.sleepAsync(500);
+@end example
 
 @item setTimeout(func, delay)
 Call the function @code{func} after @code{delay} ms. Return a handle
