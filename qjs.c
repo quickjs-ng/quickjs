@@ -371,12 +371,12 @@ int main(int argc, char **argv)
                 continue;
             }
             if (opt == 'd' || !strcmp(longopt, "dump")) {
-                if (opt_arg) {
-                    dump_flags = strtol(opt_arg, NULL, 16);
-                    break;
-                }
                 dump_memory++;
                 continue;
+            }
+            if (opt == 'D' || !strcmp(longopt, "dump-flags")) {
+                dump_flags = opt_arg ? strtol(opt_arg, NULL, 16) : 0;
+                break;
             }
             if (opt == 'T' || !strcmp(longopt, "trace")) {
                 trace_memory++;
