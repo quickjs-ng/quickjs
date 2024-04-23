@@ -96,7 +96,7 @@ for (const file of files) {
     //print(`=== ${file}${envstr}${flagstr}`)
     print(`=== ${file}${envstr}`)
     const args = [argv0,
-                  "--stack-size", `${flags["--stack-size"]*1024}`,
+                  "--stack-size", `${flags["--stack-size"]}`,
                   "-I", "mjsunit.js",
                   "-I", tweak,
                   file]
