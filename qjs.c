@@ -96,6 +96,35 @@ static int eval_file(JSContext *ctx, const char *filename, int module)
     return ret;
 }
 
+static int64_t parse_limit(const char *arg) {
+    char *p;
+    unsigned long unit = 1024; /* default to traditional KB */
+    double d = strtod(arg, &p);
+
+    if (p == arg) {
+        fprintf(stderr, "Invalid limit: %s\n", arg);
+        return -1;
+    }
+
+    if (*p) {
+        switch (*p++) {
+        case 'b': case 'B': unit = 1UL <<  0; break;
+        case 'k': case 'K': unit = 1UL << 10; break; /* IEC kibibytes */
+        case 'm': case 'M': unit = 1UL << 20; break; /* IEC mebibytes */
+        case 'g': case 'G': unit = 1UL << 30; break; /* IEC gigibytes */
+        default:
+            fprintf(stderr, "Invalid limit: %s, unrecognized suffix, only k,m,g are allowed\n", arg);
+            return -1;
+        }
+        if (*p) {
+            fprintf(stderr, "Invalid limit: %s, only one suffix allowed\n", arg);
+            return -1;
+        }
+    }
+
+    return (int64_t)(d * unit);
+}
+
 static JSValue js_gc(JSContext *ctx, JSValue this_val,
                      int argc, JSValue *argv)
 {
@@ -275,8 +304,8 @@ void help(void)
            "    --std          make 'std' and 'os' available to the loaded script\n"
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
-           "    --memory-limit n       limit the memory usage to 'n' bytes\n"
-           "    --stack-size n         limit the stack size to 'n' bytes\n"
+           "    --memory-limit n       limit the memory usage to 'n' Kbytes\n"
+           "    --stack-size n         limit the stack size to 'n' Kbytes\n"
            "    --unhandled-rejection  dump unhandled promise rejections\n"
            "-q  --quit         just instantiate the interpreter and quit\n", JS_GetVersion());
     exit(1);
@@ -404,8 +433,7 @@ int main(int argc, char **argv)
                     }
                     opt_arg = argv[optind++];
                 }
-                // TODO(chqrlie): accept kmg suffixes
-                memory_limit = strtoull(opt_arg, NULL, 0);
+                memory_limit = parse_limit(opt_arg);
                 break;
             }
             if (!strcmp(longopt, "stack-size")) {
@@ -416,8 +444,7 @@ int main(int argc, char **argv)
                     }
                     opt_arg = argv[optind++];
                 }
-                // TODO(chqrlie): accept kmg suffixes
-                stack_size = strtoull(opt_arg, NULL, 0);
+                stack_size = parse_limit(opt_arg);
                 break;
             }
             if (opt) {
