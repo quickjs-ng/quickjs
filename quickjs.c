@@ -11261,9 +11261,10 @@ static JSValue js_dtoa(JSContext *ctx,
     return JS_NewStringLen(ctx, buf, len);
 }
 
+/* d is guaranteed to be finite */
 static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
 {
-    char buf[2200], *ptr, *ptr2;
+    char buf[2200], *ptr, *ptr2, *ptr3;
     /* d is finite */
     int sign = d < 0;
     int digit;
@@ -11272,8 +11273,8 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
     d = fabs(d);
     d0 = trunc(d);
     frac = d - d0;
-    ptr = buf + 1100;
-    *ptr = '\0';
+    ptr2 = buf + 1100;  /* ptr2 points to the end of the string */
+    ptr = ptr2;         /* ptr points to the beginning of the string */
     if (d0 <= MAX_SAFE_INTEGER) {
         int64_t n = n0 = (int64_t)d0;
         while (n >= radix) {
@@ -11297,7 +11298,6 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
     if (frac != 0) {
         double log2_radix = log2(radix);
         double prec = 1023 + 51;  // handle subnormals
-        ptr2 = buf + 1100;
         *ptr2++ = '.';
         while (frac != 0 && n0 <= MAX_SAFE_INTEGER/2 && prec > 0) {
             frac *= radix;
@@ -11307,32 +11307,45 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
             n0 = n0 * radix + digit;
             prec -= log2_radix;
         }
-        *ptr2 = '\0';
         if (frac * radix >= radix / 2) {
+            /* round up the string representation manually */
             char nine = digits36[radix - 1];
-            // round to closest
-            while (ptr2[-1] == nine)
-                *--ptr2 = '\0';
-            if (ptr2[-1] == '.') {
-                *--ptr2 = '\0';
-                while (ptr2[-1] == nine)
-                    *--ptr2 = '0';
+            while (ptr2[-1] == nine) {
+                /* strip trailing '9' or equivalent digits */
+                ptr2--;
             }
-            if (ptr2 - 1 == ptr)
-                *--ptr = '1';
-            else
-                ptr2[-1] += 1;
+            if (ptr2[-1] == '.') {
+                /* strip the 'decimal' point */
+                ptr2--;
+                /* increment the integral part */
+                for (ptr3 = ptr2;;) {
+                    if (ptr3[-1] != nine) {
+                        ptr3[-1] = (ptr3[-1] == '9') ? 'a' : ptr3[-1] + 1;
+                        break;
+                    }
+                    *--ptr3 = '0';
+                    if (ptr3 <= ptr) {
+                        /* prepend a '1' if number was all nines */
+                        *--ptr = '1';
+                        break;
+                    }
+                }
+            } else {
+                /* increment the last fractional digit */
+                ptr2[-1] = (ptr2[-1] == '9') ? 'a' : ptr2[-1] + 1;
+            }
         } else {
+            /* strip trailing fractional zeroes */
             while (ptr2[-1] == '0')
-                *--ptr2 = '\0';
-            if (ptr2[-1] == '.')
-                *--ptr2 = '\0';
+                ptr2--;
+            /* strip the 'decimal' point if last */
+            ptr2 -= (ptr2[-1] == '.');
         }
     }
 done:
     ptr[-1] = '-';
     ptr -= sign;
-    return JS_NewString(ctx, ptr);
+    return js_new_string8(ctx, (uint8_t *)ptr, ptr2 - ptr);
 }
 
 JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)

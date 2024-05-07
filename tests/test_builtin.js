@@ -439,6 +439,7 @@ function test_number()
         return;
     }
 
+    assert((1-2**-53).toString(12), "0.bbbbbbbbbbbbbba");
     assert((25).toExponential(0), "3e+1");
     assert((-25).toExponential(0), "-3e+1");
     assert((2.5).toPrecision(1), "3");
