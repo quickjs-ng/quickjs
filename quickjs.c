@@ -11022,7 +11022,7 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValue val, int radix)
     saved_sign = a->sign;
     if (a->expn == BF_EXP_ZERO)
         a->sign = 0;
-    // XXX: bf_ftoa should return the string length to the caller
+    // TODO(chqrlie) bf_ftoa should return the string length to the caller
     str = bf_ftoa(NULL, a, radix, 0, BF_RNDZ | BF_FTOA_FORMAT_FRAC |
                   BF_FTOA_JS_QUIRKS);
     a->sign = saved_sign;
@@ -34089,8 +34089,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     if (b->source_len) {
         bc_read_trace(s, "source: %d bytes\n", b->source_len);
         s->ptr_last += b->source_len;  // omit source code hex dump
-        // XXX: should allocate one extra byte for null terminator
-        b->source = js_mallocz(ctx, b->source_len);
+        /* b->source is a UTF-8 encoded null terminated C string */
+        b->source = js_mallocz(ctx, b->source_len + 1);
         if (!b->source)
             goto fail;
         if (bc_get_buf(s, b->source, b->source_len))
