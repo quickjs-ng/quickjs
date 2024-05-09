@@ -3472,7 +3472,7 @@ static inline JSValue js_new_string8(JSContext *ctx, const char *str)
     return js_new_string8_len(ctx, str, strlen(str));
 }
 
-static JSValue js_new_string16(JSContext *ctx, const uint16_t *buf, int len)
+static JSValue js_new_string16_len(JSContext *ctx, const uint16_t *buf, int len)
 {
     JSString *str;
     str = js_alloc_string(ctx, len, 1);
@@ -3489,7 +3489,7 @@ static JSValue js_new_string_char(JSContext *ctx, uint16_t c)
         return js_new_string8_len(ctx, &ch8, 1);
     } else {
         uint16_t ch16 = c;
-        return js_new_string16(ctx, &ch16, 1);
+        return js_new_string16_len(ctx, &ch16, 1);
     }
 }
 
@@ -3510,7 +3510,7 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
             c |= p->u.str16[i];
         }
         if (c > 0xFF)
-            return js_new_string16(ctx, p->u.str16 + start, len);
+            return js_new_string16_len(ctx, p->u.str16 + start, len);
 
         str = js_alloc_string(ctx, len, 0);
         if (!str)
@@ -39410,13 +39410,13 @@ static JSValue js_string_fromCodePoint(JSContext *ctx, JSValue this_val,
         c = JS_VALUE_GET_INT(argv[0]);
         if (c < 0 || c > 0x10ffff)
             goto range_error;
-        if (c < 0x10000) {
+        if (c <= 0xffff) {
             return js_new_string_char(ctx, c);
         } else {
             uint16_t c16[2];
             c16[0] = get_hi_surrogate(c);
             c16[1] = get_lo_surrogate(c);
-            return js_new_string16(ctx, c16, 2);
+            return js_new_string16_len(ctx, c16, 2);
         }
     }
 
@@ -39745,7 +39745,7 @@ static JSValue js_string_toWellFormed(JSContext *ctx, JSValue this_val,
         return str; // by definition well-formed
 
     // TODO(bnoordhuis) don't clone when input is well-formed
-    ret = js_new_string16(ctx, p->u.str16, p->len);
+    ret = js_new_string16_len(ctx, p->u.str16, p->len);
     JS_FreeValue(ctx, str);
     if (JS_IsException(ret))
         return JS_EXCEPTION;
@@ -40816,7 +40816,7 @@ static JSValue js_string_iterator_next(JSContext *ctx, JSValue this_val,
     if (c <= 0xffff) {
         return js_new_string_char(ctx, c);
     } else {
-        return js_new_string16(ctx, p->u.str16 + start, 2);
+        return js_new_string16_len(ctx, p->u.str16 + start, 2);
     }
 }
 
