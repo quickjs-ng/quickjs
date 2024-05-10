@@ -1098,6 +1098,7 @@ static int JS_ToBoolFree(JSContext *ctx, JSValue val);
 static int JS_ToInt32Free(JSContext *ctx, int32_t *pres, JSValue val);
 static int JS_ToFloat64Free(JSContext *ctx, double *pres, JSValue val);
 static int JS_ToUint8ClampFree(JSContext *ctx, int32_t *pres, JSValue val);
+static JSValue js_new_string8_len(JSContext *ctx, const char *buf, int len);
 static JSValue js_compile_regexp(JSContext *ctx, JSValue pattern,
                                  JSValue flags);
 static JSValue js_regexp_constructor_internal(JSContext *ctx, JSValue ctor,
@@ -2820,7 +2821,8 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
     return i;
 }
 
-/* only works with zero terminated 8 bit strings */
+// XXX: `str` must be pure ASCII. No UTF-8 encoded strings
+// XXX: `str` must not be the string representation of a small integer
 static JSAtom __JS_NewAtomInit(JSRuntime *rt, const char *str, int len,
                                int atom_type)
 {
@@ -2833,6 +2835,7 @@ static JSAtom __JS_NewAtomInit(JSRuntime *rt, const char *str, int len,
     return __JS_NewAtom(rt, p, atom_type);
 }
 
+// XXX: `str` must be raw 8-bit contents. No UTF-8 encoded strings
 static JSAtom __JS_FindAtom(JSRuntime *rt, const char *str, size_t len,
                             int atom_type)
 {
@@ -2924,11 +2927,14 @@ static JSAtom JS_NewAtomStr(JSContext *ctx, JSString *p)
     return __JS_NewAtom(rt, p, JS_ATOM_TYPE_STRING);
 }
 
+/* `str` may be pure ASCII or UTF-8 encoded */
 JSAtom JS_NewAtomLen(JSContext *ctx, const char *str, size_t len)
 {
     JSValue val;
 
     if (len == 0 || !is_digit(*str)) {
+        // TODO(chqrlie): this does not work if `str` has UTF-8 encoded contents
+        // bug example: `({ "\u00c3\u00a9": 1 }).\u00e9` evaluates to `1`.
         JSAtom atom = __JS_FindAtom(ctx->rt, str, len, JS_ATOM_TYPE_STRING);
         if (atom)
             return atom;
@@ -2939,6 +2945,7 @@ JSAtom JS_NewAtomLen(JSContext *ctx, const char *str, size_t len)
     return JS_NewAtomStr(ctx, JS_VALUE_GET_STRING(val));
 }
 
+/* `str` may be pure ASCII or UTF-8 encoded */
 JSAtom JS_NewAtom(JSContext *ctx, const char *str)
 {
     return JS_NewAtomLen(ctx, str, strlen(str));
@@ -2951,7 +2958,7 @@ JSAtom JS_NewAtomUInt32(JSContext *ctx, uint32_t n)
     } else {
         char buf[16];
         size_t len = u32toa(buf, n);
-        JSValue val = JS_NewStringLen(ctx, buf, len);
+        JSValue val = js_new_string8_len(ctx, buf, len);
         if (JS_IsException(val))
             return JS_ATOM_NULL;
         return __JS_NewAtom(ctx->rt, JS_VALUE_GET_STRING(val),
@@ -2966,7 +2973,7 @@ static JSAtom JS_NewAtomInt64(JSContext *ctx, int64_t n)
     } else {
         char buf[24];
         size_t len = i64toa(buf, n);
-        JSValue val = JS_NewStringLen(ctx, buf, len);
+        JSValue val = js_new_string8_len(ctx, buf, len);
         if (JS_IsException(val))
             return JS_ATOM_NULL;
         return __JS_NewAtom(ctx->rt, JS_VALUE_GET_STRING(val),
@@ -2999,6 +3006,7 @@ static JSValue JS_NewSymbolFromAtom(JSContext *ctx, JSAtom descr,
     return JS_NewSymbolInternal(ctx, p, atom_type);
 }
 
+/* `description` may be pure ASCII or UTF-8 encoded */
 JSValue JS_NewSymbol(JSContext *ctx, const char *description, JS_BOOL is_global)
 {
     JSAtom atom = JS_NewAtom(ctx, description);
@@ -3070,7 +3078,7 @@ static JSValue __JS_AtomToValue(JSContext *ctx, JSAtom atom, BOOL force_string)
 
     if (__JS_AtomIsTaggedInt(atom)) {
         size_t len = u32toa(buf, __JS_AtomToUInt32(atom));
-        return JS_NewStringLen(ctx, buf, len);
+        return js_new_string8_len(ctx, buf, len);
     } else {
         JSRuntime *rt = ctx->rt;
         JSAtomStruct *p;
@@ -3302,6 +3310,7 @@ const char *JS_AtomToCString(JSContext *ctx, JSAtom atom)
 }
 
 /* return a string atom containing name concatenated with str1 */
+/* `str1` may be pure ASCII or UTF-8 encoded */
 static JSAtom js_atom_concat_str(JSContext *ctx, JSAtom name, const char *str1)
 {
     JSValue str;
@@ -3430,6 +3439,7 @@ int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def)
     int ret, len;
     JSAtom name;
 
+    // XXX: class_def->class_name must be raw 8-bit contents. No UTF-8 encoded strings
     len = strlen(class_def->class_name);
     name = __JS_FindAtom(rt, class_def->class_name, len, JS_ATOM_TYPE_STRING);
     if (name == JS_ATOM_NULL) {
@@ -3442,13 +3452,11 @@ int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def)
     return ret;
 }
 
-static JSValue js_new_string8(JSContext *ctx, const uint8_t *buf, int len)
+// XXX: `buf` contains raw 8-bit data, no UTF-8 decoding is performed
+// XXX: no special case for len == 0
+static JSValue js_new_string8_len(JSContext *ctx, const char *buf, int len)
 {
     JSString *str;
-
-    if (len <= 0) {
-        return JS_AtomToString(ctx, JS_ATOM_empty_string);
-    }
     str = js_alloc_string(ctx, len, 0);
     if (!str)
         return JS_EXCEPTION;
@@ -3457,7 +3465,14 @@ static JSValue js_new_string8(JSContext *ctx, const uint8_t *buf, int len)
     return JS_MKPTR(JS_TAG_STRING, str);
 }
 
-static JSValue js_new_string16(JSContext *ctx, const uint16_t *buf, int len)
+// XXX: `buf` contains raw 8-bit data, no UTF-8 decoding is performed
+// XXX: no special case for the empty string
+static inline JSValue js_new_string8(JSContext *ctx, const char *str)
+{
+    return js_new_string8_len(ctx, str, strlen(str));
+}
+
+static JSValue js_new_string16_len(JSContext *ctx, const uint16_t *buf, int len)
 {
     JSString *str;
     str = js_alloc_string(ctx, len, 1);
@@ -3470,11 +3485,11 @@ static JSValue js_new_string16(JSContext *ctx, const uint16_t *buf, int len)
 static JSValue js_new_string_char(JSContext *ctx, uint16_t c)
 {
     if (c < 0x100) {
-        uint8_t ch8 = c;
-        return js_new_string8(ctx, &ch8, 1);
+        char ch8 = c;
+        return js_new_string8_len(ctx, &ch8, 1);
     } else {
         uint16_t ch16 = c;
-        return js_new_string16(ctx, &ch16, 1);
+        return js_new_string16_len(ctx, &ch16, 1);
     }
 }
 
@@ -3484,7 +3499,10 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
     if (start == 0 && end == p->len) {
         return js_dup(JS_MKPTR(JS_TAG_STRING, p));
     }
-    if (p->is_wide_char && len > 0) {
+    if (len <= 0) {
+        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+    }
+    if (p->is_wide_char) {
         JSString *str;
         int i;
         uint16_t c = 0;
@@ -3492,7 +3510,7 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
             c |= p->u.str16[i];
         }
         if (c > 0xFF)
-            return js_new_string16(ctx, p->u.str16 + start, len);
+            return js_new_string16_len(ctx, p->u.str16 + start, len);
 
         str = js_alloc_string(ctx, len, 0);
         if (!str)
@@ -3503,7 +3521,7 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
         str->u.str8[len] = '\0';
         return JS_MKPTR(JS_TAG_STRING, str);
     } else {
-        return js_new_string8(ctx, p->u.str8 + start, len);
+        return js_new_string8_len(ctx, (const char *)(p->u.str8 + start), len);
     }
 }
 
@@ -3850,6 +3868,9 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
     StringBuffer b_s, *b = &b_s;
     size_t len1;
 
+    if (buf_len <= 0) {
+        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+    }
     p_start = (const uint8_t *)buf;
     p_end = p_start + buf_len;
     p = p_start;
@@ -3860,7 +3881,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
         return JS_ThrowRangeError(ctx, "invalid string length");
     if (p == p_end) {
         /* ASCII string */
-        return js_new_string8(ctx, (const uint8_t *)buf, buf_len);
+        return js_new_string8_len(ctx, buf, buf_len);
     } else {
         if (string_buffer_init(ctx, b, buf_len))
             goto fail;
@@ -3933,11 +3954,7 @@ static JSValue JS_ConcatString3(JSContext *ctx, const char *str1,
     return JS_EXCEPTION;
 }
 
-JSValue JS_NewString(JSContext *ctx, const char *str)
-{
-    return JS_NewStringLen(ctx, str, strlen(str));
-}
-
+/* `str` may be pure ASCII or UTF-8 encoded */
 JSValue JS_NewAtomString(JSContext *ctx, const char *str)
 {
     JSAtom atom = JS_NewAtom(ctx, str);
@@ -4976,6 +4993,7 @@ static int js_method_set_properties(JSContext *ctx, JSValue func_obj,
 }
 
 /* Note: at least 'length' arguments will be readable in 'argv' */
+/* `name` may be NULL, pure ASCII or UTF-8 encoded */
 static JSValue JS_NewCFunction3(JSContext *ctx, JSCFunction *func,
                                 const char *name,
                                 int length, JSCFunctionEnum cproto, int magic,
@@ -6508,6 +6526,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
         if (has_prepare) {
             js_new_callsite_data(ctx, &csd[i], sf);
         } else {
+            /* func_name_str is UTF-8 encoded if needed */
             func_name_str = get_func_name(ctx, sf->cur_func);
             if (!func_name_str || func_name_str[0] == '\0')
                 str1 = "<anonymous>";
@@ -6581,11 +6600,10 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
         JS_FreeValue(ctx, rt->current_exception);
         rt->current_exception = saved_exception;
     } else {
-        dbuf_putc(&dbuf, '\0');
         if (dbuf_error(&dbuf))
             stack = JS_NULL;
         else
-            stack = JS_NewString(ctx, (char *)dbuf.buf);
+            stack = JS_NewStringLen(ctx, (char *)dbuf.buf, dbuf.size);
         dbuf_free(&dbuf);
     }
 
@@ -6612,6 +6630,7 @@ JSValue JS_NewError(JSContext *ctx)
     return JS_NewObjectClass(ctx, JS_CLASS_ERROR);
 }
 
+/* fmt and arguments may be pure ASCII or UTF-8 encoded contents */
 static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
                               const char *fmt, va_list ap, BOOL add_backtrace)
 {
@@ -8069,6 +8088,7 @@ JSValue JS_GetPropertyInt64(JSContext *ctx, JSValue obj, int64_t idx)
     return val;
 }
 
+/* `prop` may be pure ASCII or UTF-8 encoded */
 JSValue JS_GetPropertyStr(JSContext *ctx, JSValue this_obj,
                           const char *prop)
 {
@@ -8874,6 +8894,7 @@ int JS_SetPropertyInt64(JSContext *ctx, JSValue this_obj,
     return res;
 }
 
+/* `prop` may be pure ASCII or UTF-8 encoded */
 int JS_SetPropertyStr(JSContext *ctx, JSValue this_obj,
                       const char *prop, JSValue val)
 {
@@ -9428,6 +9449,7 @@ int JS_DefinePropertyValueInt64(JSContext *ctx, JSValue this_obj,
                                        val, flags);
 }
 
+/* `prop` may be pure ASCII or UTF-8 encoded */
 int JS_DefinePropertyValueStr(JSContext *ctx, JSValue this_obj,
                               const char *prop, JSValue val, int flags)
 {
@@ -11000,13 +11022,14 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValue val, int radix)
     saved_sign = a->sign;
     if (a->expn == BF_EXP_ZERO)
         a->sign = 0;
+    // TODO(chqrlie) bf_ftoa should return the string length to the caller
     str = bf_ftoa(NULL, a, radix, 0, BF_RNDZ | BF_FTOA_FORMAT_FRAC |
                   BF_FTOA_JS_QUIRKS);
     a->sign = saved_sign;
     JS_FreeBigInt(ctx, a, &a_s);
     if (!str)
         return JS_ThrowOutOfMemory(ctx);
-    ret = JS_NewString(ctx, str);
+    ret = js_new_string8(ctx, str);
     bf_free(ctx->bf_ctx, str);
     return ret;
 }
@@ -11258,7 +11281,7 @@ static JSValue js_dtoa(JSContext *ctx,
 {
     char buf[JS_DTOA_BUF_SIZE];
     size_t len = js_dtoa1(&buf, d, radix, n_digits, flags);
-    return JS_NewStringLen(ctx, buf, len);
+    return js_new_string8_len(ctx, buf, len);
 }
 
 /* d is guaranteed to be finite */
@@ -11345,7 +11368,7 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
 done:
     ptr[-1] = '-';
     ptr -= sign;
-    return js_new_string8(ctx, (uint8_t *)ptr, ptr2 - ptr);
+    return js_new_string8_len(ctx, ptr, ptr2 - ptr);
 }
 
 JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
@@ -11361,8 +11384,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
         return js_dup(val);
     case JS_TAG_INT:
         len = i32toa(buf, JS_VALUE_GET_INT(val));
-        str = buf;
-        goto new_string;
+        return js_new_string8_len(ctx, buf, len);
     case JS_TAG_BOOL:
         return JS_AtomToString(ctx, JS_VALUE_GET_BOOL(val) ?
                           JS_ATOM_true : JS_ATOM_false);
@@ -11384,9 +11406,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
         }
         break;
     case JS_TAG_FUNCTION_BYTECODE:
-        str = "[function bytecode]";
-        len = sizeof("[function bytecode]") - 1;
-        goto new_string;
+        return js_new_string8(ctx, "[function bytecode]");
     case JS_TAG_SYMBOL:
         if (is_ToPropertyKey) {
             return js_dup(val);
@@ -11399,10 +11419,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
     case JS_TAG_BIG_INT:
         return js_bigint_to_string(ctx, val);
     default:
-        str = "[unsupported type]";
-        len = sizeof("[unsupported type]") - 1;
-    new_string:
-        return JS_NewStringLen(ctx, str, len);
+        return js_new_string8(ctx, "[unsupported type]");
     }
 }
 
@@ -19013,6 +19030,7 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
             }
         }
     }
+    /* buf is pure ASCII or UTF-8 encoded */
     atom = JS_NewAtomLen(s->ctx, buf, ident_pos);
  done:
     if (unlikely(buf != ident_buf))
@@ -19667,6 +19685,7 @@ static JSAtom json_parse_ident(JSParseState *s, const uint8_t **pp, int c)
             }
         }
     }
+    /* buf contains pure ASCII */
     atom = JS_NewAtomLen(s->ctx, buf, ident_pos);
  done:
     if (unlikely(buf != ident_buf))
@@ -19926,6 +19945,7 @@ static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end)
    Heuristic: skip comments and expect 'import' keyword not followed
    by '(' or '.' or export keyword.
 */
+/* input is pure ASCII or UTF-8 encoded source code */
 BOOL JS_DetectModule(const char *input, size_t input_len)
 {
     const uint8_t *p = (const uint8_t *)input;
@@ -25734,6 +25754,7 @@ static int add_star_export_entry(JSContext *ctx, JSModuleDef *m,
 }
 
 /* create a C module */
+/* `name_str` may be pure ASCII or UTF-8 encoded */
 JSModuleDef *JS_NewCModule(JSContext *ctx, const char *name_str,
                            JSModuleInitFunc *func)
 {
@@ -25747,6 +25768,7 @@ JSModuleDef *JS_NewCModule(JSContext *ctx, const char *name_str,
     return m;
 }
 
+/* `export_name` may be pure ASCII or UTF-8 encoded */
 int JS_AddModuleExport(JSContext *ctx, JSModuleDef *m, const char *export_name)
 {
     JSExportEntry *me;
@@ -25763,6 +25785,7 @@ int JS_AddModuleExport(JSContext *ctx, JSModuleDef *m, const char *export_name)
         return 0;
 }
 
+/* `export_name` may be pure ASCII or UTF-8 encoded */
 int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *export_name,
                        JSValue val)
 {
@@ -25866,6 +25889,7 @@ static JSModuleDef *js_find_loaded_module(JSContext *ctx, JSAtom name)
 }
 
 /* return NULL in case of exception (e.g. module could not be loaded) */
+/* `base_cname` and `cname1` may be pure ASCII or UTF-8 encoded */
 static JSModuleDef *js_host_resolve_imported_module(JSContext *ctx,
                                                     const char *base_cname,
                                                     const char *cname1)
@@ -27338,6 +27362,7 @@ static __exception int js_parse_source_element(JSParseState *s)
     return 0;
 }
 
+/* `filename` may be pure ASCII or UTF-8 encoded */
 static JSFunctionDef *js_new_function_def(JSContext *ctx,
                                           JSFunctionDef *parent,
                                           BOOL is_eval,
@@ -32273,6 +32298,7 @@ JSValue JS_EvalFunction(JSContext *ctx, JSValue fun_obj)
 }
 
 /* 'input' must be zero terminated i.e. input[input_len] = '\0'. */
+/* `export_name` and `input` may be pure ASCII or UTF-8 encoded */
 static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
                                  const char *input, size_t input_len,
                                  const char *filename, int flags, int scope_idx)
@@ -34063,7 +34089,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     if (b->source_len) {
         bc_read_trace(s, "source: %d bytes\n", b->source_len);
         s->ptr_last += b->source_len;  // omit source code hex dump
-        b->source = js_mallocz(ctx, b->source_len);
+        /* b->source is a UTF-8 encoded null terminated C string */
+        b->source = js_mallocz(ctx, b->source_len + 1);
         if (!b->source)
             goto fail;
         if (bc_get_buf(s, b->source, b->source_len))
@@ -34662,6 +34689,7 @@ static int check_exception_free(JSContext *ctx, JSValue obj)
     return JS_IsException(obj);
 }
 
+/* `export_name` may be pure ASCII or UTF-8 encoded */
 static JSAtom find_atom(JSContext *ctx, const char *name)
 {
     JSAtom atom;
@@ -34840,6 +34868,7 @@ int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
                                    e->name, e->u.func.length, e->u.func.cproto, e->magic);
             break;
         case JS_DEF_PROP_STRING:
+            /* `e->u.str` may be pure ASCII or UTF-8 encoded */
             val = JS_NewString(ctx, e->u.str);
             break;
         case JS_DEF_PROP_INT32:
@@ -35746,9 +35775,9 @@ static JSValue js_object_toString(JSContext *ctx, JSValue this_val,
     JSObject *p;
 
     if (JS_IsNull(this_val)) {
-        tag = JS_NewString(ctx, "Null");
+        tag = js_new_string8(ctx, "Null");
     } else if (JS_IsUndefined(this_val)) {
-        tag = JS_NewString(ctx, "Undefined");
+        tag = js_new_string8(ctx, "Undefined");
     } else {
         obj = JS_ToObject(ctx, this_val);
         if (JS_IsException(obj))
@@ -36505,6 +36534,7 @@ static JSValue js_function_toString(JSContext *ctx, JSValue this_val,
     p = JS_VALUE_GET_OBJ(this_val);
     if (js_class_has_bytecode(p->class_id)) {
         JSFunctionBytecode *b = p->u.func.function_bytecode;
+        /* `b->source` must be pure ASCII or UTF-8 encoded */
         if (b->source)
             return JS_NewStringLen(ctx, b->source, b->source_len);
     }
@@ -38999,7 +39029,7 @@ static JSValue js_number_toString(JSContext *ctx, JSValue this_val,
     if (magic || JS_IsUndefined(argv[0])) {
         if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
             size_t len = i32toa(buf, JS_VALUE_GET_INT(val));
-            return JS_NewStringLen(ctx, buf, len);
+            return js_new_string8_len(ctx, buf, len);
         }
         base = 10;
     } else {
@@ -39009,7 +39039,7 @@ static JSValue js_number_toString(JSContext *ctx, JSValue this_val,
     }
     if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
         size_t len = i64toa_radix(buf, JS_VALUE_GET_INT(val), base);
-        return JS_NewStringLen(ctx, buf, len);
+        return js_new_string8_len(ctx, buf, len);
     }
     if (JS_ToFloat64Free(ctx, &d, val))
         return JS_EXCEPTION;
@@ -39353,12 +39383,7 @@ static JSValue js_string_fromCharCode(JSContext *ctx, JSValue this_val,
     // shortcut for single argument common case
     if (argc == 1 && JS_VALUE_GET_TAG(argv[0]) == JS_TAG_INT) {
         uint16_t c16 = JS_VALUE_GET_INT(argv[0]);
-        if (c16 < 128) {
-            uint8_t c8 = c16;
-            return js_new_string8(ctx, &c8, 1);
-        } else {
-            return js_new_string16(ctx, &c16, 1);
-        }
+        return js_new_string_char(ctx, c16);
     }
 
     string_buffer_init(ctx, b, argc);
@@ -39385,18 +39410,13 @@ static JSValue js_string_fromCodePoint(JSContext *ctx, JSValue this_val,
         c = JS_VALUE_GET_INT(argv[0]);
         if (c < 0 || c > 0x10ffff)
             goto range_error;
-        if (c < 128) {
-            uint8_t c8 = c;
-            return js_new_string8(ctx, &c8, 1);
-        }
-        if (c < 0x10000) {
-            uint16_t c16 = c;
-            return js_new_string16(ctx, &c16, 1);
+        if (c <= 0xffff) {
+            return js_new_string_char(ctx, c);
         } else {
             uint16_t c16[2];
             c16[0] = get_hi_surrogate(c);
             c16[1] = get_lo_surrogate(c);
-            return js_new_string16(ctx, c16, 2);
+            return js_new_string16_len(ctx, c16, 2);
         }
     }
 
@@ -39562,7 +39582,7 @@ static JSValue js_string_charAt(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     }
     if (idx < 0 || idx >= p->len) {
-        ret = js_new_string8(ctx, NULL, 0);
+        ret = JS_AtomToString(ctx, JS_ATOM_empty_string);
     } else {
         c = string_get(p, idx);
         ret = js_new_string_char(ctx, c);
@@ -39725,7 +39745,7 @@ static JSValue js_string_toWellFormed(JSContext *ctx, JSValue this_val,
         return str; // by definition well-formed
 
     // TODO(bnoordhuis) don't clone when input is well-formed
-    ret = js_new_string16(ctx, p->u.str16, p->len);
+    ret = js_new_string16_len(ctx, p->u.str16, p->len);
     JS_FreeValue(ctx, str);
     if (JS_IsException(ret))
         return JS_EXCEPTION;
@@ -39941,7 +39961,7 @@ static JSValue js_string_match(JSContext *ctx, JSValue this_val,
     args[0] = regexp;
     str = JS_UNDEFINED;
     if (atom == JS_ATOM_Symbol_matchAll) {
-        str = JS_NewString(ctx, "g");
+        str = js_new_string8(ctx, "g");
         if (JS_IsException(str))
             goto fail;
         args[args_len++] = str;
@@ -40796,7 +40816,7 @@ static JSValue js_string_iterator_next(JSContext *ctx, JSValue this_val,
     if (c <= 0xffff) {
         return js_new_string_char(ctx, c);
     } else {
-        return js_new_string16(ctx, p->u.str16 + start, 2);
+        return js_new_string16_len(ctx, p->u.str16 + start, 2);
     }
 }
 
@@ -41365,7 +41385,7 @@ static JSValue js_compile_regexp(JSContext *ctx, JSValue pattern,
         return JS_EXCEPTION;
     }
 
-    ret = js_new_string8(ctx, re_bytecode_buf, re_bytecode_len);
+    ret = js_new_string8_len(ctx, (char *)re_bytecode_buf, re_bytecode_len);
     js_free(ctx, re_bytecode_buf);
     return ret;
 }
@@ -41572,7 +41592,7 @@ static JSValue js_regexp_get_source(JSContext *ctx, JSValue this_val)
 
     if (p->len == 0) {
     empty_regex:
-        return JS_NewString(ctx, "(?:)");
+        return js_new_string8(ctx, "(?:)");
     }
     string_buffer_init2(ctx, b, p->len, p->is_wide_char);
 
@@ -41685,7 +41705,9 @@ static JSValue js_regexp_get_flags(JSContext *ctx, JSValue this_val)
         goto exception;
     if (res)
         *p++ = 'y';
-    return JS_NewStringLen(ctx, str, p - str);
+    if (p == str)
+        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+    return js_new_string8_len(ctx, str, p - str);
 
 exception:
     return JS_EXCEPTION;
@@ -42943,6 +42965,7 @@ static JSValue json_parse_value(JSParseState *s)
     return JS_EXCEPTION;
 }
 
+/* 'buf' must be zero terminated i.e. buf[buf_len] = '\0'. */
 JSValue JS_ParseJSON(JSContext *ctx, const char *buf, size_t buf_len, const char *filename)
 {
     JSParseState s1, *s = &s1;
@@ -43184,7 +43207,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
             sep = JS_ConcatString3(ctx, "\n", js_dup(indent1), "");
             if (JS_IsException(sep))
                 goto exception;
-            sep1 = JS_NewString(ctx, " ");
+            sep1 = js_new_string8(ctx, " ");
             if (JS_IsException(sep1))
                 goto exception;
         } else {
@@ -46153,7 +46176,7 @@ static JSValue js_promise_all_resolve_element(JSContext *ctx,
         obj = JS_NewObject(ctx);
         if (JS_IsException(obj))
             return JS_EXCEPTION;
-        str = JS_NewString(ctx, is_reject ? "rejected" : "fulfilled");
+        str = js_new_string8(ctx, is_reject ? "rejected" : "fulfilled");
         if (JS_IsException(str))
             goto fail1;
         if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_status,
@@ -47488,7 +47511,7 @@ static JSValue get_date_string(JSContext *ctx, JSValue this_val,
         if (fmt == 2)
             return JS_ThrowRangeError(ctx, "Date value is NaN");
         else
-            return JS_NewString(ctx, "Invalid Date");
+            return js_new_string8(ctx, "Invalid Date");
     }
 
     y = fields[0];
@@ -47572,7 +47595,11 @@ static JSValue get_date_string(JSContext *ctx, JSValue this_val,
             break;
         }
     }
-    return JS_NewStringLen(ctx, buf, pos);
+    if (!pos) {
+        // XXX: should throw exception?
+        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+    }
+    return js_new_string8_len(ctx, buf, pos);
 }
 
 /* OS dependent: return the UTC time in ms since 1970. */
@@ -52547,6 +52574,7 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
     JSObject *p;
 
     csd->func = js_dup(sf->cur_func);
+    /* func_name_str is UTF-8 encoded if needed */
     func_name_str = get_func_name(ctx, sf->cur_func);
     if (!func_name_str || func_name_str[0] == '\0')
         csd->func_name = JS_NULL;
@@ -52586,6 +52614,7 @@ static void js_new_callsite_data2(JSContext *ctx, JSCallSiteData *csd, const cha
     csd->native = FALSE;
     csd->line_num = line_num;
     csd->col_num = col_num;
+    /* filename is UTF-8 encoded if needed (original argument to __JS_EvalInternal()) */
     csd->filename = JS_NewString(ctx, filename);
     if (JS_IsException(csd->filename)) {
         csd->filename = JS_NULL;

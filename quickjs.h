@@ -29,6 +29,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,6 +53,12 @@ typedef struct JSObject JSObject;
 typedef struct JSClass JSClass;
 typedef uint32_t JSClassID;
 typedef uint32_t JSAtom;
+
+/* Unless documented otherwise, C string pointers (`char *` or `const char *`)
+   are assumed to verify these constraints:
+   - unless a length is passed separately, the string has a null terminator
+   - string contents is either pure ASCII or is UTF-8 encoded.
+ */
 
 #if INTPTR_MAX < INT64_MAX
 /* Use NAN boxing for 32bit builds. */
@@ -447,7 +454,7 @@ typedef JSValue JSClassCall(JSContext *ctx, JSValue func_obj,
                             int flags);
 
 typedef struct JSClassDef {
-    const char *class_name;
+    const char *class_name; /* pure ASCII only! */
     JSClassFinalizer *finalizer;
     JSClassGCMark *gc_mark;
     /* if call != NULL, the object is a function. If (flags &
@@ -634,7 +641,9 @@ JS_EXTERN int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValue val);
 JS_EXTERN int JS_ToInt64Ext(JSContext *ctx, int64_t *pres, JSValue val);
 
 JS_EXTERN JSValue JS_NewStringLen(JSContext *ctx, const char *str1, size_t len1);
-JS_EXTERN JSValue JS_NewString(JSContext *ctx, const char *str);
+static inline JSValue JS_NewString(JSContext *ctx, const char *str) {
+    return JS_NewStringLen(ctx, str, strlen(str));
+}
 JS_EXTERN JSValue JS_NewAtomString(JSContext *ctx, const char *str);
 JS_EXTERN JSValue JS_ToString(JSContext *ctx, JSValue val);
 JS_EXTERN JSValue JS_ToPropertyKey(JSContext *ctx, JSValue val);
@@ -902,7 +911,7 @@ JS_EXTERN void JS_SetConstructor(JSContext *ctx, JSValue func_obj,
 /* C property definition */
 
 typedef struct JSCFunctionListEntry {
-    const char *name;
+    const char *name;       /* pure ASCII or UTF-8 encoded */
     uint8_t prop_flags;
     uint8_t def_type;
     int16_t magic;
@@ -924,7 +933,7 @@ typedef struct JSCFunctionListEntry {
             const struct JSCFunctionListEntry *tab;
             int len;
         } prop_list;
-        const char *str;
+        const char *str;    /* pure ASCII or UTF-8 encoded */
         int32_t i32;
         int64_t i64;
         double f64;
