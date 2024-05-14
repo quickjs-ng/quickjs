@@ -20,7 +20,14 @@ function assert_throws(expected_error, func, message)
     var err = false;
     var msg = message ? " (" + message + ")" : "";
     try {
-        func();
+        switch (typeof func) {
+        case 'string':
+            eval(func);
+            break;
+        case 'function':
+            func();
+            break;
+        }
     } catch(e) {
         err = true;
         if (!(e instanceof expected_error)) {
@@ -541,7 +548,7 @@ function test_function_expr_name()
 
 function test_expr(expr, err) {
     if (err)
-        assert_throws(err, () => eval(expr), `for ${expr}`);
+        assert_throws(err, expr, `for ${expr}`);
     else
         assert(1, eval(expr), `for ${expr}`);
 }
@@ -603,6 +610,26 @@ function test_number_literals()
     test_expr('0.a', SyntaxError);
 }
 
+function test_syntax()
+{
+    assert_throws(SyntaxError, "do");
+    assert_throws(SyntaxError, "do;");
+    assert_throws(SyntaxError, "do{}");
+    assert_throws(SyntaxError, "if");
+    assert_throws(SyntaxError, "if\n");
+    assert_throws(SyntaxError, "if 1");
+    assert_throws(SyntaxError, "if \0");
+    assert_throws(SyntaxError, "if ;");
+    assert_throws(SyntaxError, "if 'abc'");
+    assert_throws(SyntaxError, "if `abc`");
+    assert_throws(SyntaxError, "if /abc/");
+    assert_throws(SyntaxError, "if abc");
+    assert_throws(SyntaxError, "if abc\u0064");
+    assert_throws(SyntaxError, "if abc\\u0064");
+    assert_throws(SyntaxError, "if \u0123");
+    assert_throws(SyntaxError, "if \\u0123");
+}
+
 test_op1();
 test_cvt();
 test_eq();
@@ -624,3 +651,4 @@ test_argument_scope();
 test_function_expr_name();
 test_reserved_names();
 test_number_literals();
+test_syntax();

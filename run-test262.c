@@ -1299,11 +1299,15 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
                 const char *msg;
 
                 msg = JS_ToCString(ctx, exception_val);
-                error_class = strdup_len(msg, strcspn(msg, ":"));
-                if (!str_equal(error_class, error_type))
+                if (msg == NULL) {
                     ret = -1;
-                free(error_class);
-                JS_FreeCString(ctx, msg);
+                } else {
+                    error_class = strdup_len(msg, strcspn(msg, ":"));
+                    if (!str_equal(error_class, error_type))
+                        ret = -1;
+                    free(error_class);
+                    JS_FreeCString(ctx, msg);
+                }
             }
         } else {
             ret = -1;
