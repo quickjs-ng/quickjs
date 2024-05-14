@@ -235,7 +235,7 @@ endif()
 #
 
 # run-test262 uses pthreads.
-if(NOT WIN32)
+if(NOT WIN32 AND NOT EMSCRIPTEN)
     add_executable(run-test262
         quickjs-libc.c
         run-test262.c
