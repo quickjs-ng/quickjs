@@ -6351,7 +6351,7 @@ static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
 
     *col = 1;
     p = b->pc2line_buf;
-    p_end = p + b->pc2line_len;
+    p_end = p ? p + b->pc2line_len : NULL;
     pc = 0;
     line_num = b->line_num;
     col_num = b->col_num;
@@ -6510,7 +6510,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
                 line_num1 = find_line_num(ctx, b,
                                           sf->cur_pc - b->byte_code_buf - 1,
                                           &col_num1);
-                atom_str = JS_AtomToCString(ctx, b->filename);
+                atom_str = (b->filename != JS_ATOM_NULL) ? JS_AtomToCString(ctx, b->filename) : NULL;
                 dbuf_printf(&dbuf, " (%s", atom_str ? atom_str : "<null>");
                 JS_FreeCString(ctx, atom_str);
                 if (line_num1 != -1)
@@ -13229,7 +13229,7 @@ static JSValue js_function_proto_fileName(JSContext *ctx,
                                           JSValue this_val)
 {
     JSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
-    if (b) {
+    if (b && b->filename != JS_ATOM_NULL) {
         return JS_AtomToString(ctx, b->filename);
     }
     return JS_UNDEFINED;
@@ -18499,19 +18499,15 @@ typedef struct JSToken {
 
 typedef struct JSParseState {
     JSContext *ctx;
-    int last_line_num;  /* line number of last token */
-    int last_col_num;   /* column number of last token */
-    int line_num;       /* line number of current offset */
-    int col_num;        /* column number of current offset */
     const char *filename;
     JSToken token;
+    int line_num;       /* line number of current offset (buf_ptr) */
     BOOL got_lf; /* true if got line feed before the current token */
-    const uint8_t *last_ptr;
-    const uint8_t *buf_start;
-    const uint8_t *buf_ptr;
-    const uint8_t *buf_end;
-    const uint8_t *eol;  // most recently seen end-of-line character
-    const uint8_t *mark; // first token character, invariant: eol < mark
+    const uint8_t *last_ptr;  /* pointer to end of previous token */
+    const uint8_t *buf_start; /* pointer to beginning of source code */
+    const uint8_t *buf_ptr;   /* pointer to parser current source position */
+    const uint8_t *buf_end;   /* pointer to end of source code */
+    const uint8_t *bol_ptr;   /* pointer to the beginning of the current source line */
 
     /* current function code */
     JSFunctionDef *cur_func;
@@ -18580,6 +18576,33 @@ static void free_token(JSParseState *s, JSToken *token)
     }
 }
 
+static void dup_token(JSParseState *s, JSToken *token)
+{
+    switch(token->val) {
+    case TOK_NUMBER:
+        JS_DupValue(s->ctx, token->u.num.val);
+        break;
+    case TOK_STRING:
+    case TOK_TEMPLATE:
+        JS_DupValue(s->ctx, token->u.str.str);
+        break;
+    case TOK_REGEXP:
+        JS_DupValue(s->ctx, token->u.regexp.body);
+        JS_DupValue(s->ctx, token->u.regexp.flags);
+        break;
+    case TOK_IDENT:
+    case TOK_PRIVATE_NAME:
+        JS_DupAtom(s->ctx, token->u.ident.atom);
+        break;
+    default:
+        if (token->val >= TOK_FIRST_KEYWORD &&
+            token->val <= TOK_LAST_KEYWORD) {
+            JS_DupAtom(s->ctx, token->u.ident.atom);
+        }
+        break;
+    }
+}
+
 static void __attribute((unused)) dump_token(JSParseState *s,
                                              const JSToken *token)
 {
@@ -18642,20 +18665,62 @@ static void __attribute((unused)) dump_token(JSParseState *s,
     }
 }
 
-int __attribute__((format(printf, 2, 3))) js_parse_error(JSParseState *s, const char *fmt, ...)
+static void js_get_source_pos(const uint8_t *source, const uint8_t *curp, int *pline, int *pcol)
+{
+    const uint8_t *p, *line_start;
+    int line = *pline;
+    int col = *pcol;
+
+    for (line_start = p = source; p < curp; p++) {
+        if (*p == '\r' || *p == '\n') {
+            p += 1 + (p[0] == '\r' && p[1] == '\n');
+            line++;
+            col = 1;
+            line_start = p;
+        }
+    }
+    /* column count does not account for TABs nor wide characters */
+    *pline = line;
+    *pcol = col + (p - line_start);
+}
+
+static void js_parse_error_vfmt(JSParseState *s, int line_num, int col_num, const char *fmt, va_list ap)
 {
     JSContext *ctx = s->ctx;
-    va_list ap;
     int backtrace_flags;
 
-    va_start(ap, fmt);
     JS_ThrowError2(ctx, JS_SYNTAX_ERROR, fmt, ap, FALSE);
-    va_end(ap);
     backtrace_flags = 0;
     if (s->cur_func && s->cur_func->backtrace_barrier)
         backtrace_flags = JS_BACKTRACE_FLAG_SINGLE_LEVEL;
     build_backtrace(ctx, ctx->rt->current_exception, s->filename,
-                    s->line_num, s->col_num, backtrace_flags);
+                    line_num, col_num, backtrace_flags);
+}
+
+static int __attribute__((format(printf, 2, 3))) js_parse_error(JSParseState *s, const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    js_parse_error_vfmt(s, s->token.line_num, s->token.col_num, fmt, ap);
+    va_end(ap);
+    return -1;
+}
+
+static int __attribute__((format(printf, 3, 4))) js_parse_error_pos(JSParseState *s, const uint8_t *p, const char *fmt, ...)
+{
+    va_list ap;
+    int line_num = 1, col_num = 1;
+
+    if (p >= s->bol_ptr) {
+        line_num = s->line_num;
+        col_num = 1 + (p - s->bol_ptr);
+    } else {
+        js_get_source_pos(s->buf_start, p, &line_num, &col_num);
+    }
+    va_start(ap, fmt);
+    js_parse_error_vfmt(s, line_num, col_num, fmt, ap);
+    va_end(ap);
     return -1;
 }
 
@@ -18748,12 +18813,11 @@ static __exception int js_parse_template_part(JSParseState *s,
         }
         if (c == '\n') {
             s->line_num++;
-            s->eol = &p[-1];
-            s->mark = p;
+            s->bol_ptr = p;
         } else if (c >= 0x80) {
             c = utf8_decode(p - 1, &p_next);
             if (p_next == p) {
-                js_parse_error(s, "invalid UTF-8 sequence");
+                js_parse_error_pos(s, p - 1, "invalid UTF-8 sequence");
                 goto fail;
             }
             p = p_next;
@@ -18768,7 +18832,7 @@ static __exception int js_parse_template_part(JSParseState *s,
     return 0;
 
  unexpected_eof:
-    js_parse_error(s, "unexpected end of string");
+    js_parse_error_pos(s, p, "unexpected end of string");
  fail:
     string_buffer_free(b);
     return -1;
@@ -18818,7 +18882,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     if (sep != '`')
                         goto invalid_char;
                     if (do_throw)
-                        js_parse_error(s, "Unexpected end of input");
+                        js_parse_error_pos(s, p, "Unexpected end of input");
                     goto fail;
                 }
                 p++;
@@ -18838,8 +18902,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 p++;
                 if (sep != '`') {
                     s->line_num++;
-                    s->eol = &p[-1];
-                    s->mark = p;
+                    s->bol_ptr = p;
                 }
                 continue;
             default:
@@ -18851,9 +18914,9 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 if ((c >= '0' && c <= '9')
                 &&  ((s->cur_func->js_mode & JS_MODE_STRICT) || sep == '`')) {
                     if (do_throw) {
-                        js_parse_error(s, "%s are not allowed in %s",
-                                       (c >= '8') ? "\\8 and \\9" : "Octal escape sequences",
-                                       (sep == '`') ? "template strings" : "strict mode");
+                        js_parse_error_pos(s, p - 1, "%s are not allowed in %s",
+                                           (c >= '8') ? "\\8 and \\9" : "Octal escape sequences",
+                                           (sep == '`') ? "template strings" : "strict mode");
                     }
                     goto fail;
                 } else if (c >= 0x80) {
@@ -18869,8 +18932,8 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     ret = lre_parse_escape(&p, TRUE);
                     if (ret == -1) {
                         if (do_throw) {
-                            js_parse_error(s, "Invalid %s escape sequence",
-                                           c == 'u' ? "Unicode" : "hexadecimal");
+                            js_parse_error_pos(s, p - 1, "Invalid %s escape sequence",
+                                               c == 'u' ? "Unicode" : "hexadecimal");
                         }
                         goto fail;
                     } else if (ret < 0) {
@@ -18899,11 +18962,11 @@ static __exception int js_parse_string(JSParseState *s, int sep,
 
  invalid_utf8:
     if (do_throw)
-        js_parse_error(s, "invalid UTF-8 sequence");
+        js_parse_error_pos(s, p, "invalid UTF-8 sequence");
     goto fail;
  invalid_char:
     if (do_throw)
-        js_parse_error(s, "unexpected end of string");
+        js_parse_error_pos(s, p, "unexpected end of string");
  fail:
     string_buffer_free(b);
     return -1;
@@ -18932,7 +18995,7 @@ static __exception int js_parse_regexp(JSParseState *s)
     for(;;) {
         if (p >= s->buf_end) {
         eof_error:
-            js_parse_error(s, "unexpected end of regexp");
+            js_parse_error_pos(s, p, "unexpected end of regexp");
             goto fail;
         }
         c = *p++;
@@ -18959,24 +19022,21 @@ static __exception int js_parse_regexp(JSParseState *s)
                 if (p_next == p) {
                     goto invalid_utf8;
                 }
-                p = p_next;
                 if (c == CP_LS || c == CP_PS)
                     goto eol_error;
+                p = p_next;
             }
         } else if (c >= 0x80) {
             c = utf8_decode(p - 1, &p_next);
-            if (p_next == p) {
-            invalid_utf8:
-                js_parse_error(s, "invalid UTF-8 sequence");
-                goto fail;
-            }
-            p = p_next;
+            if (p_next == p)
+                goto invalid_utf8;
             /* LS or PS are considered as line terminator */
             if (c == CP_LS || c == CP_PS) {
             eol_error:
-                js_parse_error(s, "unexpected line terminator in regexp");
+                js_parse_error_pos(s, p - 1, "unexpected line terminator in regexp");
                 goto fail;
             }
+            p = p_next;
         }
         if (string_buffer_putc(b, c))
             goto fail;
@@ -18998,6 +19058,9 @@ static __exception int js_parse_regexp(JSParseState *s)
     s->token.u.regexp.flags = string_buffer_end(b2);
     s->buf_ptr = p;
     return 0;
+
+ invalid_utf8:
+    js_parse_error_pos(s, p - 1, "invalid UTF-8 sequence");
  fail:
     string_buffer_free(b);
     string_buffer_free(b2);
@@ -19084,6 +19147,7 @@ static __exception int next_token(JSParseState *s)
     const uint8_t *p, *p_next;
     int c;
     BOOL ident_has_escape;
+    BOOL at_bol;
     JSAtom atom;
     int flags, radix;
 
@@ -19095,12 +19159,11 @@ static __exception int next_token(JSParseState *s)
     free_token(s, &s->token);
 
     p = s->last_ptr = s->buf_ptr;
+    at_bol = (p == s->bol_ptr);
     s->got_lf = FALSE;
-    s->last_line_num = s->token.line_num;
-    s->last_col_num = s->token.col_num;
  redo:
     s->token.line_num = s->line_num;
-    s->token.col_num = s->col_num;
+    s->token.col_num = 1 + (p - s->bol_ptr);
     s->token.ptr = p;
     c = *p;
     switch(c) {
@@ -19129,8 +19192,7 @@ static __exception int next_token(JSParseState *s)
     case '\n':
         p++;
     line_terminator:
-        s->eol = &p[-1];
-        s->mark = p;
+        s->bol_ptr = p;
         s->got_lf = TRUE;
         s->line_num++;
         goto redo;
@@ -19138,7 +19200,7 @@ static __exception int next_token(JSParseState *s)
     case '\v':
     case ' ':
     case '\t':
-        s->mark = ++p;
+        p++;
         goto redo;
     case '/':
         if (p[1] == '*') {
@@ -19154,10 +19216,10 @@ static __exception int next_token(JSParseState *s)
                     break;
                 }
                 if (*p == '\n') {
-                    s->line_num++;
+                    p++;
+                    s->bol_ptr = p;
                     s->got_lf = TRUE; /* considered as LF for ASI */
-                    s->eol = p++;
-                    s->mark = p;
+                    s->line_num++;
                 } else if (*p == '\r') {
                     s->got_lf = TRUE; /* considered as LF for ASI */
                     p++;
@@ -19171,7 +19233,6 @@ static __exception int next_token(JSParseState *s)
                     p++;
                 }
             }
-            s->mark = p;
             goto redo;
         } else if (p[1] == '/') {
             /* line comment */
@@ -19193,7 +19254,6 @@ static __exception int next_token(JSParseState *s)
                     p++;
                 }
             }
-            s->mark = p;
             goto redo;
         } else if (p[1] == '=') {
             p += 2;
@@ -19288,7 +19348,7 @@ static __exception int next_token(JSParseState *s)
                     goto invalid_utf8;
             }
             if (!lre_js_is_ident_first(c)) {
-                js_parse_error(s, "invalid first character of private name");
+                js_parse_error_pos(s, p, "invalid first character of private name");
                 goto fail;
             }
             p = p_next;
@@ -19405,9 +19465,8 @@ static __exception int next_token(JSParseState *s)
             p += 2;
             s->token.val = TOK_MINUS_ASSIGN;
         } else if (p[1] == '-') {
-            if (s->allow_html_comments && p[2] == '>' &&
-                (s->got_lf || s->last_ptr == s->buf_start)) {
-                /* Annex B: `-->` at beginning of line is an html comment end.
+            if (p[2] == '>' && s->allow_html_comments && (s->got_lf || at_bol)) {
+                /* Annex B: `-->` as first token on a line is an html comment end.
                    It extends to the end of the line.
                  */
                 goto skip_line_comment;
@@ -19561,7 +19620,6 @@ static __exception int next_token(JSParseState *s)
                 goto line_terminator;
             default:
                 if (lre_is_space(c)) {
-                    s->mark = p;
                     goto redo;
                 } else if (lre_js_is_ident_first(c)) {
                     ident_has_escape = FALSE;
@@ -19577,14 +19635,13 @@ static __exception int next_token(JSParseState *s)
         p++;
         break;
     }
-    s->token.col_num = s->mark - s->eol;
     s->buf_ptr = p;
 
     //    dump_token(s, &s->token);
     return 0;
 
  invalid_utf8:
-    js_parse_error(s, "invalid UTF-8 sequence");
+    js_parse_error_pos(s, p, "invalid UTF-8 sequence");
  fail:
     s->token.val = TOK_ERROR;
     return -1;
@@ -19592,19 +19649,13 @@ static __exception int next_token(JSParseState *s)
 
 static int json_parse_error(JSParseState *s, const uint8_t *curp, const char *msg)
 {
-    const uint8_t *p, *line_start;
     int position = curp - s->buf_start;
-    int line = 1;
-    for (line_start = p = s->buf_start; p < curp; p++) {
-        /* column count does not account for TABs nor wide characters */
-        if (*p == '\r' || *p == '\n') {
-            p += 1 + (p[0] == '\r' && p[1] == '\n');
-            line++;
-            line_start = p;
-        }
-    }
-    return js_parse_error(s, "%s in JSON at position %d (line %d column %d)",
-                          msg, position, line, (int)(p - line_start) + 1);
+    int line_num = 1;
+    int col_num = 1;
+
+    js_get_source_pos(s->buf_start, curp, &line_num, &col_num);
+    return js_parse_error_pos(s, curp, "%s in JSON at position %d (line %d column %d)",
+                              msg, position, line_num, col_num);
 }
 
 static int json_parse_string(JSParseState *s, const uint8_t **pp)
@@ -19645,7 +19696,7 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
                 for(i = 0; i < 4; i++) {
                     int h = from_hex(*p++);
                     if (h < 0) {
-                        json_parse_error(s, p - 1, "Bad Unicode escape");
+                        json_parse_error(s, p - 2, "Bad Unicode escape");
                         goto fail;
                     }
                     c = (c << 4) | h;
@@ -19654,7 +19705,7 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
             default:
                 if (p > s->buf_end)
                     goto end_of_input;
-                json_parse_error(s, p - 1, "Bad escaped character");
+                json_parse_error(s, p - 2, "Bad escaped character");
                 goto fail;
             }
         } else
@@ -19676,7 +19727,7 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
     return 0;
 
  end_of_input:
-    js_parse_error(s, "Unexpected end of JSON input");
+    json_parse_error(s, p, "Unterminated string");
  fail:
     string_buffer_free(b);
     return -1;
@@ -19687,11 +19738,8 @@ static int json_parse_number(JSParseState *s, const uint8_t **pp)
     const uint8_t *p = *pp;
     const uint8_t *p_start = p;
 
-    if (*p == '+' || *p == '-')
+    if (*p == '-')
         p++;
-
-    if (!is_digit(*p))
-        return js_parse_error(s, "Unexpected token '%c'", *p_start);
 
     if (p[0] == '0' && is_digit(p[1]))
         return json_parse_error(s, p, "Unexpected number");
@@ -19770,11 +19818,9 @@ static __exception int json_next_token(JSParseState *s)
     free_token(s, &s->token);
 
     p = s->last_ptr = s->buf_ptr;
-    s->last_line_num = s->token.line_num;
-    s->last_col_num = s->token.col_num;
  redo:
     s->token.line_num = s->line_num;
-    s->token.col_num = s->col_num;
+    s->token.col_num = 1 + (p - s->bol_ptr);
     s->token.ptr = p;
     c = *p;
     switch(c) {
@@ -19799,9 +19845,9 @@ static __exception int json_next_token(JSParseState *s)
         }
         /* fall thru */
     case '\n':
+        p++;
+        s->bol_ptr = p;
         s->line_num++;
-        s->eol = p++;
-        s->mark = p;
         goto redo;
     case '\f':
     case '\v':
@@ -19810,7 +19856,6 @@ static __exception int json_next_token(JSParseState *s)
     case ' ':
     case '\t':
         p++;
-        s->mark = p;
         goto redo;
     case '/':
         /* JSON does not accept comments */
@@ -19847,15 +19892,9 @@ static __exception int json_next_token(JSParseState *s)
             goto fail;
         }
         goto parse_number;
-    case '0':
-        if (is_digit(p[1])) {
-            json_parse_error(s, p, "Unexpected number");
-            goto fail;
-        }
-        goto parse_number;
-    case '1': case '2': case '3': case '4':
-    case '5': case '6': case '7': case '8':
-    case '9':
+    case '0': case '1': case '2': case '3':
+    case '4': case '5': case '6': case '7':
+    case '8': case '9':
         /* number */
     parse_number:
         if (json_parse_number(s, &p))
@@ -19865,12 +19904,12 @@ static __exception int json_next_token(JSParseState *s)
         if (c >= 0x80) {
             c = utf8_decode(p, &p_next);
             if (p_next == p + 1) {
-                js_parse_error(s, "Unexpected token '\\x%02x' in JSON", *p);
+                js_parse_error_pos(s, p, "Unexpected token '\\x%02x' in JSON", *p);
             } else {
                 if (c > 0xFFFF) {
                     c = get_hi_surrogate(c);
                 }
-                js_parse_error(s, "Unexpected token '\\u%04x' in JSON", c);
+                js_parse_error_pos(s, p, "Unexpected token '\\u%04x' in JSON", c);
             }
             goto fail;
         }
@@ -19879,7 +19918,6 @@ static __exception int json_next_token(JSParseState *s)
         p++;
         break;
     }
-    s->token.col_num = s->mark - s->eol;
     s->buf_ptr = p;
 
     //    dump_token(s, &s->token);
@@ -20048,6 +20086,16 @@ static BOOL js_is_live_code(JSParseState *s) {
     }
 }
 
+typedef struct JSSourcePos {
+    int line_num;
+    int col_num;
+} JSSourcePos;
+
+static JSSourcePos js_parse_get_source_pos(JSParseState *s)
+{
+    return (JSSourcePos){ s->token.line_num, s->token.col_num };
+}
+
 static void emit_u8(JSParseState *s, uint8_t val)
 {
     dbuf_putc(&s->cur_func->byte_code, val);
@@ -20063,22 +20111,26 @@ static void emit_u32(JSParseState *s, uint32_t val)
     dbuf_put_u32(&s->cur_func->byte_code, val);
 }
 
+static void emit_pos(JSParseState *s, JSSourcePos pos)
+{
+    JSFunctionDef *fd = s->cur_func;
+    DynBuf *bc = &fd->byte_code;
+
+    if (unlikely(fd->last_opcode_line_num != pos.line_num ||
+                 fd->last_opcode_col_num != pos.col_num)) {
+        dbuf_putc(bc, OP_source_loc);
+        dbuf_put_u32(bc, pos.line_num);
+        dbuf_put_u32(bc, pos.col_num);
+        fd->last_opcode_line_num = pos.line_num;
+        fd->last_opcode_col_num = pos.col_num;
+    }
+}
+
 static void emit_op(JSParseState *s, uint8_t val)
 {
     JSFunctionDef *fd = s->cur_func;
     DynBuf *bc = &fd->byte_code;
 
-    /* Use the line and column number of the last token used,
-       not the next token, nor the current offset in the source file.
-     */
-    if (unlikely(fd->last_opcode_line_num != s->last_line_num ||
-                 fd->last_opcode_col_num != s->last_col_num)) {
-        dbuf_putc(bc, OP_source_loc);
-        dbuf_put_u32(bc, s->last_line_num);
-        dbuf_put_u32(bc, s->last_col_num);
-        fd->last_opcode_line_num = s->last_line_num;
-        fd->last_opcode_col_num = s->last_col_num;
-    }
     fd->last_opcode_pos = bc->size;
     dbuf_putc(bc, val);
 }
@@ -20733,6 +20785,7 @@ static __exception int js_parse_template(JSParseState *s, int call, int *argc)
         if (JS_IsException(template_object))
             return -1;
         //        pool_idx = s->cur_func->cpool_count;
+        emit_pos(s, js_parse_get_source_pos(s));
         ret = emit_push_const(s, template_object, 0);
         JS_FreeValue(ctx, template_object);
         if (ret)
@@ -20778,6 +20831,7 @@ static __exception int js_parse_template(JSParseState *s, int call, int *argc)
                 return -1;
             str = JS_VALUE_GET_STRING(cooked.u.str.str);
             if (str->len != 0 || depth == 0) {
+                emit_pos(s, js_parse_get_source_pos(s));
                 ret = emit_push_const(s, cooked.u.str.str, 1);
                 JS_FreeValue(s->ctx, cooked.u.str.str);
                 if (ret)
@@ -20809,8 +20863,6 @@ static __exception int js_parse_template(JSParseState *s, int call, int *argc)
         /* Resume TOK_TEMPLATE parsing (s->token.line_num and
          * s->token.ptr are OK) */
         s->got_lf = FALSE;
-        s->last_line_num = s->token.line_num;
-        s->last_col_num = s->token.col_num;
         if (js_parse_template_part(s, s->buf_ptr))
             return -1;
     }
@@ -20965,39 +21017,39 @@ static int __exception js_parse_property_name(JSParseState *s,
 }
 
 typedef struct JSParsePos {
-    int last_line_num;
-    int last_col_num;
+    JSToken token;
     int line_num;
-    int col_num;
     BOOL got_lf;
-    const uint8_t *ptr;
-    const uint8_t *eol;
-    const uint8_t *mark;
+    const uint8_t *buf_ptr;
+    const uint8_t *bol_ptr;
 } JSParsePos;
 
-static int js_parse_get_pos(JSParseState *s, JSParsePos *sp)
+static void js_parse_save_pos(JSParseState *s, JSParsePos *sp)
 {
-    sp->last_line_num = s->last_line_num;
-    sp->last_col_num = s->last_col_num;
-    sp->line_num = s->token.line_num;
-    sp->col_num = s->token.col_num;
-    sp->ptr = s->token.ptr;
-    sp->eol = s->eol;
-    sp->mark = s->mark;
+    sp->token = s->token;
+    dup_token(s, &sp->token);
+    sp->line_num = s->line_num;
     sp->got_lf = s->got_lf;
-    return 0;
+    sp->buf_ptr = s->buf_ptr;
+    sp->bol_ptr = s->bol_ptr;
 }
 
-static __exception int js_parse_seek_token(JSParseState *s, const JSParsePos *sp)
+static void js_parse_seek_back(JSParseState *s, JSParsePos *sp)
 {
-    s->token.line_num = sp->last_line_num;
-    s->token.col_num = sp->last_col_num;
+    free_token(s, &s->token);
+    s->token = sp->token;
     s->line_num = sp->line_num;
-    s->col_num = sp->col_num;
-    s->buf_ptr = sp->ptr;
-    s->eol = sp->eol;
-    s->mark = sp->mark;
     s->got_lf = sp->got_lf;
+    s->buf_ptr = sp->buf_ptr;
+    s->bol_ptr = sp->bol_ptr;
+}
+
+static __exception int js_parse_seek_token(JSParseState *s, JSParsePos *sp)
+{
+    s->line_num = sp->token.line_num;
+    s->buf_ptr = sp->token.ptr;
+    s->bol_ptr = sp->bol_ptr;
+    free_token(s, &sp->token);
     return next_token(s);
 }
 
@@ -21028,9 +21080,13 @@ static BOOL is_regexp_allowed(int tok)
 #define SKIP_HAS_ELLIPSIS   (1 << 1)
 #define SKIP_HAS_ASSIGNMENT (1 << 2)
 
-/* XXX: improve speed with early bailout */
-/* XXX: no longer works if regexps are present. Could use previous
-   regexp parsing heuristics to handle most cases */
+/* Parse the source code, skip balanced blocks of `{}`, `()` and `[]`.
+   - `pbits`, if non null, receives a combination of `SKIP_HAS_XXX` flags
+   return the token that follows the balanced block.
+   always succeeds, any exception thrown is cleared.
+ */
+// XXX: improve speed with early bailout
+// XXX: no longer works if regexps are present. Could use previous regexp parsing heuristics to handle most cases
 static int js_parse_skip_parens_token(JSParseState *s, int *pbits, BOOL no_line_terminator)
 {
     char state[256];
@@ -21038,11 +21094,12 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, BOOL no_line_
     JSParsePos pos;
     int last_tok, tok = TOK_EOF;
     int c, tok_len, bits = 0;
+    int last_line_num;
 
     /* protect from underflow */
     state[level++] = 0;
 
-    js_parse_get_pos(s, &pos);
+    js_parse_save_pos(s, &pos);
     last_tok = 0;
     for (;;) {
         switch(s->token.val) {
@@ -21069,10 +21126,8 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, BOOL no_line_
                 /* Resume TOK_TEMPLATE parsing (s->token.line_num and
                  * s->token.ptr are OK) */
                 s->got_lf = FALSE;
-                s->last_line_num = s->token.line_num;
-                s->last_col_num = s->token.col_num;
                 if (js_parse_template_part(s, s->buf_ptr))
-                    goto done;
+                    goto fail;
                 goto handle_template;
             } else if (c != '{') {
                 goto done;
@@ -21112,10 +21167,8 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, BOOL no_line_
         parse_regexp:
             if (is_regexp_allowed(last_tok)) {
                 s->buf_ptr -= tok_len;
-                if (js_parse_regexp(s)) {
-                    /* XXX: should clear the exception */
-                    goto done;
-                }
+                if (js_parse_regexp(s))
+                    goto fail;
             }
             break;
         }
@@ -21127,15 +21180,19 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, BOOL no_line_
         } else {
             last_tok = s->token.val;
         }
+        last_line_num = s->token.line_num;
         if (next_token(s)) {
-            /* XXX: should clear the exception generated by next_token() */
+        fail:
+            /* clear the pending exception generated */
+            JS_FreeValue(s->ctx, JS_GetException(s->ctx));
+            tok = -1;
             break;
         }
         if (level <= 1) {
             tok = s->token.val;
             if (token_is_pseudo_keyword(s, JS_ATOM_of))
                 tok = TOK_OF;
-            if (no_line_terminator && s->last_line_num != s->token.line_num)
+            if (no_line_terminator && last_line_num != s->token.line_num)
                 tok = '\n';
             break;
         }
@@ -21144,8 +21201,7 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, BOOL no_line_
     if (pbits) {
         *pbits = bits;
     }
-    if (js_parse_seek_token(s, &pos))
-        return -1;
+    js_parse_seek_back(s, &pos);
     return tok;
 }
 
@@ -21204,9 +21260,11 @@ static __exception int js_parse_object_literal(JSParseState *s)
     const uint8_t *start_ptr;
     int start_line, start_col, prop_type;
     BOOL has_proto;
+    JSSourcePos pos = js_parse_get_source_pos(s);
 
     if (next_token(s))
         goto fail;
+    emit_pos(s, pos);
     /* XXX: add an initial length that will be patched back */
     emit_op(s, OP_object);
     has_proto = FALSE;
@@ -21215,12 +21273,14 @@ static __exception int js_parse_object_literal(JSParseState *s)
         start_ptr = s->token.ptr;
         start_line = s->token.line_num;
         start_col = s->token.col_num;
+        pos = js_parse_get_source_pos(s);
 
         if (s->token.val == TOK_ELLIPSIS) {
             if (next_token(s))
                 return -1;
             if (js_parse_assign_expr(s))
                 return -1;
+            emit_pos(s, pos);
             emit_op(s, OP_null);  /* dummy excludeList */
             emit_op(s, OP_copy_data_properties);
             emit_u8(s, 2 | (1 << 2) | (0 << 5));
@@ -21235,6 +21295,7 @@ static __exception int js_parse_object_literal(JSParseState *s)
 
         if (prop_type == PROP_TYPE_VAR) {
             /* shortcut for x: x */
+            emit_pos(s, pos);
             emit_op(s, OP_scope_get_var);
             emit_atom(s, name);
             emit_u16(s, s->cur_func->scope_level);
@@ -21262,6 +21323,7 @@ static __exception int js_parse_object_literal(JSParseState *s)
             if (js_parse_function_decl(s, func_type, func_kind, JS_ATOM_NULL,
                                        start_ptr, start_line, start_col))
                 goto fail;
+            emit_pos(s, pos);
             if (name == JS_ATOM_NULL) {
                 emit_op(s, OP_define_method_computed);
             } else {
@@ -21280,6 +21342,7 @@ static __exception int js_parse_object_literal(JSParseState *s)
                 goto fail;
             if (js_parse_assign_expr(s))
                 goto fail;
+            emit_pos(s, pos);
             if (name == JS_ATOM_NULL) {
                 set_object_name_computed(s);
                 emit_op(s, OP_define_array_el);
@@ -21560,6 +21623,8 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
     const uint8_t *class_start_ptr = s->token.ptr;
     const uint8_t *start_ptr;
     ClassFieldsDef class_fields[2];
+    /* position of the `class` token */
+    JSSourcePos pos = js_parse_get_source_pos(s);
 
     /* classes are parsed and executed in strict mode */
     saved_js_mode = fd->js_mode;
@@ -21611,6 +21676,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
     /* this scope contains the private fields */
     push_scope(s);
 
+    emit_pos(s, pos);
     emit_op(s, OP_push_const);
     ctor_cpool_offset = fd->byte_code.size;
     emit_u32(s, 0); /* will be patched at the end of the class parsing */
@@ -21638,6 +21704,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
 
     ctor_fd = NULL;
     while (s->token.val != '}') {
+        pos = js_parse_get_source_pos(s);
         if (s->token.val == ';') {
             if (next_token(s))
                 goto fail;
@@ -21671,6 +21738,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
                 }
                 // stack is now: fclosure
                 push_scope(s);
+                emit_pos(s, pos);
                 emit_op(s, OP_scope_get_var);
                 emit_atom(s, JS_ATOM_this);
                 emit_u16(s, 0);
@@ -21753,6 +21821,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
                                         s->token.col_num,
                                         JS_PARSE_EXPORT_NONE, &method_fd))
                 goto fail;
+            emit_pos(s, pos);
             if (is_private) {
                 method_fd->need_home_object = TRUE; /* needed for brand check */
                 emit_op(s, OP_set_home_object);
@@ -21796,6 +21865,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
                 goto fail;
             }
 
+            emit_pos(s, pos);
             if (is_private) {
                 if (find_private_class_field(ctx, fd, name,
                                              fd->scope_level) >= 0) {
@@ -21855,6 +21925,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
             }
 
             if (s->token.val == '=') {
+                pos = js_parse_get_source_pos(s);
                 if (next_token(s))
                     goto fail;
                 if (js_parse_assign_expr(s))
@@ -21862,6 +21933,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
             } else {
                 emit_op(s, OP_undefined);
             }
+            emit_pos(s, pos);
             if (is_private) {
                 set_object_name_computed(s);
                 emit_op(s, OP_define_private_field);
@@ -21909,6 +21981,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
                                         s->token.col_num,
                                         JS_PARSE_EXPORT_NONE, &method_fd))
                 goto fail;
+            emit_pos(s, pos);
             if (func_type == JS_PARSE_FUNC_DERIVED_CLASS_CONSTRUCTOR ||
                 func_type == JS_PARSE_FUNC_CLASS_CONSTRUCTOR) {
                 ctor_fd = method_fd;
@@ -22054,6 +22127,7 @@ static __exception int js_parse_array_literal(JSParseState *s)
 {
     uint32_t idx;
     BOOL need_length;
+    JSSourcePos pos = js_parse_get_source_pos(s);
 
     if (next_token(s))
         return -1;
@@ -22073,6 +22147,7 @@ static __exception int js_parse_array_literal(JSParseState *s)
         if (s->token.val != ']')
             goto done;
     }
+    emit_pos(s, pos);
     emit_op(s, OP_array_from);
     emit_u16(s, idx);
 
@@ -22083,8 +22158,10 @@ static __exception int js_parse_array_literal(JSParseState *s)
             break;
         need_length = TRUE;
         if (s->token.val != ',') {
+            pos = js_parse_get_source_pos(s);
             if (js_parse_assign_expr(s))
                 return -1;
+            emit_pos(s, pos);
             emit_op(s, OP_define_field);
             emit_u32(s, __JS_AtomFromUInt32(idx));
             need_length = FALSE;
@@ -22117,17 +22194,21 @@ static __exception int js_parse_array_literal(JSParseState *s)
     /* stack has array, index */
     while (s->token.val != ']') {
         if (s->token.val == TOK_ELLIPSIS) {
+            pos = js_parse_get_source_pos(s);
             if (next_token(s))
                 return -1;
             if (js_parse_assign_expr(s))
                 return -1;
+            emit_pos(s, pos);
             emit_op(s, OP_append);
         } else {
             need_length = TRUE;
             if (s->token.val != ',') {
+                pos = js_parse_get_source_pos(s);
                 if (js_parse_assign_expr(s))
                     return -1;
                 /* a idx val */
+                emit_pos(s, pos);
                 emit_op(s, OP_define_array_el);
                 need_length = FALSE;
             }
@@ -22192,6 +22273,7 @@ static __exception int get_lvalue(JSParseState *s, int *popcode, int *pscope,
         scope = get_u16(fd->byte_code.buf + fd->last_opcode_pos + 5);
         if ((name == JS_ATOM_arguments || name == JS_ATOM_eval) &&
             (fd->js_mode & JS_MODE_STRICT)) {
+            // TODO(chqrlie) get proper offset
             return js_parse_error(s, "invalid lvalue in strict mode");
         }
         if (name == JS_ATOM_this || name == JS_ATOM_new_target)
@@ -22215,6 +22297,7 @@ static __exception int get_lvalue(JSParseState *s, int *popcode, int *pscope,
         break;
     default:
     invalid_lvalue:
+        // TODO(chqrlie) get proper offset
         if (tok == TOK_FOR) {
             return js_parse_error(s, "invalid for in/of left hand-side");
         } else if (tok == TOK_INC || tok == TOK_DEC) {
@@ -22575,9 +22658,11 @@ static int js_parse_destructuring_element(JSParseState *s, int tok, int is_arg,
     }
     assign_addr = s->cur_func->byte_code.size;
     if (s->token.val == '{') {
+        JSSourcePos pos = js_parse_get_source_pos(s);
         if (next_token(s))
             return -1;
         /* throw an exception if the value cannot be converted to an object */
+        emit_pos(s, pos);
         emit_op(s, OP_to_object);
         if (has_ellipsis) {
             /* add excludeList on stack just below src object */
@@ -22586,6 +22671,8 @@ static int js_parse_destructuring_element(JSParseState *s, int tok, int is_arg,
         }
         while (s->token.val != '}') {
             int prop_type;
+            pos = js_parse_get_source_pos(s);
+            emit_pos(s, pos);
             if (s->token.val == TOK_ELLIPSIS) {
                 if (!has_ellipsis) {
                     JS_ThrowInternalError(s->ctx, "unexpected ellipsis token");
@@ -22632,6 +22719,7 @@ static int js_parse_destructuring_element(JSParseState *s, int tok, int is_arg,
                 if ((s->token.val == '[' || s->token.val == '{')
                     &&  ((tok1 = js_parse_skip_parens_token(s, &skip_bits, FALSE)) == ',' ||
                          tok1 == '=' || tok1 == '}')) {
+                    emit_pos(s, pos);
                     if (prop_name == JS_ATOM_NULL) {
                         /* computed property name on stack */
                         if (has_ellipsis) {
@@ -22668,6 +22756,7 @@ static int js_parse_destructuring_element(JSParseState *s, int tok, int is_arg,
                         return -1;
                     continue;
                 }
+                emit_pos(s, pos);
                 if (prop_name == JS_ATOM_NULL) {
                     emit_op(s, OP_to_propkey2);
                     if (has_ellipsis) {
@@ -22787,6 +22876,7 @@ static int js_parse_destructuring_element(JSParseState *s, int tok, int is_arg,
                     goto var_error;
                 scope = s->cur_func->scope_level;
             }
+            pos = js_parse_get_source_pos(s);
             if (s->token.val == '=') {  /* handle optional default value */
                 int label_hasval;
                 emit_op(s, OP_dup);
@@ -22802,6 +22892,7 @@ static int js_parse_destructuring_element(JSParseState *s, int tok, int is_arg,
                     set_object_name(s, var_name);
                 emit_label(s, label_hasval);
             }
+            emit_pos(s, pos);
             /* store value into lvalue object */
             put_lvalue(s, opcode, scope, var_name, label_lvalue,
                        PUT_LVALUE_NOKEEP_DEPTH,
@@ -22991,7 +23082,9 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
     FuncCallType call_type;
     int optional_chaining_label;
     BOOL accept_lparen = (parse_flags & PF_POSTFIX_CALL) != 0;
+    JSSourcePos pos;
 
+    pos = js_parse_get_source_pos(s);
     call_type = FUNC_CALL_NORMAL;
     switch(s->token.val) {
     case TOK_NUMBER:
@@ -22999,6 +23092,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             JSValue val;
             val = s->token.u.num.val;
 
+            emit_pos(s, pos);
             if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
                 emit_op(s, OP_push_i32);
                 emit_u32(s, JS_VALUE_GET_INT(val));
@@ -23015,6 +23109,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             return -1;
         break;
     case TOK_STRING:
+        emit_pos(s, pos);
         if (emit_push_const(s, s->token.u.str.str, 1))
             return -1;
         if (next_token(s))
@@ -23031,10 +23126,11 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             JSValue str;
             int ret, backtrace_flags;
             if (!s->ctx->compile_regexp)
-                return js_parse_error(s, "RegExp are not supported");
+                return js_parse_error_pos(s, s->buf_ptr, "RegExp are not supported");
             /* the previous token is '/' or '/=', so no need to free */
             if (js_parse_regexp(s))
                 return -1;
+            emit_pos(s, pos);
             ret = emit_push_const(s, s->token.u.regexp.body, 0);
             str = s->ctx->compile_regexp(s->ctx, s->token.u.regexp.body,
                                          s->token.u.regexp.flags);
@@ -23081,11 +23177,13 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
     case TOK_NULL:
         if (next_token(s))
             return -1;
+        emit_pos(s, pos);
         emit_op(s, OP_null);
         break;
     case TOK_THIS:
         if (next_token(s))
             return -1;
+        emit_pos(s, pos);
         emit_op(s, OP_scope_get_var);
         emit_atom(s, JS_ATOM_this);
         emit_u16(s, 0);
@@ -23093,11 +23191,13 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
     case TOK_FALSE:
         if (next_token(s))
             return -1;
+        emit_pos(s, pos);
         emit_op(s, OP_push_false);
         break;
     case TOK_TRUE:
         if (next_token(s))
             return -1;
+        emit_pos(s, pos);
         emit_op(s, OP_push_true);
         break;
     case TOK_IDENT:
@@ -23140,6 +23240,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     return -1;
                 }
             do_get_var:
+                emit_pos(s, pos);
                 emit_op(s, OP_scope_get_var);
                 emit_u32(s, name);
                 emit_u16(s, s->cur_func->scope_level);
@@ -23176,6 +23277,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 return js_parse_error(s, "new.target only allowed within functions");
             if (next_token(s))
                 return -1;
+            emit_pos(s, pos);
             emit_op(s, OP_scope_get_var);
             emit_atom(s, JS_ATOM_new_target);
             emit_u16(s, 0);
@@ -23185,6 +23287,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             accept_lparen = TRUE;
             if (s->token.val != '(') {
                 /* new operator on an object */
+                emit_pos(s, pos);
                 emit_op(s, OP_dup);
                 emit_op(s, OP_call_constructor);
                 emit_u16(s, 0);
@@ -23203,6 +23306,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
         } else if (s->token.val == '.' || s->token.val == '[') {
             if (!s->cur_func->super_allowed)
                 return js_parse_error(s, "'super' is only valid in a method");
+            emit_pos(s, pos);
             emit_op(s, OP_scope_get_var);
             emit_atom(s, JS_ATOM_this);
             emit_u16(s, 0);
@@ -23226,6 +23330,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 return js_parse_error(s, "import.meta only valid in module code");
             if (next_token(s))
                 return -1;
+            emit_pos(s, pos);
             emit_op(s, OP_special_object);
             emit_u8(s, OP_SPECIAL_OBJECT_IMPORT_META);
         } else {
@@ -23237,6 +23342,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 return -1;
             if (js_parse_expect(s, ')'))
                 return -1;
+            emit_pos(s, pos);
             emit_op(s, OP_import);
         }
         break;
@@ -23345,6 +23451,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     return -1;
                 goto emit_func_call;
             } else if (call_type == FUNC_CALL_SUPER_CTOR) {
+                emit_pos(s, pos);
                 emit_op(s, OP_scope_get_var);
                 emit_atom(s, JS_ATOM_this_active_func);
                 emit_u16(s, 0);
@@ -23355,6 +23462,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 emit_atom(s, JS_ATOM_new_target);
                 emit_u16(s, 0);
             } else if (call_type == FUNC_CALL_NEW) {
+                emit_pos(s, pos);
                 emit_op(s, OP_dup); /* new.target = function */
             }
 
@@ -23377,6 +23485,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     return -1;
             }
             if (s->token.val == TOK_ELLIPSIS) {
+                emit_pos(s, js_parse_get_source_pos(s));
                 emit_op(s, OP_array_from);
                 emit_u16(s, arg_count);
                 emit_op(s, OP_push_i32);
@@ -23410,6 +23519,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 emit_op(s, OP_drop);
 
                 /* apply function call */
+                emit_pos(s, pos);
                 switch(opcode) {
                 case OP_get_field:
                 case OP_scope_get_private_field:
@@ -23454,6 +23564,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 if (next_token(s))
                     return -1;
             emit_func_call:
+                emit_pos(s, pos);
                 switch(opcode) {
                 case OP_get_field:
                 case OP_scope_get_private_field:
@@ -23490,11 +23601,15 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     break;
                 }
             }
+            pos = js_parse_get_source_pos(s);
             call_type = FUNC_CALL_NORMAL;
         } else if (s->token.val == '.') {
             if (next_token(s))
                 return -1;
         parse_property:
+            /* method calls and property lookup point to the property name token */
+            if (call_type == FUNC_CALL_NORMAL)
+                pos = js_parse_get_source_pos(s);
             if (s->token.val == TOK_PRIVATE_NAME) {
                 /* private class field */
                 if (get_prev_opcode(fd) == OP_get_super) {
@@ -23503,6 +23618,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 if (has_optional_chain) {
                     optional_chain_test(s, &optional_chaining_label, 1);
                 }
+                emit_pos(s, pos);
                 emit_op(s, OP_scope_get_private_field);
                 emit_atom(s, s->token.u.ident.atom);
                 emit_u16(s, s->cur_func->scope_level);
@@ -23514,6 +23630,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     JSValue val;
                     int ret;
                     val = JS_AtomToValue(s->ctx, s->token.u.ident.atom);
+                    emit_pos(s, pos);
                     ret = emit_push_const(s, val, 1);
                     JS_FreeValue(s->ctx, val);
                     if (ret)
@@ -23523,6 +23640,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     if (has_optional_chain) {
                         optional_chain_test(s, &optional_chaining_label, 1);
                     }
+                    emit_pos(s, pos);
                     emit_op(s, OP_get_field);
                     emit_atom(s, s->token.u.ident.atom);
                     emit_ic(s, s->token.u.ident.atom);
@@ -23534,6 +23652,8 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             int prev_op;
 
         parse_array_access:
+            if (call_type == FUNC_CALL_NORMAL)
+                pos = js_parse_get_source_pos(s);
             prev_op = get_prev_opcode(fd);
             if (has_optional_chain) {
                 optional_chain_test(s, &optional_chaining_label, 1);
@@ -23544,6 +23664,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 return -1;
             if (js_parse_expect(s, ']'))
                 return -1;
+            emit_pos(s, pos);
             if (prev_op == OP_get_super) {
                 emit_op(s, OP_get_super_value);
             } else {
@@ -23563,11 +23684,14 @@ static __exception int js_parse_delete(JSParseState *s)
     JSFunctionDef *fd = s->cur_func;
     JSAtom name;
     int opcode;
+    JSSourcePos pos;
 
+    pos = js_parse_get_source_pos(s);
     if (next_token(s))
         return -1;
     if (js_parse_unary(s, PF_POW_FORBIDDEN))
         return -1;
+    emit_pos(s, pos);
     switch(opcode = get_prev_opcode(fd)) {
     case OP_get_field:
         {
@@ -23624,6 +23748,7 @@ static __exception int js_parse_delete(JSParseState *s)
 static __exception int js_parse_unary(JSParseState *s, int parse_flags)
 {
     int op;
+    JSSourcePos pos = js_parse_get_source_pos(s);
 
     switch(s->token.val) {
     case '+':
@@ -23636,6 +23761,7 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
             return -1;
         if (js_parse_unary(s, PF_POW_FORBIDDEN))
             return -1;
+        emit_pos(s, pos);
         switch(op) {
         case '-':
             emit_op(s, OP_neg);
@@ -23668,6 +23794,7 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
                 return -1;
             if (js_parse_unary(s, 0))
                 return -1;
+            emit_pos(s, pos);
             if (get_lvalue(s, &opcode, &scope, &name, &label, NULL, TRUE, op))
                 return -1;
             emit_op(s, OP_dec + op - TOK_DEC);
@@ -23688,6 +23815,7 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
             if (get_prev_opcode(fd) == OP_scope_get_var) {
                 fd->byte_code.buf[fd->last_opcode_pos] = OP_scope_get_var_undef;
             }
+            emit_pos(s, pos);
             emit_op(s, OP_typeof);
             parse_flags = 0;
         }
@@ -23706,6 +23834,7 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
             return -1;
         if (js_parse_unary(s, PF_POW_FORBIDDEN))
             return -1;
+        emit_pos(s, pos);
         emit_op(s, OP_await);
         parse_flags = 0;
         break;
@@ -23717,6 +23846,7 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
             int opcode, op, scope, label;
             JSAtom name;
             op = s->token.val;
+            emit_pos(s, pos);
             if (get_lvalue(s, &opcode, &scope, &name, &label, NULL, TRUE, op))
                 return -1;
             emit_op(s, OP_post_dec + op - TOK_DEC);
@@ -23736,10 +23866,12 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
                syntax error. */
             if (parse_flags & PF_POW_FORBIDDEN)
                 return js_parse_error(s, "unparenthesized unary expression can't appear on the left-hand side of '**'");
+            pos = js_parse_get_source_pos(s);
             if (next_token(s))
                 return -1;
             if (js_parse_unary(s, PF_POW_ALLOWED))
                 return -1;
+            emit_pos(s, pos);
             emit_op(s, OP_pow);
         }
     }
@@ -23758,6 +23890,7 @@ static __exception int js_parse_expr_binary(JSParseState *s, int level,
     if (js_parse_expr_binary(s, level - 1, parse_flags))
         return -1;
     for(;;) {
+        JSSourcePos pos = js_parse_get_source_pos(s);
         op = s->token.val;
         switch(level) {
         case 1:
@@ -23882,6 +24015,7 @@ static __exception int js_parse_expr_binary(JSParseState *s, int level,
             return -1;
         if (js_parse_expr_binary(s, level - 1, parse_flags))
             return -1;
+        emit_pos(s, pos);
         emit_op(s, opcode);
     }
     return 0;
@@ -23904,6 +24038,7 @@ static __exception int js_parse_logical_and_or(JSParseState *s, int op,
         label1 = new_label(s);
 
         for(;;) {
+            emit_pos(s, js_parse_get_source_pos(s));
             if (next_token(s))
                 return -1;
             emit_op(s, OP_dup);
@@ -23938,6 +24073,7 @@ static __exception int js_parse_coalesce_expr(JSParseState *s, int parse_flags)
     if (s->token.val == TOK_DOUBLE_QUESTION_MARK) {
         label1 = new_label(s);
         for(;;) {
+            emit_pos(s, js_parse_get_source_pos(s));
             if (next_token(s))
                 return -1;
 
@@ -23964,12 +24100,14 @@ static __exception int js_parse_cond_expr(JSParseState *s, int parse_flags)
     if (js_parse_coalesce_expr(s, parse_flags))
         return -1;
     if (s->token.val == '?') {
+        emit_pos(s, js_parse_get_source_pos(s));
         if (next_token(s))
             return -1;
         label1 = emit_goto(s, OP_if_false, -1);
 
         if (js_parse_assign_expr(s))
             return -1;
+        emit_pos(s, js_parse_get_source_pos(s));
         if (js_parse_expect(s, ':'))
             return -1;
 
@@ -23991,6 +24129,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
     int opcode, op, scope;
     JSAtom name0 = JS_ATOM_NULL;
     JSAtom name;
+    JSSourcePos pos = js_parse_get_source_pos(s);
 
     if (s->token.val == TOK_YIELD) {
         BOOL is_star = FALSE, is_async;
@@ -24018,6 +24157,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
         }
         is_async = (s->cur_func->func_kind == JS_FUNC_ASYNC_GENERATOR);
 
+        emit_pos(s, pos);
         if (is_star) {
             int label_loop, label_return, label_next;
             int label_return1, label_yield, label_throw, label_throw1;
@@ -24144,7 +24284,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
     } else if (token_is_pseudo_keyword(s, JS_ATOM_async)) {
         const uint8_t *source_ptr;
         int tok, source_line_num, source_col_num;
-        JSParsePos pos;
+        JSParsePos ppos;
 
         /* fast test */
         tok = peek_token(s, TRUE);
@@ -24154,21 +24294,24 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
         source_ptr = s->token.ptr;
         source_line_num = s->token.line_num;
         source_col_num = s->token.col_num;
-        js_parse_get_pos(s, &pos);
-        if (next_token(s))
+        js_parse_save_pos(s, &ppos);
+        if (next_token(s)) {
+            free_token(s, &ppos.token);
             return -1;
+        }
         if ((s->token.val == '(' &&
              js_parse_skip_parens_token(s, NULL, TRUE) == TOK_ARROW) ||
             (s->token.val == TOK_IDENT && !s->token.u.ident.is_reserved &&
              peek_token(s, TRUE) == TOK_ARROW)) {
+            // XXX: could seek_back and let js_parse_function_decl use the `async` kw
+            free_token(s, &ppos.token);
             return js_parse_function_decl(s, JS_PARSE_FUNC_ARROW,
                                           JS_FUNC_ASYNC, JS_ATOM_NULL,
                                           source_ptr, source_line_num,
                                           source_col_num);
         } else {
             /* undo the token parsing */
-            if (js_parse_seek_token(s, &pos))
-                return -1;
+            js_parse_seek_back(s, &ppos);
         }
     } else if (s->token.val == TOK_IDENT &&
                peek_token(s, TRUE) == TOK_ARROW) {
@@ -24185,6 +24328,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
     if (js_parse_cond_expr(s, parse_flags))
         return -1;
 
+    pos = js_parse_get_source_pos(s);
     op = s->token.val;
     if (op == '=' || (op >= TOK_MUL_ASSIGN && op <= TOK_POW_ASSIGN)) {
         int label;
@@ -24221,6 +24365,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
             return -1;
         }
 
+        emit_pos(s, pos);
         if (op == '=' && opcode == OP_get_array_el) {
             emit_op(s, OP_swap); // obj key val -> obj val key
             emit_op(s, OP_to_propkey);
@@ -24240,6 +24385,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
 
         if (next_token(s))
             return -1;
+        emit_pos(s, pos);
         if (get_lvalue(s, &opcode, &scope, &name, &label,
                        &depth_lvalue, TRUE, op) < 0)
             return -1;
@@ -24530,6 +24676,7 @@ static __exception int js_parse_var(JSParseState *s, int parse_flags, int tok,
     JSContext *ctx = s->ctx;
     JSFunctionDef *fd = s->cur_func;
     JSAtom name = JS_ATOM_NULL;
+    JSSourcePos pos;
 
     for (;;) {
         if (s->token.val == TOK_IDENT) {
@@ -24552,6 +24699,7 @@ static __exception int js_parse_var(JSParseState *s, int parse_flags, int tok,
             }
 
             if (s->token.val == '=') {
+                pos = js_parse_get_source_pos(s);
                 if (next_token(s))
                     goto var_error;
                 if (tok == TOK_VAR) {
@@ -24568,12 +24716,14 @@ static __exception int js_parse_var(JSParseState *s, int parse_flags, int tok,
                         JS_FreeAtom(ctx, name1);
                         goto var_error;
                     }
+                    emit_pos(s, pos);
                     set_object_name(s, name);
                     put_lvalue(s, opcode, scope, name1, label,
                                PUT_LVALUE_NOKEEP, FALSE);
                 } else {
                     if (js_parse_assign_expr2(s, parse_flags))
                         goto var_error;
+                    emit_pos(s, pos);
                     set_object_name(s, name);
                     emit_op(s, (tok == TOK_CONST || tok == TOK_LET) ?
                         OP_scope_put_var_init : OP_scope_put_var);
@@ -24631,10 +24781,11 @@ static int is_let(JSParseState *s, int decl_mask)
 
     if (token_is_pseudo_keyword(s, JS_ATOM_let)) {
         JSParsePos pos;
-        js_parse_get_pos(s, &pos);
+        js_parse_save_pos(s, &pos);
         for (;;) {
+            int last_line_num = s->token.line_num;
             if (next_token(s)) {
-                res = -1;
+                JS_FreeValue(s->ctx, JS_GetException(s->ctx));
                 break;
             }
             if (s->token.val == '[') {
@@ -24651,7 +24802,7 @@ static int is_let(JSParseState *s, int decl_mask)
                 /* Check for possible ASI if not scanning for Declaration */
                 /* XXX: should also check that `{` introduces a BindingPattern,
                    but Firefox does not and rejects eval("let=1;let\n{if(1)2;}") */
-                if (s->last_line_num == s->token.line_num || (decl_mask & DECL_MASK_OTHER)) {
+                if (last_line_num == s->token.line_num || (decl_mask & DECL_MASK_OTHER)) {
                     res = TRUE;
                     break;
                 }
@@ -24659,9 +24810,7 @@ static int is_let(JSParseState *s, int decl_mask)
             }
             break;
         }
-        if (js_parse_seek_token(s, &pos)) {
-            res = -1;
-        }
+        js_parse_seek_back(s, &pos);
     }
     return res;
 }
@@ -24679,6 +24828,7 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     int label_next, label_expr, label_cont, label_body, label_break;
     int pos_next, pos_expr;
     BlockEnv break_entry;
+    JSSourcePos pos;
 
     has_initializer = FALSE;
     has_destructuring = FALSE;
@@ -24768,6 +24918,7 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     pos_expr = s->cur_func->byte_code.size;
     emit_label(s, label_expr);
     if (s->token.val == '=') {
+        pos = js_parse_get_source_pos(s);
         /* XXX: potential scoping issue if inside `with` statement */
         has_initializer = TRUE;
         /* parse and evaluate initializer prior to evaluating the
@@ -24778,6 +24929,7 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
             return -1;
         }
         if (var_name != JS_ATOM_NULL) {
+            emit_pos(s, pos);
             emit_op(s, OP_scope_put_var);
             emit_atom(s, var_name);
             emit_u16(s, fd->scope_level);
@@ -24907,6 +25059,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
     JSContext *ctx = s->ctx;
     JSAtom label_name;
     int tok;
+    JSSourcePos pos;
 
     /* specific label handling */
     /* XXX: support multiple labels on loop statements */
@@ -24951,6 +25104,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         }
     }
 
+    pos = js_parse_get_source_pos(s);
     switch(tok = s->token.val) {
     case '{':
         if (js_parse_block(s))
@@ -24970,8 +25124,10 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         if (s->token.val != ';' && s->token.val != '}' && !s->got_lf) {
             if (js_parse_expr(s))
                 goto fail;
+            emit_pos(s, pos);
             emit_return(s, TRUE);
         } else {
+            emit_pos(s, pos);
             emit_return(s, FALSE);
         }
         if (js_parse_expect_semi(s))
@@ -24986,6 +25142,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         }
         if (js_parse_expr(s))
             goto fail;
+        emit_pos(s, pos);
         emit_op(s, OP_throw);
         if (js_parse_expect_semi(s))
             goto fail;
@@ -25261,6 +25418,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
 
             if (next_token(s))
                 goto fail;
+            emit_pos(s, pos);
             if (!s->got_lf && s->token.val == TOK_IDENT && !s->token.u.ident.is_reserved)
                 label = s->token.u.ident.atom;
             else
@@ -25284,6 +25442,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             if (next_token(s))
                 goto fail;
 
+            emit_pos(s, pos);
             set_eval_ret_undefined(s);
             if (js_parse_expr_paren(s))
                 goto fail;
@@ -25309,8 +25468,10 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                     label_case = -1;
                     for (;;) {
                         /* parse a sequence of case clauses */
+                        pos = js_parse_get_source_pos(s);
                         if (next_token(s))
                             goto fail;
+                        emit_pos(s, pos);
                         emit_op(s, OP_dup);
                         if (js_parse_expr(s))
                             goto fail;
@@ -25326,6 +25487,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                         }
                     }
                 } else if (s->token.val == TOK_DEFAULT) {
+                    pos = js_parse_get_source_pos(s);
                     if (next_token(s))
                         goto fail;
                     if (js_parse_expect(s, ':'))
@@ -25334,6 +25496,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                         js_parse_error(s, "duplicate default");
                         goto fail;
                     }
+                    emit_pos(s, pos);
                     if (label_case < 0) {
                         /* falling thru direct from switch expression */
                         label_case = emit_goto(s, OP_goto, -1);
@@ -25379,6 +25542,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             JSAtom name;
             BlockEnv block_env;
 
+            emit_pos(s, pos);
             set_eval_ret_undefined(s);
             if (next_token(s))
                 goto fail;
@@ -25410,9 +25574,11 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             }
 
             if (s->token.val == TOK_CATCH) {
+                pos = js_parse_get_source_pos(s);
                 if (next_token(s))
                     goto fail;
 
+                emit_pos(s, pos);
                 push_scope(s);  /* catch variable */
                 emit_label(s, label_catch);
 
@@ -25492,9 +25658,11 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             emit_label(s, label_finally);
             if (s->token.val == TOK_FINALLY) {
                 int saved_eval_ret_idx = 0; /* avoid warning */
+                pos = js_parse_get_source_pos(s);
 
                 if (next_token(s))
                     goto fail;
+                emit_pos(s, pos);
                 /* on the stack: ret_value gosub_ret_value */
                 push_break_entry(s->cur_func, &block_env, JS_ATOM_NULL,
                                  -1, -1, 2);
@@ -25543,6 +25711,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             if (next_token(s))
                 goto fail;
 
+            emit_pos(s, pos);
             if (js_parse_expr_paren(s))
                 goto fail;
 
@@ -30250,9 +30419,9 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                 int argc;
                 argc = get_u16(bc_buf + pos + 1);
                 if (code_match(&cc, pos_next, OP_return, -1)) {
-                    if (cc.line_num >= 0) line_num = cc.line_num;
-                    if (cc.col_num >= 0) col_num = cc.col_num;
-                    add_pc2line_info(s, bc_out.size, line_num, col_num);
+                    // XXX: keep line number of call expression
+                    if (line_num >= 0)
+                        add_pc2line_info(s, bc_out.size, line_num, col_num);
                     put_short_code(&bc_out, op + 1, argc);
                     pos_next = skip_dead_code(s, bc_buf, bc_len, cc.pos,
                                               &line_num, &col_num);
@@ -31522,21 +31691,25 @@ static __exception int js_parse_directives(JSParseState *s)
     if (s->token.val != TOK_STRING)
         return 0;
 
-    js_parse_get_pos(s, &pos);
+    js_parse_save_pos(s, &pos);
 
     while(s->token.val == TOK_STRING) {
         /* Copy actual source string representation */
         snprintf(str, sizeof str, "%.*s",
                  (int)(s->buf_ptr - s->token.ptr - 2), s->token.ptr + 1);
 
-        if (next_token(s))
-            return -1;
+        if (next_token(s)) {
+            JS_FreeValue(s->ctx, JS_GetException(s->ctx));
+            break;
+        }
 
         has_semi = FALSE;
         switch (s->token.val) {
         case ';':
-            if (next_token(s))
-                return -1;
+            if (next_token(s)) {
+                JS_FreeValue(s->ctx, JS_GetException(s->ctx));
+                break;
+            }
             has_semi = TRUE;
             break;
         case '}':
@@ -31626,14 +31799,17 @@ static int js_parse_function_check_names(JSParseState *s, JSFunctionDef *fd,
 
     if (fd->js_mode & JS_MODE_STRICT) {
         if (!fd->has_simple_parameter_list && fd->has_use_strict) {
+            // TODO(chqrlie) compute source code position
             return js_parse_error(s, "\"use strict\" not allowed in function with default or destructuring parameter");
         }
         if (js_invalid_strict_name(func_name)) {
+            // TODO(chqrlie) compute source code position
             return js_parse_error(s, "invalid function name in strict code");
         }
         for (idx = 0; idx < fd->arg_count; idx++) {
             name = fd->args[idx].var_name;
             if (js_invalid_strict_name(name)) {
+                // TODO(chqrlie) compute source code position
                 return js_parse_error(s, "invalid argument name in strict code");
             }
         }
@@ -31664,6 +31840,7 @@ static int js_parse_function_check_names(JSParseState *s, JSFunctionDef *fd,
     return 0;
 
 duplicate:
+    // TODO(chqrlie) compute source code position
     return js_parse_error(s, "Duplicate parameter name not allowed in this context");
 }
 
@@ -32315,11 +32492,9 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->ctx = ctx;
     s->filename = filename;
     s->line_num = 1;
-    s->col_num = 1;
     s->buf_start = s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
-    s->mark = s->buf_ptr + min_int(1, input_len);
-    s->eol = s->buf_ptr;
+    s->bol_ptr = s->buf_ptr;
     s->token.val = ' ';
     s->token.line_num = 1;
     s->token.col_num = 1;
