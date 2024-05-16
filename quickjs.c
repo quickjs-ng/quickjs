@@ -1805,7 +1805,6 @@ void JS_SetGCAfterCallback(JSRuntime *rt, void(*fn)())
     rt->malloc_gc_after_callback = fn;
 }
 
-
 #define malloc(s) malloc_is_forbidden(s)
 #define free(p) free_is_forbidden(p)
 #define realloc(p,s) realloc_is_forbidden(p,s)
@@ -6676,7 +6675,7 @@ static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
                               const char *fmt, va_list ap, BOOL add_backtrace)
 {
     char buf[256];
-    JSValue obj, ret;
+    JSValue obj, ret, msg;
 
     vsnprintf(buf, sizeof(buf), fmt, ap);
     obj = JS_NewObjectProtoClass(ctx, ctx->native_error_proto[error_num],
@@ -6685,9 +6684,13 @@ static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
         /* out of memory: throw JS_NULL to avoid recursing */
         obj = JS_NULL;
     } else {
-        JS_DefinePropertyValue(ctx, obj, JS_ATOM_message,
-                               JS_NewString(ctx, buf),
-                               JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+        msg = JS_NewString(ctx, buf);
+        if (JS_IsException(msg))
+            msg = JS_NewString(ctx, "Invalid error message");
+        if (!JS_IsException(msg)) {
+            JS_DefinePropertyValue(ctx, obj, JS_ATOM_message, msg,
+                                   JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+        }
     }
     if (add_backtrace) {
         build_backtrace(ctx, obj, NULL, 0, 0, 0);
@@ -18674,11 +18677,33 @@ int __attribute__((format(printf, 2, 3))) js_parse_error(JSParseState *s, const 
 
 static int js_parse_expect(JSParseState *s, int tok)
 {
-    if (s->token.val != tok) {
-        /* XXX: dump token correctly in all cases */
-        return js_parse_error(s, "expecting '%c'", tok);
+    char buf[ATOM_GET_STR_BUF_SIZE];
+
+    if (s->token.val == tok)
+        return next_token(s);
+
+    switch(s->token.val) {
+    case TOK_EOF:
+        return js_parse_error(s, "Unexpected end of input");
+    case TOK_NUMBER:
+        return js_parse_error(s, "Unexpected number");
+    case TOK_STRING:
+        return js_parse_error(s, "Unexpected string");
+    case TOK_TEMPLATE:
+        return js_parse_error(s, "Unexpected string template");
+    case TOK_REGEXP:
+        return js_parse_error(s, "Unexpected regexp");
+    case TOK_IDENT:
+        return js_parse_error(s, "Unexpected identifier '%s'",
+                              JS_AtomGetStr(s->ctx, buf, sizeof(buf),
+                                            s->token.u.ident.atom));
+    case TOK_ERROR:
+        return js_parse_error(s, "Invalid or unexpected token");
+    default:
+        return js_parse_error(s, "Unexpected token '%.*s'",
+                              (int)(s->buf_ptr - s->token.ptr),
+                              (const char *)s->token.ptr);
     }
-    return next_token(s);
 }
 
 static int js_parse_expect_semi(JSParseState *s)
@@ -20852,7 +20877,7 @@ static int __exception js_parse_property_name(JSParseState *s,
                 goto fail1;
             if (s->token.val == ':' || s->token.val == ',' ||
                 s->token.val == '}' || s->token.val == '(' ||
-                s->token.val == '=') {
+                s->token.val == '=' ) {
                 is_non_reserved_ident = TRUE;
                 goto ident_found;
             }
@@ -20868,8 +20893,7 @@ static int __exception js_parse_property_name(JSParseState *s,
             if (next_token(s))
                 goto fail1;
             if (s->token.val == ':' || s->token.val == ',' ||
-                s->token.val == '}' || s->token.val == '(' ||
-                s->token.val == '=') {
+                s->token.val == '}' || s->token.val == '(') {
                 is_non_reserved_ident = TRUE;
                 goto ident_found;
             }
@@ -21625,12 +21649,7 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
                 goto fail;
             continue;
         }
-        is_static = FALSE;
-        if (s->token.val == TOK_STATIC) {
-            int next = peek_token(s, TRUE);
-            if (!(next == ';' || next == '}' || next == '(' || next == '='))
-                is_static = TRUE;
-        }
+        is_static = (s->token.val == TOK_STATIC);
         prop_type = -1;
         if (is_static) {
             if (next_token(s))
