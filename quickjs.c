@@ -3030,38 +3030,25 @@ static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
         snprintf(buf, buf_size, "<invalid %x>", atom);
     } else {
         JSAtomStruct *p = rt->atom_array[atom];
+        *buf = '\0';
         if (atom_is_free(p)) {
             assert(!atom_is_free(p));
             snprintf(buf, buf_size, "<free %x>", atom);
-        } else {
-            int i, c;
-            char *q;
-            JSString *str;
-
-            q = buf;
-            str = p;
-            if (str) {
-                if (!str->is_wide_char) {
-                    /* special case ASCII strings */
-                    c = 0;
-                    for(i = 0; i < str->len; i++) {
-                        c |= str->u.str8[i];
-                    }
-                    if (c < 0x80)
-                        return (const char *)str->u.str8;
-                }
+        } else if (p != NULL) {
+            JSString *str = p;
+            if (str->is_wide_char) {
+                /* encode surrogates correctly */
+                utf8_encode_buf16(buf, buf_size, str->u.str16, str->len);
+            } else {
+                /* special case ASCII strings */
+                int i, c = 0;
                 for(i = 0; i < str->len; i++) {
-                    c = string_get(str, i);
-                    if ((q - buf) >= buf_size - UTF8_CHAR_LEN_MAX)
-                        break;
-                    if (c < 128) {
-                        *q++ = c;
-                    } else {
-                        q += unicode_to_utf8((uint8_t *)q, c);
-                    }
+                    c |= str->u.str8[i];
                 }
+                if (c < 0x80)
+                    return (const char *)str->u.str8;
+                utf8_encode_buf8(buf, buf_size, str->u.str8, str->len);
             }
-            *q = '\0';
         }
     }
     return buf;
@@ -3311,6 +3298,7 @@ const char *JS_AtomToCString(JSContext *ctx, JSAtom atom)
 
 /* return a string atom containing name concatenated with str1 */
 /* `str1` may be pure ASCII or UTF-8 encoded */
+// TODO(chqrlie): use string concatenation instead of UTF-8 conversion
 static JSAtom js_atom_concat_str(JSContext *ctx, JSAtom name, const char *str1)
 {
     JSValue str;
@@ -3863,64 +3851,44 @@ static JSValue string_buffer_end(StringBuffer *s)
 /* create a string from a UTF-8 buffer */
 JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
 {
-    const uint8_t *p, *p_end, *p_start, *p_next;
-    uint32_t c;
-    StringBuffer b_s, *b = &b_s;
-    size_t len1;
+    JSString *str;
+    size_t len;
+    int kind;
 
     if (buf_len <= 0) {
         return JS_AtomToString(ctx, JS_ATOM_empty_string);
     }
-    p_start = (const uint8_t *)buf;
-    p_end = p_start + buf_len;
-    p = p_start;
-    while (p < p_end && *p < 128)
-        p++;
-    len1 = p - p_start;
-    if (len1 > JS_STRING_LEN_MAX)
+    /* Compute string kind and length: 7-bit, 8-bit, 16-bit, 16-bit UTF-16 */
+    kind = utf8_scan(buf, buf_len, &len);
+    if (len > JS_STRING_LEN_MAX)
         return JS_ThrowRangeError(ctx, "invalid string length");
-    if (p == p_end) {
-        /* ASCII string */
-        return js_new_string8_len(ctx, buf, buf_len);
-    } else {
-        if (string_buffer_init(ctx, b, buf_len))
-            goto fail;
-        string_buffer_write8(b, p_start, len1);
-        while (p < p_end) {
-            if (*p < 128) {
-                string_buffer_putc8(b, *p++);
-            } else {
-                /* parse utf-8 sequence, return 0xFFFFFFFF for error */
-                c = unicode_from_utf8(p, p_end - p, &p_next);
-                if (c < 0x10000) {
-                    p = p_next;
-                } else if (c <= 0x10FFFF) {
-                    p = p_next;
-                    /* surrogate pair */
-                    string_buffer_putc16(b, get_hi_surrogate(c));
-                    c = get_lo_surrogate(c);
-                } else {
-                    /* invalid char */
-                    c = 0xfffd;
-                    /* skip the invalid chars */
-                    /* XXX: seems incorrect. Why not just use c = *p++; ? */
-                    while (p < p_end && (*p >= 0x80 && *p < 0xc0))
-                        p++;
-                    if (p < p_end) {
-                        p++;
-                        while (p < p_end && (*p >= 0x80 && *p < 0xc0))
-                            p++;
-                    }
-                }
-                string_buffer_putc16(b, c);
-            }
-        }
-    }
-    return string_buffer_end(b);
 
- fail:
-    string_buffer_free(b);
-    return JS_EXCEPTION;
+    switch (kind) {
+    case UTF8_PLAIN_ASCII:
+        str = js_alloc_string(ctx, len, 0);
+        if (!str)
+            return JS_EXCEPTION;
+        memcpy(str->u.str8, buf, len);
+        str->u.str8[len] = '\0';
+        break;
+    case UTF8_NON_ASCII:
+        /* buf contains non-ASCII code-points, but limited to 8-bit values */
+        str = js_alloc_string(ctx, len, 0);
+        if (!str)
+            return JS_EXCEPTION;
+        utf8_decode_buf8(str->u.str8, len + 1, buf, buf_len);
+        break;
+    default:
+        // This causes a potential problem in JS_ThrowError if message is invalid
+        //if (kind & UTF8_HAS_ERRORS)
+        //    return JS_ThrowRangeError(ctx, "invalid UTF-8 sequence");
+        str = js_alloc_string(ctx, len, 1);
+        if (!str)
+            return JS_EXCEPTION;
+        utf8_decode_buf16(str->u.str16, len, buf, buf_len);
+        break;
+    }
+    return JS_MKPTR(JS_TAG_STRING, str);
 }
 
 static JSValue JS_ConcatString3(JSContext *ctx, const char *str1,
@@ -4067,7 +4035,7 @@ go:
                         /* c = 0xfffd; */ /* error */
                     }
                 }
-                q += unicode_to_utf8(q, c);
+                q += utf8_encode(q, c);
             }
         }
     }
@@ -10073,6 +10041,7 @@ int JS_ToBool(JSContext *ctx, JSValue val)
     return JS_ToBoolFree(ctx, js_dup(val));
 }
 
+/* pc points to pure ASCII or UTF-8, null terminated contents */
 static int skip_spaces(const char *pc)
 {
     const uint8_t *p, *p_next, *p_start;
@@ -10080,19 +10049,19 @@ static int skip_spaces(const char *pc)
 
     p = p_start = (const uint8_t *)pc;
     for (;;) {
-        c = *p;
-        if (c < 128) {
+        c = *p++;
+        if (c < 0x80) {
             if (!((c >= 0x09 && c <= 0x0d) || (c == 0x20)))
                 break;
-            p++;
         } else {
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            /* no need to test for invalid UTF-8, 0xFFFD is not a space */
             if (!lre_is_space(c))
                 break;
             p = p_next;
         }
     }
-    return p - p_start;
+    return p - 1 - p_start;
 }
 
 static inline int to_digit(int c)
@@ -18689,6 +18658,7 @@ static int js_parse_error_reserved_identifier(JSParseState *s)
 static __exception int js_parse_template_part(JSParseState *s,
                                               const uint8_t *p)
 {
+    const uint8_t *p_next;
     uint32_t c;
     StringBuffer b_s, *b = &b_s;
 
@@ -18726,9 +18696,8 @@ static __exception int js_parse_template_part(JSParseState *s,
             s->eol = &p[-1];
             s->mark = p;
         } else if (c >= 0x80) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            if (c > 0x10FFFF) {
+            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            if (p_next == p) {
                 js_parse_error(s, "invalid UTF-8 sequence");
                 goto fail;
             }
@@ -18754,6 +18723,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                                        BOOL do_throw, const uint8_t *p,
                                        JSToken *token, const uint8_t **pp)
 {
+    const uint8_t *p_next;
     int ret;
     uint32_t c;
     StringBuffer b_s, *b = &b_s;
@@ -18832,9 +18802,8 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     }
                     goto fail;
                 } else if (c >= 0x80) {
-                    const uint8_t *p_next;
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
-                    if (c > 0x10FFFF) {
+                    c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+                    if (p_next == p + 1) {
                         goto invalid_utf8;
                     }
                     p = p_next;
@@ -18859,9 +18828,8 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 break;
             }
         } else if (c >= 0x80) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            if (c > 0x10FFFF)
+            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            if (p_next == p)
                 goto invalid_utf8;
             p = p_next;
         }
@@ -18893,7 +18861,7 @@ static inline BOOL token_is_pseudo_keyword(JSParseState *s, JSAtom atom) {
 
 static __exception int js_parse_regexp(JSParseState *s)
 {
-    const uint8_t *p;
+    const uint8_t *p, *p_next;
     BOOL in_class;
     StringBuffer b_s, *b = &b_s;
     StringBuffer b2_s, *b2 = &b2_s;
@@ -18932,9 +18900,8 @@ static __exception int js_parse_regexp(JSParseState *s)
             else if (c == '\0' && p >= s->buf_end)
                 goto eof_error;
             else if (c >= 0x80) {
-                const uint8_t *p_next;
-                c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-                if (c > 0x10FFFF) {
+                c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+                if (p_next == p) {
                     goto invalid_utf8;
                 }
                 p = p_next;
@@ -18942,9 +18909,8 @@ static __exception int js_parse_regexp(JSParseState *s)
                     goto eol_error;
             }
         } else if (c >= 0x80) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            if (c > 0x10FFFF) {
+            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            if (p_next == p) {
             invalid_utf8:
                 js_parse_error(s, "invalid UTF-8 sequence");
                 goto fail;
@@ -18963,14 +18929,8 @@ static __exception int js_parse_regexp(JSParseState *s)
 
     /* flags */
     for(;;) {
-        const uint8_t *p_next = p;
-        c = *p_next++;
-        if (c >= 0x80) {
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
-            if (c > 0x10FFFF) {
-                goto invalid_utf8;
-            }
-        }
+        c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+        /* no need to test for invalid UTF-8, 0xFFFD is not ident_next */
         if (!lre_js_is_ident_next(c))
             break;
         if (string_buffer_putc(b2, c))
@@ -19020,10 +18980,10 @@ static __exception int ident_realloc(JSContext *ctx, char **pbuf, size_t *psize,
 static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
                           BOOL *pident_has_escape, int c, BOOL is_private)
 {
-    const uint8_t *p, *p1;
+    const uint8_t *p, *p_next;
     char ident_buf[128], *buf;
     size_t ident_size, ident_pos;
-    JSAtom atom;
+    JSAtom atom = JS_ATOM_NULL;
 
     p = *pp;
     buf = ident_buf;
@@ -19032,28 +18992,26 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
     if (is_private)
         buf[ident_pos++] = '#';
     for(;;) {
-        p1 = p;
-
-        if (c < 128) {
+        if (c < 0x80) {
             buf[ident_pos++] = c;
         } else {
-            ident_pos += unicode_to_utf8((uint8_t*)buf + ident_pos, c);
+            ident_pos += utf8_encode((uint8_t*)buf + ident_pos, c);
         }
-        c = *p1++;
-        if (c == '\\' && *p1 == 'u') {
-            c = lre_parse_escape(&p1, TRUE);
+        c = *p;
+        p_next = p + 1;
+        if (c == '\\' && *p_next == 'u') {
+            c = lre_parse_escape(&p_next, TRUE);
             *pident_has_escape = TRUE;
-        } else if (c >= 128) {
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+        } else if (c >= 0x80) {
+            c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+            /* no need to test for invalid UTF-8, 0xFFFD is not ident_next */
         }
         if (!lre_js_is_ident_next(c))
             break;
-        p = p1;
+        p = p_next;
         if (unlikely(ident_pos >= ident_size - UTF8_CHAR_LEN_MAX)) {
-            if (ident_realloc(s->ctx, &buf, &ident_size, ident_buf)) {
-                atom = JS_ATOM_NULL;
+            if (ident_realloc(s->ctx, &buf, &ident_size, ident_buf))
                 goto done;
-            }
         }
     }
     /* buf is pure ASCII or UTF-8 encoded */
@@ -19068,7 +19026,7 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
 
 static __exception int next_token(JSParseState *s)
 {
-    const uint8_t *p;
+    const uint8_t *p, *p_next;
     int c;
     BOOL ident_has_escape;
     JSAtom atom;
@@ -19148,11 +19106,10 @@ static __exception int next_token(JSParseState *s)
                     s->got_lf = TRUE; /* considered as LF for ASI */
                     p++;
                 } else if (*p >= 0x80) {
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
+                    c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p);
+                    /* ignore invalid UTF-8 in comments */
                     if (c == CP_LS || c == CP_PS) {
                         s->got_lf = TRUE; /* considered as LF for ASI */
-                    } else if (c == -1) {
-                        p++; /* skip invalid UTF-8 */
                     }
                 } else {
                     p++;
@@ -19170,12 +19127,11 @@ static __exception int next_token(JSParseState *s)
                 if (*p == '\r' || *p == '\n')
                     break;
                 if (*p >= 0x80) {
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
+                    c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p);
+                    /* ignore invalid UTF-8 in comments */
                     /* LS or PS are considered as line terminator */
                     if (c == CP_LS || c == CP_PS) {
                         break;
-                    } else if (c == -1) {
-                        p++; /* skip invalid UTF-8 */
                     }
                 } else {
                     p++;
@@ -19265,20 +19221,21 @@ static __exception int next_token(JSParseState *s)
     case '#':
         /* private name */
         {
-            const uint8_t *p1;
             p++;
-            p1 = p;
-            c = *p1++;
-            if (c == '\\' && *p1 == 'u') {
-                c = lre_parse_escape(&p1, TRUE);
-            } else if (c >= 128) {
-                c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+            c = *p;
+            p_next = p + 1;
+            if (c == '\\' && *p_next == 'u') {
+                c = lre_parse_escape(&p_next, TRUE);
+            } else if (c >= 0x80) {
+                c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+                if (p_next == p + 1)
+                    goto invalid_utf8;
             }
             if (!lre_js_is_ident_first(c)) {
                 js_parse_error(s, "invalid first character of private name");
                 goto fail;
             }
-            p = p1;
+            p = p_next;
             ident_has_escape = FALSE; /* not used */
             atom = parse_ident(s, &p, &ident_has_escape, c, TRUE);
             if (atom == JS_ATOM_NULL)
@@ -19313,7 +19270,6 @@ static __exception int next_token(JSParseState *s)
     parse_number:
         {
             JSValue ret;
-            const uint8_t *p1;
             int flags;
             flags = ATOD_ACCEPT_BIN_OCT | ATOD_ACCEPT_LEGACY_OCTAL |
                 ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
@@ -19324,7 +19280,7 @@ static __exception int next_token(JSParseState *s)
                 goto fail;
             /* reject `10instanceof Number` */
             if (JS_VALUE_IS_NAN(ret) ||
-                lre_js_is_ident_next(unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1))) {
+                lre_js_is_ident_next(utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next))) {
                 JS_FreeValue(s->ctx, ret);
                 js_parse_error(s, "invalid number literal");
                 goto fail;
@@ -19516,9 +19472,11 @@ static __exception int next_token(JSParseState *s)
         }
         break;
     default:
-        if (c >= 128) {
-            /* unicode value */
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
+        if (c >= 0x80) {  /* non-ASCII code-point */
+            c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+            if (p_next == p + 1)
+                goto invalid_utf8;
+            p = p_next;
             switch(c) {
             case CP_PS:
             case CP_LS:
@@ -19549,6 +19507,8 @@ static __exception int next_token(JSParseState *s)
     //    dump_token(s, &s->token);
     return 0;
 
+ invalid_utf8:
+    js_parse_error(s, "invalid UTF-8 sequence");
  fail:
     s->token.val = TOK_ERROR;
     return -1;
@@ -19573,7 +19533,7 @@ static int json_parse_error(JSParseState *s, const uint8_t *curp, const char *ms
 
 static int json_parse_string(JSParseState *s, const uint8_t **pp)
 {
-    const uint8_t *p = *pp;
+    const uint8_t *p, *p_next;
     int i;
     uint32_t c;
     StringBuffer b_s, *b = &b_s;
@@ -19581,6 +19541,7 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
     if (string_buffer_init(s->ctx, b, 32))
         goto fail;
 
+    p = *pp;
     for(;;) {
         if (p >= s->buf_end) {
             goto end_of_input;
@@ -19622,9 +19583,8 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
             }
         } else
         if (c >= 0x80) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, s->buf_end - p, &p_next);
-            if (c > 0x10FFFF) {
+            c = utf8_decode(p - 1, s->buf_end - p, &p_next);
+            if (p_next == p) {
                 json_parse_error(s, p - 1, "Bad UTF-8 sequence");
                 goto fail;
             }
@@ -19722,7 +19682,7 @@ static JSAtom json_parse_ident(JSParseState *s, const uint8_t **pp, int c)
 
 static __exception int json_next_token(JSParseState *s)
 {
-    const uint8_t *p;
+    const uint8_t *p, *p_next;
     int c;
     JSAtom atom;
 
@@ -19826,10 +19786,9 @@ static __exception int json_next_token(JSParseState *s)
             goto fail;
         break;
     default:
-        if (c >= 128) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p, s->buf_end - p, &p_next);
-            if (c == -1) {
+        if (c >= 0x80) {
+            c = utf8_decode(p, s->buf_end - p, &p_next);
+            if (p_next == p + 1) {
                 js_parse_error(s, "Unexpected token '\\x%02x' in JSON", *p);
             } else {
                 if (c > 0xFFFF) {
@@ -19951,12 +19910,10 @@ static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end)
             if (*p == '\n' || *p == '\r') {
                 break;
             } else if (*p >= 0x80) {
-                c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-                if (c == CP_LS || c == CP_PS) {
+                c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p);
+                /* purposely ignore UTF-8 encoding errors in this comment line */
+                if (c == CP_LS || c == CP_PS)
                     break;
-                } else if (c == -1) {
-                    p++; /* skip invalid UTF-8 */
-                }
             } else {
                 p++;
             }
