@@ -712,7 +712,7 @@ static int parse_unicode_property(REParseState *s, CharRange *cr,
 static int get_class_atom(REParseState *s, CharRange *cr,
                           const uint8_t **pp, BOOL inclass)
 {
-    const uint8_t *p;
+    const uint8_t *p, *p_next;
     uint32_t c;
     int ret;
 
@@ -804,15 +804,18 @@ static int get_class_atom(REParseState *s, CharRange *cr,
         /* fall thru */
     default:
     normal_char:
-        /* normal char */
-        if (c >= 128) {
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-            if ((unsigned)c > 0xffff && !s->is_unicode) {
-                /* XXX: should handle non BMP-1 code points */
+        p++;
+        if (c >= 0x80) {
+            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            if (p_next == p)
+                return re_parse_error(s, "invalid UTF-8 sequence");
+            p = p_next;
+            if (c > 0xFFFF && !s->is_unicode) {
+                // TODO(chqrlie): should handle non BMP-1 code points in
+                //   the calling function and no require the source string
+                //   to be CESU-8 encoded if not s->is_unicode
                 return re_parse_error(s, "malformed unicode char");
             }
-        } else {
-            p++;
         }
         break;
     }
@@ -1105,35 +1108,35 @@ static int re_is_simple_quantifier(const uint8_t *bc_buf, int bc_buf_len)
 /* '*pp' is the first char after '<' */
 static int re_parse_group_name(char *buf, int buf_size, const uint8_t **pp)
 {
-    const uint8_t *p, *p1;
+    const uint8_t *p, *p_next;
     uint32_t c, d;
     char *q;
 
     p = *pp;
     q = buf;
     for(;;) {
-        c = *p;
+        c = *p++;
         if (c == '\\') {
-            p++;
             if (*p != 'u')
                 return -1;
             c = lre_parse_escape(&p, 2); // accept surrogate pairs
+            if ((int)c < 0)
+                return -1;
         } else if (c == '>') {
             break;
-        } else if (c >= 128) {
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
+        } else if (c >= 0x80) {
+            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            if (p_next == p)
+                return -1;
+            p = p_next;
             if (is_hi_surrogate(c)) {
-                d = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+                d = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
                 if (is_lo_surrogate(d)) {
                     c = from_surrogate(c, d);
-                    p = p1;
+                    p = p_next;
                 }
             }
-        } else {
-            p++;
         }
-        if (c > 0x10FFFF)
-            return -1;
         if (q == buf) {
             if (!lre_js_is_ident_first(c))
                 return -1;
@@ -1143,16 +1146,15 @@ static int re_parse_group_name(char *buf, int buf_size, const uint8_t **pp)
         }
         if ((q - buf + UTF8_CHAR_LEN_MAX + 1) > buf_size)
             return -1;
-        if (c < 128) {
+        if (c < 0x80) {
             *q++ = c;
         } else {
-            q += unicode_to_utf8((uint8_t*)q, c);
+            q += utf8_encode((uint8_t*)q, c);
         }
     }
     if (q == buf)
         return -1;
     *q = '\0';
-    p++;
     *pp = p;
     return 0;
 }

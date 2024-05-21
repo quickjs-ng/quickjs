@@ -387,10 +387,25 @@ static inline void dbuf_set_error(DynBuf *s)
     s->error = TRUE;
 }
 
-#define UTF8_CHAR_LEN_MAX 6
+/*---- UTF-8 and UTF-16 handling ----*/
 
-int unicode_to_utf8(uint8_t *buf, unsigned int c);
-int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp);
+#define UTF8_CHAR_LEN_MAX 4
+
+enum {
+    UTF8_PLAIN_ASCII  = 0,  // 7-bit ASCII plain text
+    UTF8_NON_ASCII    = 1,  // has non ASCII code points (8-bit or more)
+    UTF8_HAS_16BIT    = 2,  // has 16-bit code points
+    UTF8_HAS_NON_BMP1 = 4,  // has non-BMP1 code points, needs UTF-16 surrogate pairs
+    UTF8_HAS_ERRORS   = 8,  // has encoding errors
+};
+int utf8_scan(const char *buf, size_t len, size_t *plen);
+size_t utf8_encode_len(uint32_t c);
+size_t utf8_encode(uint8_t *buf, uint32_t c);
+uint32_t utf8_decode(const uint8_t *p, size_t max_len, const uint8_t **pp);
+size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len);
+size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len);
+size_t utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len);
+size_t utf8_encode_buf16(char *dest, size_t dest_len, const uint16_t *src, size_t src_len);
 
 static inline BOOL is_surrogate(uint32_t c)
 {

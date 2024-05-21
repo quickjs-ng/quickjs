@@ -213,58 +213,83 @@ void dbuf_free(DynBuf *s)
     memset(s, 0, sizeof(*s));
 }
 
-/*--- Unicode / UTF-8 utility functions --*/
+/*--- UTF-8 utility functions --*/
 
-/* Note: at most 31 bits are encoded. At most UTF8_CHAR_LEN_MAX bytes
-   are output. */
-int unicode_to_utf8(uint8_t *buf, unsigned int c)
+/* Note: only encode valid codepoints (0x0000..0x10FFFF).
+   At most UTF8_CHAR_LEN_MAX bytes are output. */
+
+/* Compute the number of bytes of the UTF-8 encoding for a codepoint
+   `c` is a code-point.
+   Returns the number of bytes. If a codepoint is beyond 0x10FFFF the
+   return value is 3 as the codepoint would be encoded as 0xFFFD.
+ */
+size_t utf8_encode_len(uint32_t c)
 {
-    uint8_t *q = buf;
-
-    if (c < 0x80) {
-        *q++ = c;
-    } else {
-        if (c < 0x800) {
-            *q++ = (c >> 6) | 0xc0;
-        } else {
-            if (c < 0x10000) {
-                *q++ = (c >> 12) | 0xe0;
-            } else {
-                if (c < 0x00200000) {
-                    *q++ = (c >> 18) | 0xf0;
-                } else {
-                    if (c < 0x04000000) {
-                        *q++ = (c >> 24) | 0xf8;
-                    } else if (c < 0x80000000) {
-                        *q++ = (c >> 30) | 0xfc;
-                        *q++ = ((c >> 24) & 0x3f) | 0x80;
-                    } else {
-                        return 0;
-                    }
-                    *q++ = ((c >> 18) & 0x3f) | 0x80;
-                }
-                *q++ = ((c >> 12) & 0x3f) | 0x80;
-            }
-            *q++ = ((c >> 6) & 0x3f) | 0x80;
-        }
-        *q++ = (c & 0x3f) | 0x80;
-    }
-    return q - buf;
+    if (c < 0x80)
+        return 1;
+    if (c < 0x800)
+        return 2;
+    if (c < 0x10000)
+        return 3;
+    if (c < 0x110000)
+        return 4;
+    return 3;
 }
 
-static const unsigned int utf8_min_code[5] = {
-    0x80, 0x800, 0x10000, 0x00200000, 0x04000000,
-};
-
-static const unsigned char utf8_first_code_mask[5] = {
-    0x1f, 0xf, 0x7, 0x3, 0x1,
-};
-
-/* return -1 if error. *pp is not updated in this case. max_len must
-   be >= 1. The maximum length for a UTF8 byte sequence is 6 bytes. */
-int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp)
+/* Encode a codepoint in UTF-8
+   `buf` points to an array of at least `UTF8_CHAR_LEN_MAX` bytes
+   `c` is a code-point.
+   Returns the number of bytes. If a codepoint is beyond 0x10FFFF the
+   return value is 3 and the codepoint is encoded as 0xFFFD.
+   No null byte is stored after the encoded bytes.
+   Return value is in range 1..4
+ */
+size_t utf8_encode(uint8_t *buf, uint32_t c)
 {
-    int l, c, b, i;
+    if (c < 0x80) {
+        buf[0] = c;
+        return 1;
+    }
+    if (c < 0x800) {
+        buf[0] = (c >> 6) | 0xC0;
+        buf[1] = (c & 0x3F) | 0x80;
+        return 2;
+    }
+    if (c < 0x10000) {
+        buf[0] = (c >> 12) | 0xE0;
+        buf[1] = ((c >> 6) & 0x3F) | 0x80;
+        buf[2] = (c & 0x3F) | 0x80;
+        return 3;
+    }
+    if (c < 0x110000) {
+        buf[0] = (c >> 18) | 0xF0;
+        buf[1] = ((c >> 12) & 0x3F) | 0x80;
+        buf[2] = ((c >> 6) & 0x3F) | 0x80;
+        buf[3] = (c & 0x3F) | 0x80;
+        return 4;
+    }
+    buf[0] = (0xFFFD >> 12) | 0xE0;
+    buf[1] = ((0xFFFD >> 6) & 0x3F) | 0x80;
+    buf[2] = (0xFFFD & 0x3F) | 0x80;
+    return 3;
+}
+
+/* Decode a single code point from a UTF-8 encoded array of bytes
+   `p` is a valid pointer to an array of bytes
+   `max_len` is the number of bytes available in the array
+   `pp` is a valid pointer to a `const uint8_t *` to store a pointer
+   to the byte following the current sequence.
+   Return the code point at `p`, in the range `0..0x10FFFF`
+   Return 0xFFFD on error. Only a single byte is consumed in this case
+   The maximum length for a UTF-8 byte sequence is 4 bytes.
+   This implements the algorithm specified in whatwg.org, except it accepts
+   UTF-8 encoded surrogates as JavaScript allows them in strings.
+   cf: https://encoding.spec.whatwg.org/#utf-8-encoder
+ */
+uint32_t utf8_decode(const uint8_t *p, size_t max_len, const uint8_t **pp)
+{
+    uint32_t c;
+    uint8_t lower, upper;
 
     c = *p++;
     if (c < 0x80) {
@@ -272,49 +297,270 @@ int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp)
         return c;
     }
     switch(c) {
-    case 0xc0: case 0xc1: case 0xc2: case 0xc3:
-    case 0xc4: case 0xc5: case 0xc6: case 0xc7:
-    case 0xc8: case 0xc9: case 0xca: case 0xcb:
-    case 0xcc: case 0xcd: case 0xce: case 0xcf:
-    case 0xd0: case 0xd1: case 0xd2: case 0xd3:
-    case 0xd4: case 0xd5: case 0xd6: case 0xd7:
-    case 0xd8: case 0xd9: case 0xda: case 0xdb:
-    case 0xdc: case 0xdd: case 0xde: case 0xdf:
-        l = 1;
+    case 0xC2: case 0xC3:
+    case 0xC4: case 0xC5: case 0xC6: case 0xC7:
+    case 0xC8: case 0xC9: case 0xCA: case 0xCB:
+    case 0xCC: case 0xCD: case 0xCE: case 0xCF:
+    case 0xD0: case 0xD1: case 0xD2: case 0xD3:
+    case 0xD4: case 0xD5: case 0xD6: case 0xD7:
+    case 0xD8: case 0xD9: case 0xDA: case 0xDB:
+    case 0xDC: case 0xDD: case 0xDE: case 0xDF:
+        if (max_len < 2) {
+            // need more bytes
+            break;
+        }
+        if (*p >= 0x80 && *p <= 0xBF) {
+            *pp = p + 1;
+            return ((c - 0xC0) << 6) + (*p - 0x80);
+        }
+        // otherwise encoding error
         break;
-    case 0xe0: case 0xe1: case 0xe2: case 0xe3:
-    case 0xe4: case 0xe5: case 0xe6: case 0xe7:
-    case 0xe8: case 0xe9: case 0xea: case 0xeb:
-    case 0xec: case 0xed: case 0xee: case 0xef:
-        l = 2;
+    case 0xE0:
+        lower = 0xA0;   /* reject invalid encoding */
+        goto need2;
+    case 0xE1: case 0xE2: case 0xE3:
+    case 0xE4: case 0xE5: case 0xE6: case 0xE7:
+    case 0xE8: case 0xE9: case 0xEA: case 0xEB:
+    case 0xEC: case 0xED: case 0xEE: case 0xEF:
+        lower = 0x80;
+    need2:
+        if (max_len < 3) {
+            // need more bytes
+            break;
+        }
+        if (*p >= lower && *p <= 0xBF && p[1] >= 0x80 && p[1] <= 0xBF) {
+            *pp = p + 2;
+            return ((c - 0xE0) << 12) + ((*p - 0x80) << 6) + (p[1] - 0x80);
+        }
+        // otherwise encoding error
         break;
-    case 0xf0: case 0xf1: case 0xf2: case 0xf3:
-    case 0xf4: case 0xf5: case 0xf6: case 0xf7:
-        l = 3;
-        break;
-    case 0xf8: case 0xf9: case 0xfa: case 0xfb:
-        l = 4;
-        break;
-    case 0xfc: case 0xfd:
-        l = 5;
+    case 0xF0:
+        lower = 0x90;   /* reject invalid encoding */
+        upper = 0xBF;
+        goto need3;
+    case 0xF4:
+        lower = 0x80;
+        upper = 0x8F;   /* reject values above 0x10FFFF */
+        goto need3;
+    case 0xF1: case 0xF2: case 0xF3:
+        lower = 0x80;
+        upper = 0xBF;
+    need3:
+        if (max_len < 4) {
+            // need more bytes
+            break;
+        }
+        if (*p >= lower && *p <= upper && p[1] >= 0x80 && p[1] <= 0xBF
+        &&  p[2] >= 0x80 && p[2] <= 0xBF) {
+            *pp = p + 3;
+            return ((c - 0xF0) << 18) + ((*p - 0x80) << 12) +
+                ((p[1] - 0x80) << 6) + (p[2] - 0x80);
+        }
+        // otherwise encoding error
         break;
     default:
-        return -1;
+        // invalid lead byte
+        break;
     }
-    /* check that we have enough characters */
-    if (l > (max_len - 1))
-        return -1;
-    c &= utf8_first_code_mask[l - 1];
-    for(i = 0; i < l; i++) {
-        b = *p++;
-        if (b < 0x80 || b >= 0xc0)
-            return -1;
-        c = (c << 6) | (b & 0x3f);
-    }
-    if (c < utf8_min_code[l - 1])
-        return -1;
     *pp = p;
-    return c;
+    return 0xFFFD;
+}
+
+/* Scan a UTF-8 encoded buffer for content type
+   `buf` is a valid pointer to a UTF-8 encoded string
+   `len` is the number of bytes to scan
+   `plen` points to a `size_t` variable to receive the number of units
+   Return value is a mask of bits.
+   - `UTF8_PLAIN_ASCII`: return value for 7-bit ASCII plain text
+   - `UTF8_NON_ASCII`: bit for non ASCII code points (8-bit or more)
+   - `UTF8_HAS_16BIT`: bit for 16-bit code points
+   - `UTF8_HAS_NON_BMP1`: bit for non-BMP1 code points, needs UTF-16 surrogate pairs
+   - `UTF8_HAS_ERRORS`: bit for encoding errors
+ */
+int utf8_scan(const char *buf, size_t buf_len, size_t *plen)
+{
+    const uint8_t *p, *p_end, *p_next;
+    size_t i, len;
+    int kind;
+    uint8_t cbits;
+
+    kind = UTF8_PLAIN_ASCII;
+    cbits = 0;
+    len = buf_len;
+    // TODO: handle more than 1 byte at a time
+    for (i = 0; i < buf_len; i++)
+        cbits |= buf[i];
+    if (cbits >= 0x80) {
+        p = (const uint8_t *)buf;
+        p_end = p + buf_len;
+        kind = UTF8_NON_ASCII;
+        len = 0;
+        while (p < p_end) {
+            len++;
+            if (*p++ >= 0x80) {
+                /* parse UTF-8 sequence, check for encoding error */
+                uint32_t c = utf8_decode(p - 1, p_end - (p - 1), &p_next);
+                if (p_next == p)
+                    kind |= UTF8_HAS_ERRORS;
+                p = p_next;
+                if (c > 0xFF) {
+                    kind |= UTF8_HAS_16BIT;
+                    if (c > 0xFFFF) {
+                        len++;
+                        kind |= UTF8_HAS_NON_BMP1;
+                    }
+                }
+            }
+        }
+    }
+    *plen = len;
+    return kind;
+}
+
+/* Decode a string encoded in UTF-8 into an array of bytes
+   `src` points to the source string. It is assumed to be correctly encoded
+   and only contains code points below 0x800
+   `src_len` is the length of the source string
+   `dest` points to the destination array, it can be null if `dest_len` is `0`
+   `dest_len` is the length of the destination array. A null
+   terminator is stored at the end of the array unless `dest_len` is `0`.
+ */
+size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len)
+{
+    const uint8_t *p, *p_end;
+    size_t i;
+
+    p = (const uint8_t *)src;
+    p_end = p + src_len;
+    for (i = 0; p < p_end; i++) {
+        uint32_t c = *p++;
+        if (c >= 0xC0)
+            c = (c << 6) + *p++ - ((0xC0 << 6) + 0x80);
+        if (i < dest_len)
+            dest[i] = c;
+    }
+    if (i < dest_len)
+        dest[i] = '\0';
+    else if (dest_len > 0)
+        dest[dest_len - 1] = '\0';
+    return i;
+}
+
+/* Decode a string encoded in UTF-8 into an array of 16-bit words
+   `src` points to the source string. It is assumed to be correctly encoded.
+   `src_len` is the length of the source string
+   `dest` points to the destination array, it can be null if `dest_len` is `0`
+   `dest_len` is the length of the destination array. No null terminator is
+   stored at the end of the array.
+ */
+size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len)
+{
+    const uint8_t *p, *p_end;
+    size_t i;
+
+    p = (const uint8_t *)src;
+    p_end = p + src_len;
+    for (i = 0; p < p_end; i++) {
+        uint32_t c = *p++;
+        if (c >= 0x80) {
+            /* parse utf-8 sequence */
+            c = utf8_decode(p - 1, p_end - (p - 1), &p);
+            /* encoding errors are converted as 0xFFFD and use a single byte */
+            if (c > 0xFFFF) {
+                if (i < dest_len)
+                    dest[i] = get_hi_surrogate(c);
+                i++;
+                c = get_lo_surrogate(c);
+            }
+        }
+        if (i < dest_len)
+            dest[i] = c;
+    }
+    return i;
+}
+
+/* Encode a buffer of 8-bit bytes as a UTF-8 encoded string
+   `src` points to the source buffer.
+   `src_len` is the length of the source buffer
+   `dest` points to the destination array, it can be null if `dest_len` is `0`
+   `dest_len` is the length in bytes of the destination array. A null
+   terminator is stored at the end of the array unless `dest_len` is `0`.
+ */
+size_t utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len)
+{
+    size_t i, j;
+    uint32_t c;
+
+    for (i = j = 0; i < src_len; i++) {
+        c = src[i];
+        if (c < 0x80) {
+            if (j + 1 >= dest_len)
+                goto overflow;
+            dest[j++] = c;
+        } else {
+            if (j + 2 >= dest_len)
+                goto overflow;
+            dest[j++] = (c >> 6) | 0xC0;
+            dest[j++] = (c & 0x3F) | 0x80;
+        }
+    }
+    if (j < dest_len)
+        dest[j] = '\0';
+    return j;
+
+overflow:
+    if (j < dest_len)
+        dest[j] = '\0';
+    while (i < src_len)
+        j += 1 + (src[i++] >= 0x80);
+    return j;
+}
+
+/* Encode a buffer of 16-bit code points as a UTF-8 encoded string
+   `src` points to the source buffer.
+   `src_len` is the length of the source buffer
+   `dest` points to the destination array, it can be null if `dest_len` is `0`
+   `dest_len` is the length in bytes of the destination array. A null
+   terminator is stored at the end of the array unless `dest_len` is `0`.
+ */
+size_t utf8_encode_buf16(char *dest, size_t dest_len, const uint16_t *src, size_t src_len)
+{
+    size_t i, j;
+    uint32_t c;
+
+    for (i = j = 0; i < src_len;) {
+        c = src[i++];
+        if (c < 0x80) {
+            if (j + 1 >= dest_len)
+                goto overflow;
+            dest[j++] = c;
+        } else {
+            if (is_hi_surrogate(c) && i < src_len && is_lo_surrogate(src[i]))
+                c = from_surrogate(c, src[i++]);
+            if (j + utf8_encode_len(c) >= dest_len)
+                goto overflow;
+            j += utf8_encode((uint8_t *)dest + j, c);
+        }
+    }
+    if (j < dest_len)
+        dest[j] = '\0';
+    return j;
+
+overflow:
+    i -= 1 + (c > 0xFFFF);
+    if (j < dest_len)
+        dest[j] = '\0';
+    while (i < src_len) {
+        c = src[i++];
+        if (c < 0x80) {
+            j++;
+        } else {
+            if (is_hi_surrogate(c) && i < src_len && is_lo_surrogate(src[i]))
+                c = from_surrogate(c, src[i++]);
+            j += utf8_encode_len(c);
+        }
+    }
+    return j;
 }
 
 /*--- integer to string conversions --*/
