@@ -193,6 +193,7 @@ typedef enum JSErrorEnum {
     JS_AGGREGATE_ERROR,
 
     JS_NATIVE_ERROR_COUNT, /* number of different NativeError objects */
+    JS_PLAIN_ERROR = JS_NATIVE_ERROR_COUNT
 } JSErrorEnum;
 
 #define JS_MAX_LOCAL_VARS 65535
@@ -6638,8 +6639,11 @@ static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
     JSValue obj, ret, msg;
 
     vsnprintf(buf, sizeof(buf), fmt, ap);
-    obj = JS_NewObjectProtoClass(ctx, ctx->native_error_proto[error_num],
-                                 JS_CLASS_ERROR);
+    if (error_num == JS_PLAIN_ERROR)
+        obj = JS_NewError(ctx);
+    else
+        obj = JS_NewObjectProtoClass(ctx, ctx->native_error_proto[error_num],
+                                     JS_CLASS_ERROR);
     if (unlikely(JS_IsException(obj))) {
         /* out of memory: throw JS_NULL to avoid recursing */
         obj = JS_NULL;
@@ -6671,6 +6675,17 @@ static JSValue JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
     add_backtrace = !rt->in_out_of_memory &&
         (!sf || (JS_GetFunctionBytecode(sf->cur_func) == NULL));
     return JS_ThrowError2(ctx, error_num, fmt, ap, add_backtrace);
+}
+
+JSValue __attribute__((format(printf, 2, 3))) JS_ThrowPlainError(JSContext *ctx, const char *fmt, ...)
+{
+    JSValue val;
+    va_list ap;
+
+    va_start(ap, fmt);
+    val = JS_ThrowError(ctx, JS_PLAIN_ERROR, fmt, ap);
+    va_end(ap);
+    return val;
 }
 
 JSValue __attribute__((format(printf, 2, 3))) JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...)
