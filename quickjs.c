@@ -441,6 +441,7 @@ enum {
     JS_ATOM_TYPE_GLOBAL_SYMBOL,
     JS_ATOM_TYPE_SYMBOL,
     JS_ATOM_TYPE_PRIVATE,
+    JS_ATOM_NUMBER_CHECK = 8,   // conversion should check for small ints */
 };
 
 enum {
@@ -998,8 +999,8 @@ enum OPCodeEnum {
 };
 
 static int JS_InitAtoms(JSRuntime *rt);
-static JSAtom __JS_NewAtomInit(JSRuntime *rt, const char *str, int len,
-                               int atom_type);
+static JSAtom JS_NewAtomRT(JSRuntime *rt, JSContext *ctx,
+                           const char *str, int len, int flags);
 static void JS_FreeAtomStruct(JSRuntime *rt, JSAtomStruct *p);
 static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b);
 static JSValue js_call_c_function(JSContext *ctx, JSValue func_obj,
@@ -1380,6 +1381,20 @@ size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr)
     return rt->mf.js_malloc_usable_size(ptr);
 }
 
+/* store extra allocated size in *pslack if successful */
+void *js_realloc_rt2(JSRuntime *rt, void *ptr, size_t size, size_t *pslack)
+{
+    void *ret;
+    ret = js_realloc_rt(rt, ptr, size);
+    if (ret != NULL) {
+        if (pslack) {
+            size_t new_size = js_malloc_usable_size_rt(rt, ret);
+            *pslack = (new_size > size) ? new_size - size : 0;
+        }
+    }
+    return ret;
+}
+
 void *js_mallocz_rt(JSRuntime *rt, size_t size)
 {
     void *ptr;
@@ -1441,14 +1456,10 @@ void *js_realloc(JSContext *ctx, void *ptr, size_t size)
 void *js_realloc2(JSContext *ctx, void *ptr, size_t size, size_t *pslack)
 {
     void *ret;
-    ret = js_realloc_rt(ctx->rt, ptr, size);
+    ret = js_realloc_rt2(ctx->rt, ptr, size, pslack);
     if (unlikely(!ret && size != 0)) {
         JS_ThrowOutOfMemory(ctx);
         return NULL;
-    }
-    if (pslack) {
-        size_t new_size = js_malloc_usable_size_rt(ctx->rt, ret);
-        *pslack = (new_size > size) ? new_size - size : 0;
     }
     return ret;
 }
@@ -2578,8 +2589,9 @@ static int JS_InitAtoms(JSRuntime *rt)
             atom_type = JS_ATOM_TYPE_SYMBOL;
         else
             atom_type = JS_ATOM_TYPE_STRING;
+        /* p is pure ASCII, not a small number, not overlong */
         len = strlen(p);
-        if (__JS_NewAtomInit(rt, p, len, atom_type) == JS_ATOM_NULL)
+        if (JS_NewAtomRT(rt, NULL, p, len, atom_type) == JS_ATOM_NULL)
             return -1;
         p = p + len + 1;
     }
@@ -2661,9 +2673,12 @@ static JSAtom js_get_atom_index(JSRuntime *rt, JSAtomStruct *p)
     return i;
 }
 
-/* string case (internal). Return JS_ATOM_NULL if error. 'str' is
-   freed. */
-static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
+/* Create a `JSAtom` from a `JSString`
+   `str` is freed if atom exists with the right type, otherwise it is reused if possible
+   Return `JS_ATOM_NULL` if error.
+   Exception is thrown if `ctx` is not a null pointer.
+ */
+static JSAtom __JS_NewAtom(JSRuntime *rt, JSContext *ctx, JSString *str, int atom_type)
 {
     uint32_t h, h1, i;
     JSAtomStruct *p;
@@ -2693,7 +2708,8 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
                 js_string_memcmp(p, str, len) == 0) {
                 if (!__JS_AtomIsConst(i))
                     p->header.ref_count++;
-                goto done;
+                js_free_string(rt, str);
+                return i;
             }
             i = p->hash_next;
         }
@@ -2727,16 +2743,12 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
         start = rt->atom_size;
         if (start == 0) {
             /* JS_ATOM_NULL entry */
-            p = js_mallocz_rt(rt, sizeof(JSAtomStruct));
+            p = js_alloc_string_rt(rt, 0, 1);
             if (!p) {
                 js_free_rt(rt, new_array);
                 goto fail;
             }
-            p->header.ref_count = 1;  /* not refcounted */
             p->atom_type = JS_ATOM_TYPE_SYMBOL;
-#ifdef DUMP_LEAKS
-            list_add_tail(&p->link, &rt->string_list);
-#endif
             new_array[0] = p;
             rt->atom_count++;
             start = 1;
@@ -2756,47 +2768,32 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
 
     if (str) {
         if (str->atom_type == 0) {
+            /* Convert regular string to an atom */
             p = str;
-            p->atom_type = atom_type;
         } else {
-            p = js_malloc_rt(rt, sizeof(JSString) +
-                             (str->len << str->is_wide_char) +
-                             1 - str->is_wide_char);
+            p = js_alloc_string_rt(rt, str->len, str->is_wide_char);
             if (unlikely(!p))
                 goto fail;
-            p->header.ref_count = 1;
-            p->is_wide_char = str->is_wide_char;
-            p->len = str->len;
-#ifdef DUMP_LEAKS
-            list_add_tail(&p->link, &rt->string_list);
-#endif
             memcpy(p->u.str8, str->u.str8, (str->len << str->is_wide_char) +
                    1 - str->is_wide_char);
             js_free_string(rt, str);
         }
     } else {
-        p = js_malloc_rt(rt, sizeof(JSAtomStruct)); /* empty wide string */
+        p = js_alloc_string_rt(rt, 0, 1); /* empty wide string */
         if (!p)
-            return JS_ATOM_NULL;
-        p->header.ref_count = 1;
-        p->is_wide_char = 1;    /* Hack to represent NULL as a JSString */
-        p->len = 0;
-#ifdef DUMP_LEAKS
-        list_add_tail(&p->link, &rt->string_list);
-#endif
+            goto fail;
     }
 
     /* use an already free entry */
     i = rt->atom_free_index;
     rt->atom_free_index = atom_get_free(rt->atom_array[i]);
     rt->atom_array[i] = p;
+    rt->atom_count++;
 
     p->hash = h;
     p->hash_next = i;   /* atom_index */
     p->atom_type = atom_type;
     p->first_weak_ref = NULL;
-
-    rt->atom_count++;
 
     if (atom_type != JS_ATOM_TYPE_SYMBOL) {
         p->hash_next = rt->atom_hash[h1];
@@ -2804,56 +2801,133 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
         if (unlikely(rt->atom_count >= rt->atom_count_resize))
             JS_ResizeAtomHash(rt, rt->atom_hash_size * 2);
     }
-
-    //    JS_DumpAtoms(rt);
     return i;
 
  fail:
-    i = JS_ATOM_NULL;
- done:
     if (str)
         js_free_string(rt, str);
-    return i;
+    if (ctx)
+        JS_ThrowOutOfMemory(ctx);
+    return JS_ATOM_NULL;
 }
 
-// XXX: `str` must be pure ASCII. No UTF-8 encoded strings
-// XXX: `str` must not be the string representation of a small integer
-static JSAtom __JS_NewAtomInit(JSRuntime *rt, const char *str, int len,
-                               int atom_type)
+static JSAtom js_is_number_atom(const uint8_t *str, int len)
 {
-    JSString *p;
-    p = js_alloc_string_rt(rt, len, 0);
-    if (!p)
-        return JS_ATOM_NULL;
-    memcpy(p->u.str8, str, len);
-    p->u.str8[len] = '\0';
-    return __JS_NewAtom(rt, p, atom_type);
+    if (is_digit(*str) && len < 11) {
+        if (*str == '0') {
+            if (len == 1)
+                return __JS_AtomFromUInt32(0);
+        } else {
+            int i;
+            uint64_t n64 = *str - '0';
+            for (i = 1; i < len; i++) {
+                uint8_t c = str[i];
+                if (!is_digit(c))
+                    break;
+                n64 = n64 * 10 + (c - '0');
+            }
+            if (i == len && n64 <= JS_ATOM_MAX_INT)
+                return __JS_AtomFromUInt32(n64);
+        }
+    }
+    return JS_ATOM_NULL;
 }
 
-// XXX: `str` must be raw 8-bit contents. No UTF-8 encoded strings
-static JSAtom __JS_FindAtom(JSRuntime *rt, const char *str, size_t len,
-                            int atom_type)
+/* check if `str` is an existing pure ASCII Atom */
+static JSAtom js_find_ascii_atom(JSRuntime *rt, const char *str, size_t len)
 {
     uint32_t h, h1, i;
+    uint8_t c = 0;
     JSAtomStruct *p;
 
-    h = hash_string8((const uint8_t *)str, len, JS_ATOM_TYPE_STRING);
-    h &= JS_ATOM_HASH_MASK;
-    h1 = h & (rt->atom_hash_size - 1);
-    i = rt->atom_hash[h1];
-    while (i != 0) {
-        p = rt->atom_array[i];
-        if (p->hash == h &&
-            p->atom_type == JS_ATOM_TYPE_STRING &&
-            p->len == len &&
-            p->is_wide_char == 0 &&
-            memcmp(p->u.str8, str, len) == 0) {
-            if (!__JS_AtomIsConst(i))
-                p->header.ref_count++;
-            return i;
+    /* check for non ASCII contents */
+    // TODO(chqrlie): handle more than 1 byte at a time
+    for (i = 0; i < len; i++)
+        c |= str[i];
+    if (!(c & 0x80)) {
+        /* string is pure ASCII */
+        h = hash_string8((const uint8_t *)str, len, JS_ATOM_TYPE_STRING);
+        h &= JS_ATOM_HASH_MASK;
+        h1 = h & (rt->atom_hash_size - 1);
+        i = rt->atom_hash[h1];
+        while (i != 0) {
+            p = rt->atom_array[i];
+            if (p->hash == h &&
+                p->atom_type == JS_ATOM_TYPE_STRING &&
+                p->len == len &&
+                p->is_wide_char == 0 &&
+                memcmp(p->u.str8, str, len) == 0) {
+                    if (!__JS_AtomIsConst(i))
+                        p->header.ref_count++;
+                    return i;
+                }
+            i = p->hash_next;
         }
-        i = p->hash_next;
     }
+    return JS_ATOM_NULL;
+}
+
+/* str may be pure ASCII or UTF-8 encoded */
+static JSAtom JS_NewAtomRT(JSRuntime *rt, JSContext *ctx,
+                           const char *buf, int buf_len, int flags)
+{
+    JSAtom atom;
+    JSString *str;
+    size_t len;
+    int kind;
+
+    // scan the string, check for small number atom
+    // hash it and check for existing atom before allocating
+    if (flags & JS_ATOM_NUMBER_CHECK) {
+        atom = js_is_number_atom((const uint8_t *)buf, buf_len);
+        if (atom != JS_ATOM_NULL)
+            return atom;
+        flags &= ~JS_ATOM_NUMBER_CHECK;
+    }
+    if (flags == JS_ATOM_TYPE_STRING) {
+        atom = js_find_ascii_atom(rt, buf, buf_len);
+        if (atom != JS_ATOM_NULL)
+            return atom;
+    }
+    kind = utf8_scan(buf, buf_len, &len);
+    if (len > JS_STRING_LEN_MAX) {
+        if (ctx)
+            JS_ThrowRangeError(ctx, "invalid string length");
+        return JS_ATOM_NULL;
+    }
+
+    switch (kind) {
+    case UTF8_PLAIN_ASCII:
+        str = js_alloc_string_rt(rt, len, 0);
+        if (!str)
+            goto fail;
+        memcpy(str->u.str8, buf, len);
+        str->u.str8[len] = '\0';
+        break;
+    case UTF8_NON_ASCII:
+        /* buf contains non-ASCII code-points, but limited to 8-bit values */
+        str = js_alloc_string_rt(rt, len, 0);
+        if (!str)
+            goto fail;
+        utf8_decode_buf8(str->u.str8, len + 1, buf, buf_len);
+        break;
+    default:
+        if (kind & UTF8_HAS_ERRORS) {
+            if (ctx)
+                JS_ThrowRangeError(ctx, "invalid UTF-8 sequence");
+            return JS_ATOM_NULL;
+        }
+        str = js_alloc_string_rt(rt, len, 1);
+        if (!str)
+            goto fail;
+        utf8_decode_buf16(str->u.str16, len, buf, buf_len);
+        break;
+    }
+    return __JS_NewAtom(rt, ctx, str, flags);
+
+ fail:
+    if (ctx)
+        JS_ThrowOutOfMemory(ctx);
     return JS_ATOM_NULL;
 }
 
@@ -2918,32 +2992,19 @@ static JSAtom JS_NewAtomStr(JSContext *ctx, JSString *p)
             return __JS_AtomFromUInt32(n);
         }
     }
-    /* XXX: should generate an exception */
-    return __JS_NewAtom(rt, p, JS_ATOM_TYPE_STRING);
+    return __JS_NewAtom(rt, ctx, p, JS_ATOM_TYPE_STRING);
 }
 
 /* `str` may be pure ASCII or UTF-8 encoded */
 JSAtom JS_NewAtomLen(JSContext *ctx, const char *str, size_t len)
 {
-    JSValue val;
-
-    if (len == 0 || !is_digit(*str)) {
-        // TODO(chqrlie): this does not work if `str` has UTF-8 encoded contents
-        // bug example: `({ "\u00c3\u00a9": 1 }).\u00e9` evaluates to `1`.
-        JSAtom atom = __JS_FindAtom(ctx->rt, str, len, JS_ATOM_TYPE_STRING);
-        if (atom)
-            return atom;
-    }
-    val = JS_NewStringLen(ctx, str, len);
-    if (JS_IsException(val))
-        return JS_ATOM_NULL;
-    return JS_NewAtomStr(ctx, JS_VALUE_GET_STRING(val));
+    return JS_NewAtomRT(ctx->rt, ctx, str, len, JS_ATOM_TYPE_STRING | JS_ATOM_NUMBER_CHECK);
 }
 
 /* `str` may be pure ASCII or UTF-8 encoded */
 JSAtom JS_NewAtom(JSContext *ctx, const char *str)
 {
-    return JS_NewAtomLen(ctx, str, strlen(str));
+    return JS_NewAtomRT(ctx->rt, ctx, str, strlen(str), JS_ATOM_TYPE_STRING | JS_ATOM_NUMBER_CHECK);
 }
 
 JSAtom JS_NewAtomUInt32(JSContext *ctx, uint32_t n)
@@ -2953,11 +3014,8 @@ JSAtom JS_NewAtomUInt32(JSContext *ctx, uint32_t n)
     } else {
         char buf[16];
         size_t len = u32toa(buf, n);
-        JSValue val = js_new_string8_len(ctx, buf, len);
-        if (JS_IsException(val))
-            return JS_ATOM_NULL;
-        return __JS_NewAtom(ctx->rt, JS_VALUE_GET_STRING(val),
-                            JS_ATOM_TYPE_STRING);
+        /* bypass number string check */
+        return JS_NewAtomRT(ctx->rt, ctx, buf, len, JS_ATOM_TYPE_STRING);
     }
 }
 
@@ -2968,11 +3026,8 @@ static JSAtom JS_NewAtomInt64(JSContext *ctx, int64_t n)
     } else {
         char buf[24];
         size_t len = i64toa(buf, n);
-        JSValue val = js_new_string8_len(ctx, buf, len);
-        if (JS_IsException(val))
-            return JS_ATOM_NULL;
-        return __JS_NewAtom(ctx->rt, JS_VALUE_GET_STRING(val),
-                            JS_ATOM_TYPE_STRING);
+        /* bypass number string check */
+        return JS_NewAtomRT(ctx->rt, ctx, buf, len, JS_ATOM_TYPE_STRING);
     }
 }
 
@@ -2981,9 +3036,9 @@ static JSValue JS_NewSymbolInternal(JSContext *ctx, JSString *p, int atom_type)
 {
     JSRuntime *rt = ctx->rt;
     JSAtom atom;
-    atom = __JS_NewAtom(rt, p, atom_type);
+    atom = __JS_NewAtom(rt, ctx, p, atom_type);
     if (atom == JS_ATOM_NULL)
-        return JS_ThrowOutOfMemory(ctx);
+        return JS_EXCEPTION;
     return JS_MKPTR(JS_TAG_SYMBOL, rt->atom_array[atom]);
 }
 
@@ -3004,7 +3059,9 @@ static JSValue JS_NewSymbolFromAtom(JSContext *ctx, JSAtom descr,
 /* `description` may be pure ASCII or UTF-8 encoded */
 JSValue JS_NewSymbol(JSContext *ctx, const char *description, JS_BOOL is_global)
 {
-    JSAtom atom = JS_NewAtom(ctx, description);
+    // XXX: should create a string p and use JS_NewSymbolInternal(ctx, p, atom_type);
+    /* bypass number string check */
+    JSAtom atom = JS_NewAtomRT(ctx->rt, ctx, description, strlen(description), JS_ATOM_TYPE_STRING);
     if (atom == JS_ATOM_NULL)
         return JS_EXCEPTION;
     return JS_NewSymbolFromAtom(ctx, atom, is_global ? JS_ATOM_TYPE_GLOBAL_SYMBOL : JS_ATOM_TYPE_SYMBOL);
@@ -3419,17 +3476,15 @@ static int JS_NewClass1(JSRuntime *rt, JSClassID class_id,
 
 int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def)
 {
-    int ret, len;
+    int ret;
     JSAtom name;
+    size_t len;
 
-    // XXX: class_def->class_name must be raw 8-bit contents. No UTF-8 encoded strings
+    /* class_def->class_name may be pure ASCII or UTF-8 encoded, not a number string */
     len = strlen(class_def->class_name);
-    name = __JS_FindAtom(rt, class_def->class_name, len, JS_ATOM_TYPE_STRING);
-    if (name == JS_ATOM_NULL) {
-        name = __JS_NewAtomInit(rt, class_def->class_name, len, JS_ATOM_TYPE_STRING);
-        if (name == JS_ATOM_NULL)
-            return -1;
-    }
+    name = JS_NewAtomRT(rt, NULL, class_def->class_name, len, JS_ATOM_TYPE_STRING);
+    if (name == JS_ATOM_NULL)
+        return -1;
     ret = JS_NewClass1(rt, class_id, class_def, name);
     JS_FreeAtomRT(rt, name);
     return ret;
@@ -3918,6 +3973,7 @@ static JSValue JS_ConcatString3(JSContext *ctx, const char *str1,
 }
 
 /* `str` may be pure ASCII or UTF-8 encoded */
+// TODO(chqrlie) get rid of this
 JSValue JS_NewAtomString(JSContext *ctx, const char *str)
 {
     JSAtom atom = JS_NewAtom(ctx, str);
