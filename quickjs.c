@@ -7813,6 +7813,12 @@ int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
     return JS_GetOwnPropertyInternal(ctx, desc, JS_VALUE_GET_OBJ(obj), prop);
 }
 
+void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
+                         uint32_t len)
+{
+    js_free_prop_enum(ctx, tab, len);
+}
+
 /* return -1 if exception (Proxy object only) or TRUE/FALSE */
 int JS_IsExtensible(JSContext *ctx, JSValue obj)
 {
