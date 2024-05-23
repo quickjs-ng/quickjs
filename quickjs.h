@@ -694,6 +694,7 @@ JS_EXTERN int JS_PreventExtensions(JSContext *ctx, JSValue obj);
 JS_EXTERN int JS_DeleteProperty(JSContext *ctx, JSValue obj, JSAtom prop, int flags);
 JS_EXTERN int JS_SetPrototype(JSContext *ctx, JSValue obj, JSValue proto_val);
 JS_EXTERN JSValue JS_GetPrototype(JSContext *ctx, JSValue val);
+JS_EXTERN int JS_GetLength(JSContext *ctx, JSValue obj, int64_t *pres);
 
 #define JS_GPN_STRING_MASK  (1 << 0)
 #define JS_GPN_SYMBOL_MASK  (1 << 1)

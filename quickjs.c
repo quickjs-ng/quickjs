@@ -6970,6 +6970,10 @@ static JSValue JS_GetPrototypeFree(JSContext *ctx, JSValue obj)
     return obj1;
 }
 
+int JS_GetLength(JSContext *ctx, JSValue obj, int64_t *pres) {
+    return js_get_length64(ctx, pres, obj);
+}
+
 /* return TRUE, FALSE or (-1) in case of exception */
 static int JS_OrdinaryIsInstanceOf(JSContext *ctx, JSValue val,
                                    JSValue obj)
