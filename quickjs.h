@@ -707,6 +707,8 @@ JS_EXTERN int JS_GetOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
                                      uint32_t *plen, JSValue obj, int flags);
 JS_EXTERN int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
                                 JSValue obj, JSAtom prop);
+JS_EXTERN void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
+                                   uint32_t len);
 
 JS_EXTERN JSValue JS_Call(JSContext *ctx, JSValue func_obj, JSValue this_obj,
                           int argc, JSValue *argv);
