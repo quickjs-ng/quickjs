@@ -5,6 +5,10 @@ function assert(actual, expected, message) {
     if (actual === expected)
         return;
 
+    if (typeof actual == 'number' && isNaN(actual)
+    &&  typeof expected == 'number' && isNaN(expected))
+        return;
+
     if (actual !== null && expected !== null
     &&  typeof actual == 'object' && typeof expected == 'object'
     &&  actual.toString() === expected.toString())
@@ -616,6 +620,23 @@ function test_number_literals()
     assert(01.a, undefined);
     assert(0o1.a, undefined);
     test_expr('0.a', SyntaxError);
+    assert(parseInt("0_1"), 0);
+    assert(parseInt("1_0"), 1);
+    assert(parseInt("0_1", 8), 0);
+    assert(parseInt("1_0", 8), 1);
+    assert(parseFloat("0_1"), 0);
+    assert(parseFloat("1_0"), 1);
+    assert(1_0, 10);
+    assert(parseInt("Infinity"), NaN);
+    assert(parseFloat("Infinity"), Infinity);
+    assert(parseFloat("Infinity1"), Infinity);
+    assert(parseFloat("Infinity_"), Infinity);
+    assert(parseFloat("Infinity."), Infinity);
+    test_expr('0_0', SyntaxError);
+    test_expr('00_0', SyntaxError);
+    test_expr('01_0', SyntaxError);
+    test_expr('08_0', SyntaxError);
+    test_expr('09_0', SyntaxError);
 }
 
 function test_syntax()
