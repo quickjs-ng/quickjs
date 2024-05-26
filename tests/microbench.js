@@ -919,6 +919,42 @@ function float_toString(n)
     return n * 3;
 }
 
+function float_toFixed(n)
+{
+    var s, r, j;
+    r = 0;
+    for(j = 0; j < n; j++) {
+        s = (j % 10 + 0.1).toFixed(j % 16);
+        s = (j + 0.1).toFixed(j % 16);
+        s = (j * 12345678 + 0.1).toFixed(j % 16);
+    }
+    return n * 3;
+}
+
+function float_toPrecision(n)
+{
+    var s, r, j;
+    r = 0;
+    for(j = 0; j < n; j++) {
+        s = (j % 10 + 0.1).toPrecision(j % 16 + 1);
+        s = (j + 0.1).toPrecision(j % 16 + 1);
+        s = (j * 12345678 + 0.1).toPrecision(j % 16 + 1);
+    }
+    return n * 3;
+}
+
+function float_toExponential(n)
+{
+    var s, r, j;
+    r = 0;
+    for(j = 0; j < n; j++) {
+        s = (j % 10 + 0.1).toExponential(j % 16);
+        s = (j + 0.1).toExponential(j % 16);
+        s = (j * 12345678 + 0.1).toExponential(j % 16);
+    }
+    return n * 3;
+}
+
 function string_to_int(n)
 {
     var s, r, j;
@@ -1014,11 +1050,14 @@ function main(argc, argv, g)
         int_toString,
         float_to_string,
         float_toString,
+        float_toFixed,
+        float_toPrecision,
+        float_toExponential,
         string_to_int,
         string_to_float,
     ];
     var tests = [];
-    var i, j, n, f, name;
+    var i, j, n, f, name, found;
 
     if (typeof BigInt == "function") {
         /* BigInt test */
@@ -1045,14 +1084,14 @@ function main(argc, argv, g)
             sort_bench.array_size = +argv[i++];
             continue;
         }
-        for (j = 0; j < test_list.length; j++) {
+        for (j = 0, found = false; j < test_list.length; j++) {
             f = test_list[j];
-            if (name === f.name) {
+            if (f.name.startsWith(name)) {
                 tests.push(f);
-                break;
+                found = true;
             }
         }
-        if (j == test_list.length) {
+        if (!found) {
             console.log("unknown benchmark: " + name);
             return 1;
         }
@@ -1080,6 +1119,9 @@ function main(argc, argv, g)
         save_result("microbench-new.txt", log_data);
 }
 
-if (!scriptArgs)
+if (typeof scriptArgs === "undefined") {
     scriptArgs = [];
+    if (typeof process.argv === "object")
+        scriptArgs = process.argv.slice(1);
+}
 main(scriptArgs.length, scriptArgs, this);

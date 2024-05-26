@@ -58,11 +58,6 @@
 #define MALLOC_OVERHEAD  8
 #endif
 
-#if !defined(_WIN32) && !defined(__wasi__)
-/* define it if printf uses the RNDN rounding mode instead of RNDNA */
-#define CONFIG_PRINTF_RNDN
-#endif
-
 #if defined(__NEWLIB__)
 #define NO_TM_GMTOFF
 #endif
@@ -10965,262 +10960,354 @@ static JSValue js_bigint_to_string(JSContext *ctx, JSValue val)
     return js_bigint_to_string1(ctx, val, 10);
 }
 
-/* buf1 contains the printf result */
-static void js_ecvt1(double d, int n_digits, int *decpt, int *sign, char *buf,
-                     int rounding_mode, char *buf1, int buf1_size)
+/*---- floating point number to string conversions ----*/
+
+/* JavaScript rounding is specified as round to nearest tie away
+   from zero (RNDNA), but in `printf` the "ties" case is not
+   specified (in most cases it is RNDN, round to nearest, tie to even),
+   so we must round manually. We generate 2 extra places and make
+   an extra call to snprintf if these are exactly '50'.
+   We set the current rounding mode to FE_DOWNWARD to check if the
+   last 2 places become '49'. If not, we must round up, which is
+   performed in place using the string digits.
+
+   Note that we cannot rely on snprintf for rounding up:
+   the code below fails on macOS for `0.5.toFixed(0)`: gives `0` expected `1`
+      fesetround(FE_UPWARD);
+      snprintf(dest, size, "%.*f", n_digits, d);
+      fesetround(FE_TONEAREST);
+ */
+
+/* `js_fcvt` minimum buffer length:
+   - up to 21 digits in integral part
+   - 1 potential decimal point
+   - up to 102 decimals
+   - 1 null terminator
+ */
+#define JS_FCVT_BUF_SIZE  (21+1+102+1)
+
+/* `js_ecvt` minimum buffer length:
+   - 1 leading digit
+   - 1 potential decimal point
+   - up to 102 decimals
+   - 5 exponent characters (from 'e-324' to 'e+308')
+   - 1 null terminator
+ */
+#define JS_ECVT_BUF_SIZE  (1+1+102+5+1)
+
+/* `js_dtoa` minimum buffer length:
+   - 8 byte prefix
+   - either JS_FCVT_BUF_SIZE or JS_ECVT_BUF_SIZE
+   - JS_FCVT_BUF_SIZE is larger than JS_ECVT_BUF_SIZE
+ */
+#define JS_DTOA_BUF_SIZE  (8+JS_FCVT_BUF_SIZE)
+
+/* `js_ecvt1`: compute the digits and decimal point spot for a double
+   - `d` is finite, positive or zero
+   - `n_digits` number of significant digits in range 1..103
+   - `buf` receives the printf result
+   - `buf` has a fixed format: n_digits with a decimal point at offset 1
+     and exponent 'e{+/-}xx[x]' at offset n_digits+1
+   Return n_digits
+   Store the position of the decimal point into `*decpt`
+ */
+static int js_ecvt1(double d, int n_digits,
+                    char dest[minimum_length(JS_ECVT_BUF_SIZE)],
+                    size_t size, int *decpt)
 {
-    if (rounding_mode != FE_TONEAREST)
-        fesetround(rounding_mode);
-    snprintf(buf1, buf1_size, "%+.*e", n_digits - 1, d);
-    if (rounding_mode != FE_TONEAREST)
-        fesetround(FE_TONEAREST);
-    *sign = (buf1[0] == '-');
-    /* mantissa */
-    buf[0] = buf1[1];
-    if (n_digits > 1)
-        memcpy(buf + 1, buf1 + 3, n_digits - 1);
-    buf[n_digits] = '\0';
-    /* exponent */
-    *decpt = atoi(buf1 + n_digits + 2 + (n_digits > 1)) + 1;
-}
-
-/* maximum buffer size for js_dtoa */
-#define JS_DTOA_BUF_SIZE 128
-
-/* needed because ecvt usually limits the number of digits to
-   17. Return the number of digits. */
-static int js_ecvt(double d, int n_digits, int *decpt, int *sign, char *buf,
-                   BOOL is_fixed)
-{
-    int rounding_mode;
-    char buf_tmp[JS_DTOA_BUF_SIZE];
-
-    if (!is_fixed) {
-        unsigned int n_digits_min, n_digits_max;
-        /* find the minimum amount of digits (XXX: inefficient but simple) */
-        n_digits_min = 1;
-        n_digits_max = 17;
-        while (n_digits_min < n_digits_max) {
-            n_digits = (n_digits_min + n_digits_max) / 2;
-            js_ecvt1(d, n_digits, decpt, sign, buf, FE_TONEAREST,
-                     buf_tmp, sizeof(buf_tmp));
-            if (strtod(buf_tmp, NULL) == d) {
-                /* no need to keep the trailing zeros */
-                while (n_digits >= 2 && buf[n_digits - 1] == '0')
-                    n_digits--;
-                n_digits_max = n_digits;
-            } else {
-                n_digits_min = n_digits + 1;
-            }
-        }
-        n_digits = n_digits_max;
-        rounding_mode = FE_TONEAREST;
-    } else {
-        rounding_mode = FE_TONEAREST;
-#ifdef CONFIG_PRINTF_RNDN
-        {
-            char buf1[JS_DTOA_BUF_SIZE], buf2[JS_DTOA_BUF_SIZE];
-            int decpt1, sign1, decpt2, sign2;
-            /* The JS rounding is specified as round to nearest ties away
-               from zero (RNDNA), but in printf the "ties" case is not
-               specified (for example it is RNDN for glibc, RNDNA for
-               Windows), so we must round manually. */
-            js_ecvt1(d, n_digits + 1, &decpt1, &sign1, buf1, FE_TONEAREST,
-                     buf_tmp, sizeof(buf_tmp));
-            /* XXX: could use 2 digits to reduce the average running time */
-            if (buf1[n_digits] == '5') {
-                js_ecvt1(d, n_digits + 1, &decpt1, &sign1, buf1, FE_DOWNWARD,
-                         buf_tmp, sizeof(buf_tmp));
-                js_ecvt1(d, n_digits + 1, &decpt2, &sign2, buf2, FE_UPWARD,
-                         buf_tmp, sizeof(buf_tmp));
-                if (memcmp(buf1, buf2, n_digits + 1) == 0 && decpt1 == decpt2) {
-                    /* exact result: round away from zero */
-                    if (sign1)
-                        rounding_mode = FE_DOWNWARD;
-                    else
-                        rounding_mode = FE_UPWARD;
-                }
-            }
-        }
-#endif /* CONFIG_PRINTF_RNDN */
-    }
-    js_ecvt1(d, n_digits, decpt, sign, buf, rounding_mode,
-             buf_tmp, sizeof(buf_tmp));
+    /* d is positive, ensure decimal point is always present */
+    snprintf(dest, size, "%#.*e", n_digits - 1, d);
+    /* dest contents:
+       0:            first digit
+       1:            '.' decimal point (locale specific)
+       2..n_digits:  (n_digits-1) additional digits
+       n_digits+1:   'e' exponent mark
+       n_digits+2..: exponent sign, value and null terminator
+     */
+    /* extract the exponent (actually the position of the decimal point) */
+    *decpt = 1 + atoi(dest + n_digits + 2);
     return n_digits;
 }
 
-static size_t js_fcvt1(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits,
-                       int rounding_mode)
+/* `js_ecvt`: compute the digits and decimal point spot for a double
+   with proper javascript rounding. We cannot use `ecvt` for multiple
+   resasons: portability, because of the number of digits is typically
+   limited to 17, finally because the default rounding is inadequate.
+   `d` is finite and positive or zero.
+   `n_digits` number of significant digits in range 1..101
+   or 0 for automatic (only as many digits as necessary)
+   Return the number of digits produced in `dest`.
+   Store the position of the decimal point into `*decpt`
+ */
+static int js_ecvt(double d, int n_digits,
+                   char dest[minimum_length(JS_ECVT_BUF_SIZE)],
+                   size_t size, int *decpt)
 {
-    size_t n;
-    if (rounding_mode != FE_TONEAREST)
-        fesetround(rounding_mode);
-    n = snprintf(*buf, sizeof(*buf), "%.*f", n_digits, d);
-    if (rounding_mode != FE_TONEAREST)
-        fesetround(FE_TONEAREST);
-    assert(n < sizeof(*buf));
-    return n;
-}
+    int i;
 
-static size_t js_fcvt(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits)
-{
-    int rounding_mode;
-    rounding_mode = FE_TONEAREST;
-#ifdef CONFIG_PRINTF_RNDN
-    {
-        int n1, n2;
-        char buf1[JS_DTOA_BUF_SIZE];
-        char buf2[JS_DTOA_BUF_SIZE];
-
-        /* The JS rounding is specified as round to nearest ties away from
-           zero (RNDNA), but in printf the "ties" case is not specified
-           (for example it is RNDN for glibc, RNDNA for Windows), so we
-           must round manually. */
-        n1 = js_fcvt1(&buf1, d, n_digits + 1, FE_TONEAREST);
-        rounding_mode = FE_TONEAREST;
-        /* XXX: could use 2 digits to reduce the average running time */
-        if (buf1[n1 - 1] == '5') {
-            n1 = js_fcvt1(&buf1, d, n_digits + 1, FE_DOWNWARD);
-            n2 = js_fcvt1(&buf2, d, n_digits + 1, FE_UPWARD);
-            if (n1 == n2 && memcmp(buf1, buf2, n1) == 0) {
-                /* exact result: round away from zero */
-                if (buf1[0] == '-')
-                    rounding_mode = FE_DOWNWARD;
-                else
-                    rounding_mode = FE_UPWARD;
+    if (n_digits == 0) {
+        /* find the minimum number of digits (XXX: inefficient but simple) */
+        // TODO(chqrlie) use direct method from quickjs-printf
+        unsigned int n_digits_min = 1;
+        unsigned int n_digits_max = 17;
+        for (;;) {
+            n_digits = (n_digits_min + n_digits_max) / 2;
+            js_ecvt1(d, n_digits, dest, size, decpt);
+            if (n_digits_min == n_digits_max)
+                return n_digits;
+            /* dest contents:
+               0:            first digit
+               1:            '.' decimal point (locale specific)
+               2..n_digits:  (n_digits-1) additional digits
+               n_digits+1:   'e' exponent mark
+               n_digits+2..: exponent sign, value and null terminator
+             */
+            if (strtod(dest, NULL) == d) {
+                unsigned int n0 = n_digits;
+                /* enough digits */
+                /* strip the trailing zeros */
+                while (dest[n_digits] == '0')
+                    n_digits--;
+                if (n_digits == n_digits_min)
+                    return n_digits;
+                /* done if trailing zeros and not denormal or huge */
+                if (n_digits < n0 && d > 3e-308 && d < 8e307)
+                    return n_digits;
+                n_digits_max = n_digits;
+            } else {
+                /* need at least one more digit */
+                n_digits_min = n_digits + 1;
             }
         }
-    }
-#endif /* CONFIG_PRINTF_RNDN */
-    return js_fcvt1(buf, d, n_digits, rounding_mode);
-}
-
-/* radix != 10 is only supported with flags = JS_DTOA_VAR_FORMAT */
-/* use as many digits as necessary */
-#define JS_DTOA_VAR_FORMAT   (0 << 0)
-/* use n_digits significant digits (1 <= n_digits <= 101) */
-#define JS_DTOA_FIXED_FORMAT (1 << 0)
-/* force fractional format: [-]dd.dd with n_digits fractional digits */
-#define JS_DTOA_FRAC_FORMAT  (2 << 0)
-/* force exponential notation either in fixed or variable format */
-#define JS_DTOA_FORCE_EXP    (1 << 2)
-
-/* XXX: slow and maybe not fully correct. Use libbf when it is fast enough.
-   XXX: radix != 10 is only supported for small integers
-*/
-static size_t js_dtoa1(char (*buf)[JS_DTOA_BUF_SIZE], double d,
-                       int radix, int n_digits, int flags)
-{
-    char *q;
-
-    if (!isfinite(d)) {
-        if (isnan(d)) {
-            memcpy(*buf, "NaN", sizeof "NaN");
-            return sizeof("NaN") - 1;
-        } else if (d < 0) {
-            memcpy(*buf, "-Infinity", sizeof "-Infinity");
-            return sizeof("-Infinity") - 1;
-        } else {
-            memcpy(*buf, "Infinity", sizeof "Infinity");
-            return sizeof("Infinity") - 1;
-        }
-    } else if (flags == JS_DTOA_VAR_FORMAT) {
-        int64_t i64;
-        char buf1[72], *ptr;
-        if (d > (double)MAX_SAFE_INTEGER || d < (double)-MAX_SAFE_INTEGER)
-            goto generic_conv;
-        i64 = (int64_t)d;
-        if (d != i64)
-            goto generic_conv;
-        /* fast path for integers */
-        return i64toa_radix(*buf, i64, radix);
     } else {
-        if (d == 0.0)
-            d = 0.0; /* convert -0 to 0 */
-        if (flags == JS_DTOA_FRAC_FORMAT) {
-            return js_fcvt(buf, d, n_digits);
-        } else {
-            char buf1[JS_DTOA_BUF_SIZE];
-            int sign, decpt, k, n, i, p, n_max;
-            BOOL is_fixed;
-        generic_conv:
-            is_fixed = ((flags & 3) == JS_DTOA_FIXED_FORMAT);
-            if (is_fixed) {
-                n_max = n_digits;
-            } else {
-                n_max = 21;
-            }
-            /* the number has k digits (k >= 1) */
-            k = js_ecvt(d, n_digits, &decpt, &sign, buf1, is_fixed);
-            n = decpt; /* d=10^(n-k)*(buf1) i.e. d= < x.yyyy 10^(n-1) */
-            q = *buf;
-            if (sign)
-                *q++ = '-';
-            if (flags & JS_DTOA_FORCE_EXP)
-                goto force_exp;
-            if (n >= 1 && n <= n_max) {
-                if (k <= n) {
-                    memcpy(q, buf1, k);
-                    q += k;
-                    for(i = 0; i < (n - k); i++)
-                        *q++ = '0';
-                    *q = '\0';
-                } else {
-                    /* k > n */
-                    memcpy(q, buf1, n);
-                    q += n;
-                    *q++ = '.';
-                    for(i = 0; i < (k - n); i++)
-                        *q++ = buf1[n + i];
-                    *q = '\0';
-                }
-            } else if (n >= -5 && n <= 0) {
-                *q++ = '0';
-                *q++ = '.';
-                for(i = 0; i < -n; i++)
-                    *q++ = '0';
-                memcpy(q, buf1, k);
-                q += k;
-                *q = '\0';
-            } else {
-            force_exp:
-                /* exponential notation */
-                *q++ = buf1[0];
-                if (k > 1) {
-                    *q++ = '.';
-                    for(i = 1; i < k; i++)
-                        *q++ = buf1[i];
-                }
-                *q++ = 'e';
-                p = n - 1;
-                if (p >= 0)
-                    *q++ = '+';
-                q += snprintf(q, *buf + sizeof(*buf) - q, "%d", p);
-            }
-            return q - *buf;
+#if defined(FE_DOWNWARD) && defined(FE_TONEAREST)
+        /* generate 2 extra digits: 99% chances to avoid 2 calls */
+        js_ecvt1(d, n_digits + 2, dest, size, decpt);
+        if (dest[n_digits + 1] < '5')
+            return n_digits;    /* truncate the 2 extra digits */
+        if (dest[n_digits + 1] == '5' && dest[n_digits + 2] == '0') {
+            /* close to half-way: try rounding toward 0 */
+            fesetround(FE_DOWNWARD);
+            js_ecvt1(d, n_digits + 2, dest, size, decpt);
+            fesetround(FE_TONEAREST);
+            if (dest[n_digits + 1] < '5')
+                return n_digits;    /* truncate the 2 extra digits */
         }
+        /* round up in the string */
+        for(i = n_digits;; i--) {
+            /* ignore the locale specific decimal point */
+            if (is_digit(dest[i])) {
+                if (dest[i]++ < '9')
+                    break;
+                dest[i] = '0';
+                if (i == 0) {
+                    dest[0] = '1';
+                    (*decpt)++;
+                    break;
+                }
+            }
+        }
+        return n_digits;    /* truncate the 2 extra digits */
+#else
+        /* No disambiguation available, eg: __wasi__ targets */
+        return js_ecvt1(d, n_digits, dest, size, decpt);
+#endif
     }
 }
 
-static JSValue js_dtoa(JSContext *ctx,
-                       double d, int radix, int n_digits, int flags)
+/* `js_fcvt`: convert a floating point value to %f format using RNDNA
+   `d` is finite and positive or zero.
+   `n_digits` number of decimal places in range 0..100
+   Return the number of characters produced in `dest`.
+ */
+static size_t js_fcvt(double d, int n_digits,
+                      char dest[minimum_length(JS_FCVT_BUF_SIZE)], size_t size)
+{
+#if defined(FE_DOWNWARD) && defined(FE_TONEAREST)
+    int i, n1, n2;
+    /* generate 2 extra digits: 99% chances to avoid 2 calls */
+    n1 = snprintf(dest, size, "%.*f", n_digits + 2, d) - 2;
+    if (dest[n1] >= '5') {
+        if (dest[n1] == '5' && dest[n1 + 1] == '0') {
+            /* close to half-way: try rounding toward 0 */
+            fesetround(FE_DOWNWARD);
+            n1 = snprintf(dest, size, "%.*f", n_digits + 2, d) - 2;
+            fesetround(FE_TONEAREST);
+        }
+        if (dest[n1] >= '5') {  /* number should be rounded up */
+            /* d is either exactly half way or greater: round the string manually */
+            for (i = n1 - 1;; i--) {
+                /* ignore the locale specific decimal point */
+                if (is_digit(dest[i])) {
+                    if (dest[i]++ < '9')
+                        break;
+                    dest[i] = '0';
+                    if (i == 0) {
+                        dest[0] = '1';
+                        dest[n1] = '0';
+                        dest[n1 - n_digits - 1] = '0';
+                        dest[n1 - n_digits] = '.';
+                        n1++;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    /* truncate the extra 2 digits and the decimal point if !n_digits */
+    n1 -= !n_digits;
+    //dest[n1] = '\0';    // optional
+    return n1;
+#else
+    /* No disambiguation available, eg: __wasi__ targets */
+    return snprintf(dest, size, "%.*f", n_digits, d);
+#endif
+}
+
+static JSValue js_dtoa_infinite(JSContext *ctx, double d)
+{
+    // TODO(chqrlie) use atoms for NaN and Infinite?
+    if (isnan(d))
+        return js_new_string8(ctx, "NaN");
+    if (d < 0)
+        return js_new_string8(ctx, "-Infinity");
+    else
+        return js_new_string8(ctx, "Infinity");
+}
+
+#define JS_DTOA_TOSTRING    0  /* use as many digits as necessary */
+#define JS_DTOA_EXPONENTIAL 1  /* use exponential notation either fixed or variable digits */
+#define JS_DTOA_FIXED       2  /* force fixed number of fractional digits */
+#define JS_DTOA_PRECISION   3  /* use n_digits significant digits (1 <= n_digits <= 101) */
+
+/* `js_dtoa`: convert a floating point number to a string
+   - `mode`: one of the 4 supported formats
+   - `n_digits`: digit number according to mode
+   -   TOSTRING:    0 only. As many digits as necessary
+   -   EXPONENTIAL: 0 as many decimals as necessary
+   -                1..101 number of significant digits
+   -   FIXED:       0..100 number of decimal places
+   -   PRECISION:   1..101 number of significant digits
+ */
+// XXX: should use libbf or quickjs-printf.
+static JSValue js_dtoa(JSContext *ctx, double d, int n_digits, int mode)
 {
     char buf[JS_DTOA_BUF_SIZE];
-    size_t len = js_dtoa1(&buf, d, radix, n_digits, flags);
-    return js_new_string8_len(ctx, buf, len);
+    size_t len;
+    char *start;
+    int sign, decpt, exp, i, k, n, n_max;
+
+    if (!isfinite(d))
+        return js_dtoa_infinite(ctx, d);
+
+    sign = (d < 0);
+    start = buf + 8;
+    d = fabs(d);  /* also converts -0 to 0 */
+
+    if (mode != JS_DTOA_EXPONENTIAL && n_digits == 0) {
+        /* fast path for exact integers in variable format:
+           clip to MAX_SAFE_INTEGER because to ensure insignificant
+           digits are generated as 0.
+           used for JS_DTOA_TOSTRING and JS_DTOA_FIXED without decimals.
+         */
+        if (d <= (double)MAX_SAFE_INTEGER) {
+            uint64_t u64 = (uint64_t)d;
+            if (d == u64) {
+                len = u64toa(start, u64);
+                goto done;
+            }
+        }
+    }
+    if (mode == JS_DTOA_FIXED) {
+        len = js_fcvt(d, n_digits, start, sizeof(buf) - 8);
+        // TODO(chqrlie) patch the locale specific decimal point
+        goto done;
+    }
+
+    n_max = (n_digits > 0) ? n_digits : 21;
+    /* the number has k digits (1 <= k <= n_max) */
+    k = js_ecvt(d, n_digits, start, sizeof(buf) - 8, &decpt);
+    /* buffer contents:
+       0:     first digit
+       1:     '.' decimal point
+       2..k:  (k-1) additional digits
+     */
+    n = decpt; /* d=10^(n-k)*(buf1) i.e. d= < x.yyyy 10^(n-1) */
+    if (mode != JS_DTOA_EXPONENTIAL) {
+        /* mode is JS_DTOA_PRECISION or JS_DTOA_TOSTRING */
+        if (n >= 1 && n <= n_max) {
+            /* between 1 and n_max digits before the decimal point */
+            if (k <= n) {
+                /* all digits before the point, append zeros */
+                start[1] = start[0];
+                start++;
+                for(i = k; i < n; i++)
+                    start[i] = '0';
+                len = n;
+            } else {
+                /* k > n: move digits before the point */
+                for(i = 1; i < n; i++)
+                    start[i] = start[i + 1];
+                start[i] = '.';
+                len = 1 + k;
+            }
+            goto done;
+        }
+        if (n >= -5 && n <= 0) {
+            /* insert -n leading 0 decimals and a '0.' prefix */
+            n = -n;
+            start[1] = start[0];
+            start -= n + 1;
+            start[0] = '0';
+            start[1] = '.';
+            for(i = 0; i < n; i++)
+                start[2 + i] = '0';
+            len = 2 + k + n;
+            goto done;
+        }
+    }
+    /* exponential notation */
+    exp = n - 1;
+    /* count the digits and the decimal point if at least one decimal */
+    len = k + (k > 1);
+    start[1] = '.'; /* patch the locale specific decimal point */
+    start[len] = 'e';
+    start[len + 1] = '+';
+    if (exp < 0) {
+        start[len + 1] = '-';
+        exp = -exp;
+    }
+    len += 2 + 1 + (exp > 9) + (exp > 99);
+    for (i = len - 1; exp > 9;) {
+        int quo = exp / 10;
+        start[i--] = (char)('0' + exp % 10);
+        exp = quo;
+    }
+    start[i] = (char)('0' + exp);
+
+ done:
+    start[-1] = '-';    /* prepend the sign if negative */
+    return js_new_string8_len(ctx, start - sign, len + sign);
 }
 
-/* d is guaranteed to be finite */
+/* `js_dtoa_radix`: convert a floating point number using a specific base
+   - `d` must be finite
+   - `radix` must be in range 2..36
+ */
 static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
 {
     char buf[2200], *ptr, *ptr2, *ptr3;
-    /* d is finite */
-    int sign = d < 0;
-    int digit;
+    int sign, digit;
     double frac, d0;
-    int64_t n0 = 0;
+    int64_t n0;
+
+    if (!isfinite(d))
+        return js_dtoa_infinite(ctx, d);
+
+    sign = (d < 0);
     d = fabs(d);
     d0 = trunc(d);
+    n0 = 0;
     frac = d - d0;
     ptr2 = buf + 1100;  /* ptr2 points to the end of the string */
     ptr = ptr2;         /* ptr points to the beginning of the string */
@@ -11284,7 +11371,7 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
                 ptr2[-1] = (ptr2[-1] == '9') ? 'a' : ptr2[-1] + 1;
             }
         } else {
-            /* strip trailing fractional zeroes */
+            /* strip trailing fractional zeros */
             while (ptr2[-1] == '0')
                 ptr2--;
             /* strip the 'decimal' point if last */
@@ -11340,8 +11427,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
             return JS_ThrowTypeError(ctx, "cannot convert symbol to string");
         }
     case JS_TAG_FLOAT64:
-        return js_dtoa(ctx, JS_VALUE_GET_FLOAT64(val), 10, 0,
-                       JS_DTOA_VAR_FORMAT);
+        return js_dtoa(ctx, JS_VALUE_GET_FLOAT64(val), 0, JS_DTOA_TOSTRING);
     case JS_TAG_BIG_INT:
         return js_bigint_to_string(ctx, val);
     default:
@@ -38961,7 +39047,7 @@ static int js_get_radix(JSContext *ctx, JSValue val)
     if (JS_ToInt32Sat(ctx, &radix, val))
         return -1;
     if (radix < 2 || radix > 36) {
-        JS_ThrowRangeError(ctx, "radix must be between 2 and 36");
+        JS_ThrowRangeError(ctx, "toString() radix argument must be between 2 and 36");
         return -1;
     }
     return radix;
@@ -38986,22 +39072,21 @@ static JSValue js_number_toString(JSContext *ctx, JSValue this_val,
         base = 10;
     } else {
         base = js_get_radix(ctx, argv[0]);
-        if (base < 0)
-            goto fail;
+        if (base < 0) {
+            JS_FreeValue(ctx, val);
+            return JS_EXCEPTION;
+        }
     }
     if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
-        size_t len = i64toa_radix(buf, JS_VALUE_GET_INT(val), base);
+        size_t len = i32toa_radix(buf, JS_VALUE_GET_INT(val), base);
         return js_new_string8_len(ctx, buf, len);
     }
     if (JS_ToFloat64Free(ctx, &d, val))
         return JS_EXCEPTION;
-    if (base != 10 && isfinite(d)) {
+    if (base != 10)
         return js_dtoa_radix(ctx, d, base);
-    }
-    return js_dtoa(ctx, d, base, 0, JS_DTOA_VAR_FORMAT);
- fail:
-    JS_FreeValue(ctx, val);
-    return JS_EXCEPTION;
+
+    return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
 }
 
 static JSValue js_number_toFixed(JSContext *ctx, JSValue this_val,
@@ -39019,13 +39104,13 @@ static JSValue js_number_toFixed(JSContext *ctx, JSValue this_val,
     if (JS_ToInt32Sat(ctx, &f, argv[0]))
         return JS_EXCEPTION;
     if (f < 0 || f > 100) {
-        return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
-                                  "toFixed");
+        return JS_ThrowRangeError(ctx, "toFixed() digits argument must be between 0 and 100");
     }
     if (fabs(d) >= 1e21) {
-        return JS_ToStringFree(ctx, js_float64(d));
+        // use ToString(d)
+        return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
     } else {
-        return js_dtoa(ctx, d, 10, f, JS_DTOA_FRAC_FORMAT);
+        return js_dtoa(ctx, d, f, JS_DTOA_FIXED);
     }
 }
 
@@ -39033,8 +39118,8 @@ static JSValue js_number_toExponential(JSContext *ctx, JSValue this_val,
                                        int argc, JSValue *argv)
 {
     JSValue val;
-    int f, flags;
     double d;
+    int f;
 
     val = js_thisNumberValue(ctx, this_val);
     if (JS_IsException(val))
@@ -39043,21 +39128,15 @@ static JSValue js_number_toExponential(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     if (JS_ToInt32Sat(ctx, &f, argv[0]))
         return JS_EXCEPTION;
-    if (!isfinite(d)) {
-        return JS_ToStringFree(ctx, js_float64(d));
-    }
-    if (JS_IsUndefined(argv[0])) {
-        flags = 0;
-        f = 0;
-    } else {
+    if (!isfinite(d))
+        return js_dtoa_infinite(ctx, d);
+    if (!JS_IsUndefined(argv[0])) {
         if (f < 0 || f > 100) {
-            return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
-                                      "toExponential");
+            return JS_ThrowRangeError(ctx, "toExponential() argument must be between 0 and 100");
         }
-        f++;
-        flags = JS_DTOA_FIXED_FORMAT;
+        f += 1;  /* number of significant digits between 1 and 101 */
     }
-    return js_dtoa(ctx, d, 10, f, flags | JS_DTOA_FORCE_EXP);
+    return js_dtoa(ctx, d, f, JS_DTOA_EXPONENTIAL);
 }
 
 static JSValue js_number_toPrecision(JSContext *ctx, JSValue this_val,
@@ -39073,18 +39152,15 @@ static JSValue js_number_toPrecision(JSContext *ctx, JSValue this_val,
     if (JS_ToFloat64Free(ctx, &d, val))
         return JS_EXCEPTION;
     if (JS_IsUndefined(argv[0]))
-        goto to_string;
+        return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
     if (JS_ToInt32Sat(ctx, &p, argv[0]))
         return JS_EXCEPTION;
-    if (!isfinite(d)) {
-    to_string:
-        return JS_ToStringFree(ctx, js_float64(d));
-    }
+    if (!isfinite(d))
+        return js_dtoa_infinite(ctx, d);
     if (p < 1 || p > 100) {
-        return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
-                                  "toPrecision");
+        return JS_ThrowRangeError(ctx, "toPrecision() argument must be between 1 and 100");
     }
-    return js_dtoa(ctx, d, 10, p, JS_DTOA_FIXED_FORMAT);
+    return js_dtoa(ctx, d, p, JS_DTOA_PRECISION);
 }
 
 static const JSCFunctionListEntry js_number_proto_funcs[] = {

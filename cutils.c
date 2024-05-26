@@ -575,6 +575,9 @@ overflow:
 /* 2 <= base <= 36 */
 char const digits36[36] = "0123456789abcdefghijklmnopqrstuvwxyz";
 
+#define USE_SPECIAL_RADIX_10  1  // special case base 10 radix conversions
+#define USE_SINGLE_CASE_FAST  1  // special case single digit numbers
+
 /* using u32toa_shift variant */
 
 #define gen_digit(buf, c)  if (is_be()) \
@@ -613,11 +616,13 @@ size_t u07toa_shift(char dest[minimum_length(8)], uint32_t n, size_t len)
 
 size_t u32toa(char buf[minimum_length(11)], uint32_t n)
 {
+#ifdef USE_SINGLE_CASE_FAST /* 10% */
     if (n < 10) {
         buf[0] = (char)('0' + n);
         buf[1] = '\0';
         return 1;
     }
+#endif
 #define TEN_POW_7 10000000
     if (n >= TEN_POW_7) {
         uint32_t quo = n / TEN_POW_7;
@@ -679,6 +684,8 @@ static uint8_t const radix_shift[64] = {
 
 size_t u32toa_radix(char buf[minimum_length(33)], uint32_t n, unsigned base)
 {
+    int shift;
+
 #ifdef USE_SPECIAL_RADIX_10
     if (likely(base == 10))
         return u32toa(buf, n);
@@ -688,13 +695,13 @@ size_t u32toa_radix(char buf[minimum_length(33)], uint32_t n, unsigned base)
         buf[1] = '\0';
         return 1;
     }
-    int shift = radix_shift[base & 63];
+    shift = radix_shift[base & 63];
     if (shift) {
         uint32_t mask = (1 << shift) - 1;
         size_t len = (32 - clz32(n) + shift - 1) / shift;
         size_t last = n & mask;
-        n /= base;
         char *end = buf + len;
+        n >>= shift;
         *end-- = '\0';
         *end-- = digits36[last];
         while (n >= base) {
@@ -728,11 +735,13 @@ size_t u32toa_radix(char buf[minimum_length(33)], uint32_t n, unsigned base)
 
 size_t u64toa_radix(char buf[minimum_length(65)], uint64_t n, unsigned base)
 {
+    int shift;
+
 #ifdef USE_SPECIAL_RADIX_10
     if (likely(base == 10))
         return u64toa(buf, n);
 #endif
-    int shift = radix_shift[base & 63];
+    shift = radix_shift[base & 63];
     if (shift) {
         if (n < base) {
             buf[0] = digits36[n];
@@ -742,8 +751,8 @@ size_t u64toa_radix(char buf[minimum_length(65)], uint64_t n, unsigned base)
         uint64_t mask = (1 << shift) - 1;
         size_t len = (64 - clz64(n) + shift - 1) / shift;
         size_t last = n & mask;
-        n /= base;
         char *end = buf + len;
+        n >>= shift;
         *end-- = '\0';
         *end-- = digits36[last];
         while (n >= base) {
@@ -777,6 +786,15 @@ size_t u64toa_radix(char buf[minimum_length(65)], uint64_t n, unsigned base)
     }
 }
 
+size_t i32toa_radix(char buf[minimum_length(34)], int32_t n, unsigned int base)
+{
+    if (likely(n >= 0))
+        return u32toa_radix(buf, n, base);
+
+    buf[0] = '-';
+    return 1 + u32toa_radix(buf + 1, -(uint32_t)n, base);
+}
+
 size_t i64toa_radix(char buf[minimum_length(66)], int64_t n, unsigned int base)
 {
     if (likely(n >= 0))
@@ -785,6 +803,11 @@ size_t i64toa_radix(char buf[minimum_length(66)], int64_t n, unsigned int base)
     buf[0] = '-';
     return 1 + u64toa_radix(buf + 1, -(uint64_t)n, base);
 }
+
+#undef gen_digit
+#undef TEN_POW_7
+#undef USE_SPECIAL_RADIX_10
+#undef USE_SINGLE_CASE_FAST
 
 /*---- sorting with opaque argument ----*/
 

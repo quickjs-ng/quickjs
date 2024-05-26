@@ -864,6 +864,8 @@ static uint8_t const radix_shift[64] = {
 
 size_t u32toa_radix_length(char buf[minimum_length(33)], uint32_t n, unsigned base)
 {
+    int shift;
+
 #ifdef USE_SPECIAL_RADIX_10
     if (likely(base == 10))
         return u32toa_length_loop(buf, n);
@@ -873,13 +875,13 @@ size_t u32toa_radix_length(char buf[minimum_length(33)], uint32_t n, unsigned ba
         buf[1] = '\0';
         return 1;
     }
-    int shift = radix_shift[base & 63];
+    shift = radix_shift[base & 63];
     if (shift) {
         uint32_t mask = (1 << shift) - 1;
         size_t len = (32 - clz32(n) + shift - 1) / shift;
         size_t last = n & mask;
-        n /= base;
         char *end = buf + len;
+        n >>= shift;
         *end-- = '\0';
         *end-- = digits36[last];
         while (n >= base) {
@@ -913,11 +915,13 @@ size_t u32toa_radix_length(char buf[minimum_length(33)], uint32_t n, unsigned ba
 
 size_t u64toa_radix_length(char buf[minimum_length(65)], uint64_t n, unsigned base)
 {
+    int shift;
+
 #ifdef USE_SPECIAL_RADIX_10
     if (likely(base == 10))
         return u64toa_length_loop(buf, n);
 #endif
-    int shift = radix_shift[base & 63];
+    shift = radix_shift[base & 63];
     if (shift) {
         if (n < base) {
             buf[0] = digits36[n];
@@ -927,8 +931,8 @@ size_t u64toa_radix_length(char buf[minimum_length(65)], uint64_t n, unsigned ba
         uint64_t mask = (1 << shift) - 1;
         size_t len = (64 - clz64(n) + shift - 1) / shift;
         size_t last = n & mask;
-        n /= base;
         char *end = buf + len;
+        n >>= shift;
         *end-- = '\0';
         *end-- = digits36[last];
         while (n >= base) {
@@ -1511,6 +1515,9 @@ int main(int argc, char *argv[]) {
     clock_t times1[countof(impl1)][4][37];
     char buf[100];
     uint64_t bases = 0;
+#define set_base(bases, b)  (*(bases) |= (1ULL << (b)))
+#define has_base(bases, b)  ((bases) & (1ULL << (b)))
+#define single_base(bases)  (!((bases) & ((bases) - 1)))
     int verbose = 0;
     int average = 1;
     int enabled = 3;
@@ -1521,14 +1528,13 @@ int main(int argc, char *argv[]) {
     for (int a = 1; a < argc; a++) {
         char *arg = argv[a];
         if (isdigit((unsigned char)*arg)) {
-            verbose = 1;
             while (isdigit((unsigned char)*arg)) {
                 int b1 = strtol(arg, &arg, 10);
-                bases |= (1ULL << b1);
+                set_base(&bases, b1);
                 if (*arg == '-') {
-                    int b2 = strtol(arg, &arg, 10);
+                    int b2 = strtol(arg + 1, &arg, 10);
                     while (++b1 <= b2)
-                        bases |= (1ULL << b1);
+                        set_base(&bases, b1);
                 }
                 if (*arg == ',') {
                     arg++;
@@ -1538,10 +1544,6 @@ int main(int argc, char *argv[]) {
             if (*arg) {
                 fprintf(stderr, "invalid option syntax: %s\n", argv[a]);
                 return 2;
-            }
-            if (!(bases & (bases - 1))) { /* single base */
-                average = 0;
-                verbose = 1;
             }
             continue;
         } else if (!strcmp(arg, "-t") || !strcmp(arg, "--terse")) {
@@ -1578,14 +1580,19 @@ int main(int argc, char *argv[]) {
     }
     if (!bases)
         bases = -1;
-    if (bases & (bases - 1)) /* multiple bases */
+    if (single_base(bases)) {
+        average = 0;
+        verbose = 1;
+    } else {
         average = 1;
+    }
 
     int numvariant = 0;
     int numvariant1 = 0;
     int nerrors = 0;
 
-    if (bases & (1ULL << 10)) {
+    /* Checking for correctness */
+    if (has_base(bases, 10)) {
         for (size_t i = 0; i < countof(impl); i++) {
             unsigned base = 10;
             if (impl[i].enabled & enabled) {
@@ -1599,7 +1606,7 @@ int main(int argc, char *argv[]) {
     for (size_t i = 0; i < countof(impl1); i++) {
         if (impl1[i].enabled & enabled) {
             for (unsigned base = 2; base <= 36; base++) {
-                if (bases & (1ULL << base)) {
+                if (has_base(bases, base)) {
                     CHECK(impl1[i], 1000, 0, 32, u32toa_radix(buf, x, base), strtoull(buf, NULL, base));
                     CHECK(impl1[i], 1000, 1, 32, i32toa_radix(buf, x, base), strtoll(buf, NULL, base));
                     CHECK(impl1[i], 1000, 0, 64, u64toa_radix(buf, x, base), strtoull(buf, NULL, base));
@@ -1611,13 +1618,14 @@ int main(int argc, char *argv[]) {
     if (nerrors)
         return 1;
 
-    if (bases & (1ULL << 10)) {
+    /* Timing conversions */
+    if (has_base(bases, 10)) {
         for (int rep = 0; rep < 100; rep++) {
             for (size_t i = 0; i < countof(impl); i++) {
                 if (impl[i].enabled & enabled) {
                     numvariant++;
 #ifdef TEST_SNPRINTF
-                    if (strstr(impl[i].name, "snprintf")) { // avoid function call overhead
+                    if (strstr(impl[i].name, "snprintf")) { // avoid wrapper overhead
                         TIME(times[i][0], 1000, 0, 32, snprintf(buf, 11, "%"PRIu32, x));
                         TIME(times[i][1], 1000, 1, 32, snprintf(buf, 12, "%"PRIi32, x));
                         TIME(times[i][2], 1000, 0, 64, snprintf(buf, 21, "%"PRIu64, x));
@@ -1639,42 +1647,42 @@ int main(int argc, char *argv[]) {
             if (impl1[i].enabled & enabled) {
                 numvariant1++;
 #ifdef TEST_SNPRINTF
-                if (strstr(impl[i].name, "snprintf")) { // avoid function call overhead
+                if (strstr(impl[i].name, "snprintf")) { // avoid wrapper overhead
 #ifdef PRIb32
-                    if (bases & (1ULL << 1)) {
+                    if (has_base(bases, 2)) {
                         unsigned base = 2;
-                        TIME(times1[i][0][2], 1000, 0, 32, snprintf(buf, 33, "%"PRIb32, x));
+                        TIME(times1[i][0][base], 1000, 0, 32, snprintf(buf, 33, "%"PRIb32, x));
                         TIME(times1[i][1][base], 1000, 1, 32, impl1[i].i32toa_radix(buf, x, base));
-                        TIME(times1[i][2][2], 1000, 0, 64, snprintf(buf, 65, "%"PRIb64, x));
+                        TIME(times1[i][2][base], 1000, 0, 64, snprintf(buf, 65, "%"PRIb64, x));
                         TIME(times1[i][3][base], 1000, 1, 64, impl1[i].i64toa_radix(buf, x, base));
                     }
 #endif
-                    if (bases & (1ULL << 8)) {
+                    if (has_base(bases, 8)) {
                         unsigned base = 8;
-                        TIME(times1[i][0][8], 1000, 0, 32, snprintf(buf, 33, "%"PRIo32, x));
+                        TIME(times1[i][0][base], 1000, 0, 32, snprintf(buf, 33, "%"PRIo32, x));
                         TIME(times1[i][1][base], 1000, 1, 32, impl1[i].i32toa_radix(buf, x, base));
-                        TIME(times1[i][2][8], 1000, 0, 64, snprintf(buf, 65, "%"PRIo64, x));
+                        TIME(times1[i][2][base], 1000, 0, 64, snprintf(buf, 65, "%"PRIo64, x));
                         TIME(times1[i][3][base], 1000, 1, 64, impl1[i].i64toa_radix(buf, x, base));
                     }
-                    if (bases & (1ULL << 10)) {
+                    if (has_base(bases, 10)) {
                         unsigned base = 10;
-                        TIME(times1[i][0][10], 1000, 0, 32, snprintf(buf, 33, "%"PRIu32, x));
-                        TIME(times1[i][1][10], 1000, 1, 32, snprintf(buf, 34, "%"PRIi32, x));
-                        TIME(times1[i][2][10], 1000, 0, 64, snprintf(buf, 64, "%"PRIu64, x));
-                        TIME(times1[i][3][10], 1000, 1, 64, snprintf(buf, 65, "%"PRIi64, x));
+                        TIME(times1[i][0][base], 1000, 0, 32, snprintf(buf, 33, "%"PRIu32, x));
+                        TIME(times1[i][1][base], 1000, 1, 32, snprintf(buf, 34, "%"PRIi32, x));
+                        TIME(times1[i][2][base], 1000, 0, 64, snprintf(buf, 64, "%"PRIu64, x));
+                        TIME(times1[i][3][base], 1000, 1, 64, snprintf(buf, 65, "%"PRIi64, x));
                     }
-                    if (bases & (1ULL << 16)) {
+                    if (has_base(bases, 16)) {
                         unsigned base = 16;
-                        TIME(times1[i][0][16], 1000, 0, 32, snprintf(buf, 33, "%"PRIx32, x));
+                        TIME(times1[i][0][base], 1000, 0, 32, snprintf(buf, 33, "%"PRIx32, x));
                         TIME(times1[i][1][base], 1000, 1, 32, impl1[i].i32toa_radix(buf, x, base));
-                        TIME(times1[i][2][16], 1000, 0, 64, snprintf(buf, 65, "%"PRIx64, x));
+                        TIME(times1[i][2][base], 1000, 0, 64, snprintf(buf, 65, "%"PRIx64, x));
                         TIME(times1[i][3][base], 1000, 1, 64, impl1[i].i64toa_radix(buf, x, base));
                     }
                 } else
 #endif
                 {
                     for (unsigned base = 2; base <= 36; base++) {
-                        if (bases & (1ULL << base)) {
+                        if (has_base(bases, base)) {
                             TIME(times1[i][0][base], 1000, 0, 32, impl1[i].u32toa_radix(buf, x, base));
                             TIME(times1[i][1][base], 1000, 1, 32, impl1[i].i32toa_radix(buf, x, base));
                             TIME(times1[i][2][base], 1000, 0, 64, impl1[i].u64toa_radix(buf, x, base));
@@ -1704,7 +1712,7 @@ int main(int argc, char *argv[]) {
         for (size_t i = 0; i < countof(impl1); i++) {
             int numbases = 0;
             for (unsigned base = 2; base <= 36; base++) {
-                if (bases & (1ULL << base)) {
+                if (has_base(bases, base)) {
                     if (times1[i][0][base]) {
                         numbases++;
                         for (int j = 0; j < 4; j++)

@@ -463,6 +463,7 @@ size_t i32toa(char buf[minimum_length(12)], int32_t n);
 size_t u64toa(char buf[minimum_length(21)], uint64_t n);
 size_t i64toa(char buf[minimum_length(22)], int64_t n);
 size_t u32toa_radix(char buf[minimum_length(33)], uint32_t n, unsigned int base);
+size_t i32toa_radix(char buf[minimum_length(34)], int32_t n, unsigned base);
 size_t u64toa_radix(char buf[minimum_length(65)], uint64_t n, unsigned int base);
 size_t i64toa_radix(char buf[minimum_length(66)], int64_t n, unsigned int base);
 
