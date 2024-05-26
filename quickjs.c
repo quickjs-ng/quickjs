@@ -10148,17 +10148,18 @@ static JSValue js_string_to_bigint(JSContext *ctx, const char *buf, int radix)
     return JS_CompactBigInt1(ctx, val);
 }
 
-/* `js_atof(ctx, p, end, pp, radix, flags)`
+/* `js_atof(ctx, p, len, pp, radix, flags)`
+   Convert the string pointed to by `p` to a number value.
    Return an exception in case of memory error.
    Return `JS_NAN` if invalid syntax.
-   - `p` points to a null terminated UTF-8 encoded char array
-   - `end` points to the end of the array.
-   - `pp` if not null receives a pointer to the next character
-   - `radix` must be in range 2 to 36, else return `JS_NAN`
-   - `flags` is a combination of the flags below
-   There is a null byte at `*end`, but there might be embedded null bytes
-   between `p` and `end` which must produce `JS_NAN` if the
-   `ATOD_NO_TRAILING_CHARS` flag is not present.
+   - `p` points to a null terminated UTF-8 encoded char array,
+   - `len` the length of the array,
+   - `pp` if not null receives a pointer to the next character,
+   - `radix` must be in range 2 to 36, else return `JS_NAN`.
+   - `flags` is a combination of the flags below.
+   There is a null byte at `p[len]`, but there might be embedded null
+   bytes between `p[0]` and `p[len]` which must produce `JS_NAN` if
+   the `ATOD_NO_TRAILING_CHARS` flag is present.
  */
 
 #define ATOD_TRIM_SPACES         (1 << 0)   /* trim white space */
@@ -10173,14 +10174,15 @@ static JSValue js_string_to_bigint(JSContext *ctx, const char *buf, int radix)
 #define ATOD_DECIMAL_AFTER_SIGN  (1 << 9)   /* only accept decimal number after sign */
 #define ATOD_NO_TRAILING_CHARS   (1 << 10)  /* do not accept trailing characters */
 
-static JSValue js_atof(JSContext *ctx, const char *p, const char *end,
+static JSValue js_atof(JSContext *ctx, const char *p, size_t len,
                        const char **pp, int radix, int flags)
 {
     const char *p_start;
+    const char *end = p + len;
     int sep;
     BOOL is_float;
     char buf1[64], *buf = buf1;
-    size_t i, j, len;
+    size_t i, j;
     JSValue val = JS_NAN;
     double d;
     char sign;
@@ -10362,7 +10364,7 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
                 ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_INFINITY |
                 ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT |
                 ATOD_DECIMAL_AFTER_SIGN | ATOD_NO_TRAILING_CHARS;
-            ret = js_atof(ctx, str, str + len, NULL, 10, flags);
+            ret = js_atof(ctx, str, len, NULL, 10, flags);
             JS_FreeCString(ctx, str);
         }
         break;
@@ -10946,6 +10948,7 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValue val, int radix)
     bf_t a_s, *a;
     char *str;
     int saved_sign;
+    size_t len;
 
     a = JS_ToBigInt(ctx, &a_s, val);
     if (!a)
@@ -10953,14 +10956,13 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValue val, int radix)
     saved_sign = a->sign;
     if (a->expn == BF_EXP_ZERO)
         a->sign = 0;
-    // TODO(chqrlie) bf_ftoa should return the string length to the caller
-    str = bf_ftoa(NULL, a, radix, 0, BF_RNDZ | BF_FTOA_FORMAT_FRAC |
+    str = bf_ftoa(&len, a, radix, 0, BF_RNDZ | BF_FTOA_FORMAT_FRAC |
                   BF_FTOA_JS_QUIRKS);
     a->sign = saved_sign;
     JS_FreeBigInt(ctx, a, &a_s);
     if (!str)
         return JS_ThrowOutOfMemory(ctx);
-    ret = js_new_string8(ctx, str);
+    ret = js_new_string8_len(ctx, str, len);
     bf_free(ctx->bf_ctx, str);
     return ret;
 }
@@ -11888,7 +11890,7 @@ static JSValue JS_StringToBigInt(JSContext *ctx, JSValue val)
         ATOD_TRIM_SPACES | ATOD_ACCEPT_EMPTY |
         ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT |
         ATOD_DECIMAL_AFTER_SIGN | ATOD_NO_TRAILING_CHARS;
-    val = js_atof(ctx, str, str + len, NULL, 10, flags);
+    val = js_atof(ctx, str, len, NULL, 10, flags);
     JS_FreeCString(ctx, str);
     return val;
 }
@@ -19327,13 +19329,14 @@ static __exception int next_token(JSParseState *s)
         /* number */
         {
             JSValue ret;
-            const uint8_t *p1;
+            const char *p1;
 
             flags = ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
             radix = 10;
         parse_number:
-            ret = js_atof(s->ctx, (const char *)p, (const char *)s->buf_end,
-                          (const char **)&p, radix, flags);
+            p1 = (const char *)p;
+            ret = js_atof(s->ctx, p1, s->buf_end - p, &p1, radix, flags);
+            p = (const uint8_t *)p1;
             if (JS_IsException(ret))
                 goto fail;
             /* reject `10instanceof Number` */
@@ -39202,7 +39205,7 @@ static JSValue js_parseInt(JSContext *ctx, JSValue this_val,
         flags |= ATOD_ACCEPT_HEX_PREFIX;  // Only 0x and 0X are supported
         radix = 10;
     }
-    ret = js_atof(ctx, str, str + len, NULL, radix, flags);
+    ret = js_atof(ctx, str, len, NULL, radix, flags);
     JS_FreeCString(ctx, str);
     return ret;
 }
@@ -39219,7 +39222,7 @@ static JSValue js_parseFloat(JSContext *ctx, JSValue this_val,
     if (!str)
         return JS_EXCEPTION;
     flags = ATOD_TRIM_SPACES | ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_INFINITY;
-    ret = js_atof(ctx, str, str + len, NULL, 10, flags);
+    ret = js_atof(ctx, str, len, NULL, 10, flags);
     JS_FreeCString(ctx, str);
     return ret;
 }
