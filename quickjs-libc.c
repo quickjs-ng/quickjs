@@ -276,7 +276,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                     string_arg = JS_ToCString(ctx, argv[i++]);
                     if (!string_arg)
                         goto fail;
-                    int32_arg = utf8_decode((const uint8_t *)string_arg, UTF8_CHAR_LEN_MAX, &p);
+                    int32_arg = utf8_decode((const uint8_t *)string_arg, &p);
                     JS_FreeCString(ctx, string_arg);
                 } else {
                     if (JS_ToInt32(ctx, &int32_arg, argv[i++]))
