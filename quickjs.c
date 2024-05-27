@@ -12026,6 +12026,11 @@ int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValue val)
     return JS_ToBigInt64Free(ctx, pres, js_dup(val));
 }
 
+int JS_ToBigUint64(JSContext *ctx, uint64_t *pres, JSValue val)
+{
+    return JS_ToBigInt64Free(ctx, (int64_t *)pres, js_dup(val));
+}
+
 static JSValue JS_NewBigInt(JSContext *ctx)
 {
     JSBigInt *p;

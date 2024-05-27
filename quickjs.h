@@ -638,6 +638,7 @@ JS_EXTERN int JS_ToIndex(JSContext *ctx, uint64_t *plen, JSValue val);
 JS_EXTERN int JS_ToFloat64(JSContext *ctx, double *pres, JSValue val);
 /* return an exception if 'val' is a Number */
 JS_EXTERN int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValue val);
+JS_EXTERN int JS_ToBigUint64(JSContext *ctx, uint64_t *pres, JSValue val);
 /* same as JS_ToInt64() but allow BigInt */
 JS_EXTERN int JS_ToInt64Ext(JSContext *ctx, int64_t *pres, JSValue val);
 
