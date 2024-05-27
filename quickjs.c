@@ -1089,8 +1089,10 @@ static void js_promise_resolve_function_mark(JSRuntime *rt, JSValue val,
 #define HINT_FORCE_ORDINARY (1 << 4) // don't try Symbol.toPrimitive
 static JSValue JS_ToPrimitiveFree(JSContext *ctx, JSValue val, int hint);
 static JSValue JS_ToStringFree(JSContext *ctx, JSValue val);
+static bf_t *JS_ToBigIntFree(JSContext *ctx, bf_t *buf, JSValue val);
 static int JS_ToBoolFree(JSContext *ctx, JSValue val);
 static int JS_ToInt32Free(JSContext *ctx, int32_t *pres, JSValue val);
+static int JS_ToInt64Free(JSContext *ctx, int64_t *pres, JSValue val);
 static int JS_ToFloat64Free(JSContext *ctx, double *pres, JSValue val);
 static int JS_ToUint8ClampFree(JSContext *ctx, int32_t *pres, JSValue val);
 static JSValue js_new_string8_len(JSContext *ctx, const char *buf, int len);
@@ -1131,7 +1133,6 @@ static inline bf_t *JS_GetBigInt(JSValue val)
 }
 static JSValue JS_CompactBigInt1(JSContext *ctx, JSValue val);
 static JSValue JS_CompactBigInt(JSContext *ctx, JSValue val);
-static int JS_ToBigInt64Free(JSContext *ctx, int64_t *pres, JSValue val);
 static bf_t *JS_ToBigInt(JSContext *ctx, bf_t *buf, JSValue val);
 static bf_t *JS_ToBigInt1(JSContext *ctx, bf_t *buf, JSValue val);
 static void JS_FreeBigInt(JSContext *ctx, bf_t *a, bf_t *buf);
@@ -8513,7 +8514,7 @@ retry:
                         if (p1->class_id == JS_CLASS_BIG_INT64_ARRAY ||
                             p1->class_id == JS_CLASS_BIG_UINT64_ARRAY) {
                             int64_t v;
-                            if (JS_ToBigInt64Free(ctx, &v, val))
+                            if (JS_ToInt64Free(ctx, &v, val))
                                 return -1;
                         } else {
                             val = JS_ToNumberFree(ctx, val);
@@ -8791,7 +8792,7 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
             /* XXX: need specific conversion function */
             {
                 int64_t v;
-                if (JS_ToBigInt64Free(ctx, &v, val))
+                if (JS_ToInt64Free(ctx, &v, val))
                     goto ta_cvt_fail;
                 if (unlikely(idx >= (uint32_t)p->u.array.count))
                     goto ta_out_of_bound;
@@ -10634,6 +10635,19 @@ static int JS_ToInt64Free(JSContext *ctx, int64_t *pres, JSValue val)
     case JS_TAG_UNDEFINED:
         ret = JS_VALUE_GET_INT(val);
         break;
+    case JS_TAG_BIG_INT:
+        {
+            bf_t a_s, *a;
+
+            a = JS_ToBigIntFree(ctx, &a_s, val);
+            if (!a) {
+                *pres = 0;
+                return -1;
+            }
+            bf_get_int64(&ret, a, BF_GET_INT_MOD);
+            JS_FreeBigInt(ctx, a, &a_s);
+        }
+        break;
     case JS_TAG_FLOAT64:
         {
             JSFloat64Union u;
@@ -11989,24 +12003,9 @@ static void JS_FreeBigInt(JSContext *ctx, bf_t *a, bf_t *buf)
     }
 }
 
-/* XXX: merge with JS_ToInt64Free with a specific flag */
-static int JS_ToBigInt64Free(JSContext *ctx, int64_t *pres, JSValue val)
-{
-    bf_t a_s, *a;
-
-    a = JS_ToBigIntFree(ctx, &a_s, val);
-    if (!a) {
-        *pres = 0;
-        return -1;
-    }
-    bf_get_int64(pres, a, BF_GET_INT_MOD);
-    JS_FreeBigInt(ctx, a, &a_s);
-    return 0;
-}
-
 int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValue val)
 {
-    return JS_ToBigInt64Free(ctx, pres, js_dup(val));
+    return JS_ToInt64Free(ctx, pres, js_dup(val));
 }
 
 static JSValue JS_NewBigInt(JSContext *ctx)
