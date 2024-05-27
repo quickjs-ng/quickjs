@@ -401,7 +401,8 @@ enum {
 int utf8_scan(const char *buf, size_t len, size_t *plen);
 size_t utf8_encode_len(uint32_t c);
 size_t utf8_encode(uint8_t *buf, uint32_t c);
-uint32_t utf8_decode(const uint8_t *p, size_t max_len, const uint8_t **pp);
+uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp);
+uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp);
 size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len);
 size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len);
 size_t utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len);

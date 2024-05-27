@@ -10049,7 +10049,7 @@ static int skip_spaces(const char *pc)
             if (!((c >= 0x09 && c <= 0x0d) || (c == 0x20)))
                 break;
         } else {
-            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p - 1, &p_next);
             /* no need to test for invalid UTF-8, 0xFFFD is not a space */
             if (!lre_is_space(c))
                 break;
@@ -18724,7 +18724,7 @@ static __exception int js_parse_template_part(JSParseState *s,
             s->eol = &p[-1];
             s->mark = p;
         } else if (c >= 0x80) {
-            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p - 1, &p_next);
             if (p_next == p) {
                 js_parse_error(s, "invalid UTF-8 sequence");
                 goto fail;
@@ -18830,7 +18830,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     }
                     goto fail;
                 } else if (c >= 0x80) {
-                    c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+                    c = utf8_decode(p, &p_next);
                     if (p_next == p + 1) {
                         goto invalid_utf8;
                     }
@@ -18856,7 +18856,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 break;
             }
         } else if (c >= 0x80) {
-            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p - 1, &p_next);
             if (p_next == p)
                 goto invalid_utf8;
             p = p_next;
@@ -18928,7 +18928,7 @@ static __exception int js_parse_regexp(JSParseState *s)
             else if (c == '\0' && p >= s->buf_end)
                 goto eof_error;
             else if (c >= 0x80) {
-                c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+                c = utf8_decode(p - 1, &p_next);
                 if (p_next == p) {
                     goto invalid_utf8;
                 }
@@ -18937,7 +18937,7 @@ static __exception int js_parse_regexp(JSParseState *s)
                     goto eol_error;
             }
         } else if (c >= 0x80) {
-            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p - 1, &p_next);
             if (p_next == p) {
             invalid_utf8:
                 js_parse_error(s, "invalid UTF-8 sequence");
@@ -18957,7 +18957,7 @@ static __exception int js_parse_regexp(JSParseState *s)
 
     /* flags */
     for(;;) {
-        c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+        c = utf8_decode(p, &p_next);
         /* no need to test for invalid UTF-8, 0xFFFD is not ident_next */
         if (!lre_js_is_ident_next(c))
             break;
@@ -19031,7 +19031,7 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
             c = lre_parse_escape(&p_next, TRUE);
             *pident_has_escape = TRUE;
         } else if (c >= 0x80) {
-            c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p, &p_next);
             /* no need to test for invalid UTF-8, 0xFFFD is not ident_next */
         }
         if (!lre_js_is_ident_next(c))
@@ -19135,7 +19135,7 @@ static __exception int next_token(JSParseState *s)
                     s->got_lf = TRUE; /* considered as LF for ASI */
                     p++;
                 } else if (*p >= 0x80) {
-                    c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p);
+                    c = utf8_decode(p, &p);
                     /* ignore invalid UTF-8 in comments */
                     if (c == CP_LS || c == CP_PS) {
                         s->got_lf = TRUE; /* considered as LF for ASI */
@@ -19156,7 +19156,7 @@ static __exception int next_token(JSParseState *s)
                 if (*p == '\r' || *p == '\n')
                     break;
                 if (*p >= 0x80) {
-                    c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p);
+                    c = utf8_decode(p, &p);
                     /* ignore invalid UTF-8 in comments */
                     /* LS or PS are considered as line terminator */
                     if (c == CP_LS || c == CP_PS) {
@@ -19256,7 +19256,7 @@ static __exception int next_token(JSParseState *s)
             if (c == '\\' && *p_next == 'u') {
                 c = lre_parse_escape(&p_next, TRUE);
             } else if (c >= 0x80) {
-                c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+                c = utf8_decode(p, &p_next);
                 if (p_next == p + 1)
                     goto invalid_utf8;
             }
@@ -19328,7 +19328,7 @@ static __exception int next_token(JSParseState *s)
                 goto fail;
             /* reject `10instanceof Number` */
             if (JS_VALUE_IS_NAN(ret) ||
-                lre_js_is_ident_next(utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next))) {
+                lre_js_is_ident_next(utf8_decode(p, &p_next))) {
                 JS_FreeValue(s->ctx, ret);
                 js_parse_error(s, "invalid number literal");
                 goto fail;
@@ -19521,7 +19521,7 @@ static __exception int next_token(JSParseState *s)
         break;
     default:
         if (c >= 0x80) {  /* non-ASCII code-point */
-            c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p, &p_next);
             if (p_next == p + 1)
                 goto invalid_utf8;
             p = p_next;
@@ -19631,7 +19631,7 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
             }
         } else
         if (c >= 0x80) {
-            c = utf8_decode(p - 1, s->buf_end - p, &p_next);
+            c = utf8_decode(p - 1, &p_next);
             if (p_next == p) {
                 json_parse_error(s, p - 1, "Bad UTF-8 sequence");
                 goto fail;
@@ -19835,7 +19835,7 @@ static __exception int json_next_token(JSParseState *s)
         break;
     default:
         if (c >= 0x80) {
-            c = utf8_decode(p, s->buf_end - p, &p_next);
+            c = utf8_decode(p, &p_next);
             if (p_next == p + 1) {
                 js_parse_error(s, "Unexpected token '\\x%02x' in JSON", *p);
             } else {
@@ -19958,7 +19958,7 @@ static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end)
             if (*p == '\n' || *p == '\r') {
                 break;
             } else if (*p >= 0x80) {
-                c = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p);
+                c = utf8_decode(p, &p);
                 /* purposely ignore UTF-8 encoding errors in this comment line */
                 if (c == CP_LS || c == CP_PS)
                     break;

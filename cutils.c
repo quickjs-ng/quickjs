@@ -276,7 +276,6 @@ size_t utf8_encode(uint8_t *buf, uint32_t c)
 
 /* Decode a single code point from a UTF-8 encoded array of bytes
    `p` is a valid pointer to an array of bytes
-   `max_len` is the number of bytes available in the array
    `pp` is a valid pointer to a `const uint8_t *` to store a pointer
    to the byte following the current sequence.
    Return the code point at `p`, in the range `0..0x10FFFF`
@@ -284,9 +283,12 @@ size_t utf8_encode(uint8_t *buf, uint32_t c)
    The maximum length for a UTF-8 byte sequence is 4 bytes.
    This implements the algorithm specified in whatwg.org, except it accepts
    UTF-8 encoded surrogates as JavaScript allows them in strings.
+   The source string is assumed to have at least UTF8_CHAR_LEN_MAX bytes
+   or be null terminated.
+   If `p[0]` is '\0', the return value is `0` and the byte is consumed.
    cf: https://encoding.spec.whatwg.org/#utf-8-encoder
  */
-uint32_t utf8_decode(const uint8_t *p, size_t max_len, const uint8_t **pp)
+uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp)
 {
     uint32_t c;
     uint8_t lower, upper;
@@ -305,10 +307,6 @@ uint32_t utf8_decode(const uint8_t *p, size_t max_len, const uint8_t **pp)
     case 0xD4: case 0xD5: case 0xD6: case 0xD7:
     case 0xD8: case 0xD9: case 0xDA: case 0xDB:
     case 0xDC: case 0xDD: case 0xDE: case 0xDF:
-        if (max_len < 2) {
-            // need more bytes
-            break;
-        }
         if (*p >= 0x80 && *p <= 0xBF) {
             *pp = p + 1;
             return ((c - 0xC0) << 6) + (*p - 0x80);
@@ -324,10 +322,6 @@ uint32_t utf8_decode(const uint8_t *p, size_t max_len, const uint8_t **pp)
     case 0xEC: case 0xED: case 0xEE: case 0xEF:
         lower = 0x80;
     need2:
-        if (max_len < 3) {
-            // need more bytes
-            break;
-        }
         if (*p >= lower && *p <= 0xBF && p[1] >= 0x80 && p[1] <= 0xBF) {
             *pp = p + 2;
             return ((c - 0xE0) << 12) + ((*p - 0x80) << 6) + (p[1] - 0x80);
@@ -346,10 +340,6 @@ uint32_t utf8_decode(const uint8_t *p, size_t max_len, const uint8_t **pp)
         lower = 0x80;
         upper = 0xBF;
     need3:
-        if (max_len < 4) {
-            // need more bytes
-            break;
-        }
         if (*p >= lower && *p <= upper && p[1] >= 0x80 && p[1] <= 0xBF
         &&  p[2] >= 0x80 && p[2] <= 0xBF) {
             *pp = p + 3;
@@ -363,6 +353,31 @@ uint32_t utf8_decode(const uint8_t *p, size_t max_len, const uint8_t **pp)
         break;
     }
     *pp = p;
+    return 0xFFFD;
+}
+
+uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp) {
+    switch (max_len) {
+    case 0:
+        *pp = p;
+        return 0xFFFD;
+    case 1:
+        if (*p < 0x80)
+            goto good;
+        break;
+    case 2:
+        if (*p < 0xE0)
+            goto good;
+        break;
+    case 3:
+        if (*p < 0xF0)
+            goto good;
+        break;
+    default:
+    good:
+        return utf8_decode(p, pp);
+    }
+    *pp = p + 1;
     return 0xFFFD;
 }
 
@@ -399,7 +414,7 @@ int utf8_scan(const char *buf, size_t buf_len, size_t *plen)
             len++;
             if (*p++ >= 0x80) {
                 /* parse UTF-8 sequence, check for encoding error */
-                uint32_t c = utf8_decode(p - 1, p_end - (p - 1), &p_next);
+                uint32_t c = utf8_decode_len(p - 1, p_end - (p - 1), &p_next);
                 if (p_next == p)
                     kind |= UTF8_HAS_ERRORS;
                 p = p_next;
@@ -464,7 +479,7 @@ size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_
         uint32_t c = *p++;
         if (c >= 0x80) {
             /* parse utf-8 sequence */
-            c = utf8_decode(p - 1, p_end - (p - 1), &p);
+            c = utf8_decode_len(p - 1, p_end - (p - 1), &p);
             /* encoding errors are converted as 0xFFFD and use a single byte */
             if (c > 0xFFFF) {
                 if (i < dest_len)

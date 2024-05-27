@@ -806,7 +806,7 @@ static int get_class_atom(REParseState *s, CharRange *cr,
     normal_char:
         p++;
         if (c >= 0x80) {
-            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p - 1, &p_next);
             if (p_next == p)
                 return re_parse_error(s, "invalid UTF-8 sequence");
             p = p_next;
@@ -1125,12 +1125,12 @@ static int re_parse_group_name(char *buf, int buf_size, const uint8_t **pp)
         } else if (c == '>') {
             break;
         } else if (c >= 0x80) {
-            c = utf8_decode(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p - 1, &p_next);
             if (p_next == p)
                 return -1;
             p = p_next;
             if (is_hi_surrogate(c)) {
-                d = utf8_decode(p, UTF8_CHAR_LEN_MAX, &p_next);
+                d = utf8_decode(p, &p_next);
                 if (is_lo_surrogate(d)) {
                     c = from_surrogate(c, d);
                     p = p_next;
