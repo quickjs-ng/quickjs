@@ -6,6 +6,34 @@ on:
       - "v*.*.*"
 
 jobs:
+  linux-aarch64:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jirutka/setup-alpine@v1
+        with:
+          arch: aarch64
+          packages: "build-base make cmake"
+      - name: build
+        shell: alpine.sh {0}
+        run: |
+          mkdir build
+          cd build
+          cmake -DBUILD_STATIC_QJS_EXE=ON ..
+          cd ..
+          cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
+          cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
+          mv build/qjs build/qjs-linux-aarch64
+          mv build/qjsc build/qjsc-linux-aarch64
+      - name: check
+        shell: alpine.sh {0}
+        run: |
+          file build/*-linux-aarch64
+      - name: upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: qjs
+          path: build/*-linux-aarch64
   linux-x86:
     runs-on: ubuntu-20.04
     steps:
@@ -28,7 +56,7 @@ jobs:
       - name: check
         shell: alpine.sh {0}
         run: |
-          file build/qjs-linux-x86 build/qjsc-linux-x86
+          file build/*-linux-x86
       - name: upload
         uses: actions/upload-artifact@v3
         with:
@@ -57,7 +85,7 @@ jobs:
       - name: check
         shell: alpine.sh {0}
         run: |
-          file build/qjs-linux-x86_64 build/qjsc-linux-x86_64
+          file build/*-linux-x86_64
       - name: upload
         uses: actions/upload-artifact@v3
         with:
