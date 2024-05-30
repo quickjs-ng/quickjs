@@ -768,6 +768,10 @@ function test_regexp()
 
     eval("/[\\-]/");
     eval("/[\\-]/u");
+
+    /* test zero length matches */
+    a = /()*?a/.exec(",");
+    assert(a, null);
 }
 
 function test_symbol()
