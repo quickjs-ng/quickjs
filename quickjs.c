@@ -1755,6 +1755,10 @@ void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags)
     rt->dump_flags = flags;
 }
 
+size_t JS_GetGCThreshold(JSRuntime *rt) {
+    return rt->malloc_gc_threshold;
+}
+
 /* use 0 to disable automatic GC */
 void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold)
 {
