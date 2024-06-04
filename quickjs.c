@@ -1341,7 +1341,7 @@ static void js_trigger_gc(JSRuntime *rt, size_t size)
     force_gc = TRUE;
 #else
     force_gc = ((rt->malloc_state.malloc_size + size) >
-                rt->malloc_gc_threshold);
+                rt->malloc_gc_threshold - 1);
 #endif
     if (force_gc) {
 #ifdef DUMP_GC
@@ -1755,7 +1755,7 @@ void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags)
     rt->dump_flags = flags;
 }
 
-/* use -1 to disable automatic GC */
+/* use 0 to disable automatic GC */
 void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold)
 {
     rt->malloc_gc_threshold = gc_threshold;
