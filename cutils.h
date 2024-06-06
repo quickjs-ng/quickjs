@@ -25,6 +25,7 @@
 #ifndef CUTILS_H
 #define CUTILS_H
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
@@ -72,24 +73,27 @@ static void *__builtin_frame_address(unsigned int level) {
 
 // https://stackoverflow.com/a/6849629
 #undef FORMAT_STRING
-#if _MSC_VER >= 1400
-# include <sal.h>
-# if _MSC_VER > 1400
-#  define FORMAT_STRING(p) _Printf_format_string_ p
-# else
-#  define FORMAT_STRING(p) __format_string p
-# endif /* FORMAT_STRING */
-#else
-# define FORMAT_STRING(p) p
+#ifdef _MSC_VER
+# if _MSC_VER >= 1400
+#  include <sal.h>
+#  if _MSC_VER > 1400
+#   define FORMAT_STRING(p) _Printf_format_string_ p
+#  else
+#   define FORMAT_STRING(p) __format_string p
+#  endif
+# endif
 #endif /* _MSC_VER */
+#ifndef FORMAT_STRING
+# define FORMAT_STRING(p) p
+#endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <math.h>
-#define INF INFINITY
-#define NEG_INF -INFINITY
+#define INF      INFINITY
+#define NEG_INF  (-INFINITY)
 #else
-#define INF (1.0/0.0)
-#define NEG_INF (-1.0/0.0)
+#define INF      (1.0/0.0)
+#define NEG_INF  (-1.0/0.0)
 #endif
 
 #define xglue(x, y) x ## y
@@ -126,8 +130,8 @@ enum {
 };
 #endif
 
-void pstrcpy(char *buf, int buf_size, const char *str);
-char *pstrcat(char *buf, int buf_size, const char *s);
+void pstrcpy(char *buf, size_t buf_size, const char *str);
+char *pstrcat(char *buf, size_t buf_size, const char *s);
 int strstart(const char *str, const char *val, const char **ptr);
 int has_suffix(const char *str, const char *suffix);
 
@@ -191,6 +195,7 @@ static inline int64_t min_int64(int64_t a, int64_t b)
 static inline int clz32(unsigned int a)
 {
 #if defined(_MSC_VER) && !defined(__clang__)
+    // XXX: unsigned int _lzcnt_u32(unsigned int a)
     unsigned long index;
     _BitScanReverse(&index, a);
     return 31 - index;
@@ -203,6 +208,7 @@ static inline int clz32(unsigned int a)
 static inline int clz64(uint64_t a)
 {
 #if defined(_MSC_VER) && !defined(__clang__)
+    // XXX: unsigned int _lzcnt_u64(unsigned __int64 a)
     unsigned long index;
     _BitScanReverse64(&index, a);
     return 63 - index;
@@ -215,6 +221,7 @@ static inline int clz64(uint64_t a)
 static inline int ctz32(unsigned int a)
 {
 #if defined(_MSC_VER) && !defined(__clang__)
+    // XXX: unsigned int _tzcnt_u32 (unsigned int a)
     unsigned long index;
     _BitScanForward(&index, a);
     return index;
@@ -227,6 +234,7 @@ static inline int ctz32(unsigned int a)
 static inline int ctz64(uint64_t a)
 {
 #if defined(_MSC_VER) && !defined(__clang__)
+    // XXX: unsigned int _tzcnt_u64 (unsigned __int64 a)
     unsigned long index;
     _BitScanForward64(&index, a);
     return index;
@@ -310,7 +318,7 @@ static inline void put_u8(uint8_t *tab, uint8_t val)
 #ifndef bswap16
 static inline uint16_t bswap16(uint16_t x)
 {
-    return (x >> 8) | (x << 8);
+    return (uint16_t)((x >> 8) | (x << 8));
 }
 #endif
 
@@ -337,7 +345,7 @@ static inline uint64_t bswap64(uint64_t v)
 #endif
 
 static inline void inplace_bswap16(uint8_t *tab) {
-    put_u16(tab, bswap16(get_u16(tab)));
+    put_u16(tab, bswap16((uint16_t)get_u16(tab)));
 }
 
 static inline void inplace_bswap32(uint8_t *tab) {
@@ -352,12 +360,15 @@ typedef struct DynBuf {
     size_t size;
     size_t allocated_size;
     BOOL error; /* true if a memory allocation error occurred */
+#if SIZE_MAX > UINT_MAX
+    int pad;    /* prevent alignment warning */
+#endif
     DynBufReallocFunc *realloc_func;
     void *opaque; /* for realloc_func */
 } DynBuf;
 
-void dbuf_init(DynBuf *s);
 void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func);
+static inline void dbuf_init(DynBuf *s) { dbuf_init2(s, NULL, NULL); }
 int dbuf_realloc(DynBuf *s, size_t new_size);
 int dbuf_write(DynBuf *s, size_t offset, const void *data, size_t len);
 int dbuf_put(DynBuf *s, const void *data, size_t len);
@@ -376,8 +387,9 @@ static inline int dbuf_put_u64(DynBuf *s, uint64_t val)
 {
     return dbuf_put(s, (uint8_t *)&val, 8);
 }
-int __attribute__((format(printf, 2, 3))) dbuf_printf(DynBuf *s,
-                                                      FORMAT_STRING(const char *fmt), ...);
+__attribute__((format(printf, 2, 3)))
+int dbuf_printf(DynBuf *s, FORMAT_STRING(const char *fmt), ...);
+extern int (*dbuf_vprintf_fun)(DynBuf *s, const char *fmt, va_list ap);
 void dbuf_free(DynBuf *s);
 static inline BOOL dbuf_error(DynBuf *s) {
     return s->error;
@@ -450,15 +462,24 @@ static inline int from_hex(int c)
         return -1;
 }
 
+static inline uint8_t is_lower_ascii(uint8_t c) {
+    return c >= 'a' && c <= 'z';
+}
+
 static inline uint8_t is_upper_ascii(uint8_t c) {
     return c >= 'A' && c <= 'Z';
 }
 
+static inline uint8_t to_lower_ascii(uint8_t c) {
+    return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+}
+
 static inline uint8_t to_upper_ascii(uint8_t c) {
-    return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
+    return c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c;
 }
 
 extern char const digits36[36];
+extern char const digits36_upper[36];
 size_t u32toa(char buf[minimum_length(11)], uint32_t n);
 size_t i32toa(char buf[minimum_length(12)], int32_t n);
 size_t u64toa(char buf[minimum_length(21)], uint64_t n);

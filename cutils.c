@@ -35,20 +35,19 @@
 #include "cutils.h"
 
 #undef NANOSEC
-#define NANOSEC ((uint64_t) 1e9)
+#define NANOSEC  1000000000
 
 #pragma GCC visibility push(default)
 
-void pstrcpy(char *buf, int buf_size, const char *str)
+void pstrcpy(char *buf, size_t buf_size, const char *str)
 {
-    int c;
     char *q = buf;
 
     if (buf_size <= 0)
         return;
 
     for(;;) {
-        c = *str++;
+        char c = *str++;
         if (c == 0 || q >= buf + buf_size - 1)
             break;
         *q++ = c;
@@ -57,10 +56,9 @@ void pstrcpy(char *buf, int buf_size, const char *str)
 }
 
 /* strcat and truncate. */
-char *pstrcat(char *buf, int buf_size, const char *s)
+char *pstrcat(char *buf, size_t buf_size, const char *s)
 {
-    int len;
-    len = strlen(buf);
+    size_t len = strlen(buf);
     if (len < buf_size)
         pstrcpy(buf + len, buf_size - len, s);
     return buf;
@@ -103,11 +101,6 @@ void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func)
         realloc_func = dbuf_default_realloc;
     s->opaque = opaque;
     s->realloc_func = realloc_func;
-}
-
-void dbuf_init(DynBuf *s)
-{
-    dbuf_init2(s, NULL, NULL);
 }
 
 /* return < 0 if error */
@@ -178,29 +171,59 @@ int dbuf_putstr(DynBuf *s, const char *str)
     return dbuf_put(s, (const uint8_t *)str, strlen(str));
 }
 
-int __attribute__((format(printf, 2, 3))) dbuf_printf(DynBuf *s,
-                                                      const char *fmt, ...)
+static int dbuf_vprintf_default(DynBuf *s, const char *fmt, va_list ap)
+{
+    char buf[128];
+    va_list arg;
+    size_t size, avail, ulen;
+    int len;
+    char *dest;
+
+    dest = buf;
+    size = sizeof buf;
+    avail = s->allocated_size - s->size;
+    if (avail > size) {
+        dest = (char *)(s->buf + s->size);
+        size = avail;
+    }
+    va_copy(arg, ap);
+    len = vsnprintf(dest, size, fmt, arg);
+    va_end(arg);
+
+    if (len < 0)
+        return len;
+
+    ulen = (size_t)len;
+    if (ulen >= avail) {
+        if (dbuf_realloc(s, s->size + ulen + 1))
+            return -1;
+    }
+    if (dest == buf && ulen < sizeof buf) {
+        memcpy(s->buf + s->size, buf, ulen + 1);
+    } else
+    if (ulen >= avail) {
+        avail = s->allocated_size - s->size;
+        va_copy(arg, ap);
+        vsnprintf((char *)(s->buf + s->size), avail, fmt, arg);
+        va_end(arg);
+    }
+    s->size += ulen;
+    return len;
+}
+
+/* replaceable formatter */
+int (*dbuf_vprintf_fun)(DynBuf *s, const char *fmt, va_list ap) = dbuf_vprintf_default;
+
+__attribute__((format(printf, 2, 3)))
+int dbuf_printf(DynBuf *s, const char *fmt, ...)
 {
     va_list ap;
-    char buf[128];
     int len;
 
     va_start(ap, fmt);
-    len = vsnprintf(buf, sizeof(buf), fmt, ap);
+    len = (*dbuf_vprintf_fun)(s, fmt, ap);
     va_end(ap);
-    if (len < sizeof(buf)) {
-        /* fast case */
-        return dbuf_put(s, (uint8_t *)buf, len);
-    } else {
-        if (dbuf_realloc(s, s->size + len + 1))
-            return -1;
-        va_start(ap, fmt);
-        vsnprintf((char *)(s->buf + s->size), s->allocated_size - s->size,
-                  fmt, ap);
-        va_end(ap);
-        s->size += len;
-    }
-    return 0;
+    return len;
 }
 
 void dbuf_free(DynBuf *s)
@@ -589,6 +612,7 @@ overflow:
 
 /* 2 <= base <= 36 */
 char const digits36[36] = "0123456789abcdefghijklmnopqrstuvwxyz";
+char const digits36_upper[36] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 #define USE_SPECIAL_RADIX_10  1  // special case base 10 radix conversions
 #define USE_SINGLE_CASE_FAST  1  // special case single digit numbers
@@ -600,7 +624,7 @@ char const digits36[36] = "0123456789abcdefghijklmnopqrstuvwxyz";
         else \
             buf = (buf << 8) | (c)
 
-size_t u7toa_shift(char dest[minimum_length(8)], uint32_t n)
+static size_t u7toa_shift(char dest[minimum_length(8)], uint32_t n)
 {
     size_t len = 1;
     uint64_t buf = 0;
@@ -615,7 +639,7 @@ size_t u7toa_shift(char dest[minimum_length(8)], uint32_t n)
     return len;
 }
 
-size_t u07toa_shift(char dest[minimum_length(8)], uint32_t n, size_t len)
+static size_t u07toa_shift(char dest[minimum_length(8)], uint32_t n, size_t len)
 {
     size_t i;
     dest += len;
@@ -641,8 +665,9 @@ size_t u32toa(char buf[minimum_length(11)], uint32_t n)
 #define TEN_POW_7 10000000
     if (n >= TEN_POW_7) {
         uint32_t quo = n / TEN_POW_7;
+        size_t len;
         n %= TEN_POW_7;
-        size_t len = u7toa_shift(buf, quo);
+        len = u7toa_shift(buf, quo);
         return u07toa_shift(buf, n, len);
     }
     return u7toa_shift(buf, n);
@@ -650,30 +675,31 @@ size_t u32toa(char buf[minimum_length(11)], uint32_t n)
 
 size_t u64toa(char buf[minimum_length(21)], uint64_t n)
 {
-    if (likely(n < 0x100000000))
-        return u32toa(buf, n);
-
     size_t len;
+
+    if (likely(n < 0x100000000))
+        return u32toa(buf, (uint32_t)n);
+
     if (n >= TEN_POW_7) {
         uint64_t n1 = n / TEN_POW_7;
         n %= TEN_POW_7;
         if (n1 >= TEN_POW_7) {
-            uint32_t quo = n1 / TEN_POW_7;
+            uint32_t quo = (uint32_t)(n1 / TEN_POW_7);
             n1 %= TEN_POW_7;
             len = u7toa_shift(buf, quo);
-            len = u07toa_shift(buf, n1, len);
+            len = u07toa_shift(buf, (uint32_t)n1, len);
         } else {
-            len = u7toa_shift(buf, n1);
+            len = u7toa_shift(buf, (uint32_t)n1);
         }
-        return u07toa_shift(buf, n, len);
+        return u07toa_shift(buf, (uint32_t)n, len);
     }
-    return u7toa_shift(buf, n);
+    return u7toa_shift(buf, (uint32_t)n);
 }
 
 size_t i32toa(char buf[minimum_length(12)], int32_t n)
 {
     if (likely(n >= 0))
-        return u32toa(buf, n);
+        return u32toa(buf, (uint32_t)n);
 
     buf[0] = '-';
     return 1 + u32toa(buf + 1, -(uint32_t)n);
@@ -682,7 +708,7 @@ size_t i32toa(char buf[minimum_length(12)], int32_t n)
 size_t i64toa(char buf[minimum_length(22)], int64_t n)
 {
     if (likely(n >= 0))
-        return u64toa(buf, n);
+        return u64toa(buf, (uint64_t)n);
 
     buf[0] = '-';
     return 1 + u64toa(buf + 1, -(uint64_t)n);
@@ -713,7 +739,7 @@ size_t u32toa_radix(char buf[minimum_length(33)], uint32_t n, unsigned base)
     shift = radix_shift[base & 63];
     if (shift) {
         uint32_t mask = (1 << shift) - 1;
-        size_t len = (32 - clz32(n) + shift - 1) / shift;
+        size_t len = (size_t)((32 - clz32(n) + shift - 1) / shift);
         size_t last = n & mask;
         char *end = buf + len;
         n >>= shift;
@@ -729,13 +755,14 @@ size_t u32toa_radix(char buf[minimum_length(33)], uint32_t n, unsigned base)
     } else {
         size_t len = 2;
         size_t last = n % base;
-        n /= base;
         uint32_t nbase = base;
+        char *end;
+        n /= base;
         while (n >= nbase) {
             nbase *= base;
             len++;
         }
-        char *end = buf + len;
+        end = buf + len;
         *end-- = '\0';
         *end-- = digits36[last];
         while (n >= base) {
@@ -762,33 +789,36 @@ size_t u64toa_radix(char buf[minimum_length(65)], uint64_t n, unsigned base)
             buf[0] = digits36[n];
             buf[1] = '\0';
             return 1;
-        }
-        uint64_t mask = (1 << shift) - 1;
-        size_t len = (64 - clz64(n) + shift - 1) / shift;
-        size_t last = n & mask;
-        char *end = buf + len;
-        n >>= shift;
-        *end-- = '\0';
-        *end-- = digits36[last];
-        while (n >= base) {
-            size_t quo = n & mask;
+        } else {
+            uint64_t mask = (1 << shift) - 1;
+            size_t len = (size_t)((64 - clz64(n) + shift - 1) / shift);
+            size_t last = n & mask;
+            char *end = buf + len;
             n >>= shift;
-            *end-- = digits36[quo];
+            *end-- = '\0';
+            *end-- = digits36[last];
+            while (n >= base) {
+                size_t quo = n & mask;
+                n >>= shift;
+                *end-- = digits36[quo];
+            }
+            *end = digits36[n];
+            return len;
         }
-        *end = digits36[n];
-        return len;
+    } else
+    if (likely(n < 0x100000000)) {
+        return u32toa_radix(buf, (uint32_t)n, base);
     } else {
-        if (likely(n < 0x100000000))
-            return u32toa_radix(buf, n, base);
         size_t last = n % base;
-        n /= base;
         uint64_t nbase = base;
         size_t len = 2;
+        char *end;
+        n /= base;
         while (n >= nbase) {
             nbase *= base;
             len++;
         }
-        char *end = buf + len;
+        end = buf + len;
         *end-- = '\0';
         *end-- = digits36[last];
         while (n >= base) {
@@ -813,7 +843,7 @@ size_t i32toa_radix(char buf[minimum_length(34)], int32_t n, unsigned int base)
 size_t i64toa_radix(char buf[minimum_length(66)], int64_t n, unsigned int base)
 {
     if (likely(n >= 0))
-        return u64toa_radix(buf, n, base);
+        return u64toa_radix(buf, (uint64_t)n, base);
 
     buf[0] = '-';
     return 1 + u64toa_radix(buf + 1, -(uint64_t)n, base);
@@ -1008,7 +1038,14 @@ static inline void *med3(void *a, void *b, void *c, cmp_f cmp, void *opaque)
 /* pointer based version with local stack and insertion sort threshhold */
 void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
 {
-    struct { uint8_t *base; size_t count; int depth; } stack[50], *sp = stack;
+    struct {
+        uint8_t *base;
+        size_t count;
+        int depth;
+#if SIZE_MAX > UINT_MAX
+        int pad;
+#endif
+    } stack[50], *sp = stack;
     uint8_t *ptr, *pi, *pj, *plt, *pgt, *top, *m;
     size_t m4, i, lt, gt, span, span2;
     int c, depth;
@@ -1391,12 +1428,9 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     if (r == 0)
         return 0;
 
-    if (r == ETIMEDOUT)
-        return -1;
+    if (r != ETIMEDOUT)
+        abort();
 
-    abort();
-
-    /* Pacify some compilers. */
     return -1;
 }
 

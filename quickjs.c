@@ -45,6 +45,7 @@
 #include "quickjs.h"
 #include "libregexp.h"
 #include "libbf.h"
+#include "quickjs-printf.h"
 
 #if defined(EMSCRIPTEN) || defined(_MSC_VER)
 #define DIRECT_DISPATCH  0
@@ -1026,7 +1027,6 @@ static JSValue JS_EvalObject(JSContext *ctx, JSValue this_obj,
                              JSValue val, int flags, int scope_idx);
 JSValue __attribute__((format(printf, 2, 3))) JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
 
-static __maybe_unused void JS_DumpString(JSRuntime *rt, const JSString *p);
 static __maybe_unused void JS_DumpObjectHeader(JSRuntime *rt);
 static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p);
 static __maybe_unused void JS_DumpGCObject(JSRuntime *rt, JSGCObjectHeader *p);
@@ -1603,6 +1603,9 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     JSRuntime *rt;
     JSMallocState ms;
 
+    // add support for extended conversions in dbuf_printf
+    dbuf_vprintf_fun = dbuf_vprintf_ext;
+
     memset(&ms, 0, sizeof(ms));
     ms.opaque = opaque;
     ms.malloc_limit = 0;
@@ -2000,22 +2003,16 @@ void JS_FreeRuntime(JSRuntime *rt)
                     }
                     switch (p->atom_type) {
                     case JS_ATOM_TYPE_STRING:
-                        JS_DumpString(rt, p);
+                        js_printf_RT(rt, "%ps", p);
                         break;
                     case JS_ATOM_TYPE_GLOBAL_SYMBOL:
-                        printf("Symbol.for(");
-                        JS_DumpString(rt, p);
-                        printf(")");
+                        js_printf_RT(rt, "Symbol.for(%ps)", p);
                         break;
                     case JS_ATOM_TYPE_SYMBOL:
                         if (p->hash == JS_ATOM_HASH_SYMBOL) {
-                            printf("Symbol(");
-                            JS_DumpString(rt, p);
-                            printf(")");
+                            js_printf_RT(rt, "Symbol(%ps)", p);
                         } else {
-                            printf("Private(");
-                            JS_DumpString(rt, p);
-                            printf(")");
+                            js_printf_RT(rt, "Private(%ps)", p);
                         }
                         break;
                     }
@@ -2061,7 +2058,7 @@ void JS_FreeRuntime(JSRuntime *rt)
             } else {
                 printf("    %6u ", str->header.ref_count);
             }
-            JS_DumpString(rt, str);
+            js_printf_RT(rt, "%ps", str);
             if (rt->rt_info) {
                 printf(":%u", str->header.ref_count);
             } else {
@@ -2461,36 +2458,69 @@ static uint32_t hash_string(const JSString *str, uint32_t h)
     return h;
 }
 
-static __maybe_unused void JS_DumpString(JSRuntime *rt,
-                                                  const JSString *p)
+// TODO(chqrlie) take precision argument to limit number of code points?
+static size_t JS_FormatString(JSRuntime *rt, char dest[minimum_length(64)],
+                              size_t size, const JSString *p, uint32_t sep)
 {
-    int i, c, sep;
+    char buf[16];
+    uint32_t c;
+    size_t i, j, k, pos = 0;
 
     if (p == NULL) {
-        printf("<null>");
-        return;
+        memcpy(dest, "<null>", sizeof("<null>"));
+        return sizeof("<null>") - 1;
     }
-    if (p->header.ref_count != 1)
-        printf("%d", p->header.ref_count);
+    k = 0;
     if (p->is_wide_char)
-        putchar('L');
+        buf[k++] = 'L';
     sep = '\"';
-    putchar(sep);
-    for(i = 0; i < p->len; i++) {
+    buf[k++] = sep;
+    for(i = 0;; i++) {
+        for(j = 0; j < k; j++) {
+            if (pos < size)
+                dest[pos] = buf[j];
+            pos++;
+        }
+        if (i >= p->len)
+            break;
+        k = 0;
         c = string_get(p, i);
         if (c == sep || c == '\\') {
-            putchar('\\');
-            putchar(c);
+            buf[k++] = '\\';
+            buf[k++] = c;
         } else if (c >= ' ' && c <= 126) {
-            putchar(c);
+            buf[k++] = c;
         } else if (c == '\n') {
-            putchar('\\');
-            putchar('n');
+            buf[k++] = '\\';
+            buf[k++] = 'n';
+        } else if (c < 256) {
+            buf[k++] = '\\';
+            buf[k++] = 'x';
+            buf[k++] = digits36[c >> 4];
+            buf[k++] = digits36[c & 15];
         } else {
-            printf("\\u%04x", c);
+            buf[k++] = '\\';
+            buf[k++] = 'u';
+            buf[k++] = digits36[(c >> 12) & 15];
+            buf[k++] = digits36[(c >> 8) & 15];
+            buf[k++] = digits36[(c >> 4) & 15];
+            buf[k++] = digits36[c & 15];
         }
     }
-    putchar(sep);
+    if (pos < size)
+        dest[pos] = sep;
+    pos++;
+
+    if (pos < size) {
+        dest[pos] = '\0';
+    } else {
+        dest[size - 5] = '.';
+        dest[size - 4] = '.';
+        dest[size - 3] = '.';
+        dest[size - 2] = sep;
+        dest[size - 1] = '\0';
+    }
+    return (int)pos;
 }
 
 static __maybe_unused void JS_DumpAtoms(JSRuntime *rt)
@@ -2508,7 +2538,9 @@ static __maybe_unused void JS_DumpAtoms(JSRuntime *rt)
             while (h) {
                 p = rt->atom_array[h];
                 printf(" ");
-                JS_DumpString(rt, p);
+                if (p->header.ref_count != 1)
+                    printf("%d", p->header.ref_count);
+                js_printf_RT(rt, "%ps", p);
                 h = p->hash_next;
             }
             printf("\n");
@@ -2520,8 +2552,10 @@ static __maybe_unused void JS_DumpAtoms(JSRuntime *rt)
         p = rt->atom_array[i];
         if (!atom_is_free(p)) {
             printf("  %d: { %d %08x ", i, p->atom_type, p->hash);
+            if (p->header.ref_count != 1)
+                printf("%d", p->header.ref_count);
             if (!(p->len == 0 && p->is_wide_char != 0))
-                JS_DumpString(rt, p);
+                js_printf_RT(rt, "%ps", p);
             printf(" %d }\n", p->hash_next);
         }
     }
@@ -3011,55 +3045,76 @@ JSValue JS_NewSymbol(JSContext *ctx, const char *description, JS_BOOL is_global)
     return JS_NewSymbolFromAtom(ctx, atom, is_global ? JS_ATOM_TYPE_GLOBAL_SYMBOL : JS_ATOM_TYPE_SYMBOL);
 }
 
-#define ATOM_GET_STR_BUF_SIZE 64
-
-/* Should only be used for debug. */
-static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
-                                   JSAtom atom)
+/* Used for %#oa and %#oa js_printf conversions */
+static size_t JS_FormatAtom(JSRuntime *rt, char dest[minimum_length(64)],
+                            int size, JSAtom atom, int hash)
 {
-    if (__JS_AtomIsTaggedInt(atom)) {
-        snprintf(buf, buf_size, "%u", __JS_AtomToUInt32(atom));
-    } else if (atom == JS_ATOM_NULL) {
-        snprintf(buf, buf_size, "<null>");
-    } else if (atom >= rt->atom_size) {
+    JSAtomStruct *p;
+    uint32_t i, len;
+    JSString *str;
+
+    /* Generate a UTF-8 encoded string for the atom.
+       Tagged int atoms are converted to the corresponding number.
+       `hash` argument generates a quoted string if the atom
+       is not an integer or an identifier
+     */
+    if (__JS_AtomIsTaggedInt(atom))
+        return u32toa(dest, __JS_AtomToUInt32(atom));
+    if (atom == JS_ATOM_NULL) {
+        memcpy(dest, "<null>", sizeof("<null>"));
+        return sizeof("<null>") - 1;
+    }
+    if (atom >= rt->atom_size) {
         assert(atom < rt->atom_size);
-        snprintf(buf, buf_size, "<invalid %x>", atom);
-    } else {
-        JSAtomStruct *p = rt->atom_array[atom];
-        *buf = '\0';
-        if (atom_is_free(p)) {
-            assert(!atom_is_free(p));
-            snprintf(buf, buf_size, "<free %x>", atom);
-        } else if (p != NULL) {
-            JSString *str = p;
-            if (str->is_wide_char) {
-                /* encode surrogates correctly */
-                utf8_encode_buf16(buf, buf_size, str->u.str16, str->len);
-            } else {
-                /* special case ASCII strings */
-                int i, c = 0;
-                for(i = 0; i < str->len; i++) {
-                    c |= str->u.str8[i];
-                }
-                if (c < 0x80)
-                    return (const char *)str->u.str8;
-                utf8_encode_buf8(buf, buf_size, str->u.str8, str->len);
+        // XXX: should avoid recursive snprintf call
+        return snprintf(dest, size, "<invalid %x>", atom);
+    }
+    p = rt->atom_array[atom];
+    if (p == NULL || atom_is_free(p)) {
+        assert(!atom_is_free(p));
+        return snprintf(dest, size, "<free %x>", atom);
+    }
+    str = p;
+    len = str->len;
+    if (hash) {
+        if (!str->is_wide_char && len > 0) {
+            /* check of identifier strings */
+            for(i = 0; i < len; i++) {
+                uint8_t c = str->u.str8[i];
+                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                      (c == '_' || c == '$') || (c >= '0' && c <= '9' && i > 0)))
+                    break;
+            }
+            if (i == len) {
+                pstrcpy(dest, size, (const char *)str->u.str8);
+                return len;
             }
         }
+        return JS_FormatString(rt, dest, size, str, '\'');
     }
-    return buf;
+    if (str->is_wide_char) {
+        /* encode surrogates correctly */
+        return utf8_encode_buf16(dest, size, str->u.str16, len);
+    } else {
+        return utf8_encode_buf8(dest, size, str->u.str8, len);
+    }
 }
 
-static const char *JS_AtomGetStr(JSContext *ctx, char *buf, int buf_size, JSAtom atom)
+/* Return a pointer to the string for a builtin atom */
+static const char *JS_AtomGetStr(JSContext *ctx, JSAtom atom)
 {
-    return JS_AtomGetStrRT(ctx->rt, buf, buf_size, atom);
+    if (atom > JS_ATOM_NULL && atom < JS_ATOM_END) {
+        JSAtomStruct *p = ctx->rt->atom_array[atom];
+        if (!p->is_wide_char)
+            return (const char *)p->u.str8;
+    }
+    return NULL;
 }
 
 static JSValue __JS_AtomToValue(JSContext *ctx, JSAtom atom, BOOL force_string)
 {
-    char buf[ATOM_GET_STR_BUF_SIZE];
-
     if (__JS_AtomIsTaggedInt(atom)) {
+        char buf[12];
         size_t len = u32toa(buf, __JS_AtomToUInt32(atom));
         return js_new_string8_len(ctx, buf, len);
     } else {
@@ -3238,44 +3293,6 @@ static BOOL JS_AtomSymbolHasDescription(JSContext *ctx, JSAtom v)
               p->hash == JS_ATOM_HASH_SYMBOL) ||
              p->atom_type == JS_ATOM_TYPE_GLOBAL_SYMBOL) &&
             !(p->len == 0 && p->is_wide_char != 0));
-}
-
-static __maybe_unused void print_atom(JSContext *ctx, JSAtom atom)
-{
-    char buf[ATOM_GET_STR_BUF_SIZE];
-    const char *p;
-    int i;
-
-    /* XXX: should handle embedded null characters */
-    /* XXX: should move encoding code to JS_AtomGetStr */
-    p = JS_AtomGetStr(ctx, buf, sizeof(buf), atom);
-    for (i = 0; p[i]; i++) {
-        int c = (unsigned char)p[i];
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-              (c == '_' || c == '$') || (c >= '0' && c <= '9' && i > 0)))
-            break;
-    }
-    if (i > 0 && p[i] == '\0') {
-        printf("%s", p);
-    } else {
-        putchar('"');
-        printf("%.*s", i, p);
-        for (; p[i]; i++) {
-            int c = (unsigned char)p[i];
-            if (c == '\"' || c == '\\') {
-                putchar('\\');
-                putchar(c);
-            } else if (c >= ' ' && c <= 126) {
-                putchar(c);
-            } else if (c == '\n') {
-                putchar('\\');
-                putchar('n');
-            } else {
-                printf("\\u%04x", c);
-            }
-        }
-        putchar('\"');
-    }
 }
 
 /* free with JS_FreeCString() */
@@ -4651,7 +4668,6 @@ static JSShape *find_hashed_shape_prop(JSRuntime *rt, JSShape *sh,
 
 static __maybe_unused void JS_DumpShape(JSRuntime *rt, int i, JSShape *sh)
 {
-    char atom_buf[ATOM_GET_STR_BUF_SIZE];
     int j;
 
     /* XXX: should output readable class prototype */
@@ -4659,8 +4675,7 @@ static __maybe_unused void JS_DumpShape(JSRuntime *rt, int i, JSShape *sh)
            sh->header.ref_count, " *"[sh->is_hashed],
            (void *)sh->proto, sh->prop_size, sh->prop_count);
     for(j = 0; j < sh->prop_count; j++) {
-        printf(" %s", JS_AtomGetStrRT(rt, atom_buf, sizeof(atom_buf),
-                                      sh->prop[j].atom));
+        js_printf_RT(rt, " %#oa", sh->prop[j].atom);
     }
     printf("\n");
 }
@@ -6189,9 +6204,8 @@ void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt)
                 fprintf(fp, "  %5d  %2.0d %s\n", obj_classes[0], 0, "none");
             for (class_id = 1; class_id < JS_CLASS_INIT_COUNT; class_id++) {
                 if (obj_classes[class_id]) {
-                    char buf[ATOM_GET_STR_BUF_SIZE];
-                    fprintf(fp, "  %5d  %2.0d %s\n", obj_classes[class_id], class_id,
-                            JS_AtomGetStrRT(rt, buf, sizeof(buf), js_std_class_def[class_id - 1].class_name));
+                    js_fprintf_RT(rt, fp, "  %5d  %2.0d %#oa\n", obj_classes[class_id], class_id,
+                                  js_std_class_def[class_id - 1].class_name);
                 }
             }
             if (obj_classes[JS_CLASS_INIT_COUNT])
@@ -6601,7 +6615,7 @@ static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
     char buf[256];
     JSValue obj, ret, msg;
 
-    vsnprintf(buf, sizeof(buf), fmt, ap);
+    js_vsnprintf(ctx, buf, sizeof(buf), fmt, ap);
     if (error_num == JS_PLAIN_ERROR)
         obj = JS_NewError(ctx);
     else
@@ -6688,32 +6702,11 @@ static int __attribute__((format(printf, 3, 4))) JS_ThrowTypeErrorOrFalse(JSCont
     }
 }
 
-/* never use it directly */
-static JSValue __attribute__((format(printf, 3, 4))) __JS_ThrowTypeErrorAtom(JSContext *ctx, JSAtom atom, const char *fmt, ...)
-{
-    char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowTypeError(ctx, fmt,
-                             JS_AtomGetStr(ctx, buf, sizeof(buf), atom));
-}
-
-/* never use it directly */
-static JSValue __attribute__((format(printf, 3, 4))) __JS_ThrowSyntaxErrorAtom(JSContext *ctx, JSAtom atom, const char *fmt, ...)
-{
-    char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowSyntaxError(ctx, fmt,
-                             JS_AtomGetStr(ctx, buf, sizeof(buf), atom));
-}
-
-/* %s is replaced by 'atom'. The macro is used so that gcc can check
-    the format string. */
-#define JS_ThrowTypeErrorAtom(ctx, fmt, atom) __JS_ThrowTypeErrorAtom(ctx, atom, fmt, "")
-#define JS_ThrowSyntaxErrorAtom(ctx, fmt, atom) __JS_ThrowSyntaxErrorAtom(ctx, atom, fmt, "")
-
 static int JS_ThrowTypeErrorReadOnly(JSContext *ctx, int flags, JSAtom atom)
 {
     if ((flags & JS_PROP_THROW) ||
         ((flags & JS_PROP_THROW_STRICT) && is_strict_mode(ctx))) {
-        JS_ThrowTypeErrorAtom(ctx, "'%s' is read-only", atom);
+        JS_ThrowTypeError(ctx, "'%#oa' is read-only", atom);
         return -1;
     } else {
         return FALSE;
@@ -6781,17 +6774,16 @@ static JSValue JS_ThrowTypeErrorNotASymbol(JSContext *ctx)
 
 static JSValue JS_ThrowReferenceErrorNotDefined(JSContext *ctx, JSAtom name)
 {
-    char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowReferenceError(ctx, "%s is not defined",
-                                  JS_AtomGetStr(ctx, buf, sizeof(buf), name));
+    return JS_ThrowReferenceError(ctx, "%#oa is not defined", name);
 }
 
 static JSValue JS_ThrowReferenceErrorUninitialized(JSContext *ctx, JSAtom name)
 {
-    char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowReferenceError(ctx, "%s is not initialized",
-                                  name == JS_ATOM_NULL ? "lexical variable" :
-                                  JS_AtomGetStr(ctx, buf, sizeof(buf), name));
+    if (name == JS_ATOM_NULL) {
+        return JS_ThrowReferenceError(ctx, "lexical variable is not initialized");
+    } else {
+        return JS_ThrowReferenceError(ctx, "%#oa is not initialized", name);
+    }
 }
 
 static JSValue JS_ThrowReferenceErrorUninitialized2(JSContext *ctx,
@@ -6814,7 +6806,7 @@ static JSValue JS_ThrowTypeErrorInvalidClass(JSContext *ctx, int class_id)
     JSRuntime *rt = ctx->rt;
     JSAtom name;
     name = rt->class_array[class_id].class_name;
-    return JS_ThrowTypeErrorAtom(ctx, "%s object expected", name);
+    return JS_ThrowTypeError(ctx, "%#oa object expected", name);
 }
 
 static no_inline __exception int __js_poll_interrupts(JSContext *ctx)
@@ -7135,9 +7127,9 @@ static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
     if (unlikely(tag != JS_TAG_OBJECT)) {
         switch(tag) {
         case JS_TAG_NULL:
-            return JS_ThrowTypeErrorAtom(ctx, "cannot read property '%s' of null", prop);
+            return JS_ThrowTypeError(ctx, "cannot read property '%#oa' of null", prop);
         case JS_TAG_UNDEFINED:
-            return JS_ThrowTypeErrorAtom(ctx, "cannot read property '%s' of undefined", prop);
+            return JS_ThrowTypeError(ctx, "cannot read property '%#oa' of undefined", prop);
         case JS_TAG_EXCEPTION:
             return JS_EXCEPTION;
         case JS_TAG_STRING:
@@ -7302,8 +7294,7 @@ slow_path:
 
 static JSValue JS_ThrowTypeErrorPrivateNotFound(JSContext *ctx, JSAtom atom)
 {
-    return JS_ThrowTypeErrorAtom(ctx, "private class field '%s' does not exist",
-                                 atom);
+    return JS_ThrowTypeError(ctx, "private class field '%#oa' does not exist", atom);
 }
 
 /* Private fields can be added even on non extensible objects or
@@ -7329,8 +7320,7 @@ static int JS_DefinePrivateField(JSContext *ctx, JSValue obj,
     p = JS_VALUE_GET_OBJ(obj);
     prs = find_own_property(&pr, p, prop);
     if (prs) {
-        JS_ThrowTypeErrorAtom(ctx, "private class field '%s' already exists",
-                              prop);
+        JS_ThrowTypeError(ctx, "private class field '%#oa' already exists", prop);
         goto fail;
     }
     pr = add_property(ctx, p, prop, JS_PROP_C_W_E);
@@ -8448,10 +8438,10 @@ static int JS_SetPropertyInternal2(JSContext *ctx, JSValue obj,
 
     switch(JS_VALUE_GET_TAG(this_obj)) {
     case JS_TAG_NULL:
-        JS_ThrowTypeErrorAtom(ctx, "cannot set property '%s' of null", prop);
+        JS_ThrowTypeError(ctx, "cannot set property '%#oa' of null", prop);
         goto fail;
     case JS_TAG_UNDEFINED:
-        JS_ThrowTypeErrorAtom(ctx, "cannot set property '%s' of undefined", prop);
+        JS_ThrowTypeError(ctx, "cannot set property '%#oa' of undefined", prop);
         goto fail;
     case JS_TAG_OBJECT:
         p = JS_VALUE_GET_OBJ(this_obj);
@@ -9533,7 +9523,7 @@ static int JS_DefineObjectNameComputed(JSContext *ctx, JSValue obj,
 
 static JSValue JS_ThrowSyntaxErrorVarRedeclaration(JSContext *ctx, JSAtom prop)
 {
-    return JS_ThrowSyntaxErrorAtom(ctx, "redeclaration of '%s'", prop);
+    return JS_ThrowSyntaxError(ctx, "redeclaration of '%#oa'", prop);
 }
 
 /* flags is 0, DEFINE_GLOBAL_LEX_VAR or DEFINE_GLOBAL_FUNC_VAR */
@@ -9559,8 +9549,7 @@ static int JS_CheckDefineGlobalVar(JSContext *ctx, JSAtom prop, int flags)
                      ((prs->flags & (JS_PROP_WRITABLE | JS_PROP_ENUMERABLE)) !=
                       (JS_PROP_WRITABLE | JS_PROP_ENUMERABLE)))) {
                 define_error:
-                    JS_ThrowTypeErrorAtom(ctx, "cannot define variable '%s'",
-                                          prop);
+                    JS_ThrowTypeError(ctx, "cannot define variable '%#oa'", prop);
                     return -1;
                 }
             }
@@ -11572,7 +11561,6 @@ static __maybe_unused void JS_DumpObjectHeader(JSRuntime *rt)
 static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
 {
     uint32_t i;
-    char atom_buf[ATOM_GET_STR_BUF_SIZE];
     JSShape *sh;
     JSShapeProperty *prs;
     JSProperty *pr;
@@ -11580,9 +11568,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
 
     /* XXX: should encode atoms with special characters */
     sh = p->shape; /* the shape can be NULL while freeing an object */
-    printf("%14p %4d ",
-           (void *)p,
-           p->header.ref_count);
+    printf("%14p %4d ", (void *)p, p->header.ref_count);
     if (sh) {
         printf("%3d%c %14p ",
                sh->header.ref_count,
@@ -11591,8 +11577,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
     } else {
         printf("%3s  %14s ", "-", "-");
     }
-    printf("%10s ",
-           JS_AtomGetStrRT(rt, atom_buf, sizeof(atom_buf), rt->class_array[p->class_id].class_name));
+    js_printf_RT(rt, "%#oa ", rt->class_array[p->class_id].class_name);
     if (p->is_exotic && p->fast_array) {
         printf("[ ");
         for(i = 0; i < p->u.array.count; i++) {
@@ -11633,8 +11618,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
                 pr = &p->prop[i];
                 if (!is_first)
                     printf(", ");
-                printf("%s: ",
-                       JS_AtomGetStrRT(rt, atom_buf, sizeof(atom_buf), prs->atom));
+                js_printf_RT(rt, "%#oa: ", prs->atom);
                 if ((prs->flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
                     printf("[getset %p %p]", (void *)pr->u.getset.getter,
                            (void *)pr->u.getset.setter);
@@ -11659,7 +11643,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
         JSVarRef **var_refs;
         if (b->closure_var_count) {
             var_refs = p->u.func.var_refs;
-            printf(" Closure:");
+            printf(" Closure: {");
             for(i = 0; i < b->closure_var_count; i++) {
                 printf(" ");
                 JS_DumpValue(rt, var_refs[i]->value);
@@ -11668,6 +11652,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
                 printf(" HomeObject: ");
                 JS_DumpValue(rt, JS_MKPTR(JS_TAG_OBJECT, p->u.func.home_object));
             }
+            printf(" }");
         }
     }
     printf("\n");
@@ -11751,15 +11736,14 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValue val)
         {
             JSString *p;
             p = JS_VALUE_GET_STRING(val);
-            JS_DumpString(rt, p);
+            js_printf_RT(rt, "%ps", p);
         }
         break;
     case JS_TAG_FUNCTION_BYTECODE:
         {
             JSFunctionBytecode *b = JS_VALUE_GET_PTR(val);
-            char buf[ATOM_GET_STR_BUF_SIZE];
             if (b->func_name) {
-                printf("[bytecode %s]", JS_AtomGetStrRT(rt, buf, sizeof(buf), b->func_name));
+                js_printf_RT(rt, "[bytecode %#oa]", b->func_name);
             } else {
                 printf("[bytecode (anonymous)]");
             }
@@ -11769,17 +11753,13 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValue val)
         {
             JSObject *p = JS_VALUE_GET_OBJ(val);
             JSAtom atom = rt->class_array[p->class_id].class_name;
-            char atom_buf[ATOM_GET_STR_BUF_SIZE];
-            printf("[%s %p]",
-                   JS_AtomGetStrRT(rt, atom_buf, sizeof(atom_buf), atom), (void *)p);
+            js_printf_RT(rt, "[%#oa %p]", atom, (void *)p);
         }
         break;
     case JS_TAG_SYMBOL:
         {
             JSAtomStruct *p = JS_VALUE_GET_PTR(val);
-            char atom_buf[ATOM_GET_STR_BUF_SIZE];
-            printf("Symbol(%s)",
-                   JS_AtomGetStrRT(rt, atom_buf, sizeof(atom_buf), js_get_atom_index(rt, p)));
+            js_printf_RT(rt, "Symbol(%ps)", p);
         }
         break;
     case JS_TAG_MODULE:
@@ -18600,9 +18580,7 @@ static void __attribute((unused)) dump_token(JSParseState *s,
     case TOK_IDENT:
     dump_atom:
         {
-            char buf[ATOM_GET_STR_BUF_SIZE];
-            printf("ident: '%s'\n",
-                   JS_AtomGetStr(s->ctx, buf, sizeof(buf), token->u.ident.atom));
+            js_printf(s->ctx, "ident: '%#oa'\n", token->u.ident.atom);
         }
         break;
     case TOK_STRING:
@@ -18653,6 +18631,10 @@ int __attribute__((format(printf, 2, 3))) js_parse_error(JSParseState *s, const 
     va_list ap;
     int backtrace_flags;
 
+    // XXX: poor man fix for stack overflow check failure in V8 tests
+    if (!JS_IsNull(ctx->rt->current_exception))
+        return -1;
+
     va_start(ap, fmt);
     JS_ThrowError2(ctx, JS_SYNTAX_ERROR, fmt, ap, FALSE);
     va_end(ap);
@@ -18666,8 +18648,6 @@ int __attribute__((format(printf, 2, 3))) js_parse_error(JSParseState *s, const 
 
 static int js_parse_expect(JSParseState *s, int tok)
 {
-    char buf[ATOM_GET_STR_BUF_SIZE];
-
     if (s->token.val == tok)
         return next_token(s);
 
@@ -18683,9 +18663,8 @@ static int js_parse_expect(JSParseState *s, int tok)
     case TOK_REGEXP:
         return js_parse_error(s, "Unexpected regexp");
     case TOK_IDENT:
-        return js_parse_error(s, "Unexpected identifier '%s'",
-                              JS_AtomGetStr(s->ctx, buf, sizeof(buf),
-                                            s->token.u.ident.atom));
+        return js_parse_error(s, "Unexpected identifier '%oa'",
+                              s->token.u.ident.atom);
     case TOK_ERROR:
         return js_parse_error(s, "Invalid or unexpected token");
     default:
@@ -18709,10 +18688,7 @@ static int js_parse_expect_semi(JSParseState *s)
 
 static int js_parse_error_reserved_identifier(JSParseState *s)
 {
-    char buf1[ATOM_GET_STR_BUF_SIZE];
-    return js_parse_error(s, "'%s' is a reserved identifier",
-                          JS_AtomGetStr(s->ctx, buf1, sizeof(buf1),
-                                        s->token.u.ident.atom));
+    return js_parse_error(s, "'%#oa' is a reserved identifier", s->token.u.ident.atom);
 }
 
 static __exception int js_parse_template_part(JSParseState *s,
@@ -22432,9 +22408,7 @@ static __exception int js_parse_expr_paren(JSParseState *s)
 
 static int js_unsupported_keyword(JSParseState *s, JSAtom atom)
 {
-    char buf[ATOM_GET_STR_BUF_SIZE];
-    return js_parse_error(s, "unsupported keyword: %s",
-                          JS_AtomGetStr(s->ctx, buf, sizeof(buf), atom));
+    return js_parse_error(s, "unsupported keyword: %#oa", atom);
 }
 
 static __exception int js_define_var(JSParseState *s, JSAtom name, int tok)
@@ -25778,12 +25752,10 @@ static JSExportEntry *add_export_entry2(JSContext *ctx,
     JSExportEntry *me;
 
     if (find_export_entry(ctx, m, export_name)) {
-        char buf1[ATOM_GET_STR_BUF_SIZE];
         if (s) {
-            js_parse_error(s, "duplicate exported name '%s'",
-                           JS_AtomGetStr(ctx, buf1, sizeof(buf1), export_name));
+            js_parse_error(s, "duplicate exported name '%#oa'", export_name);
         } else {
-            JS_ThrowSyntaxErrorAtom(ctx, "duplicate exported name '%s'", export_name);
+            JS_ThrowSyntaxError(ctx, "duplicate exported name '%#oa'", export_name);
         }
         return NULL;
     }
@@ -25892,8 +25864,8 @@ static char *js_default_module_normalize_name(JSContext *ctx,
 {
     char *filename, *p;
     const char *r;
-    int cap;
-    int len;
+    size_t cap;
+    size_t len;
 
     if (name[0] != '.') {
         /* if no initial dot, the module name is not modified */
@@ -26180,26 +26152,21 @@ static void js_resolve_export_throw_error(JSContext *ctx,
                                           JSResolveResultEnum res,
                                           JSModuleDef *m, JSAtom export_name)
 {
-    char buf1[ATOM_GET_STR_BUF_SIZE];
-    char buf2[ATOM_GET_STR_BUF_SIZE];
     switch(res) {
     case JS_RESOLVE_RES_EXCEPTION:
         break;
     default:
     case JS_RESOLVE_RES_NOT_FOUND:
-        JS_ThrowSyntaxError(ctx, "Could not find export '%s' in module '%s'",
-                            JS_AtomGetStr(ctx, buf1, sizeof(buf1), export_name),
-                            JS_AtomGetStr(ctx, buf2, sizeof(buf2), m->module_name));
+        JS_ThrowSyntaxError(ctx, "Could not find export '%#oa' in module '%#oa'",
+                            export_name, m->module_name);
         break;
     case JS_RESOLVE_RES_CIRCULAR:
-        JS_ThrowSyntaxError(ctx, "circular reference when looking for export '%s' in module '%s'",
-                            JS_AtomGetStr(ctx, buf1, sizeof(buf1), export_name),
-                            JS_AtomGetStr(ctx, buf2, sizeof(buf2), m->module_name));
+        JS_ThrowSyntaxError(ctx, "circular reference when looking for export '%#oa' in module '%#oa'",
+                            export_name, m->module_name);
         break;
     case JS_RESOLVE_RES_AMBIGUOUS:
-        JS_ThrowSyntaxError(ctx, "export '%s' in module '%s' is ambiguous",
-                            JS_AtomGetStr(ctx, buf1, sizeof(buf1), export_name),
-                            JS_AtomGetStr(ctx, buf2, sizeof(buf2), m->module_name));
+        JS_ThrowSyntaxError(ctx, "export '%#oa' in module '%#oa' is ambiguous",
+                            export_name, m->module_name);
         break;
     }
 }
@@ -26448,7 +26415,7 @@ JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m)
 #ifdef DUMP_MODULE_RESOLVE
 #define module_trace(ctx, ...) \
    do if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) \
-       printf(__VA_ARGS__); while (0)
+       js_printf(ctx, __VA_ARGS__); while (0)
 #else
 #define module_trace(...)
 #endif
@@ -26461,12 +26428,9 @@ static int js_resolve_module(JSContext *ctx, JSModuleDef *m)
 
     if (m->resolved)
         return 0;
-#ifdef DUMP_MODULE_RESOLVE
-    if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) {
-        char buf1[ATOM_GET_STR_BUF_SIZE];
-        printf("resolving module '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
-    }
-#endif
+
+    module_trace(ctx, "resolving module '%#oa':\n", m->module_name);
+
     m->resolved = TRUE;
     /* resolve each requested module */
     for(i = 0; i < m->req_module_entries_count; i++) {
@@ -26610,12 +26574,7 @@ static int js_link_module(JSContext *ctx, JSModuleDef *m)
         return 0;
     m->instantiated = TRUE;
 
-#ifdef DUMP_MODULE_RESOLVE
-    if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) {
-        char buf1[ATOM_GET_STR_BUF_SIZE];
-        printf("start instantiating module '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
-    }
-#endif
+    module_trace(ctx, "start instantiating module '%#oa':\n", m->module_name);
 
     for(i = 0; i < m->req_module_entries_count; i++) {
         JSReqModuleEntry *rme = &m->req_module_entries[i];
@@ -26623,12 +26582,8 @@ static int js_link_module(JSContext *ctx, JSModuleDef *m)
             goto fail;
     }
 
-#ifdef DUMP_MODULE_RESOLVE
-    if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) {
-        char buf1[ATOM_GET_STR_BUF_SIZE];
-        printf("instantiating module '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
-    }
-#endif
+    module_trace(ctx, "instantiating module '%#oa':\n", m->module_name);
+
     /* check the indirect exports */
     for(i = 0; i < m->export_entries_count; i++) {
         JSExportEntry *me = &m->export_entries[i];
@@ -26651,9 +26606,9 @@ static int js_link_module(JSContext *ctx, JSModuleDef *m)
         printf("exported bindings:\n");
         for(i = 0; i < m->export_entries_count; i++) {
             JSExportEntry *me = &m->export_entries[i];
-            printf(" name="); print_atom(ctx, me->export_name);
-            printf(" local="); print_atom(ctx, me->local_name);
-            printf(" type=%d idx=%d\n", me->export_type, me->u.local.var_idx);
+            js_printf(ctx, " name=%#oa local=%#oa type=%d idx=%d\n",
+                      me->export_name, me->local_name,
+                      me->export_type, me->u.local.var_idx);
         }
     }
 #endif
@@ -26666,13 +26621,10 @@ static int js_link_module(JSContext *ctx, JSModuleDef *m)
 
         for(i = 0; i < m->import_entries_count; i++) {
             mi = &m->import_entries[i];
-#ifdef DUMP_MODULE_RESOLVE
-            if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) {
-                printf("import var_idx=%d name=", mi->var_idx);
-                print_atom(ctx, mi->import_name);
-                printf(": ");
-            }
-#endif
+
+            module_trace(ctx, "import var_idx=%d name=%#oa: ",
+                         mi->var_idx, mi->import_name);
+
             m1 = m->req_module_entries[mi->req_module_idx].module;
             if (mi->import_name == JS_ATOM__star_) {
                 JSValue val;
@@ -27812,23 +27764,17 @@ static void dump_byte_code(JSContext *ctx, int pass,
             }
             break;
         case OP_FMT_atom:
-            printf(" ");
-            print_atom(ctx, get_u32(tab + pos));
+            js_printf(ctx, " %#oa", get_u32(tab + pos));
             break;
         case OP_FMT_atom_u8:
-            printf(" ");
-            print_atom(ctx, get_u32(tab + pos));
-            printf(",%d", get_u8(tab + pos + 4));
+            js_printf(ctx, " %#oa,%d", get_u32(tab + pos), get_u8(tab + pos + 4));
             break;
         case OP_FMT_atom_u16:
-            printf(" ");
-            print_atom(ctx, get_u32(tab + pos));
-            printf(",%d", get_u16(tab + pos + 4));
+            js_printf(ctx, " %#oa,%d", get_u32(tab + pos), get_u16(tab + pos + 4));
             break;
         case OP_FMT_atom_label_u8:
         case OP_FMT_atom_label_u16:
-            printf(" ");
-            print_atom(ctx, get_u32(tab + pos));
+            js_printf(ctx, " %#oa", get_u32(tab + pos));
             addr = get_u32(tab + pos + 4);
             if (pass == 1)
                 printf(",%u:%u", addr, label_slots[addr].pos);
@@ -27852,7 +27798,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
         has_loc:
             printf(" %-4d ; ", idx);
             if (idx < var_count) {
-                print_atom(ctx, vars[idx].var_name);
+                js_printf(ctx, "%#oa", vars[idx].var_name);
             }
             break;
         case OP_FMT_none_arg:
@@ -27863,7 +27809,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
         has_arg:
             printf(" %-4d ; ", idx);
             if (idx < arg_count) {
-                print_atom(ctx, args[idx].var_name);
+                js_printf(ctx, "%#oa", args[idx].var_name);
             }
             break;
         case OP_FMT_none_var_ref:
@@ -27874,7 +27820,7 @@ static void dump_byte_code(JSContext *ctx, int pass,
         has_var_ref:
             printf(" %-4d ; ", idx);
             if (idx < closure_var_count) {
-                print_atom(ctx, closure_var[idx].var_name);
+                js_printf(ctx, "%#oa", closure_var[idx].var_name);
             }
             break;
         default:
@@ -27976,16 +27922,16 @@ fail:
 static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionBytecode *b)
 {
     int i;
-    char atom_buf[ATOM_GET_STR_BUF_SIZE];
     const char *str;
+    const char *kind = "";
 
     if (b->filename != JS_ATOM_NULL) {
-        str = JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->filename);
-        printf("%s:%d:%d: ", str, b->line_num, b->col_num);
+        js_printf(ctx, "%#oa:%d:%d: ", b->filename, b->line_num, b->col_num);
     }
 
-    str = JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->func_name);
-    printf("function: %s%s\n", &"*"[b->func_kind != JS_FUNC_GENERATOR], str);
+    if (b->func_kind == JS_FUNC_GENERATOR)
+        kind = "*";
+    js_printf(ctx, "function: %s%#oa\n", kind, b->func_name);
     if (b->js_mode) {
         printf("  mode:");
         if (b->js_mode & JS_MODE_STRICT)
@@ -27996,8 +27942,7 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
     if (b->arg_count && b->vardefs) {
         printf("  args:");
         for(i = 0; i < b->arg_count; i++) {
-            printf(" %s", JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf),
-                                        b->vardefs[i].var_name));
+            js_printf(ctx, " %#oa", b->vardefs[i].var_name);
         }
         printf("\n");
     }
@@ -28005,13 +27950,13 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
         printf("  locals:\n");
         for(i = 0; i < b->var_count; i++) {
             JSVarDef *vd = &b->vardefs[b->arg_count + i];
-            printf("%5d: %s %s", i,
-                   vd->var_kind == JS_VAR_CATCH ? "catch" :
-                   (vd->var_kind == JS_VAR_FUNCTION_DECL ||
-                    vd->var_kind == JS_VAR_NEW_FUNCTION_DECL) ? "function" :
-                   vd->is_const ? "const" :
-                   vd->is_lexical ? "let" : "var",
-                   JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), vd->var_name));
+            js_printf(ctx, "%5d: %s %#oa", i,
+                      vd->var_kind == JS_VAR_CATCH ? "catch" :
+                      (vd->var_kind == JS_VAR_FUNCTION_DECL ||
+                       vd->var_kind == JS_VAR_NEW_FUNCTION_DECL) ? "function" :
+                      vd->is_const ? "const" :
+                      vd->is_lexical ? "let" : "var",
+                      vd->var_name);
             if (vd->scope_level)
                 printf(" [level:%d next:%d]", vd->scope_level, vd->scope_next);
             printf("\n");
@@ -28021,12 +27966,11 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
         printf("  closure vars:\n");
         for(i = 0; i < b->closure_var_count; i++) {
             JSClosureVar *cv = &b->closure_var[i];
-            printf("%5d: %s %s:%s%d %s\n", i,
-                   JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), cv->var_name),
-                   cv->is_local ? "local" : "parent",
-                   cv->is_arg ? "arg" : "loc", cv->var_idx,
-                   cv->is_const ? "const" :
-                   cv->is_lexical ? "let" : "var");
+            js_printf(ctx, "%5d: %#oa %s:%s%d %s\n", i, cv->var_name,
+                      cv->is_local ? "local" : "parent",
+                      cv->is_arg ? "arg" : "loc", cv->var_idx,
+                      cv->is_const ? "const" :
+                      cv->is_lexical ? "let" : "var");
         }
     }
     printf("  stack_size: %d\n", b->stack_size);
@@ -28843,8 +28787,7 @@ static int resolve_scope_private_field1(JSContext *ctx,
             }
             /* XXX: no line number info */
             // XXX: resolve_scope_private_field1() should take JSParseState *s and use js_parse_error_atom
-            JS_ThrowSyntaxErrorAtom(ctx, "undefined private field '%s'",
-                                    var_name);
+            JS_ThrowSyntaxError(ctx, "undefined private field '%#oa'", var_name);
             return -1;
         } else {
             fd = fd->parent;
@@ -31263,8 +31206,7 @@ static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
             idx = find_closure_var(ctx, fd, me->local_name);
             if (idx < 0) {
                 // XXX: add_module_variables() should take JSParseState *s and use js_parse_error_atom
-                JS_ThrowSyntaxErrorAtom(ctx, "exported variable '%s' does not exist",
-                                        me->local_name);
+                JS_ThrowSyntaxError(ctx, "exported variable '%#oa' does not exist", me->local_name);
                 return -1;
             }
             me->u.local.var_idx = idx;
@@ -33583,7 +33525,7 @@ static void __attribute__((format(printf, 2, 3))) bc_read_trace(BCReaderState *s
         printf("%*s", 32 + s->level * 2 - n, "");
     }
     va_start(ap, fmt);
-    vfprintf(stdout, fmt, ap);
+    js_vprintf_RT(s->ctx->rt, fmt, ap);
     va_end(ap);
     if (strchr(fmt, '{'))
         s->level++;
@@ -33771,13 +33713,7 @@ static JSString *JS_ReadString(BCReaderState *s)
     } else {
         p->u.str8[size] = '\0'; /* add the trailing zero for 8 bit strings */
     }
-#ifdef DUMP_READ_OBJECT
-    if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-        bc_read_trace(s, "");  // hex dump and indentation
-        JS_DumpString(s->ctx->rt, p);
-        printf("\n");
-    }
-#endif
+    bc_read_trace(s, "%ps\n", p);
     return p;
 }
 
@@ -34026,15 +33962,9 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
 
     obj = JS_MKPTR(JS_TAG_FUNCTION_BYTECODE, b);
 
-#ifdef DUMP_READ_OBJECT
-    if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-        if (b->func_name) {
-            bc_read_trace(s, "name: ");
-            print_atom(s->ctx, b->func_name);
-            printf("\n");
-        }
+    if (b->func_name) {
+        bc_read_trace(s, "name: %#oa\n", b->func_name);
     }
-#endif
     bc_read_trace(s, "args=%d vars=%d defargs=%d closures=%d cpool=%d\n",
                   b->arg_count, b->var_count, b->defined_arg_count,
                   b->closure_var_count, b->cpool_count);
@@ -34060,18 +33990,12 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             vd->is_const = bc_get_flags(v8, &idx, 1);
             vd->is_lexical = bc_get_flags(v8, &idx, 1);
             vd->is_captured = bc_get_flags(v8, &idx, 1);
-#ifdef DUMP_READ_OBJECT
-            if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-                bc_read_trace(s, "%3d  %d%c%c%c %4d  ",
-                              i, vd->var_kind,
-                              vd->is_const ? 'C' : '.',
-                              vd->is_lexical ? 'L' : '.',
-                              vd->is_captured ? 'X' : '.',
-                              vd->scope_level);
-                print_atom(s->ctx, vd->var_name);
-                printf("\n");
-            }
-#endif
+            bc_read_trace(s, "%3d  %d%c%c%c %4d  %#oa\n",
+                          i, vd->var_kind,
+                          vd->is_const ? 'C' : '.',
+                          vd->is_lexical ? 'L' : '.',
+                          vd->is_captured ? 'X' : '.',
+                          vd->scope_level, vd->var_name);
         }
         bc_read_trace(s, "}\n");
     }
@@ -34094,19 +34018,13 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             cv->is_const = bc_get_flags(v8, &idx, 1);
             cv->is_lexical = bc_get_flags(v8, &idx, 1);
             cv->var_kind = bc_get_flags(v8, &idx, 4);
-#ifdef DUMP_READ_OBJECT
-            if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-                bc_read_trace(s, "%3d  %d%c%c%c%c %3d  ",
-                              i, cv->var_kind,
-                              cv->is_local ? 'L' : '.',
-                              cv->is_arg ? 'A' : '.',
-                              cv->is_const ? 'C' : '.',
-                              cv->is_lexical ? 'X' : '.',
-                              cv->var_idx);
-                print_atom(s->ctx, cv->var_name);
-                printf("\n");
-            }
-#endif
+            bc_read_trace(s, "%3d  %d%c%c%c%c %3d  %#oa\n",
+                          i, cv->var_kind,
+                          cv->is_local ? 'L' : '.',
+                          cv->is_arg ? 'A' : '.',
+                          cv->is_const ? 'C' : '.',
+                          cv->is_lexical ? 'X' : '.',
+                          cv->var_idx, cv->var_name);
         }
         bc_read_trace(s, "}\n");
     }
@@ -34138,13 +34056,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         goto fail;
     if (bc_get_leb128_int(s, &b->col_num))
         goto fail;
-#ifdef DUMP_READ_OBJECT
-    if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-        bc_read_trace(s, "filename: ");
-        print_atom(s->ctx, b->filename);
-        printf(", line: %d, column: %d\n", b->line_num, b->col_num);
-    }
-#endif
+    bc_read_trace(s, "filename: %#oa, line: %d, column: %d\n",
+                  b->filename, b->line_num, b->col_num);
     if (bc_get_leb128_int(s, &b->pc2line_len))
         goto fail;
     if (b->pc2line_len) {
@@ -34190,13 +34103,7 @@ static JSValue JS_ReadModule(BCReaderState *s)
 
     if (bc_get_atom(s, &module_name))
         goto fail;
-#ifdef DUMP_READ_OBJECT
-    if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-        bc_read_trace(s, "name: ");
-        print_atom(s->ctx, module_name);
-        printf("\n");
-    }
-#endif
+    bc_read_trace(s, "name: %#oa\n", module_name);
     m = js_new_module_def(ctx, module_name);
     if (!m)
         goto fail;
@@ -34301,13 +34208,7 @@ static JSValue JS_ReadObjectTag(BCReaderState *s)
     for(i = 0; i < prop_count; i++) {
         if (bc_get_atom(s, &atom))
             goto fail;
-#ifdef DUMP_READ_OBJECT
-        if (check_dump_flag(s->ctx->rt, DUMP_READ_OBJECT)) {
-            bc_read_trace(s, "propname: ");
-            print_atom(s->ctx, atom);
-            printf("\n");
-        }
-#endif
+        bc_read_trace(s, "propname: %#oa\n", atom);
         val = JS_ReadObjectRec(s);
         if (JS_IsException(val)) {
             JS_FreeAtom(ctx, atom);
@@ -45639,11 +45540,9 @@ void JS_AddIntrinsicMapSet(JSContext *ctx)
 {
     int i;
     JSValue obj1;
-    char buf[ATOM_GET_STR_BUF_SIZE];
 
     for(i = 0; i < 4; i++) {
-        const char *name = JS_AtomGetStr(ctx, buf, sizeof(buf),
-                                         JS_ATOM_Map + i);
+        const char *name = JS_AtomGetStr(ctx, JS_ATOM_Map + i);
         ctx->class_proto[JS_CLASS_MAP + i] = JS_NewObject(ctx);
         JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_MAP + i],
                                    js_map_proto_funcs_ptr[i],
@@ -45727,7 +45626,7 @@ static void promise_reaction_data_free(JSRuntime *rt,
 #ifdef DUMP_PROMISE
 #define promise_trace(ctx, ...) \
    do if (check_dump_flag(ctx->rt, DUMP_PROMISE)) \
-       printf(__VA_ARGS__); while (0)
+       js_printf(ctx, __VA_ARGS__); while (0)
 #else
 #define promise_trace(...)
 #endif
@@ -48848,9 +48747,8 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, obj, js_symbol_funcs,
                                countof(js_symbol_funcs));
     for(i = JS_ATOM_Symbol_toPrimitive; i < JS_ATOM_END; i++) {
-        char buf[ATOM_GET_STR_BUF_SIZE];
         const char *str, *p;
-        str = JS_AtomGetStr(ctx, buf, sizeof(buf), i);
+        str = JS_AtomGetStr(ctx, i);
         /* skip "Symbol." */
         p = strchr(str, '.');
         if (p)
@@ -51987,7 +51885,6 @@ void JS_AddIntrinsicTypedArrays(JSContext *ctx)
     JSCFunctionType ft = { .generic_magic = js_typed_array_constructor };
     for(i = JS_CLASS_UINT8C_ARRAY; i < JS_CLASS_UINT8C_ARRAY + JS_TYPED_ARRAY_COUNT; i++) {
         JSValue func_obj;
-        char buf[ATOM_GET_STR_BUF_SIZE];
         const char *name;
 
         ctx->class_proto[i] = JS_NewObjectProto(ctx, typed_array_base_proto);
@@ -51995,8 +51892,7 @@ void JS_AddIntrinsicTypedArrays(JSContext *ctx)
                                   "BYTES_PER_ELEMENT",
                                   js_int32(1 << typed_array_size_log2(i)),
                                   0);
-        name = JS_AtomGetStr(ctx, buf, sizeof(buf),
-                             JS_ATOM_Uint8ClampedArray + i - JS_CLASS_UINT8C_ARRAY);
+        name = JS_AtomGetStr(ctx, JS_ATOM_Uint8ClampedArray + i - JS_CLASS_UINT8C_ARRAY);
         func_obj = JS_NewCFunction3(ctx, ft.generic,
                                     name, 3, JS_CFUNC_constructor_magic, i,
                                     typed_array_base_func);
@@ -52736,3 +52632,5 @@ static void _JS_AddIntrinsicCallSite(JSContext *ctx)
                                js_callsite_proto_funcs,
                                countof(js_callsite_proto_funcs));
 }
+
+#include "quickjs-printf.c"

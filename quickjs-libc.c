@@ -185,7 +185,7 @@ static JSValue js_printf_internal(JSContext *ctx,
     double double_arg;
     const char *string_arg;
     /* Use indirect call to dbuf_printf to prevent gcc warning */
-    int (*dbuf_printf_fun)(DynBuf *s, const char *fmt, ...) = (void*)dbuf_printf;
+    int (*dbuf_printf_fun)(DynBuf *s, const char *fmt, ...) = dbuf_printf;
 
     js_std_dbuf_init(ctx, &dbuf);
 
@@ -225,7 +225,9 @@ static JSValue js_printf_internal(JSContext *ctx,
                     goto missing;
                 if (JS_ToInt32(ctx, &int32_arg, argv[i++]))
                     goto fail;
-                q += snprintf(q, fmtbuf + sizeof(fmtbuf) - q, "%d", int32_arg);
+                if (q > fmtbuf + sizeof(fmtbuf) - 11)
+                    goto invalid;
+                q += i32toa(q, int32_arg);
                 fmt++;
             } else {
                 while (my_isdigit(*fmt)) {
@@ -243,7 +245,9 @@ static JSValue js_printf_internal(JSContext *ctx,
                         goto missing;
                     if (JS_ToInt32(ctx, &int32_arg, argv[i++]))
                         goto fail;
-                    q += snprintf(q, fmtbuf + sizeof(fmtbuf) - q, "%d", int32_arg);
+                    if (q > fmtbuf + sizeof(fmtbuf) - 11)
+                        goto invalid;
+                    q += i32toa(q, int32_arg);
                     fmt++;
                 } else {
                     while (my_isdigit(*fmt)) {
@@ -254,10 +258,33 @@ static JSValue js_printf_internal(JSContext *ctx,
                 }
             }
 
-            /* we only support the "l" modifier for 64 bit numbers */
-            mod = ' ';
-            if (*fmt == 'l') {
-                mod = *fmt++;
+            /* we only support the "l" modifier for 64 bit numbers
+               and the w# length modifier with a bitlength of 1 to 64
+             */
+            // XXX: should use value changing conversions
+            mod = *fmt;
+            if (mod == 'w') {
+                int bitwidth;
+                if (q >= fmtbuf + sizeof(fmtbuf) - 4)
+                    goto invalid;
+                *q++ = *fmt++;
+                if (!(*fmt >= '1' && *fmt <= '9'))
+                    goto invalid;
+                bitwidth = *fmt - '0';
+                *q++ = *fmt++;
+                if (*fmt >= '0' && *fmt <= '9') {
+                    bitwidth = bitwidth * 10 + *fmt - '0';
+                    *q++ = *fmt++;
+                }
+                if (bitwidth > 32)
+                    mod = 'l';
+            } else
+            if (mod == 'l') {
+                fmt++;
+                if (q >= fmtbuf + sizeof(fmtbuf) - 3)
+                    goto invalid;
+                *q++ = 'l';
+                *q++ = 'l';
             }
 
             /* type */
@@ -286,10 +313,14 @@ static JSValue js_printf_internal(JSContext *ctx,
                 if ((unsigned)int32_arg > 0x10FFFF)
                     int32_arg = 0xFFFD;
                 /* ignore conversion flags, width and precision */
+                // XXX: Hash modifier could output pretty Unicode character
+                // XXX: `l` length modifier is implicit
                 len = utf8_encode(cbuf, int32_arg);
                 dbuf_put(&dbuf, cbuf, len);
                 break;
 
+            case 'b':
+            case 'B':
             case 'd':
             case 'i':
             case 'o':
@@ -298,27 +329,12 @@ static JSValue js_printf_internal(JSContext *ctx,
             case 'X':
                 if (i >= argc)
                     goto missing;
+                // XXX: should handle BigInt values
                 if (JS_ToInt64Ext(ctx, &int64_arg, argv[i++]))
                     goto fail;
                 if (mod == 'l') {
                     /* 64 bit number */
-#if defined(_WIN32)
-                    if (q >= fmtbuf + sizeof(fmtbuf) - 3)
-                        goto invalid;
-                    q[2] = q[-1];
-                    q[-1] = 'I';
-                    q[0] = '6';
-                    q[1] = '4';
-                    q[3] = '\0';
                     dbuf_printf_fun(&dbuf, fmtbuf, (int64_t)int64_arg);
-#else
-                    if (q >= fmtbuf + sizeof(fmtbuf) - 2)
-                        goto invalid;
-                    q[1] = q[-1];
-                    q[-1] = q[0] = 'l';
-                    q[2] = '\0';
-                    dbuf_printf_fun(&dbuf, fmtbuf, (long long)int64_arg);
-#endif
                 } else {
                     dbuf_printf_fun(&dbuf, fmtbuf, (int)int64_arg);
                 }
@@ -328,6 +344,10 @@ static JSValue js_printf_internal(JSContext *ctx,
                 if (i >= argc)
                     goto missing;
                 /* XXX: handle strings containing null characters */
+                // XXX: # could output encoded string
+                // XXX: null values should output as `<null>`
+                // XXX: undefined values should output as `<undefined>`
+                // XXX: `l` length modifier is implicit
                 string_arg = JS_ToCString(ctx, argv[i++]);
                 if (!string_arg)
                     goto fail;
@@ -351,6 +371,8 @@ static JSValue js_printf_internal(JSContext *ctx,
                 break;
 
             case '%':
+                if (q != fmtbuf + 2)  // accept only %%
+                    goto invalid;
                 dbuf_putc(&dbuf, '%');
                 break;
 
