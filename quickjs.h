@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
 #ifdef __cplusplus
 extern "C" {
