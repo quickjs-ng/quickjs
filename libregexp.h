@@ -53,7 +53,7 @@ int lre_exec(uint8_t **capture,
 int lre_parse_escape(const uint8_t **pp, int allow_utf16);
 LRE_BOOL lre_is_space(int c);
 
-void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped);
+void lre_byte_swap(uint8_t *buf, size_t len, LRE_BOOL is_byte_swapped);
 
 /* must be provided by the user */
 LRE_BOOL lre_check_stack_overflow(void *opaque, size_t alloca_size);

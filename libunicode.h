@@ -24,6 +24,7 @@
 #ifndef LIBUNICODE_H
 #define LIBUNICODE_H
 
+#include <stddef.h>
 #include <inttypes.h>
 
 #define LRE_BOOL  int       /* for documentation purposes */
