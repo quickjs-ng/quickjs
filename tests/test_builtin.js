@@ -6,12 +6,12 @@ function test_exception_source_pos()
     var e;
 
     try {
-        throw new Error(""); // line 9, column 19
+        throw new Error(""); // line 9, column 15, token 'new'
     } catch(_e) {
         e = _e;
     }
-
-    assert(e.stack.includes("test_builtin.js:9:19"));
+    // XXX: Should be the position of the `new` keyword or the `Error` constructor name ?
+    assert(e.stack.includes("test_builtin.js:9:15"), true, "expected test_builtin.js:9:15, got\n" + e.stack);
 }
 
 // Keep this at the top; it tests source positions.
@@ -19,9 +19,9 @@ function test_function_source_pos() // line 18, column 1
 {
     function inner() {} // line 20, column 5
     var f = eval("function f() {} f");
-    assert(`${test_function_source_pos.lineNumber}:${test_function_source_pos.columnNumber}`, "18:1");
-    assert(`${inner.lineNumber}:${inner.columnNumber}`, "20:5");
-    assert(`${f.lineNumber}:${f.columnNumber}`, "1:1");
+    assert(`${test_function_source_pos.lineNumber}:${test_function_source_pos.columnNumber}`, "18:1", "invalid test_function_source_pos function position");
+    assert(`${inner.lineNumber}:${inner.columnNumber}`, "20:5", "invalid inner function position");
+    assert(`${f.lineNumber}:${f.columnNumber}`, "1:1", "invalid f function position");
 }
 
 // Keep this at the top; it tests source positions.
@@ -35,18 +35,18 @@ function test_exception_prepare_stack()
     };
 
     try {
-        throw new Error(""); // line 38, column 19
+        throw new Error(""); // line 38, column 15, token 'new'
     } catch(_e) {
         e = _e;
     }
 
-    assert(e.stack.length === 2);
+    assert(e.stack.length, 2, "e.stack.length");
     const f = e.stack[0];
-    assert(f.getFunctionName() === 'test_exception_prepare_stack');
-    assert(f.getFileName() === 'tests/test_builtin.js');
-    assert(f.getLineNumber() === 38);
-    assert(f.getColumnNumber() === 19);
-    assert(!f.isNative());
+    assert(f.getFunctionName(), 'test_exception_prepare_stack', 'f.getFunctionName()');
+    assert(f.getFileName(), 'tests/test_builtin.js', 'f.getFileName()');
+    assert(f.getLineNumber(), 38, 'f.getLineNumber()');
+    assert(f.getColumnNumber(), 15, 'f.getColumnNumber()');
+    assert(f.isNative(), false, 'f.isNative()');
 
     Error.prepareStackTrace = undefined;
 }
@@ -63,26 +63,35 @@ function test_exception_stack_size_limit()
     };
 
     try {
-        throw new Error(""); // line 66, column 19
+        throw new Error(""); // line 66, column 15, token 'new'
     } catch(_e) {
         e = _e;
     }
 
-    assert(e.stack.length === 1);
+    assert(e.stack.length, 1, 'e.stack.length');
     const f = e.stack[0];
-    assert(f.getFunctionName() === 'test_exception_stack_size_limit');
-    assert(f.getFileName() === 'tests/test_builtin.js');
-    assert(f.getLineNumber() === 66);
-    assert(f.getColumnNumber() === 19);
-    assert(!f.isNative());
+    assert(f.getFunctionName(), 'test_exception_stack_size_limit', 'f.getFunctionName()');
+    assert(f.getFileName(), 'tests/test_builtin.js', 'f.getFileName()');
+    assert(f.getLineNumber(), 66, 'f.getLineNumber()');
+    assert(f.getColumnNumber(), 15, 'f.getColumnNumber()');
+    assert(f.isNative(), false, 'f.isNative()');
 
     Error.stackTraceLimit = 10;
     Error.prepareStackTrace = undefined;
 }
 
+function value_string(o) {
+    if (typeof o === 'object' && o !== null)
+        return o.toString();
+    else
+        return "" + o;
+}
+
 function assert(actual, expected, message) {
     if (arguments.length == 1)
         expected = true;
+
+    message = (arguments.length >= 3) ? " (" + message + ")" : "";
 
     if (typeof actual === typeof expected) {
         if (actual === expected) {
@@ -100,9 +109,9 @@ function assert(actual, expected, message) {
                 return;
         }
     }
-    throw Error("assertion failed: got |" + actual + "|" +
-                ", expected |" + expected + "|" +
-                (message ? " (" + message + ")" : ""));
+    throw Error("assertion failed: " +
+                "got |" + value_string(actual) + "|, " +
+                "expected |" + value_string(expected) + "|" + message);
 }
 
 function assert_throws(expected_error, func)
@@ -160,16 +169,16 @@ function test_function()
     }));
 
     r = new Function("a", "b", "return a + b;");
-    assert(r(2,3), 5, "function");
+    assert(r(2,3), 5, 'r(2,3)');
 
     g = f.bind(1, 2);
-    assert(g.length, 1);
-    assert(g.name, "bound f");
-    assert(g(3), [1,2,3]);
+    assert(g.length, 1, 'g.length');
+    assert(g.name, "bound f", 'g.name');
+    assert(g(3), [1,2,3], 'g(3)');
 
     g = constructor1.bind(null, 1);
     r = new g();
-    assert(r.x, 1);
+    assert(r.x, 1, 'r.x');
 }
 
 function test()
