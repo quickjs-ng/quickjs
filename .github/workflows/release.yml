@@ -225,7 +225,7 @@ jobs:
           path: build/qjs-wasi.wasm
 
   upload-to-release:
-    needs: [linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64, wasi]
+    needs: [linux-aarch64, linux-riscv64, linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64, wasi]
     runs-on: ubuntu-20.04
     steps:
       - name: get assets
