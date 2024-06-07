@@ -34,6 +34,34 @@ jobs:
         with:
           name: qjs
           path: build/*-linux-aarch64
+  linux-riscv64:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jirutka/setup-alpine@v1
+        with:
+          arch: riscv64
+          packages: "build-base make cmake"
+      - name: build
+        shell: alpine.sh {0}
+        run: |
+          mkdir build
+          cd build
+          cmake -DBUILD_STATIC_QJS_EXE=ON ..
+          cd ..
+          cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
+          cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
+          mv build/qjs build/qjs-linux-riscv64
+          mv build/qjsc build/qjsc-linux-riscv64
+      - name: check
+        shell: alpine.sh {0}
+        run: |
+          file build/*-linux-riscv64
+      - name: upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: qjs
+          path: build/*-linux-riscv64
   linux-x86:
     runs-on: ubuntu-20.04
     steps:
