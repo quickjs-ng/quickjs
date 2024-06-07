@@ -240,7 +240,7 @@ if(NOT WIN32 AND NOT EMSCRIPTEN)
         quickjs-libc.c
         run-test262.c
     )
-    target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
+    target_compile_definitions(run-test262 PRIVATE ${qjs_defines} JS_RUN_TEST262)
     target_link_libraries(run-test262 ${qjs_libs})
 endif()
 

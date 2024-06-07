@@ -350,9 +350,13 @@ JS_EXTERN JS_BOOL JS_IsSameValue(JSContext *ctx, JSValue op1, JSValue op2);
 /* Similar to same-value equality, but +0 and -0 are considered equal. */
 JS_EXTERN JS_BOOL JS_IsSameValueZero(JSContext *ctx, JSValue op1, JSValue op2);
 
-/* Only used for running 262 tests. TODO(saghul) add build time flag. */
+#if defined(JS_RUN_TEST262)
+
+/* Only used for running 262 tests. */
 JS_EXTERN JSValue js_string_codePointRange(JSContext *ctx, JSValue this_val,
                                  int argc, JSValue *argv);
+
+#endif
 
 JS_EXTERN void *js_malloc_rt(JSRuntime *rt, size_t size);
 JS_EXTERN void js_free_rt(JSRuntime *rt, void *ptr);
