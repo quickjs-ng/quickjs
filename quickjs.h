@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -182,7 +183,7 @@ typedef struct JSValue {
 
 #define JS_TAG_IS_FLOAT64(tag) ((unsigned)(tag) == JS_TAG_FLOAT64)
 
-#define JS_NAN (JSValue){ .u.float64 = JS_FLOAT64_NAN, JS_TAG_FLOAT64 }
+#define JS_NAN (JSValue){ (JSValueUnion){ .float64 = JS_FLOAT64_NAN }, JS_TAG_FLOAT64 }
 
 static inline JSValue __JS_NewFloat64(double d)
 {
@@ -274,6 +275,9 @@ static inline JS_BOOL JS_VALUE_IS_NAN(JSValue v)
 #define JS_EVAL_FLAG_COMPILE_ONLY (1 << 5)
 /* don't include the stack frames before this eval in the Error() backtraces */
 #define JS_EVAL_FLAG_BACKTRACE_BARRIER (1 << 6)
+/* allow top-level await in normal script. JS_Eval() returns a
+   promise. Only allowed with JS_EVAL_TYPE_GLOBAL */
+#define JS_EVAL_FLAG_ASYNC (1 << 7)
 
 typedef JSValue JSCFunction(JSContext *ctx, JSValue this_val, int argc, JSValue *argv);
 typedef JSValue JSCFunctionMagic(JSContext *ctx, JSValue this_val, int argc, JSValue *argv, int magic);
@@ -301,6 +305,7 @@ JS_EXTERN void JS_SetRuntimeInfo(JSRuntime *rt, const char *info);
 /* use 0 to disable memory limit */
 JS_EXTERN void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
 JS_EXTERN void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
+JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
 JS_EXTERN void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
 JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
 JS_EXTERN void JS_SetGCThresholdFixed(JSRuntime *rt, JS_BOOL fixed);
@@ -505,9 +510,9 @@ static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
 {
     JSValue v;
     if (val >= INT32_MIN && val <= INT32_MAX) {
-        v = JS_NewInt32(ctx, val);
+        v = JS_NewInt32(ctx, (int32_t)val);
     } else {
-        v = JS_NewFloat64(ctx, val);
+        v = JS_NewFloat64(ctx, (double)val);
     }
     return v;
 }
@@ -516,9 +521,9 @@ static js_force_inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
 {
     JSValue v;
     if (val <= 0x7fffffff) {
-        v = JS_NewInt32(ctx, val);
+        v = JS_NewInt32(ctx, (int32_t)val);
     } else {
-        v = JS_NewFloat64(ctx, val);
+        v = JS_NewFloat64(ctx, (double)val);
     }
     return v;
 }
@@ -584,6 +589,7 @@ JS_EXTERN JSValue JS_GetException(JSContext *ctx);
 JS_EXTERN JS_BOOL JS_IsError(JSContext *ctx, JSValue val);
 JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
 JS_EXTERN JSValue JS_NewError(JSContext *ctx);
+JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowPlainError(JSContext *ctx, const char *fmt, ...);
 JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...);
 JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowTypeError(JSContext *ctx, const char *fmt, ...);
 JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowReferenceError(JSContext *ctx, const char *fmt, ...);
@@ -641,6 +647,7 @@ JS_EXTERN int JS_ToIndex(JSContext *ctx, uint64_t *plen, JSValue val);
 JS_EXTERN int JS_ToFloat64(JSContext *ctx, double *pres, JSValue val);
 /* return an exception if 'val' is a Number */
 JS_EXTERN int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValue val);
+JS_EXTERN int JS_ToBigUint64(JSContext *ctx, uint64_t *pres, JSValue val);
 /* same as JS_ToInt64() but allow BigInt */
 JS_EXTERN int JS_ToInt64Ext(JSContext *ctx, int64_t *pres, JSValue val);
 
@@ -698,6 +705,7 @@ JS_EXTERN int JS_PreventExtensions(JSContext *ctx, JSValue obj);
 JS_EXTERN int JS_DeleteProperty(JSContext *ctx, JSValue obj, JSAtom prop, int flags);
 JS_EXTERN int JS_SetPrototype(JSContext *ctx, JSValue obj, JSValue proto_val);
 JS_EXTERN JSValue JS_GetPrototype(JSContext *ctx, JSValue val);
+JS_EXTERN int JS_GetLength(JSContext *ctx, JSValue obj, int64_t *pres);
 
 #define JS_GPN_STRING_MASK  (1 << 0)
 #define JS_GPN_SYMBOL_MASK  (1 << 1)
@@ -711,6 +719,8 @@ JS_EXTERN int JS_GetOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
                                      uint32_t *plen, JSValue obj, int flags);
 JS_EXTERN int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
                                 JSValue obj, JSAtom prop);
+JS_EXTERN void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
+                                   uint32_t len);
 
 JS_EXTERN JSValue JS_Call(JSContext *ctx, JSValue func_obj, JSValue this_obj,
                           int argc, JSValue *argv);
@@ -780,7 +790,15 @@ typedef struct {
 } JSSharedArrayBufferFunctions;
 JS_EXTERN void JS_SetSharedArrayBufferFunctions(JSRuntime *rt, const JSSharedArrayBufferFunctions *sf);
 
+typedef enum JSPromiseStateEnum {
+    JS_PROMISE_PENDING,
+    JS_PROMISE_FULFILLED,
+    JS_PROMISE_REJECTED,
+} JSPromiseStateEnum;
+
 JS_EXTERN JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs);
+JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
+JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
 
 JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, JS_BOOL is_global);
 
@@ -852,8 +870,8 @@ JS_EXTERN int JS_ResolveModule(JSContext *ctx, JSValue obj);
 /* only exported for os.Worker() */
 JS_EXTERN JSAtom JS_GetScriptOrModuleName(JSContext *ctx, int n_stack_levels);
 /* only exported for os.Worker() */
-JS_EXTERN JSModuleDef *JS_RunModule(JSContext *ctx, const char *basename,
-                                    const char *filename);
+JS_EXTERN JSValue JS_LoadModule(JSContext *ctx, const char *basename,
+                      const char *filename);
 
 /* C function definition */
 typedef enum JSCFunctionEnum {  /* XXX: should rename for namespace isolation */
@@ -956,21 +974,21 @@ typedef struct JSCFunctionListEntry {
 #define JS_DEF_ALIAS          9
 
 /* Note: c++ does not like nested designators */
-#define JS_CFUNC_DEF(name, length, func1) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_CFUNC, 0, .u = { .func = { length, JS_CFUNC_generic, { .generic = func1 } } } }
-#define JS_CFUNC_DEF2(name, length, func1, prop_flags) { name, prop_flags, JS_DEF_CFUNC, 0, .u = { .func = { length, JS_CFUNC_generic, { .generic = func1 } } } }
-#define JS_CFUNC_MAGIC_DEF(name, length, func1, magic) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_CFUNC, magic, .u = { .func = { length, JS_CFUNC_generic_magic, { .generic_magic = func1 } } } }
-#define JS_CFUNC_SPECIAL_DEF(name, length, cproto, func1) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_CFUNC, 0, .u = { .func = { length, JS_CFUNC_ ## cproto, { .cproto = func1 } } } }
-#define JS_ITERATOR_NEXT_DEF(name, length, func1, magic) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_CFUNC, magic, .u = { .func = { length, JS_CFUNC_iterator_next, { .iterator_next = func1 } } } }
-#define JS_CGETSET_DEF(name, fgetter, fsetter) { name, JS_PROP_CONFIGURABLE, JS_DEF_CGETSET, 0, .u = { .getset = { .get = { .getter = fgetter }, .set = { .setter = fsetter } } } }
-#define JS_CGETSET_MAGIC_DEF(name, fgetter, fsetter, magic) { name, JS_PROP_CONFIGURABLE, JS_DEF_CGETSET_MAGIC, magic, .u = { .getset = { .get = { .getter_magic = fgetter }, .set = { .setter_magic = fsetter } } } }
-#define JS_PROP_STRING_DEF(name, cstr, prop_flags) { name, prop_flags, JS_DEF_PROP_STRING, 0, .u = { .str = cstr } }
-#define JS_PROP_INT32_DEF(name, val, prop_flags) { name, prop_flags, JS_DEF_PROP_INT32, 0, .u = { .i32 = val } }
-#define JS_PROP_INT64_DEF(name, val, prop_flags) { name, prop_flags, JS_DEF_PROP_INT64, 0, .u = { .i64 = val } }
-#define JS_PROP_DOUBLE_DEF(name, val, prop_flags) { name, prop_flags, JS_DEF_PROP_DOUBLE, 0, .u = { .f64 = val } }
-#define JS_PROP_UNDEFINED_DEF(name, prop_flags) { name, prop_flags, JS_DEF_PROP_UNDEFINED, 0, .u = { .i32 = 0 } }
-#define JS_OBJECT_DEF(name, tab, len, prop_flags) { name, prop_flags, JS_DEF_OBJECT, 0, .u = { .prop_list = { tab, len } } }
-#define JS_ALIAS_DEF(name, from) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_ALIAS, 0, .u = { .alias = { from, -1 } } }
-#define JS_ALIAS_BASE_DEF(name, from, base) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_ALIAS, 0, .u = { .alias = { from, base } } }
+#define JS_CFUNC_DEF(name, length, func1) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_CFUNC, 0, { .func = { length, JS_CFUNC_generic, { .generic = func1 } } } }
+#define JS_CFUNC_DEF2(name, length, func1, prop_flags) { name, prop_flags, JS_DEF_CFUNC, 0, { .func = { length, JS_CFUNC_generic, { .generic = func1 } } } }
+#define JS_CFUNC_MAGIC_DEF(name, length, func1, magic) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_CFUNC, magic, { .func = { length, JS_CFUNC_generic_magic, { .generic_magic = func1 } } } }
+#define JS_CFUNC_SPECIAL_DEF(name, length, cproto, func1) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_CFUNC, 0, { .func = { length, JS_CFUNC_ ## cproto, { .cproto = func1 } } } }
+#define JS_ITERATOR_NEXT_DEF(name, length, func1, magic) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_CFUNC, magic, { .func = { length, JS_CFUNC_iterator_next, { .iterator_next = func1 } } } }
+#define JS_CGETSET_DEF(name, fgetter, fsetter) { name, JS_PROP_CONFIGURABLE, JS_DEF_CGETSET, 0, { .getset = { .get = { .getter = fgetter }, .set = { .setter = fsetter } } } }
+#define JS_CGETSET_MAGIC_DEF(name, fgetter, fsetter, magic) { name, JS_PROP_CONFIGURABLE, JS_DEF_CGETSET_MAGIC, magic, { .getset = { .get = { .getter_magic = fgetter }, .set = { .setter_magic = fsetter } } } }
+#define JS_PROP_STRING_DEF(name, cstr, prop_flags) { name, prop_flags, JS_DEF_PROP_STRING, 0, { .str = cstr } }
+#define JS_PROP_INT32_DEF(name, val, prop_flags) { name, prop_flags, JS_DEF_PROP_INT32, 0, { .i32 = val } }
+#define JS_PROP_INT64_DEF(name, val, prop_flags) { name, prop_flags, JS_DEF_PROP_INT64, 0, { .i64 = val } }
+#define JS_PROP_DOUBLE_DEF(name, val, prop_flags) { name, prop_flags, JS_DEF_PROP_DOUBLE, 0, { .f64 = val } }
+#define JS_PROP_UNDEFINED_DEF(name, prop_flags) { name, prop_flags, JS_DEF_PROP_UNDEFINED, 0, { .i32 = 0 } }
+#define JS_OBJECT_DEF(name, tab, len, prop_flags) { name, prop_flags, JS_DEF_OBJECT, 0, { .prop_list = { tab, len } } }
+#define JS_ALIAS_DEF(name, from) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_ALIAS, 0, { .alias = { from, -1 } } }
+#define JS_ALIAS_BASE_DEF(name, from, base) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_ALIAS, 0, { .alias = { from, base } } }
 
 JS_EXTERN void JS_SetPropertyFunctionList(JSContext *ctx, JSValue obj,
                                           const JSCFunctionListEntry *tab,
@@ -992,25 +1010,10 @@ JS_EXTERN int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *exp
 JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
                                      const JSCFunctionListEntry *tab, int len);
 
-/* Promise */
-
-#define JS_INVALID_PROMISE_STATE (-1)
-
-typedef enum JSPromiseStateEnum {
-    JS_PROMISE_PENDING,
-    JS_PROMISE_FULFILLED,
-    JS_PROMISE_REJECTED,
-} JSPromiseStateEnum;
-
-/* Returns JSPromiseReactionEnum for the promise or JS_INVALID_PROMISE_STATE if the value is not a promise. */
-JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
-/* Return the result of the promise if the promise's state is in the FULFILLED or REJECTED state. Otherwise returns JS_UNDEFINED. */
-JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
-
 /* Version */
 
 #define QJS_VERSION_MAJOR 0
-#define QJS_VERSION_MINOR 5
+#define QJS_VERSION_MINOR 6
 #define QJS_VERSION_PATCH 0
 #define QJS_VERSION_SUFFIX "dev"
 

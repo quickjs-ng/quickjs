@@ -129,6 +129,7 @@ import * as os from "os";
     var plen = 0;
     var ps1 = "qjs > ";
     var ps2 = "  ... ";
+    var eval_start_time;
     var eval_time = 0;
     var mexpr = "";
     var level = 0;
@@ -838,10 +839,8 @@ import * as os from "os";
             prompt += ps2;
         } else {
             if (show_time) {
-                var t = Math.round(eval_time) + " ";
-                eval_time = 0;
-                t = dupstr("0", 5 - t.length) + t;
-                prompt += t.substring(0, t.length - 4) + "." + t.substring(t.length - 4);
+                var t = eval_time / 1000;
+                prompt += t.toFixed(6) + " ";
             }
             plen = prompt.length;
             prompt += ps1;
@@ -1507,34 +1506,6 @@ import * as os from "os";
         "quit":   () => { exit(0); },
     }, null);
 
-    function eval_and_print(expr) {
-        var result;
-        
-        try {
-            if (use_strict)
-                expr = '"use strict"; void 0;' + expr;
-            var now = Date.now();
-            /* eval as a script */
-            result = std.evalScript(expr, { backtrace_barrier: true });
-            eval_time = Date.now() - now;
-            print(result);
-            /* set the last result */
-            g._ = result;
-        } catch (error) {
-            std.puts(colors[styles.error]);
-            if (error instanceof Error) {
-                console.log(error);
-                if (error.stack) {
-                    std.puts(error.stack);
-                }
-            } else {
-                std.puts("Throw: ");
-                console.log(error);
-            }
-            std.puts(colors.none);
-        }
-    }
-
     function cmd_start() {
         std.puts('QuickJS-ng - Type ".help" for help\n');
         cmd_readline_start();
@@ -1545,33 +1516,88 @@ import * as os from "os";
     }
     
     function readline_handle_cmd(expr) {
-        handle_cmd(expr);
-        cmd_readline_start();
+        if (!handle_cmd(expr)) {
+            cmd_readline_start();
+        }
     }
 
+    /* return true if async termination */
     function handle_cmd(expr) {
         if (!expr)
-            return;
+            return false;
         if (mexpr) {
             expr = mexpr + '\n' + expr;
         } else {
             if (handle_directive(expr))
-                return;
+                return false;
         }
         var colorstate = colorize_js(expr);
         pstate = colorstate[0];
         level = colorstate[1];
         if (pstate) {
             mexpr = expr;
-            return;
+            return false;
         }
         mexpr = "";
         
-        eval_and_print(expr);
+        eval_and_print_start(expr, true);
+
+        return true;
+    }
+
+    function eval_and_print_start(expr, is_async) {
+        var result;
+        
+        try {
+            if (use_strict)
+                expr = '"use strict"; void 0;' + expr;
+            eval_start_time = os.now();
+            /* eval as a script */
+            result = std.evalScript(expr, { backtrace_barrier: true, async: is_async });
+            if (is_async) {
+                /* result is a promise */
+                result.then(print_eval_result, print_eval_error);
+            } else {
+                print_eval_result({ value: result });
+            }
+        } catch (error) {
+            print_eval_error(error);
+        }
+    }
+
+    function print_eval_result(result) {
+        result = result.value;
+        eval_time = os.now() - eval_start_time;
+        print(result);
+        /* set the last result */
+        g._ = result;
+
+        handle_cmd_end();
+    }
+
+    function print_eval_error(error) {
+        std.puts(colors[styles.error]);
+        if (error instanceof Error) {
+            console.log(error);
+            if (error.stack) {
+                std.puts(error.stack);
+            }
+        } else {
+            std.puts("Throw: ");
+            console.log(error);
+        }
+        std.puts(colors.none);
+
+        handle_cmd_end();
+    }
+
+    function handle_cmd_end() {
         level = 0;
         
         /* run the garbage collector after each command */
         std.gc();
+
+        cmd_readline_start();
     }
 
     function colorize_js(str) {

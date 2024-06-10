@@ -58,11 +58,6 @@
 #define MALLOC_OVERHEAD  8
 #endif
 
-#if !defined(_WIN32) && !defined(__wasi__)
-/* define it if printf uses the RNDN rounding mode instead of RNDNA */
-#define CONFIG_PRINTF_RNDN
-#endif
-
 #if defined(__NEWLIB__)
 #define NO_TM_GMTOFF
 #endif
@@ -193,6 +188,7 @@ typedef enum JSErrorEnum {
     JS_AGGREGATE_ERROR,
 
     JS_NATIVE_ERROR_COUNT, /* number of different NativeError objects */
+    JS_PLAIN_ERROR = JS_NATIVE_ERROR_COUNT
 } JSErrorEnum;
 
 #define JS_MAX_LOCAL_VARS 65535
@@ -271,6 +267,8 @@ struct JSRuntime {
     JSModuleNormalizeFunc *module_normalize_func;
     JSModuleLoaderFunc *module_loader_func;
     void *module_loader_opaque;
+    /* timestamp for internal use in module evaluation */
+    int64_t module_async_evaluation_next_timestamp;
 
     /* used to allocate, free and clone SharedArrayBuffers */
     JSSharedArrayBufferFunctions sab_funcs;
@@ -765,6 +763,15 @@ typedef struct JSImportEntry {
     int req_module_idx; /* in req_module_entries */
 } JSImportEntry;
 
+typedef enum {
+    JS_MODULE_STATUS_UNLINKED,
+    JS_MODULE_STATUS_LINKING,
+    JS_MODULE_STATUS_LINKED,
+    JS_MODULE_STATUS_EVALUATING,
+    JS_MODULE_STATUS_EVALUATING_ASYNC,
+    JS_MODULE_STATUS_EVALUATED,
+} JSModuleStatus;
+
 struct JSModuleDef {
     JSRefCountHeader header; /* must come first, 32-bit */
     JSAtom module_name;
@@ -786,15 +793,26 @@ struct JSModuleDef {
     int import_entries_count;
     int import_entries_size;
 
-    JSValue promise;
     JSValue module_ns;
     JSValue func_obj; /* only used for JS modules */
     JSModuleInitFunc *init_func; /* only used for C modules */
+    BOOL has_tla : 8; /* true if func_obj contains await */
     BOOL resolved : 8;
     BOOL func_created : 8;
-    BOOL instantiated : 8;
-    BOOL evaluated : 8;
-    BOOL eval_mark : 8; /* temporary use during js_evaluate_module() */
+    JSModuleStatus status : 8;
+    /* temp use during js_module_link() & js_module_evaluate() */
+    int dfs_index, dfs_ancestor_index;
+    JSModuleDef *stack_prev;
+    /* temp use during js_module_evaluate() */
+    JSModuleDef **async_parent_modules;
+    int async_parent_modules_count;
+    int async_parent_modules_size;
+    int pending_async_dependencies;
+    BOOL async_evaluation;
+    int64_t async_evaluation_timestamp;
+    JSModuleDef *cycle_root;
+    JSValue promise; /* corresponds to spec field: capability */
+    JSValue resolving_funcs[2]; /* corresponds to spec field: capability */
     /* true if evaluation yielded an exception. It is saved in
        eval_exception */
     BOOL eval_has_exception : 8;
@@ -858,14 +876,6 @@ struct JSShape {
     JSObject *proto;
     JSShapeProperty prop[0]; /* prop_size elements */
 };
-
-typedef struct JSPromiseData {
-    JSPromiseStateEnum promise_state;
-    /* 0=fulfill, 1=reject, list of JSPromiseReactionData.link */
-    struct list_head promise_reactions[2];
-    BOOL is_handled; /* Note: only useful to debug */
-    JSValue promise_result;
-} JSPromiseData;
 
 struct JSObject {
     union {
@@ -1109,12 +1119,8 @@ static JSValue js_regexp_constructor_internal(JSContext *ctx, JSValue ctor,
 static void gc_decref(JSRuntime *rt);
 static int JS_NewClass1(JSRuntime *rt, JSClassID class_id,
                         const JSClassDef *class_def, JSAtom name);
-static JSValue js_promise_all(JSContext *ctx, JSValue this_val,
-                              int argc, JSValue *argv, int magic);
-static JSValue js_promise_then(JSContext *ctx, JSValue this_val,
-                               int argc, JSValue *argv);
-static JSValue js_array_push(JSContext *ctx, JSValue this_val,
-                             int argc, JSValue *argv, int unshift);
+static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv, int unshift);
 
 typedef enum JSStrictEqModeEnum {
     JS_EQ_STRICT,
@@ -1204,6 +1210,8 @@ static __exception int perform_promise_then(JSContext *ctx,
                                             JSValue *cap_resolving_funcs);
 static JSValue js_promise_resolve(JSContext *ctx, JSValue this_val,
                                   int argc, JSValue *argv, int magic);
+static JSValue js_promise_then(JSContext *ctx, JSValueConst this_val,
+                               int argc, JSValueConst *argv);
 static int js_string_compare(JSContext *ctx,
                              const JSString *p1, const JSString *p2);
 static JSValue JS_ToNumber(JSContext *ctx, JSValue val);
@@ -1778,6 +1786,10 @@ void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags)
     rt->dump_flags = flags;
 }
 
+size_t JS_GetGCThreshold(JSRuntime *rt) {
+    return rt->malloc_gc_threshold;
+}
+
 /* use -1 to disable automatic GC */
 void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold)
 {
@@ -2231,7 +2243,6 @@ JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id)
 typedef enum JSFreeModuleEnum {
     JS_FREE_MODULE_ALL,
     JS_FREE_MODULE_NOT_RESOLVED,
-    JS_FREE_MODULE_NOT_EVALUATED,
 } JSFreeModuleEnum;
 
 /* XXX: would be more efficient with separate module lists */
@@ -2241,9 +2252,7 @@ static void js_free_modules(JSContext *ctx, JSFreeModuleEnum flag)
     list_for_each_safe(el, el1, &ctx->loaded_modules) {
         JSModuleDef *m = list_entry(el, JSModuleDef, link);
         if (flag == JS_FREE_MODULE_ALL ||
-            (flag == JS_FREE_MODULE_NOT_RESOLVED && !m->resolved) ||
-            (flag == JS_FREE_MODULE_NOT_EVALUATED && !m->evaluated
-                && !m->eval_mark)) {
+            (flag == JS_FREE_MODULE_NOT_RESOLVED && !m->resolved)) {
             js_free_module_def(ctx, m);
         }
     }
@@ -3070,38 +3079,25 @@ static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
         snprintf(buf, buf_size, "<invalid %x>", atom);
     } else {
         JSAtomStruct *p = rt->atom_array[atom];
+        *buf = '\0';
         if (atom_is_free(p)) {
             assert(!atom_is_free(p));
             snprintf(buf, buf_size, "<free %x>", atom);
-        } else {
-            int i, c;
-            char *q;
-            JSString *str;
-
-            q = buf;
-            str = p;
-            if (str) {
-                if (!str->is_wide_char) {
-                    /* special case ASCII strings */
-                    c = 0;
-                    for(i = 0; i < str->len; i++) {
-                        c |= str->u.str8[i];
-                    }
-                    if (c < 0x80)
-                        return (const char *)str->u.str8;
-                }
+        } else if (p != NULL) {
+            JSString *str = p;
+            if (str->is_wide_char) {
+                /* encode surrogates correctly */
+                utf8_encode_buf16(buf, buf_size, str->u.str16, str->len);
+            } else {
+                /* special case ASCII strings */
+                int i, c = 0;
                 for(i = 0; i < str->len; i++) {
-                    c = string_get(str, i);
-                    if ((q - buf) >= buf_size - UTF8_CHAR_LEN_MAX)
-                        break;
-                    if (c < 128) {
-                        *q++ = c;
-                    } else {
-                        q += unicode_to_utf8((uint8_t *)q, c);
-                    }
+                    c |= str->u.str8[i];
                 }
+                if (c < 0x80)
+                    return (const char *)str->u.str8;
+                utf8_encode_buf8(buf, buf_size, str->u.str8, str->len);
             }
-            *q = '\0';
         }
     }
     return buf;
@@ -3351,6 +3347,7 @@ const char *JS_AtomToCString(JSContext *ctx, JSAtom atom)
 
 /* return a string atom containing name concatenated with str1 */
 /* `str1` may be pure ASCII or UTF-8 encoded */
+// TODO(chqrlie): use string concatenation instead of UTF-8 conversion
 static JSAtom js_atom_concat_str(JSContext *ctx, JSAtom name, const char *str1)
 {
     JSValue str;
@@ -3903,64 +3900,44 @@ static JSValue string_buffer_end(StringBuffer *s)
 /* create a string from a UTF-8 buffer */
 JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
 {
-    const uint8_t *p, *p_end, *p_start, *p_next;
-    uint32_t c;
-    StringBuffer b_s, *b = &b_s;
-    size_t len1;
+    JSString *str;
+    size_t len;
+    int kind;
 
     if (buf_len <= 0) {
         return JS_AtomToString(ctx, JS_ATOM_empty_string);
     }
-    p_start = (const uint8_t *)buf;
-    p_end = p_start + buf_len;
-    p = p_start;
-    while (p < p_end && *p < 128)
-        p++;
-    len1 = p - p_start;
-    if (len1 > JS_STRING_LEN_MAX)
+    /* Compute string kind and length: 7-bit, 8-bit, 16-bit, 16-bit UTF-16 */
+    kind = utf8_scan(buf, buf_len, &len);
+    if (len > JS_STRING_LEN_MAX)
         return JS_ThrowRangeError(ctx, "invalid string length");
-    if (p == p_end) {
-        /* ASCII string */
-        return js_new_string8_len(ctx, buf, buf_len);
-    } else {
-        if (string_buffer_init(ctx, b, buf_len))
-            goto fail;
-        string_buffer_write8(b, p_start, len1);
-        while (p < p_end) {
-            if (*p < 128) {
-                string_buffer_putc8(b, *p++);
-            } else {
-                /* parse utf-8 sequence, return 0xFFFFFFFF for error */
-                c = unicode_from_utf8(p, p_end - p, &p_next);
-                if (c < 0x10000) {
-                    p = p_next;
-                } else if (c <= 0x10FFFF) {
-                    p = p_next;
-                    /* surrogate pair */
-                    string_buffer_putc16(b, get_hi_surrogate(c));
-                    c = get_lo_surrogate(c);
-                } else {
-                    /* invalid char */
-                    c = 0xfffd;
-                    /* skip the invalid chars */
-                    /* XXX: seems incorrect. Why not just use c = *p++; ? */
-                    while (p < p_end && (*p >= 0x80 && *p < 0xc0))
-                        p++;
-                    if (p < p_end) {
-                        p++;
-                        while (p < p_end && (*p >= 0x80 && *p < 0xc0))
-                            p++;
-                    }
-                }
-                string_buffer_putc16(b, c);
-            }
-        }
-    }
-    return string_buffer_end(b);
 
- fail:
-    string_buffer_free(b);
-    return JS_EXCEPTION;
+    switch (kind) {
+    case UTF8_PLAIN_ASCII:
+        str = js_alloc_string(ctx, len, 0);
+        if (!str)
+            return JS_EXCEPTION;
+        memcpy(str->u.str8, buf, len);
+        str->u.str8[len] = '\0';
+        break;
+    case UTF8_NON_ASCII:
+        /* buf contains non-ASCII code-points, but limited to 8-bit values */
+        str = js_alloc_string(ctx, len, 0);
+        if (!str)
+            return JS_EXCEPTION;
+        utf8_decode_buf8(str->u.str8, len + 1, buf, buf_len);
+        break;
+    default:
+        // This causes a potential problem in JS_ThrowError if message is invalid
+        //if (kind & UTF8_HAS_ERRORS)
+        //    return JS_ThrowRangeError(ctx, "invalid UTF-8 sequence");
+        str = js_alloc_string(ctx, len, 1);
+        if (!str)
+            return JS_EXCEPTION;
+        utf8_decode_buf16(str->u.str16, len, buf, buf_len);
+        break;
+    }
+    return JS_MKPTR(JS_TAG_STRING, str);
 }
 
 static JSValue JS_ConcatString3(JSContext *ctx, const char *str1,
@@ -4107,7 +4084,7 @@ go:
                         /* c = 0xfffd; */ /* error */
                     }
                 }
-                q += unicode_to_utf8(q, c);
+                q += utf8_encode(q, c);
             }
         }
     }
@@ -6678,8 +6655,11 @@ static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
     JSValue obj, ret, msg;
 
     vsnprintf(buf, sizeof(buf), fmt, ap);
-    obj = JS_NewObjectProtoClass(ctx, ctx->native_error_proto[error_num],
-                                 JS_CLASS_ERROR);
+    if (error_num == JS_PLAIN_ERROR)
+        obj = JS_NewError(ctx);
+    else
+        obj = JS_NewObjectProtoClass(ctx, ctx->native_error_proto[error_num],
+                                     JS_CLASS_ERROR);
     if (unlikely(JS_IsException(obj))) {
         /* out of memory: throw JS_NULL to avoid recursing */
         obj = JS_NULL;
@@ -6711,6 +6691,17 @@ static JSValue JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
     add_backtrace = !rt->in_out_of_memory &&
         (!sf || (JS_GetFunctionBytecode(sf->cur_func) == NULL));
     return JS_ThrowError2(ctx, error_num, fmt, ap, add_backtrace);
+}
+
+JSValue __attribute__((format(printf, 2, 3))) JS_ThrowPlainError(JSContext *ctx, const char *fmt, ...)
+{
+    JSValue val;
+    va_list ap;
+
+    va_start(ap, fmt);
+    val = JS_ThrowError(ctx, JS_PLAIN_ERROR, fmt, ap);
+    va_end(ap);
+    return val;
 }
 
 JSValue __attribute__((format(printf, 2, 3))) JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...)
@@ -7045,6 +7036,10 @@ static JSValue JS_GetPrototypeFree(JSContext *ctx, JSValue obj)
     obj1 = JS_GetPrototype(ctx, obj);
     JS_FreeValue(ctx, obj);
     return obj1;
+}
+
+int JS_GetLength(JSContext *ctx, JSValue obj, int64_t *pres) {
+    return js_get_length64(ctx, pres, obj);
 }
 
 /* return TRUE, FALSE or (-1) in case of exception */
@@ -7883,6 +7878,12 @@ int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
         return -1;
     }
     return JS_GetOwnPropertyInternal(ctx, desc, JS_VALUE_GET_OBJ(obj), prop);
+}
+
+void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
+                         uint32_t len)
+{
+    js_free_prop_enum(ctx, tab, len);
 }
 
 /* return -1 if exception (Proxy object only) or TRUE/FALSE */
@@ -10113,6 +10114,7 @@ int JS_ToBool(JSContext *ctx, JSValue val)
     return JS_ToBoolFree(ctx, js_dup(val));
 }
 
+/* pc points to pure ASCII or UTF-8, null terminated contents */
 static int skip_spaces(const char *pc)
 {
     const uint8_t *p, *p_next, *p_start;
@@ -10120,19 +10122,19 @@ static int skip_spaces(const char *pc)
 
     p = p_start = (const uint8_t *)pc;
     for (;;) {
-        c = *p;
-        if (c < 128) {
+        c = *p++;
+        if (c < 0x80) {
             if (!((c >= 0x09 && c <= 0x0d) || (c == 0x20)))
                 break;
-            p++;
         } else {
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
+            c = utf8_decode(p - 1, &p_next);
+            /* no need to test for invalid UTF-8, 0xFFFD is not a space */
             if (!lre_is_space(c))
                 break;
             p = p_next;
         }
     }
-    return p - p_start;
+    return p - 1 - p_start;
 }
 
 static inline int to_digit(int c)
@@ -10174,10 +10176,7 @@ static double js_strtod(const char *str, int radix, BOOL is_float)
             n_max = ((uint64_t)-1 - (radix - 1)) / radix;
         /* XXX: could be more precise */
         int_exp = 0;
-        while (*p != '\0') {
-            c = to_digit((uint8_t)*p);
-            if (c >= radix)
-                break;
+        while ((c = to_digit(*p)) < radix) {
             if (n <= n_max) {
                 n = n * radix + c;
             } else {
@@ -10200,26 +10199,9 @@ static double js_strtod(const char *str, int radix, BOOL is_float)
     return d;
 }
 
-#define ATOD_INT_ONLY        (1 << 0)
-/* accept Oo and Ob prefixes in addition to 0x prefix if radix = 0 */
-#define ATOD_ACCEPT_BIN_OCT  (1 << 2)
-/* accept O prefix as octal if radix == 0 and properly formed (Annex B) */
-#define ATOD_ACCEPT_LEGACY_OCTAL  (1 << 4)
-/* accept _ between digits as a digit separator */
-#define ATOD_ACCEPT_UNDERSCORES  (1 << 5)
-/* allow a suffix to override the type */
-#define ATOD_ACCEPT_SUFFIX    (1 << 6)
-/* default type */
-#define ATOD_TYPE_MASK        (1 << 7)
-#define ATOD_TYPE_FLOAT64     (0 << 7)
-#define ATOD_TYPE_BIG_INT     (1 << 7)
-/* accept -0x1 */
-#define ATOD_ACCEPT_PREFIX_AFTER_SIGN (1 << 10)
-
-static JSValue js_string_to_bigint(JSContext *ctx, const char *buf,
-                                   int radix, int flags, slimb_t *pexponent)
+static JSValue js_string_to_bigint(JSContext *ctx, const char *buf, int radix)
 {
-    bf_t a_s, *a = &a_s;
+    bf_t *a;
     int ret;
     JSValue val;
     val = JS_NewBigInt(ctx);
@@ -10231,136 +10213,136 @@ static JSValue js_string_to_bigint(JSContext *ctx, const char *buf,
         JS_FreeValue(ctx, val);
         return JS_ThrowOutOfMemory(ctx);
     }
-    val = JS_CompactBigInt1(ctx, val);
-    return val;
+    return JS_CompactBigInt1(ctx, val);
 }
 
-/* return an exception in case of memory error. Return JS_NAN if
-   invalid syntax */
-static JSValue js_atof2(JSContext *ctx, const char *str, const char **pp,
-                        int radix, int flags, slimb_t *pexponent)
+/* `js_atof(ctx, p, len, pp, radix, flags)`
+   Convert the string pointed to by `p` to a number value.
+   Return an exception in case of memory error.
+   Return `JS_NAN` if invalid syntax.
+   - `p` points to a null terminated UTF-8 encoded char array,
+   - `len` the length of the array,
+   - `pp` if not null receives a pointer to the next character,
+   - `radix` must be in range 2 to 36, else return `JS_NAN`.
+   - `flags` is a combination of the flags below.
+   There is a null byte at `p[len]`, but there might be embedded null
+   bytes between `p[0]` and `p[len]` which must produce `JS_NAN` if
+   the `ATOD_NO_TRAILING_CHARS` flag is present.
+ */
+
+#define ATOD_TRIM_SPACES         (1 << 0)   /* trim white space */
+#define ATOD_ACCEPT_EMPTY        (1 << 1)   /* accept an empty string, value is 0 */
+#define ATOD_ACCEPT_FLOAT        (1 << 2)   /* parse decimal floating point syntax */
+#define ATOD_ACCEPT_INFINITY     (1 << 3)   /* parse Infinity as a float point number */
+#define ATOD_ACCEPT_BIN_OCT      (1 << 4)   /* accept 0o and 0b prefixes */
+#define ATOD_ACCEPT_HEX_PREFIX   (1 << 5)   /* accept 0x prefix for radix 16 */
+#define ATOD_ACCEPT_UNDERSCORES  (1 << 6)   /* accept _ between digits as a digit separator */
+#define ATOD_ACCEPT_SUFFIX       (1 << 7)   /* allow 'n' suffix to produce BigInt */
+#define ATOD_WANT_BIG_INT        (1 << 8)   /* return type must be BigInt */
+#define ATOD_DECIMAL_AFTER_SIGN  (1 << 9)   /* only accept decimal number after sign */
+#define ATOD_NO_TRAILING_CHARS   (1 << 10)  /* do not accept trailing characters */
+
+static JSValue js_atof(JSContext *ctx, const char *p, size_t len,
+                       const char **pp, int radix, int flags)
 {
-    const char *p, *p_start;
-    int sep, is_neg;
-    BOOL is_float, has_legacy_octal;
-    int atod_type = flags & ATOD_TYPE_MASK;
-    char buf1[64], *buf;
-    int i, j, len;
-    BOOL buf_allocated = FALSE;
-    JSValue val;
+    const char *p_start;
+    const char *end = p + len;
+    int sep;
+    BOOL is_float;
+    char buf1[64], *buf = buf1;
+    size_t i, j;
+    JSValue val = JS_NAN;
+    double d;
+    char sign;
+
+    if (radix < 2 || radix > 36)
+        goto done;
 
     /* optional separator between digits */
     sep = (flags & ATOD_ACCEPT_UNDERSCORES) ? '_' : 256;
-    has_legacy_octal = FALSE;
-
-    p = str;
-    p_start = p;
-    is_neg = 0;
-    if (p[0] == '+') {
+    sign = 0;
+    if (flags & ATOD_TRIM_SPACES)
+        p += skip_spaces(p);
+    if (p == end && (flags & ATOD_ACCEPT_EMPTY)) {
+        if (pp) *pp = p;
+        if (flags & ATOD_WANT_BIG_INT)
+            return JS_NewBigInt64(ctx, 0);
+        else
+            return js_int32(0);
+    }
+    if (*p == '+' || *p == '-') {
+        sign = *p;
         p++;
-        p_start++;
-        if (!(flags & ATOD_ACCEPT_PREFIX_AFTER_SIGN))
-            goto no_radix_prefix;
-    } else if (p[0] == '-') {
-        p++;
-        p_start++;
-        is_neg = 1;
-        if (!(flags & ATOD_ACCEPT_PREFIX_AFTER_SIGN))
-            goto no_radix_prefix;
+        if (flags & ATOD_DECIMAL_AFTER_SIGN)
+            flags &= ~(ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT);
     }
     if (p[0] == '0') {
         if ((p[1] == 'x' || p[1] == 'X') &&
-            (radix == 0 || radix == 16)) {
+            ((flags & ATOD_ACCEPT_HEX_PREFIX) || radix == 16)) {
             p += 2;
             radix = 16;
-        } else if ((p[1] == 'o' || p[1] == 'O') &&
-                   radix == 0 && (flags & ATOD_ACCEPT_BIN_OCT)) {
-            p += 2;
-            radix = 8;
-        } else if ((p[1] == 'b' || p[1] == 'B') &&
-                   radix == 0 && (flags & ATOD_ACCEPT_BIN_OCT)) {
-            p += 2;
-            radix = 2;
-        } else if ((p[1] >= '0' && p[1] <= '9') &&
-                   radix == 0 && (flags & ATOD_ACCEPT_LEGACY_OCTAL)) {
-            int i;
-            has_legacy_octal = TRUE;
-            sep = 256;
-            for (i = 1; (p[i] >= '0' && p[i] <= '7'); i++)
-                continue;
-            if (p[i] == '8' || p[i] == '9')
-                goto no_prefix;
-            p += 1;
-            radix = 8;
-        } else {
-            goto no_prefix;
+        } else if (flags & ATOD_ACCEPT_BIN_OCT) {
+            if (p[1] == 'o' || p[1] == 'O') {
+                p += 2;
+                radix = 8;
+            } else if (p[1] == 'b' || p[1] == 'B') {
+                p += 2;
+                radix = 2;
+            }
         }
-        /* there must be a digit after the prefix */
-        if (to_digit((uint8_t)*p) >= radix)
-            goto fail;
-    no_prefix: ;
     } else {
- no_radix_prefix:
-        if (!(flags & ATOD_INT_ONLY) &&
-            atod_type == ATOD_TYPE_FLOAT64 &&
-            strstart(p, "Infinity", &p)) {
-            double d = INF;
-            if (is_neg)
+        if (*p == 'I' && (flags & ATOD_ACCEPT_INFINITY) && strstart(p, "Infinity", &p)) {
+            d = INF;
+            if (sign == '-')
                 d = -d;
             val = js_float64(d);
             goto done;
         }
     }
-    if (radix == 0)
-        radix = 10;
     is_float = FALSE;
     p_start = p;
-    while (to_digit((uint8_t)*p) < radix
-           ||  (*p == sep && (radix != 10 ||
-                              p != p_start + 1 || p[-1] != '0') &&
-                to_digit((uint8_t)p[1]) < radix)) {
+    while (to_digit(*p) < radix) {
         p++;
+        if (*p == sep && to_digit(p[1]) < radix)
+            p++;
     }
-    if (!(flags & ATOD_INT_ONLY) && radix == 10) {
-        if (*p == '.' && (p > p_start || to_digit((uint8_t)p[1]) < radix)) {
+    if ((flags & ATOD_ACCEPT_FLOAT) && radix == 10) {
+        if (*p == '.' && (p > p_start || to_digit(p[1]) < radix)) {
             is_float = TRUE;
             p++;
-            if (*p == sep)
-                goto fail;
-            while (to_digit((uint8_t)*p) < radix ||
-                   (*p == sep && to_digit((uint8_t)p[1]) < radix))
+            while (to_digit(*p) < radix) {
                 p++;
+                if (*p == sep && to_digit(p[1]) < radix)
+                    p++;
+            }
         }
         if (p > p_start && (*p == 'e' || *p == 'E')) {
-            const char *p1 = p + 1;
-            is_float = TRUE;
-            if (*p1 == '+') {
-                p1++;
-            } else if (*p1 == '-') {
-                p1++;
+            i = 1;
+            if (p[1] == '+' || p[1] == '-') {
+                i++;
             }
-            if (is_digit((uint8_t)*p1)) {
-                p = p1 + 1;
-                while (is_digit((uint8_t)*p) || (*p == sep && is_digit((uint8_t)p[1])))
+            if (is_digit(p[i])) {
+                is_float = TRUE;
+                p += i + 1;
+                while (is_digit(*p) || (*p == sep && is_digit(p[1])))
                     p++;
             }
         }
     }
     if (p == p_start)
-        goto fail;
+        goto done;
 
-    buf = buf1;
-    buf_allocated = FALSE;
     len = p - p_start;
     if (unlikely((len + 2) > sizeof(buf1))) {
         buf = js_malloc_rt(ctx->rt, len + 2); /* no exception raised */
-        if (!buf)
-            goto mem_error;
-        buf_allocated = TRUE;
+        if (!buf) {
+            if (pp) *pp = p;
+            return JS_ThrowOutOfMemory(ctx);
+        }
     }
-    /* remove the separators and the radix prefixes */
+    /* remove the separators and the radix prefix */
     j = 0;
-    if (is_neg)
+    if (sign == '-')
         buf[j++] = '-';
     for (i = 0; i < len; i++) {
         if (p_start[i] != '_')
@@ -10371,46 +10353,31 @@ static JSValue js_atof2(JSContext *ctx, const char *str, const char **pp,
     if (flags & ATOD_ACCEPT_SUFFIX) {
         if (*p == 'n') {
             p++;
-            atod_type = ATOD_TYPE_BIG_INT;
+            flags |= ATOD_WANT_BIG_INT;
         }
     }
 
-    switch(atod_type) {
-    case ATOD_TYPE_FLOAT64:
-        {
-            double d;
-            d = js_strtod(buf, radix, is_float);
-            /* return int or float64 */
-            val = js_number(d);
-        }
-        break;
-    case ATOD_TYPE_BIG_INT:
-        if (has_legacy_octal || is_float)
-            goto fail;
-        val = js_string_to_bigint(ctx, buf, radix, flags, NULL);
-        break;
-    default:
-        abort();
+    if (flags & ATOD_WANT_BIG_INT) {
+        if (!is_float)
+            val = js_string_to_bigint(ctx, buf, radix);
+    } else {
+        d = js_strtod(buf, radix, is_float);
+        val = js_number(d);     /* return int or float64 */
     }
 
-done:
-    if (buf_allocated)
+ done:
+    if (flags & ATOD_NO_TRAILING_CHARS) {
+        if (flags & ATOD_TRIM_SPACES)
+            p += skip_spaces(p);
+        if (p != end) {
+            JS_FreeValue(ctx, val);
+            val = JS_NAN;
+        }
+    }
+    if (buf != buf1)
         js_free_rt(ctx->rt, buf);
-    if (pp)
-        *pp = p;
+    if (pp) *pp = p;
     return val;
- fail:
-    val = JS_NAN;
-    goto done;
- mem_error:
-    val = JS_ThrowOutOfMemory(ctx);
-    goto done;
-}
-
-static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
-                       int radix, int flags)
-{
-    return js_atof2(ctx, str, pp, radix, flags, NULL);
 }
 
 typedef enum JSToNumberHintEnum {
@@ -10454,28 +10421,18 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
     case JS_TAG_STRING:
         {
             const char *str;
-            const char *p;
             size_t len;
+            int flags;
 
             str = JS_ToCStringLen(ctx, &len, val);
             JS_FreeValue(ctx, val);
             if (!str)
                 return JS_EXCEPTION;
-            p = str;
-            p += skip_spaces(p);
-            if ((p - str) == len) {
-                ret = js_int32(0);
-            } else {
-                int flags = ATOD_ACCEPT_BIN_OCT;
-                ret = js_atof(ctx, p, &p, 0, flags);
-                if (!JS_IsException(ret)) {
-                    p += skip_spaces(p);
-                    if ((p - str) != len) {
-                        JS_FreeValue(ctx, ret);
-                        ret = JS_NAN;
-                    }
-                }
-            }
+            flags = ATOD_TRIM_SPACES | ATOD_ACCEPT_EMPTY |
+                ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_INFINITY |
+                ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT |
+                ATOD_DECIMAL_AFTER_SIGN | ATOD_NO_TRAILING_CHARS;
+            ret = js_atof(ctx, str, len, NULL, 10, flags);
             JS_FreeCString(ctx, str);
         }
         break;
@@ -11059,6 +11016,7 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValue val, int radix)
     bf_t a_s, *a;
     char *str;
     int saved_sign;
+    size_t len;
 
     a = JS_ToBigInt(ctx, &a_s, val);
     if (!a)
@@ -11066,14 +11024,13 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValue val, int radix)
     saved_sign = a->sign;
     if (a->expn == BF_EXP_ZERO)
         a->sign = 0;
-    // TODO(chqrlie) bf_ftoa should return the string length to the caller
-    str = bf_ftoa(NULL, a, radix, 0, BF_RNDZ | BF_FTOA_FORMAT_FRAC |
+    str = bf_ftoa(&len, a, radix, 0, BF_RNDZ | BF_FTOA_FORMAT_FRAC |
                   BF_FTOA_JS_QUIRKS);
     a->sign = saved_sign;
     JS_FreeBigInt(ctx, a, &a_s);
     if (!str)
         return JS_ThrowOutOfMemory(ctx);
-    ret = js_new_string8(ctx, str);
+    ret = js_new_string8_len(ctx, str, len);
     bf_free(ctx->bf_ctx, str);
     return ret;
 }
@@ -11083,262 +11040,354 @@ static JSValue js_bigint_to_string(JSContext *ctx, JSValue val)
     return js_bigint_to_string1(ctx, val, 10);
 }
 
-/* buf1 contains the printf result */
-static void js_ecvt1(double d, int n_digits, int *decpt, int *sign, char *buf,
-                     int rounding_mode, char *buf1, int buf1_size)
+/*---- floating point number to string conversions ----*/
+
+/* JavaScript rounding is specified as round to nearest tie away
+   from zero (RNDNA), but in `printf` the "ties" case is not
+   specified (in most cases it is RNDN, round to nearest, tie to even),
+   so we must round manually. We generate 2 extra places and make
+   an extra call to snprintf if these are exactly '50'.
+   We set the current rounding mode to FE_DOWNWARD to check if the
+   last 2 places become '49'. If not, we must round up, which is
+   performed in place using the string digits.
+
+   Note that we cannot rely on snprintf for rounding up:
+   the code below fails on macOS for `0.5.toFixed(0)`: gives `0` expected `1`
+      fesetround(FE_UPWARD);
+      snprintf(dest, size, "%.*f", n_digits, d);
+      fesetround(FE_TONEAREST);
+ */
+
+/* `js_fcvt` minimum buffer length:
+   - up to 21 digits in integral part
+   - 1 potential decimal point
+   - up to 102 decimals
+   - 1 null terminator
+ */
+#define JS_FCVT_BUF_SIZE  (21+1+102+1)
+
+/* `js_ecvt` minimum buffer length:
+   - 1 leading digit
+   - 1 potential decimal point
+   - up to 102 decimals
+   - 5 exponent characters (from 'e-324' to 'e+308')
+   - 1 null terminator
+ */
+#define JS_ECVT_BUF_SIZE  (1+1+102+5+1)
+
+/* `js_dtoa` minimum buffer length:
+   - 8 byte prefix
+   - either JS_FCVT_BUF_SIZE or JS_ECVT_BUF_SIZE
+   - JS_FCVT_BUF_SIZE is larger than JS_ECVT_BUF_SIZE
+ */
+#define JS_DTOA_BUF_SIZE  (8+JS_FCVT_BUF_SIZE)
+
+/* `js_ecvt1`: compute the digits and decimal point spot for a double
+   - `d` is finite, positive or zero
+   - `n_digits` number of significant digits in range 1..103
+   - `buf` receives the printf result
+   - `buf` has a fixed format: n_digits with a decimal point at offset 1
+     and exponent 'e{+/-}xx[x]' at offset n_digits+1
+   Return n_digits
+   Store the position of the decimal point into `*decpt`
+ */
+static int js_ecvt1(double d, int n_digits,
+                    char dest[minimum_length(JS_ECVT_BUF_SIZE)],
+                    size_t size, int *decpt)
 {
-    if (rounding_mode != FE_TONEAREST)
-        fesetround(rounding_mode);
-    snprintf(buf1, buf1_size, "%+.*e", n_digits - 1, d);
-    if (rounding_mode != FE_TONEAREST)
-        fesetround(FE_TONEAREST);
-    *sign = (buf1[0] == '-');
-    /* mantissa */
-    buf[0] = buf1[1];
-    if (n_digits > 1)
-        memcpy(buf + 1, buf1 + 3, n_digits - 1);
-    buf[n_digits] = '\0';
-    /* exponent */
-    *decpt = atoi(buf1 + n_digits + 2 + (n_digits > 1)) + 1;
-}
-
-/* maximum buffer size for js_dtoa */
-#define JS_DTOA_BUF_SIZE 128
-
-/* needed because ecvt usually limits the number of digits to
-   17. Return the number of digits. */
-static int js_ecvt(double d, int n_digits, int *decpt, int *sign, char *buf,
-                   BOOL is_fixed)
-{
-    int rounding_mode;
-    char buf_tmp[JS_DTOA_BUF_SIZE];
-
-    if (!is_fixed) {
-        unsigned int n_digits_min, n_digits_max;
-        /* find the minimum amount of digits (XXX: inefficient but simple) */
-        n_digits_min = 1;
-        n_digits_max = 17;
-        while (n_digits_min < n_digits_max) {
-            n_digits = (n_digits_min + n_digits_max) / 2;
-            js_ecvt1(d, n_digits, decpt, sign, buf, FE_TONEAREST,
-                     buf_tmp, sizeof(buf_tmp));
-            if (strtod(buf_tmp, NULL) == d) {
-                /* no need to keep the trailing zeros */
-                while (n_digits >= 2 && buf[n_digits - 1] == '0')
-                    n_digits--;
-                n_digits_max = n_digits;
-            } else {
-                n_digits_min = n_digits + 1;
-            }
-        }
-        n_digits = n_digits_max;
-        rounding_mode = FE_TONEAREST;
-    } else {
-        rounding_mode = FE_TONEAREST;
-#ifdef CONFIG_PRINTF_RNDN
-        {
-            char buf1[JS_DTOA_BUF_SIZE], buf2[JS_DTOA_BUF_SIZE];
-            int decpt1, sign1, decpt2, sign2;
-            /* The JS rounding is specified as round to nearest ties away
-               from zero (RNDNA), but in printf the "ties" case is not
-               specified (for example it is RNDN for glibc, RNDNA for
-               Windows), so we must round manually. */
-            js_ecvt1(d, n_digits + 1, &decpt1, &sign1, buf1, FE_TONEAREST,
-                     buf_tmp, sizeof(buf_tmp));
-            /* XXX: could use 2 digits to reduce the average running time */
-            if (buf1[n_digits] == '5') {
-                js_ecvt1(d, n_digits + 1, &decpt1, &sign1, buf1, FE_DOWNWARD,
-                         buf_tmp, sizeof(buf_tmp));
-                js_ecvt1(d, n_digits + 1, &decpt2, &sign2, buf2, FE_UPWARD,
-                         buf_tmp, sizeof(buf_tmp));
-                if (memcmp(buf1, buf2, n_digits + 1) == 0 && decpt1 == decpt2) {
-                    /* exact result: round away from zero */
-                    if (sign1)
-                        rounding_mode = FE_DOWNWARD;
-                    else
-                        rounding_mode = FE_UPWARD;
-                }
-            }
-        }
-#endif /* CONFIG_PRINTF_RNDN */
-    }
-    js_ecvt1(d, n_digits, decpt, sign, buf, rounding_mode,
-             buf_tmp, sizeof(buf_tmp));
+    /* d is positive, ensure decimal point is always present */
+    snprintf(dest, size, "%#.*e", n_digits - 1, d);
+    /* dest contents:
+       0:            first digit
+       1:            '.' decimal point (locale specific)
+       2..n_digits:  (n_digits-1) additional digits
+       n_digits+1:   'e' exponent mark
+       n_digits+2..: exponent sign, value and null terminator
+     */
+    /* extract the exponent (actually the position of the decimal point) */
+    *decpt = 1 + atoi(dest + n_digits + 2);
     return n_digits;
 }
 
-static size_t js_fcvt1(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits,
-                       int rounding_mode)
+/* `js_ecvt`: compute the digits and decimal point spot for a double
+   with proper javascript rounding. We cannot use `ecvt` for multiple
+   resasons: portability, because of the number of digits is typically
+   limited to 17, finally because the default rounding is inadequate.
+   `d` is finite and positive or zero.
+   `n_digits` number of significant digits in range 1..101
+   or 0 for automatic (only as many digits as necessary)
+   Return the number of digits produced in `dest`.
+   Store the position of the decimal point into `*decpt`
+ */
+static int js_ecvt(double d, int n_digits,
+                   char dest[minimum_length(JS_ECVT_BUF_SIZE)],
+                   size_t size, int *decpt)
 {
-    size_t n;
-    if (rounding_mode != FE_TONEAREST)
-        fesetround(rounding_mode);
-    n = snprintf(*buf, sizeof(*buf), "%.*f", n_digits, d);
-    if (rounding_mode != FE_TONEAREST)
-        fesetround(FE_TONEAREST);
-    assert(n < sizeof(*buf));
-    return n;
-}
+    int i;
 
-static size_t js_fcvt(char (*buf)[JS_DTOA_BUF_SIZE], double d, int n_digits)
-{
-    int rounding_mode;
-    rounding_mode = FE_TONEAREST;
-#ifdef CONFIG_PRINTF_RNDN
-    {
-        int n1, n2;
-        char buf1[JS_DTOA_BUF_SIZE];
-        char buf2[JS_DTOA_BUF_SIZE];
-
-        /* The JS rounding is specified as round to nearest ties away from
-           zero (RNDNA), but in printf the "ties" case is not specified
-           (for example it is RNDN for glibc, RNDNA for Windows), so we
-           must round manually. */
-        n1 = js_fcvt1(&buf1, d, n_digits + 1, FE_TONEAREST);
-        rounding_mode = FE_TONEAREST;
-        /* XXX: could use 2 digits to reduce the average running time */
-        if (buf1[n1 - 1] == '5') {
-            n1 = js_fcvt1(&buf1, d, n_digits + 1, FE_DOWNWARD);
-            n2 = js_fcvt1(&buf2, d, n_digits + 1, FE_UPWARD);
-            if (n1 == n2 && memcmp(buf1, buf2, n1) == 0) {
-                /* exact result: round away from zero */
-                if (buf1[0] == '-')
-                    rounding_mode = FE_DOWNWARD;
-                else
-                    rounding_mode = FE_UPWARD;
+    if (n_digits == 0) {
+        /* find the minimum number of digits (XXX: inefficient but simple) */
+        // TODO(chqrlie) use direct method from quickjs-printf
+        unsigned int n_digits_min = 1;
+        unsigned int n_digits_max = 17;
+        for (;;) {
+            n_digits = (n_digits_min + n_digits_max) / 2;
+            js_ecvt1(d, n_digits, dest, size, decpt);
+            if (n_digits_min == n_digits_max)
+                return n_digits;
+            /* dest contents:
+               0:            first digit
+               1:            '.' decimal point (locale specific)
+               2..n_digits:  (n_digits-1) additional digits
+               n_digits+1:   'e' exponent mark
+               n_digits+2..: exponent sign, value and null terminator
+             */
+            if (strtod(dest, NULL) == d) {
+                unsigned int n0 = n_digits;
+                /* enough digits */
+                /* strip the trailing zeros */
+                while (dest[n_digits] == '0')
+                    n_digits--;
+                if (n_digits == n_digits_min)
+                    return n_digits;
+                /* done if trailing zeros and not denormal or huge */
+                if (n_digits < n0 && d > 3e-308 && d < 8e307)
+                    return n_digits;
+                n_digits_max = n_digits;
+            } else {
+                /* need at least one more digit */
+                n_digits_min = n_digits + 1;
             }
         }
-    }
-#endif /* CONFIG_PRINTF_RNDN */
-    return js_fcvt1(buf, d, n_digits, rounding_mode);
-}
-
-/* radix != 10 is only supported with flags = JS_DTOA_VAR_FORMAT */
-/* use as many digits as necessary */
-#define JS_DTOA_VAR_FORMAT   (0 << 0)
-/* use n_digits significant digits (1 <= n_digits <= 101) */
-#define JS_DTOA_FIXED_FORMAT (1 << 0)
-/* force fractional format: [-]dd.dd with n_digits fractional digits */
-#define JS_DTOA_FRAC_FORMAT  (2 << 0)
-/* force exponential notation either in fixed or variable format */
-#define JS_DTOA_FORCE_EXP    (1 << 2)
-
-/* XXX: slow and maybe not fully correct. Use libbf when it is fast enough.
-   XXX: radix != 10 is only supported for small integers
-*/
-static size_t js_dtoa1(char (*buf)[JS_DTOA_BUF_SIZE], double d,
-                       int radix, int n_digits, int flags)
-{
-    char *q;
-
-    if (!isfinite(d)) {
-        if (isnan(d)) {
-            memcpy(*buf, "NaN", sizeof "NaN");
-            return sizeof("NaN") - 1;
-        } else if (d < 0) {
-            memcpy(*buf, "-Infinity", sizeof "-Infinity");
-            return sizeof("-Infinity") - 1;
-        } else {
-            memcpy(*buf, "Infinity", sizeof "Infinity");
-            return sizeof("Infinity") - 1;
-        }
-    } else if (flags == JS_DTOA_VAR_FORMAT) {
-        int64_t i64;
-        char buf1[72], *ptr;
-        if (d > (double)MAX_SAFE_INTEGER || d < (double)-MAX_SAFE_INTEGER)
-            goto generic_conv;
-        i64 = (int64_t)d;
-        if (d != i64)
-            goto generic_conv;
-        /* fast path for integers */
-        return i64toa_radix(*buf, i64, radix);
     } else {
-        if (d == 0.0)
-            d = 0.0; /* convert -0 to 0 */
-        if (flags == JS_DTOA_FRAC_FORMAT) {
-            return js_fcvt(buf, d, n_digits);
-        } else {
-            char buf1[JS_DTOA_BUF_SIZE];
-            int sign, decpt, k, n, i, p, n_max;
-            BOOL is_fixed;
-        generic_conv:
-            is_fixed = ((flags & 3) == JS_DTOA_FIXED_FORMAT);
-            if (is_fixed) {
-                n_max = n_digits;
-            } else {
-                n_max = 21;
-            }
-            /* the number has k digits (k >= 1) */
-            k = js_ecvt(d, n_digits, &decpt, &sign, buf1, is_fixed);
-            n = decpt; /* d=10^(n-k)*(buf1) i.e. d= < x.yyyy 10^(n-1) */
-            q = *buf;
-            if (sign)
-                *q++ = '-';
-            if (flags & JS_DTOA_FORCE_EXP)
-                goto force_exp;
-            if (n >= 1 && n <= n_max) {
-                if (k <= n) {
-                    memcpy(q, buf1, k);
-                    q += k;
-                    for(i = 0; i < (n - k); i++)
-                        *q++ = '0';
-                    *q = '\0';
-                } else {
-                    /* k > n */
-                    memcpy(q, buf1, n);
-                    q += n;
-                    *q++ = '.';
-                    for(i = 0; i < (k - n); i++)
-                        *q++ = buf1[n + i];
-                    *q = '\0';
-                }
-            } else if (n >= -5 && n <= 0) {
-                *q++ = '0';
-                *q++ = '.';
-                for(i = 0; i < -n; i++)
-                    *q++ = '0';
-                memcpy(q, buf1, k);
-                q += k;
-                *q = '\0';
-            } else {
-            force_exp:
-                /* exponential notation */
-                *q++ = buf1[0];
-                if (k > 1) {
-                    *q++ = '.';
-                    for(i = 1; i < k; i++)
-                        *q++ = buf1[i];
-                }
-                *q++ = 'e';
-                p = n - 1;
-                if (p >= 0)
-                    *q++ = '+';
-                q += snprintf(q, *buf + sizeof(*buf) - q, "%d", p);
-            }
-            return q - *buf;
+#if defined(FE_DOWNWARD) && defined(FE_TONEAREST)
+        /* generate 2 extra digits: 99% chances to avoid 2 calls */
+        js_ecvt1(d, n_digits + 2, dest, size, decpt);
+        if (dest[n_digits + 1] < '5')
+            return n_digits;    /* truncate the 2 extra digits */
+        if (dest[n_digits + 1] == '5' && dest[n_digits + 2] == '0') {
+            /* close to half-way: try rounding toward 0 */
+            fesetround(FE_DOWNWARD);
+            js_ecvt1(d, n_digits + 2, dest, size, decpt);
+            fesetround(FE_TONEAREST);
+            if (dest[n_digits + 1] < '5')
+                return n_digits;    /* truncate the 2 extra digits */
         }
+        /* round up in the string */
+        for(i = n_digits;; i--) {
+            /* ignore the locale specific decimal point */
+            if (is_digit(dest[i])) {
+                if (dest[i]++ < '9')
+                    break;
+                dest[i] = '0';
+                if (i == 0) {
+                    dest[0] = '1';
+                    (*decpt)++;
+                    break;
+                }
+            }
+        }
+        return n_digits;    /* truncate the 2 extra digits */
+#else
+        /* No disambiguation available, eg: __wasi__ targets */
+        return js_ecvt1(d, n_digits, dest, size, decpt);
+#endif
     }
 }
 
-static JSValue js_dtoa(JSContext *ctx,
-                       double d, int radix, int n_digits, int flags)
+/* `js_fcvt`: convert a floating point value to %f format using RNDNA
+   `d` is finite and positive or zero.
+   `n_digits` number of decimal places in range 0..100
+   Return the number of characters produced in `dest`.
+ */
+static size_t js_fcvt(double d, int n_digits,
+                      char dest[minimum_length(JS_FCVT_BUF_SIZE)], size_t size)
+{
+#if defined(FE_DOWNWARD) && defined(FE_TONEAREST)
+    int i, n1, n2;
+    /* generate 2 extra digits: 99% chances to avoid 2 calls */
+    n1 = snprintf(dest, size, "%.*f", n_digits + 2, d) - 2;
+    if (dest[n1] >= '5') {
+        if (dest[n1] == '5' && dest[n1 + 1] == '0') {
+            /* close to half-way: try rounding toward 0 */
+            fesetround(FE_DOWNWARD);
+            n1 = snprintf(dest, size, "%.*f", n_digits + 2, d) - 2;
+            fesetround(FE_TONEAREST);
+        }
+        if (dest[n1] >= '5') {  /* number should be rounded up */
+            /* d is either exactly half way or greater: round the string manually */
+            for (i = n1 - 1;; i--) {
+                /* ignore the locale specific decimal point */
+                if (is_digit(dest[i])) {
+                    if (dest[i]++ < '9')
+                        break;
+                    dest[i] = '0';
+                    if (i == 0) {
+                        dest[0] = '1';
+                        dest[n1] = '0';
+                        dest[n1 - n_digits - 1] = '0';
+                        dest[n1 - n_digits] = '.';
+                        n1++;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    /* truncate the extra 2 digits and the decimal point if !n_digits */
+    n1 -= !n_digits;
+    //dest[n1] = '\0';    // optional
+    return n1;
+#else
+    /* No disambiguation available, eg: __wasi__ targets */
+    return snprintf(dest, size, "%.*f", n_digits, d);
+#endif
+}
+
+static JSValue js_dtoa_infinite(JSContext *ctx, double d)
+{
+    // TODO(chqrlie) use atoms for NaN and Infinite?
+    if (isnan(d))
+        return js_new_string8(ctx, "NaN");
+    if (d < 0)
+        return js_new_string8(ctx, "-Infinity");
+    else
+        return js_new_string8(ctx, "Infinity");
+}
+
+#define JS_DTOA_TOSTRING    0  /* use as many digits as necessary */
+#define JS_DTOA_EXPONENTIAL 1  /* use exponential notation either fixed or variable digits */
+#define JS_DTOA_FIXED       2  /* force fixed number of fractional digits */
+#define JS_DTOA_PRECISION   3  /* use n_digits significant digits (1 <= n_digits <= 101) */
+
+/* `js_dtoa`: convert a floating point number to a string
+   - `mode`: one of the 4 supported formats
+   - `n_digits`: digit number according to mode
+   -   TOSTRING:    0 only. As many digits as necessary
+   -   EXPONENTIAL: 0 as many decimals as necessary
+   -                1..101 number of significant digits
+   -   FIXED:       0..100 number of decimal places
+   -   PRECISION:   1..101 number of significant digits
+ */
+// XXX: should use libbf or quickjs-printf.
+static JSValue js_dtoa(JSContext *ctx, double d, int n_digits, int mode)
 {
     char buf[JS_DTOA_BUF_SIZE];
-    size_t len = js_dtoa1(&buf, d, radix, n_digits, flags);
-    return js_new_string8_len(ctx, buf, len);
+    size_t len;
+    char *start;
+    int sign, decpt, exp, i, k, n, n_max;
+
+    if (!isfinite(d))
+        return js_dtoa_infinite(ctx, d);
+
+    sign = (d < 0);
+    start = buf + 8;
+    d = fabs(d);  /* also converts -0 to 0 */
+
+    if (mode != JS_DTOA_EXPONENTIAL && n_digits == 0) {
+        /* fast path for exact integers in variable format:
+           clip to MAX_SAFE_INTEGER because to ensure insignificant
+           digits are generated as 0.
+           used for JS_DTOA_TOSTRING and JS_DTOA_FIXED without decimals.
+         */
+        if (d <= (double)MAX_SAFE_INTEGER) {
+            uint64_t u64 = (uint64_t)d;
+            if (d == u64) {
+                len = u64toa(start, u64);
+                goto done;
+            }
+        }
+    }
+    if (mode == JS_DTOA_FIXED) {
+        len = js_fcvt(d, n_digits, start, sizeof(buf) - 8);
+        // TODO(chqrlie) patch the locale specific decimal point
+        goto done;
+    }
+
+    n_max = (n_digits > 0) ? n_digits : 21;
+    /* the number has k digits (1 <= k <= n_max) */
+    k = js_ecvt(d, n_digits, start, sizeof(buf) - 8, &decpt);
+    /* buffer contents:
+       0:     first digit
+       1:     '.' decimal point
+       2..k:  (k-1) additional digits
+     */
+    n = decpt; /* d=10^(n-k)*(buf1) i.e. d= < x.yyyy 10^(n-1) */
+    if (mode != JS_DTOA_EXPONENTIAL) {
+        /* mode is JS_DTOA_PRECISION or JS_DTOA_TOSTRING */
+        if (n >= 1 && n <= n_max) {
+            /* between 1 and n_max digits before the decimal point */
+            if (k <= n) {
+                /* all digits before the point, append zeros */
+                start[1] = start[0];
+                start++;
+                for(i = k; i < n; i++)
+                    start[i] = '0';
+                len = n;
+            } else {
+                /* k > n: move digits before the point */
+                for(i = 1; i < n; i++)
+                    start[i] = start[i + 1];
+                start[i] = '.';
+                len = 1 + k;
+            }
+            goto done;
+        }
+        if (n >= -5 && n <= 0) {
+            /* insert -n leading 0 decimals and a '0.' prefix */
+            n = -n;
+            start[1] = start[0];
+            start -= n + 1;
+            start[0] = '0';
+            start[1] = '.';
+            for(i = 0; i < n; i++)
+                start[2 + i] = '0';
+            len = 2 + k + n;
+            goto done;
+        }
+    }
+    /* exponential notation */
+    exp = n - 1;
+    /* count the digits and the decimal point if at least one decimal */
+    len = k + (k > 1);
+    start[1] = '.'; /* patch the locale specific decimal point */
+    start[len] = 'e';
+    start[len + 1] = '+';
+    if (exp < 0) {
+        start[len + 1] = '-';
+        exp = -exp;
+    }
+    len += 2 + 1 + (exp > 9) + (exp > 99);
+    for (i = len - 1; exp > 9;) {
+        int quo = exp / 10;
+        start[i--] = (char)('0' + exp % 10);
+        exp = quo;
+    }
+    start[i] = (char)('0' + exp);
+
+ done:
+    start[-1] = '-';    /* prepend the sign if negative */
+    return js_new_string8_len(ctx, start - sign, len + sign);
 }
 
-/* d is guaranteed to be finite */
+/* `js_dtoa_radix`: convert a floating point number using a specific base
+   - `d` must be finite
+   - `radix` must be in range 2..36
+ */
 static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
 {
     char buf[2200], *ptr, *ptr2, *ptr3;
-    /* d is finite */
-    int sign = d < 0;
-    int digit;
+    int sign, digit;
     double frac, d0;
-    int64_t n0 = 0;
+    int64_t n0;
+
+    if (!isfinite(d))
+        return js_dtoa_infinite(ctx, d);
+
+    sign = (d < 0);
     d = fabs(d);
     d0 = trunc(d);
+    n0 = 0;
     frac = d - d0;
     ptr2 = buf + 1100;  /* ptr2 points to the end of the string */
     ptr = ptr2;         /* ptr points to the beginning of the string */
@@ -11402,7 +11451,7 @@ static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
                 ptr2[-1] = (ptr2[-1] == '9') ? 'a' : ptr2[-1] + 1;
             }
         } else {
-            /* strip trailing fractional zeroes */
+            /* strip trailing fractional zeros */
             while (ptr2[-1] == '0')
                 ptr2--;
             /* strip the 'decimal' point if last */
@@ -11458,8 +11507,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
             return JS_ThrowTypeError(ctx, "cannot convert symbol to string");
         }
     case JS_TAG_FLOAT64:
-        return js_dtoa(ctx, JS_VALUE_GET_FLOAT64(val), 10, 0,
-                       JS_DTOA_VAR_FORMAT);
+        return js_dtoa(ctx, JS_VALUE_GET_FLOAT64(val), 0, JS_DTOA_TOSTRING);
     case JS_TAG_BIG_INT:
         return js_bigint_to_string(ctx, val);
     default:
@@ -11898,7 +11946,7 @@ static bf_t *JS_ToBigInt1(JSContext *ctx, bf_t *buf, JSValue val)
 /* return NaN if bad bigint literal */
 static JSValue JS_StringToBigInt(JSContext *ctx, JSValue val)
 {
-    const char *str, *p;
+    const char *str;
     size_t len;
     int flags;
 
@@ -11906,21 +11954,11 @@ static JSValue JS_StringToBigInt(JSContext *ctx, JSValue val)
     JS_FreeValue(ctx, val);
     if (!str)
         return JS_EXCEPTION;
-    p = str;
-    p += skip_spaces(p);
-    if ((p - str) == len) {
-        val = JS_NewBigInt64(ctx, 0);
-    } else {
-        flags = ATOD_INT_ONLY | ATOD_ACCEPT_BIN_OCT | ATOD_TYPE_BIG_INT;
-        val = js_atof(ctx, p, &p, 0, flags);
-        p += skip_spaces(p);
-        if (!JS_IsException(val)) {
-            if ((p - str) != len) {
-                JS_FreeValue(ctx, val);
-                val = JS_NAN;
-            }
-        }
-    }
+    flags = ATOD_WANT_BIG_INT |
+        ATOD_TRIM_SPACES | ATOD_ACCEPT_EMPTY |
+        ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT |
+        ATOD_DECIMAL_AFTER_SIGN | ATOD_NO_TRAILING_CHARS;
+    val = js_atof(ctx, str, len, NULL, 10, flags);
     JS_FreeCString(ctx, str);
     return val;
 }
@@ -12039,6 +12077,11 @@ static int JS_ToBigInt64Free(JSContext *ctx, int64_t *pres, JSValue val)
 int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValue val)
 {
     return JS_ToBigInt64Free(ctx, pres, js_dup(val));
+}
+
+int JS_ToBigUint64(JSContext *ctx, uint64_t *pres, JSValue val)
+{
+    return JS_ToBigInt64Free(ctx, (int64_t *)pres, js_dup(val));
 }
 
 static JSValue JS_NewBigInt(JSContext *ctx)
@@ -18484,6 +18527,7 @@ typedef struct JSFunctionDef {
     int source_len;
 
     JSModuleDef *module; /* != NULL when parsing a module */
+    BOOL has_await; /* TRUE if await is used (used in module eval) */
     JSInlineCache *ic; /* inline cache for field op */
 } JSFunctionDef;
 
@@ -18499,7 +18543,6 @@ typedef struct JSToken {
         } str;
         struct {
             JSValue val;
-            slimb_t exponent; /* may be != 0 only if val is a float */
         } num;
         struct {
             JSAtom atom;
@@ -18729,6 +18772,7 @@ static int js_parse_error_reserved_identifier(JSParseState *s)
 static __exception int js_parse_template_part(JSParseState *s,
                                               const uint8_t *p)
 {
+    const uint8_t *p_next;
     uint32_t c;
     StringBuffer b_s, *b = &b_s;
 
@@ -18766,9 +18810,8 @@ static __exception int js_parse_template_part(JSParseState *s,
             s->eol = &p[-1];
             s->mark = p;
         } else if (c >= 0x80) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            if (c > 0x10FFFF) {
+            c = utf8_decode(p - 1, &p_next);
+            if (p_next == p) {
                 js_parse_error(s, "invalid UTF-8 sequence");
                 goto fail;
             }
@@ -18794,6 +18837,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                                        BOOL do_throw, const uint8_t *p,
                                        JSToken *token, const uint8_t **pp)
 {
+    const uint8_t *p_next;
     int ret;
     uint32_t c;
     StringBuffer b_s, *b = &b_s;
@@ -18872,9 +18916,8 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     }
                     goto fail;
                 } else if (c >= 0x80) {
-                    const uint8_t *p_next;
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
-                    if (c > 0x10FFFF) {
+                    c = utf8_decode(p, &p_next);
+                    if (p_next == p + 1) {
                         goto invalid_utf8;
                     }
                     p = p_next;
@@ -18899,9 +18942,8 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 break;
             }
         } else if (c >= 0x80) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            if (c > 0x10FFFF)
+            c = utf8_decode(p - 1, &p_next);
+            if (p_next == p)
                 goto invalid_utf8;
             p = p_next;
         }
@@ -18933,7 +18975,7 @@ static inline BOOL token_is_pseudo_keyword(JSParseState *s, JSAtom atom) {
 
 static __exception int js_parse_regexp(JSParseState *s)
 {
-    const uint8_t *p;
+    const uint8_t *p, *p_next;
     BOOL in_class;
     StringBuffer b_s, *b = &b_s;
     StringBuffer b2_s, *b2 = &b2_s;
@@ -18972,9 +19014,8 @@ static __exception int js_parse_regexp(JSParseState *s)
             else if (c == '\0' && p >= s->buf_end)
                 goto eof_error;
             else if (c >= 0x80) {
-                const uint8_t *p_next;
-                c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-                if (c > 0x10FFFF) {
+                c = utf8_decode(p - 1, &p_next);
+                if (p_next == p) {
                     goto invalid_utf8;
                 }
                 p = p_next;
@@ -18982,9 +19023,8 @@ static __exception int js_parse_regexp(JSParseState *s)
                     goto eol_error;
             }
         } else if (c >= 0x80) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
-            if (c > 0x10FFFF) {
+            c = utf8_decode(p - 1, &p_next);
+            if (p_next == p) {
             invalid_utf8:
                 js_parse_error(s, "invalid UTF-8 sequence");
                 goto fail;
@@ -19003,14 +19043,8 @@ static __exception int js_parse_regexp(JSParseState *s)
 
     /* flags */
     for(;;) {
-        const uint8_t *p_next = p;
-        c = *p_next++;
-        if (c >= 0x80) {
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
-            if (c > 0x10FFFF) {
-                goto invalid_utf8;
-            }
-        }
+        c = utf8_decode(p, &p_next);
+        /* no need to test for invalid UTF-8, 0xFFFD is not ident_next */
         if (!lre_js_is_ident_next(c))
             break;
         if (string_buffer_putc(b2, c))
@@ -19060,10 +19094,10 @@ static __exception int ident_realloc(JSContext *ctx, char **pbuf, size_t *psize,
 static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
                           BOOL *pident_has_escape, int c, BOOL is_private)
 {
-    const uint8_t *p, *p1;
+    const uint8_t *p, *p_next;
     char ident_buf[128], *buf;
     size_t ident_size, ident_pos;
-    JSAtom atom;
+    JSAtom atom = JS_ATOM_NULL;
 
     p = *pp;
     buf = ident_buf;
@@ -19072,28 +19106,26 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
     if (is_private)
         buf[ident_pos++] = '#';
     for(;;) {
-        p1 = p;
-
-        if (c < 128) {
+        if (c < 0x80) {
             buf[ident_pos++] = c;
         } else {
-            ident_pos += unicode_to_utf8((uint8_t*)buf + ident_pos, c);
+            ident_pos += utf8_encode((uint8_t*)buf + ident_pos, c);
         }
-        c = *p1++;
-        if (c == '\\' && *p1 == 'u') {
-            c = lre_parse_escape(&p1, TRUE);
+        c = *p;
+        p_next = p + 1;
+        if (c == '\\' && *p_next == 'u') {
+            c = lre_parse_escape(&p_next, TRUE);
             *pident_has_escape = TRUE;
-        } else if (c >= 128) {
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+        } else if (c >= 0x80) {
+            c = utf8_decode(p, &p_next);
+            /* no need to test for invalid UTF-8, 0xFFFD is not ident_next */
         }
         if (!lre_js_is_ident_next(c))
             break;
-        p = p1;
+        p = p_next;
         if (unlikely(ident_pos >= ident_size - UTF8_CHAR_LEN_MAX)) {
-            if (ident_realloc(s->ctx, &buf, &ident_size, ident_buf)) {
-                atom = JS_ATOM_NULL;
+            if (ident_realloc(s->ctx, &buf, &ident_size, ident_buf))
                 goto done;
-            }
         }
     }
     /* buf is pure ASCII or UTF-8 encoded */
@@ -19108,10 +19140,11 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
 
 static __exception int next_token(JSParseState *s)
 {
-    const uint8_t *p;
+    const uint8_t *p, *p_next;
     int c;
     BOOL ident_has_escape;
     JSAtom atom;
+    int flags, radix;
 
     if (js_check_stack_overflow(s->ctx->rt, 1000)) {
         JS_ThrowStackOverflow(s->ctx);
@@ -19188,11 +19221,10 @@ static __exception int next_token(JSParseState *s)
                     s->got_lf = TRUE; /* considered as LF for ASI */
                     p++;
                 } else if (*p >= 0x80) {
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
+                    c = utf8_decode(p, &p);
+                    /* ignore invalid UTF-8 in comments */
                     if (c == CP_LS || c == CP_PS) {
                         s->got_lf = TRUE; /* considered as LF for ASI */
-                    } else if (c == -1) {
-                        p++; /* skip invalid UTF-8 */
                     }
                 } else {
                     p++;
@@ -19210,12 +19242,11 @@ static __exception int next_token(JSParseState *s)
                 if (*p == '\r' || *p == '\n')
                     break;
                 if (*p >= 0x80) {
-                    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
+                    c = utf8_decode(p, &p);
+                    /* ignore invalid UTF-8 in comments */
                     /* LS or PS are considered as line terminator */
                     if (c == CP_LS || c == CP_PS) {
                         break;
-                    } else if (c == -1) {
-                        p++; /* skip invalid UTF-8 */
                     }
                 } else {
                     p++;
@@ -19305,20 +19336,21 @@ static __exception int next_token(JSParseState *s)
     case '#':
         /* private name */
         {
-            const uint8_t *p1;
             p++;
-            p1 = p;
-            c = *p1++;
-            if (c == '\\' && *p1 == 'u') {
-                c = lre_parse_escape(&p1, TRUE);
-            } else if (c >= 128) {
-                c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+            c = *p;
+            p_next = p + 1;
+            if (c == '\\' && *p_next == 'u') {
+                c = lre_parse_escape(&p_next, TRUE);
+            } else if (c >= 0x80) {
+                c = utf8_decode(p, &p_next);
+                if (p_next == p + 1)
+                    goto invalid_utf8;
             }
             if (!lre_js_is_ident_first(c)) {
                 js_parse_error(s, "invalid first character of private name");
                 goto fail;
             }
-            p = p1;
+            p = p_next;
             ident_has_escape = FALSE; /* not used */
             atom = parse_ident(s, &p, &ident_has_escape, c, TRUE);
             if (atom == JS_ATOM_NULL)
@@ -19334,37 +19366,56 @@ static __exception int next_token(JSParseState *s)
             break;
         }
         if (p[1] >= '0' && p[1] <= '9') {
+            flags = ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_FLOAT;
+            radix = 10;
             goto parse_number;
-        } else {
-            goto def_token;
         }
-        break;
+        goto def_token;
     case '0':
-        /* in strict mode, octal literals are not accepted */
-        if (is_digit(p[1]) && (s->cur_func->js_mode & JS_MODE_STRICT)) {
-            js_parse_error(s, "octal literals are deprecated in strict mode");
+        if (is_digit(p[1])) { /* handle legacy octal */
+            if (s->cur_func->js_mode & JS_MODE_STRICT) {
+                js_parse_error(s, "Octal literals are not allowed in strict mode");
+                goto fail;
+            }
+            /* Legacy octal: no separators, no suffix, no floats,
+               base 8 unless non octal digits are detected */
+            flags = 0;
+            radix = 8;
+            while (is_digit(*p)) {
+                if (*p >= '8' && *p <= '9')
+                    radix = 10;
+                p++;
+            }
+            p = s->token.ptr;
+            goto parse_number;
+        }
+        if (p[1] == '_') {
+            js_parse_error(s, "Numeric separator can not be used after leading 0");
             goto fail;
         }
+        flags = ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT |
+            ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
+        radix = 10;
         goto parse_number;
     case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8':
     case '9':
         /* number */
-    parse_number:
         {
             JSValue ret;
-            const uint8_t *p1;
-            int flags;
-            flags = ATOD_ACCEPT_BIN_OCT | ATOD_ACCEPT_LEGACY_OCTAL |
-                ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
-            s->token.u.num.exponent = 0;
-            ret = js_atof2(s->ctx, (const char *)p, (const char **)&p, 0,
-                           flags, &s->token.u.num.exponent);
+            const char *p1;
+
+            flags = ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
+            radix = 10;
+        parse_number:
+            p1 = (const char *)p;
+            ret = js_atof(s->ctx, p1, s->buf_end - p, &p1, radix, flags);
+            p = (const uint8_t *)p1;
             if (JS_IsException(ret))
                 goto fail;
             /* reject `10instanceof Number` */
             if (JS_VALUE_IS_NAN(ret) ||
-                lre_js_is_ident_next(unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1))) {
+                lre_js_is_ident_next(utf8_decode(p, &p_next))) {
                 JS_FreeValue(s->ctx, ret);
                 js_parse_error(s, "invalid number literal");
                 goto fail;
@@ -19556,9 +19607,11 @@ static __exception int next_token(JSParseState *s)
         }
         break;
     default:
-        if (c >= 128) {
-            /* unicode value */
-            c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
+        if (c >= 0x80) {  /* non-ASCII code-point */
+            c = utf8_decode(p, &p_next);
+            if (p_next == p + 1)
+                goto invalid_utf8;
+            p = p_next;
             switch(c) {
             case CP_PS:
             case CP_LS:
@@ -19589,6 +19642,8 @@ static __exception int next_token(JSParseState *s)
     //    dump_token(s, &s->token);
     return 0;
 
+ invalid_utf8:
+    js_parse_error(s, "invalid UTF-8 sequence");
  fail:
     s->token.val = TOK_ERROR;
     return -1;
@@ -19613,7 +19668,7 @@ static int json_parse_error(JSParseState *s, const uint8_t *curp, const char *ms
 
 static int json_parse_string(JSParseState *s, const uint8_t **pp)
 {
-    const uint8_t *p = *pp;
+    const uint8_t *p, *p_next;
     int i;
     uint32_t c;
     StringBuffer b_s, *b = &b_s;
@@ -19621,6 +19676,7 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
     if (string_buffer_init(s->ctx, b, 32))
         goto fail;
 
+    p = *pp;
     for(;;) {
         if (p >= s->buf_end) {
             goto end_of_input;
@@ -19662,9 +19718,8 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
             }
         } else
         if (c >= 0x80) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p - 1, s->buf_end - p, &p_next);
-            if (c > 0x10FFFF) {
+            c = utf8_decode(p - 1, &p_next);
+            if (p_next == p) {
                 json_parse_error(s, p - 1, "Bad UTF-8 sequence");
                 goto fail;
             }
@@ -19762,7 +19817,7 @@ static JSAtom json_parse_ident(JSParseState *s, const uint8_t **pp, int c)
 
 static __exception int json_next_token(JSParseState *s)
 {
-    const uint8_t *p;
+    const uint8_t *p, *p_next;
     int c;
     JSAtom atom;
 
@@ -19866,10 +19921,9 @@ static __exception int json_next_token(JSParseState *s)
             goto fail;
         break;
     default:
-        if (c >= 128) {
-            const uint8_t *p_next;
-            c = unicode_from_utf8(p, s->buf_end - p, &p_next);
-            if (c == -1) {
+        if (c >= 0x80) {
+            c = utf8_decode(p, &p_next);
+            if (p_next == p + 1) {
                 js_parse_error(s, "Unexpected token '\\x%02x' in JSON", *p);
             } else {
                 if (c > 0xFFFF) {
@@ -19991,12 +20045,10 @@ static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end)
             if (*p == '\n' || *p == '\r') {
                 break;
             } else if (*p >= 0x80) {
-                c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
-                if (c == CP_LS || c == CP_PS) {
+                c = utf8_decode(p, &p);
+                /* purposely ignore UTF-8 encoding errors in this comment line */
+                if (c == CP_LS || c == CP_PS)
                     break;
-                } else if (c == -1) {
-                    p++; /* skip invalid UTF-8 */
-                }
             } else {
                 p++;
             }
@@ -20877,7 +20929,7 @@ static int __exception js_parse_property_name(JSParseState *s,
                 goto fail1;
             if (s->token.val == ':' || s->token.val == ',' ||
                 s->token.val == '}' || s->token.val == '(' ||
-                s->token.val == '=' ) {
+                s->token.val == '=') {
                 is_non_reserved_ident = TRUE;
                 goto ident_found;
             }
@@ -20893,7 +20945,8 @@ static int __exception js_parse_property_name(JSParseState *s,
             if (next_token(s))
                 goto fail1;
             if (s->token.val == ':' || s->token.val == ',' ||
-                s->token.val == '}' || s->token.val == '(') {
+                s->token.val == '}' || s->token.val == '(' ||
+                s->token.val == '=') {
                 is_non_reserved_ident = TRUE;
                 goto ident_found;
             }
@@ -21649,7 +21702,12 @@ static __exception int js_parse_class(JSParseState *s, BOOL is_class_expr,
                 goto fail;
             continue;
         }
-        is_static = (s->token.val == TOK_STATIC);
+        is_static = FALSE;
+        if (s->token.val == TOK_STATIC) {
+            int next = peek_token(s, TRUE);
+            if (!(next == ';' || next == '}' || next == '(' || next == '='))
+                is_static = TRUE;
+        }
         prop_type = -1;
         if (is_static) {
             if (next_token(s))
@@ -23707,6 +23765,7 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
             return -1;
         if (js_parse_unary(s, PF_POW_FORBIDDEN))
             return -1;
+        s->cur_func->has_await = TRUE;
         emit_op(s, OP_await);
         parse_flags = 0;
         break;
@@ -25134,6 +25193,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 is_async = TRUE;
                 if (next_token(s))
                     goto fail;
+                s->cur_func->has_await = TRUE;
             }
             if (js_parse_expect(s, '('))
                 goto fail;
@@ -25662,11 +25722,13 @@ static JSModuleDef *js_new_module_def(JSContext *ctx, JSAtom name)
     }
     m->header.ref_count = 1;
     m->module_name = name;
-    m->promise = JS_UNDEFINED;
     m->module_ns = JS_UNDEFINED;
     m->func_obj = JS_UNDEFINED;
     m->eval_exception = JS_UNDEFINED;
     m->meta_obj = JS_UNDEFINED;
+    m->promise = JS_UNDEFINED;
+    m->resolving_funcs[0] = JS_UNDEFINED;
+    m->resolving_funcs[1] = JS_UNDEFINED;
     list_add_tail(&m->link, &ctx->loaded_modules);
     return m;
 }
@@ -25684,11 +25746,13 @@ static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
         }
     }
 
-    JS_MarkValue(rt, m->promise, mark_func);
     JS_MarkValue(rt, m->module_ns, mark_func);
     JS_MarkValue(rt, m->func_obj, mark_func);
     JS_MarkValue(rt, m->eval_exception, mark_func);
     JS_MarkValue(rt, m->meta_obj, mark_func);
+    JS_MarkValue(rt, m->promise, mark_func);
+    JS_MarkValue(rt, m->resolving_funcs[0], mark_func);
+    JS_MarkValue(rt, m->resolving_funcs[1], mark_func);
 }
 
 static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
@@ -25719,12 +25783,15 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
         JS_FreeAtom(ctx, mi->import_name);
     }
     js_free(ctx, m->import_entries);
+    js_free(ctx, m->async_parent_modules);
 
-    JS_FreeValue(ctx, m->promise);
     JS_FreeValue(ctx, m->module_ns);
     JS_FreeValue(ctx, m->func_obj);
     JS_FreeValue(ctx, m->eval_exception);
     JS_FreeValue(ctx, m->meta_obj);
+    JS_FreeValue(ctx, m->promise);
+    JS_FreeValue(ctx, m->resolving_funcs[0]);
+    JS_FreeValue(ctx, m->resolving_funcs[1]);
     list_del(&m->link);
     js_free(ctx, m);
 }
@@ -26592,7 +26659,8 @@ static int js_create_module_function(JSContext *ctx, JSModuleDef *m)
 
 /* Prepare a module to be executed by resolving all the imported
    variables. */
-static int js_link_module(JSContext *ctx, JSModuleDef *m)
+static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
+                                   JSModuleDef **pstack_top, int index)
 {
     int i;
     JSImportEntry *mi;
@@ -26602,21 +26670,47 @@ static int js_link_module(JSContext *ctx, JSModuleDef *m)
     BOOL is_c_module;
     JSValue ret_val;
 
-    if (m->instantiated)
-        return 0;
-    m->instantiated = TRUE;
+    if (js_check_stack_overflow(ctx->rt, 0)) {
+        JS_ThrowStackOverflow(ctx);
+        return -1;
+    }
 
 #ifdef DUMP_MODULE_RESOLVE
     if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) {
         char buf1[ATOM_GET_STR_BUF_SIZE];
-        printf("start instantiating module '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
+        printf("js_inner_module_linking '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
     }
 #endif
 
+    if (m->status == JS_MODULE_STATUS_LINKING ||
+        m->status == JS_MODULE_STATUS_LINKED ||
+        m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+        m->status == JS_MODULE_STATUS_EVALUATED)
+        return index;
+
+    assert(m->status == JS_MODULE_STATUS_UNLINKED);
+    m->status = JS_MODULE_STATUS_LINKING;
+    m->dfs_index = index;
+    m->dfs_ancestor_index = index;
+    index++;
+    /* push 'm' on stack */
+    m->stack_prev = *pstack_top;
+    *pstack_top = m;
+
     for(i = 0; i < m->req_module_entries_count; i++) {
         JSReqModuleEntry *rme = &m->req_module_entries[i];
-        if (js_link_module(ctx, rme->module) < 0)
+        m1 = rme->module;
+        index = js_inner_module_linking(ctx, m1, pstack_top, index);
+        if (index < 0)
             goto fail;
+        assert(m1->status == JS_MODULE_STATUS_LINKING ||
+               m1->status == JS_MODULE_STATUS_LINKED ||
+               m1->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+               m1->status == JS_MODULE_STATUS_EVALUATED);
+        if (m1->status == JS_MODULE_STATUS_LINKING) {
+            m->dfs_ancestor_index = min_int(m->dfs_ancestor_index,
+                                            m1->dfs_ancestor_index);
+        }
     }
 
 #ifdef DUMP_MODULE_RESOLVE
@@ -26743,11 +26837,57 @@ static int js_link_module(JSContext *ctx, JSModuleDef *m)
         JS_FreeValue(ctx, ret_val);
     }
 
-    module_trace(ctx, "done instantiate\n");
+    assert(m->dfs_ancestor_index <= m->dfs_index);
+    if (m->dfs_index == m->dfs_ancestor_index) {
+        for(;;) {
+            /* pop m1 from stack */
+            m1 = *pstack_top;
+            *pstack_top = m1->stack_prev;
+            m1->status = JS_MODULE_STATUS_LINKED;
+            if (m1 == m)
+                break;
+        }
+    }
 
-    return 0;
+#ifdef DUMP_MODULE_RESOLVE
+    printf("js_inner_module_linking done\n");
+#endif
+    return index;
  fail:
     return -1;
+}
+
+/* Prepare a module to be executed by resolving all the imported
+   variables. */
+static int js_link_module(JSContext *ctx, JSModuleDef *m)
+{
+    JSModuleDef *stack_top, *m1;
+
+#ifdef DUMP_MODULE_RESOLVE
+    {
+        char buf1[ATOM_GET_STR_BUF_SIZE];
+        printf("js_link_module '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
+    }
+#endif
+    assert(m->status == JS_MODULE_STATUS_UNLINKED ||
+           m->status == JS_MODULE_STATUS_LINKED ||
+           m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+           m->status == JS_MODULE_STATUS_EVALUATED);
+    stack_top = NULL;
+    if (js_inner_module_linking(ctx, m, &stack_top, 0) < 0) {
+        while (stack_top != NULL) {
+            m1 = stack_top;
+            assert(m1->status == JS_MODULE_STATUS_LINKING);
+            m1->status = JS_MODULE_STATUS_UNLINKED;
+            stack_top = m1->stack_prev;
+        }
+        return -1;
+    }
+    assert(stack_top == NULL);
+    assert(m->status == JS_MODULE_STATUS_LINKED ||
+           m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+           m->status == JS_MODULE_STATUS_EVALUATED);
+    return 0;
 }
 
 /* return JS_ATOM_NULL if the name cannot be found. Only works with
@@ -26817,41 +26957,110 @@ static JSValue js_import_meta(JSContext *ctx)
     return JS_GetImportMeta(ctx, m);
 }
 
-/* used by os.Worker() and import() */
-JSModuleDef *JS_RunModule(JSContext *ctx, const char *basename,
-                          const char *filename)
+static JSValue JS_NewModuleValue(JSContext *ctx, JSModuleDef *m)
 {
+    return JS_DupValue(ctx, JS_MKPTR(JS_TAG_MODULE, m));
+}
+
+static JSValue js_load_module_rejected(JSContext *ctx, JSValueConst this_val,
+                                       int argc, JSValueConst *argv, int magic, JSValue *func_data)
+{
+    JSValueConst *resolving_funcs = (JSValueConst *)func_data;
+    JSValueConst error;
+    JSValue ret;
+
+    /* XXX: check if the test is necessary */
+    if (argc >= 1)
+        error = argv[0];
+    else
+        error = JS_UNDEFINED;
+    ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED,
+                  1, &error);
+    JS_FreeValue(ctx, ret);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_load_module_fulfilled(JSContext *ctx, JSValueConst this_val,
+                                        int argc, JSValueConst *argv, int magic, JSValue *func_data)
+{
+    JSValueConst *resolving_funcs = (JSValueConst *)func_data;
+    JSModuleDef *m = JS_VALUE_GET_PTR(func_data[2]);
+    JSValue ret, ns;
+
+    /* return the module namespace */
+    ns = JS_GetModuleNamespace(ctx, m);
+    if (JS_IsException(ns)) {
+        JSValue err = JS_GetException(ctx);
+        js_load_module_rejected(ctx, JS_UNDEFINED, 1, (JSValueConst *)&err, 0, func_data);
+        return JS_UNDEFINED;
+    }
+    ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED,
+                   1, (JSValueConst *)&ns);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, ns);
+    return JS_UNDEFINED;
+}
+
+static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
+                                  const char *filename,
+                                  JSValueConst *resolving_funcs)
+{
+    JSValue evaluate_promise;
     JSModuleDef *m;
-    JSValue ret, func_obj;
+    JSValue ret, err, func_obj, evaluate_resolving_funcs[2];
+    JSValueConst func_data[3];
 
     m = js_host_resolve_imported_module(ctx, basename, filename);
     if (!m)
-        return NULL;
+        goto fail;
 
     if (js_resolve_module(ctx, m) < 0) {
         js_free_modules(ctx, JS_FREE_MODULE_NOT_RESOLVED);
-        return NULL;
+        goto fail;
     }
 
     /* Evaluate the module code */
-    func_obj = js_dup(JS_MKPTR(JS_TAG_MODULE, m));
-    ret = JS_EvalFunction(ctx, func_obj);
-    if (JS_IsException(ret))
-        return NULL;
+    func_obj = JS_NewModuleValue(ctx, m);
+    evaluate_promise = JS_EvalFunction(ctx, func_obj);
+    if (JS_IsException(evaluate_promise)) {
+    fail:
+        err = JS_GetException(ctx);
+        ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED,
+                      1, (JSValueConst *)&err);
+        JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
+        JS_FreeValue(ctx, err);
+        return;
+    }
+
+    func_obj = JS_NewModuleValue(ctx, m);
+    func_data[0] = resolving_funcs[0];
+    func_data[1] = resolving_funcs[1];
+    func_data[2] = func_obj;
+    evaluate_resolving_funcs[0] = JS_NewCFunctionData(ctx, js_load_module_fulfilled, 0, 0, 3, func_data);
+    evaluate_resolving_funcs[1] = JS_NewCFunctionData(ctx, js_load_module_rejected, 0, 0, 3, func_data);
+    JS_FreeValue(ctx, func_obj);
+    ret = js_promise_then(ctx, evaluate_promise, 2, (JSValueConst *)evaluate_resolving_funcs);
     JS_FreeValue(ctx, ret);
-    return m;
+    JS_FreeValue(ctx, evaluate_resolving_funcs[0]);
+    JS_FreeValue(ctx, evaluate_resolving_funcs[1]);
+    JS_FreeValue(ctx, evaluate_promise);
 }
 
-static JSValue js_dynamic_import_resolve(JSContext *ctx, JSValue this_val,
-                                         int argc, JSValue *argv, int magic, JSValue *func_data)
+/* Return a promise or an exception in case of memory error. Used by
+   os.Worker() */
+JSValue JS_LoadModule(JSContext *ctx, const char *basename,
+                      const char *filename)
 {
-    return JS_Call(ctx, func_data[0], JS_UNDEFINED, 1, &func_data[2]);
-}
+    JSValue promise, resolving_funcs[2];
 
-static JSValue js_dynamic_import_reject(JSContext *ctx, JSValue this_val,
-                                        int argc, JSValue *argv, int magic, JSValue *func_data)
-{
-    return JS_Call(ctx, func_data[1], JS_UNDEFINED, 1, &argv[0]);
+    promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+    if (JS_IsException(promise))
+        return JS_EXCEPTION;
+    JS_LoadModuleInternal(ctx, basename, filename,
+                          (JSValueConst *)resolving_funcs);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+    return promise;
 }
 
 static JSValue js_dynamic_import_job(JSContext *ctx,
@@ -26862,7 +27071,7 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     JSValue specifier = argv[3];
     JSModuleDef *m;
     const char *basename = NULL, *filename;
-    JSValue ret, err, ns;
+    JSValue ret, err;
 
     if (!JS_IsString(basename_val)) {
         JS_ThrowTypeError(ctx, "no function filename for import()");
@@ -26876,39 +27085,12 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     if (!filename)
         goto exception;
 
-    m = JS_RunModule(ctx, basename, filename);
+    JS_LoadModuleInternal(ctx, basename, filename,
+                          resolving_funcs);
     JS_FreeCString(ctx, filename);
-    if (!m)
-        goto exception;
-
-    /* return the module namespace */
-    ns = JS_GetModuleNamespace(ctx, m);
-    if (JS_IsException(ns))
-        goto exception;
-
-    if (!JS_IsUndefined(m->promise)) {
-        JSValue args[] = {argv[0], argv[1], ns};
-        JSValue funcs[2];
-        funcs[0] = JS_NewCFunctionData(ctx, js_dynamic_import_resolve, 0, 0, 3, args);
-        funcs[1] = JS_NewCFunctionData(ctx, js_dynamic_import_reject, 0, 0, 3, args);
-        JS_FreeValue(ctx, js_promise_then(ctx, m->promise, 2, funcs));
-
-        JS_FreeValue(ctx, funcs[0]);
-        JS_FreeValue(ctx, funcs[1]);
-        JS_FreeValue(ctx, ns);
-        JS_FreeCString(ctx, basename);
-
-        return JS_UNDEFINED;
-    }
-
-    ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED,
-                   1, &ns);
-    JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
-    JS_FreeValue(ctx, ns);
     JS_FreeCString(ctx, basename);
     return JS_UNDEFINED;
  exception:
-
     err = JS_GetException(ctx);
     ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED,
                    1, &err);
@@ -26944,6 +27126,8 @@ static JSValue js_dynamic_import(JSContext *ctx, JSValue specifier)
     args[2] = basename_val;
     args[3] = specifier;
 
+    /* cannot run JS_LoadModuleInternal synchronously because it would
+       cause an unexpected recursion in js_evaluate_module() */
     JS_EnqueueJob(ctx, js_dynamic_import_job, 4, args);
 
     JS_FreeValue(ctx, basename_val);
@@ -26952,106 +27136,397 @@ static JSValue js_dynamic_import(JSContext *ctx, JSValue specifier)
     return promise;
 }
 
-static JSValue js_async_function_call2(JSContext *ctx, JSValue this_val,
-                                       int argc, JSValue *argv, int magic, JSValue *func_data)
+static void js_set_module_evaluated(JSContext *ctx, JSModuleDef *m)
 {
-    return js_async_function_call(ctx, func_data[0], this_val, argc, argv, magic);
+    m->status = JS_MODULE_STATUS_EVALUATED;
+    if (!JS_IsUndefined(m->promise)) {
+        JSValue value, ret_val;
+        assert(m->cycle_root == m);
+        value = JS_UNDEFINED;
+        ret_val = JS_Call(ctx, m->resolving_funcs[0], JS_UNDEFINED,
+                          1, (JSValueConst *)&value);
+        JS_FreeValue(ctx, ret_val);
+    }
 }
 
-/* Run the <eval> function of the module and of all its requested
-   modules. */
-static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
+typedef struct {
+    JSModuleDef **tab;
+    int count;
+    int size;
+} ExecModuleList;
+
+/* XXX: slow. Could use a linked list instead of ExecModuleList */
+static BOOL find_in_exec_module_list(ExecModuleList *exec_list, JSModuleDef *m)
+{
+    int i;
+    for(i = 0; i < exec_list->count; i++) {
+        if (exec_list->tab[i] == m)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static int gather_available_ancestors(JSContext *ctx, JSModuleDef *module,
+                                      ExecModuleList *exec_list)
+{
+    int i;
+
+    if (js_check_stack_overflow(ctx->rt, 0)) {
+        JS_ThrowStackOverflow(ctx);
+        return -1;
+    }
+    for(i = 0; i < module->async_parent_modules_count; i++) {
+        JSModuleDef *m = module->async_parent_modules[i];
+        if (!find_in_exec_module_list(exec_list, m) &&
+            !m->cycle_root->eval_has_exception) {
+            assert(m->status == JS_MODULE_STATUS_EVALUATING_ASYNC);
+            assert(!m->eval_has_exception);
+            assert(m->async_evaluation);
+            assert(m->pending_async_dependencies > 0);
+            m->pending_async_dependencies--;
+            if (m->pending_async_dependencies == 0) {
+                if (js_resize_array(ctx, (void **)&exec_list->tab, sizeof(exec_list->tab[0]), &exec_list->size, exec_list->count + 1)) {
+                    return -1;
+                }
+                exec_list->tab[exec_list->count++] = m;
+                if (!m->has_tla) {
+                    if (gather_available_ancestors(ctx, m, exec_list))
+                        return -1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+static int exec_module_list_cmp(const void *p1, const void *p2, void *opaque)
+{
+    JSModuleDef *m1 = *(JSModuleDef **)p1;
+    JSModuleDef *m2 = *(JSModuleDef **)p2;
+    return (m1->async_evaluation_timestamp > m2->async_evaluation_timestamp) -
+        (m1->async_evaluation_timestamp < m2->async_evaluation_timestamp);
+}
+
+static int js_execute_async_module(JSContext *ctx, JSModuleDef *m);
+static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
+                                  JSValue *pvalue);
+
+static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst this_val,
+                                                  int argc, JSValueConst *argv, int magic, JSValue *func_data)
+{
+    JSModuleDef *module = JS_VALUE_GET_PTR(func_data[0]);
+    JSValueConst error = argv[0];
+    int i;
+
+    if (js_check_stack_overflow(ctx->rt, 0))
+        return JS_ThrowStackOverflow(ctx);
+
+    if (module->status == JS_MODULE_STATUS_EVALUATED) {
+        assert(module->eval_has_exception);
+        return JS_UNDEFINED;
+    }
+
+    assert(module->status == JS_MODULE_STATUS_EVALUATING_ASYNC);
+    assert(!module->eval_has_exception);
+    assert(module->async_evaluation);
+
+    module->eval_has_exception = TRUE;
+    module->eval_exception = JS_DupValue(ctx, error);
+    module->status = JS_MODULE_STATUS_EVALUATED;
+
+    for(i = 0; i < module->async_parent_modules_count; i++) {
+        JSModuleDef *m = module->async_parent_modules[i];
+        JSValue m_obj = JS_NewModuleValue(ctx, m);
+        js_async_module_execution_rejected(ctx, JS_UNDEFINED, 1, &error, 0,
+                                           &m_obj);
+        JS_FreeValue(ctx, m_obj);
+    }
+
+    if (!JS_IsUndefined(module->promise)) {
+        JSValue ret_val;
+        assert(module->cycle_root == module);
+        ret_val = JS_Call(ctx, module->resolving_funcs[1], JS_UNDEFINED,
+                          1, &error);
+        JS_FreeValue(ctx, ret_val);
+    }
+    return JS_UNDEFINED;
+}
+
+static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValueConst this_val,
+                                                   int argc, JSValueConst *argv, int magic, JSValue *func_data)
+{
+    JSModuleDef *module = JS_VALUE_GET_PTR(func_data[0]);
+    ExecModuleList exec_list_s, *exec_list = &exec_list_s;
+    int i;
+
+    if (module->status == JS_MODULE_STATUS_EVALUATED) {
+        assert(module->eval_has_exception);
+        return JS_UNDEFINED;
+    }
+    assert(module->status == JS_MODULE_STATUS_EVALUATING_ASYNC);
+    assert(!module->eval_has_exception);
+    assert(module->async_evaluation);
+    module->async_evaluation = FALSE;
+    js_set_module_evaluated(ctx, module);
+
+    exec_list->tab = NULL;
+    exec_list->count = 0;
+    exec_list->size = 0;
+
+    if (gather_available_ancestors(ctx, module, exec_list) < 0) {
+        js_free(ctx, exec_list->tab);
+        return JS_EXCEPTION;
+    }
+
+    /* sort by increasing async_evaluation timestamp */
+    rqsort(exec_list->tab, exec_list->count, sizeof(exec_list->tab[0]),
+           exec_module_list_cmp, NULL);
+
+    for(i = 0; i < exec_list->count; i++) {
+        JSModuleDef *m = exec_list->tab[i];
+        if (m->status == JS_MODULE_STATUS_EVALUATED) {
+            assert(m->eval_has_exception);
+        } else if (m->has_tla) {
+            js_execute_async_module(ctx, m);
+        } else {
+            JSValue error;
+            if (js_execute_sync_module(ctx, m, &error) < 0) {
+                JSValue m_obj = JS_NewModuleValue(ctx, m);
+                js_async_module_execution_rejected(ctx, JS_UNDEFINED,
+                                                   1, (JSValueConst *)&error, 0,
+                                                   &m_obj);
+                JS_FreeValue(ctx, m_obj);
+                JS_FreeValue(ctx, error);
+            } else {
+                js_set_module_evaluated(ctx, m);
+            }
+        }
+    }
+    js_free(ctx, exec_list->tab);
+    return JS_UNDEFINED;
+}
+
+static int js_execute_async_module(JSContext *ctx, JSModuleDef *m)
+{
+    JSValue promise, m_obj;
+    JSValue resolve_funcs[2], ret_val;
+    promise = js_async_function_call(ctx, m->func_obj, JS_UNDEFINED, 0, NULL, 0);
+    if (JS_IsException(promise))
+        return -1;
+    m_obj = JS_NewModuleValue(ctx, m);
+    resolve_funcs[0] = JS_NewCFunctionData(ctx, js_async_module_execution_fulfilled, 0, 0, 1, (JSValueConst *)&m_obj);
+    resolve_funcs[1] = JS_NewCFunctionData(ctx, js_async_module_execution_rejected, 0, 0, 1, (JSValueConst *)&m_obj);
+    ret_val = js_promise_then(ctx, promise, 2, (JSValueConst *)resolve_funcs);
+    JS_FreeValue(ctx, ret_val);
+    JS_FreeValue(ctx, m_obj);
+    JS_FreeValue(ctx, resolve_funcs[0]);
+    JS_FreeValue(ctx, resolve_funcs[1]);
+    JS_FreeValue(ctx, promise);
+    return 0;
+}
+
+/* return < 0 in case of exception. *pvalue contains the exception. */
+static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
+                                  JSValue *pvalue)
+{
+    if (m->init_func) {
+        /* C module init : no asynchronous execution */
+        if (m->init_func(ctx, m) < 0)
+            goto fail;
+    } else {
+        JSValue promise;
+        JSPromiseStateEnum state;
+
+        promise = js_async_function_call(ctx, m->func_obj, JS_UNDEFINED, 0, NULL, 0);
+        if (JS_IsException(promise))
+            goto fail;
+        state = JS_PromiseState(ctx, promise);
+        if (state == JS_PROMISE_FULFILLED) {
+            JS_FreeValue(ctx, promise);
+        } else if (state == JS_PROMISE_REJECTED) {
+            *pvalue = JS_PromiseResult(ctx, promise);
+            JS_FreeValue(ctx, promise);
+            return -1;
+        } else {
+            JS_FreeValue(ctx, promise);
+            JS_ThrowTypeError(ctx, "promise is pending");
+        fail:
+            *pvalue = JS_GetException(ctx);
+            return -1;
+        }
+    }
+    *pvalue = JS_UNDEFINED;
+    return 0;
+}
+
+/* spec: InnerModuleEvaluation. Return (index, JS_UNDEFINED) or (-1,
+   exception) */
+static int js_inner_module_evaluation(JSContext *ctx, JSModuleDef *m,
+                                      int index, JSModuleDef **pstack_top,
+                                      JSValue *pvalue)
 {
     JSModuleDef *m1;
     int i;
-    JSValue ret_val;
 
-    if (m->eval_mark)
-        return JS_UNDEFINED; /* avoid cycles */
-
-    if (m->evaluated) {
-        /* if the module was already evaluated, rethrow the exception
-           it raised */
-        if (m->eval_has_exception) {
-            return JS_Throw(ctx, js_dup(m->eval_exception));
-        } else {
-            return js_dup(m->promise);
-        }
+    if (js_check_stack_overflow(ctx->rt, 0)) {
+        JS_ThrowStackOverflow(ctx);
+        *pvalue = JS_GetException(ctx);
+        return -1;
     }
 
-    m->eval_mark = TRUE;
+#ifdef DUMP_MODULE_RESOLVE
+    {
+        char buf1[ATOM_GET_STR_BUF_SIZE];
+        printf("js_inner_module_evaluation '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
+    }
+#endif
 
-    JSValue promises = JS_NewArray(ctx);
-    if (JS_IsException(promises))
-        return JS_EXCEPTION;
+    if (m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+        m->status == JS_MODULE_STATUS_EVALUATED) {
+        if (m->eval_has_exception) {
+            *pvalue = JS_DupValue(ctx, m->eval_exception);
+            return -1;
+        } else {
+            *pvalue = JS_UNDEFINED;
+            return index;
+        }
+    }
+    if (m->status == JS_MODULE_STATUS_EVALUATING) {
+        *pvalue = JS_UNDEFINED;
+        return index;
+    }
+    assert(m->status == JS_MODULE_STATUS_LINKED);
 
-    BOOL async = FALSE;
-    JSValue promise = JS_UNDEFINED;
+    m->status = JS_MODULE_STATUS_EVALUATING;
+    m->dfs_index = index;
+    m->dfs_ancestor_index = index;
+    m->pending_async_dependencies = 0;
+    index++;
+    /* push 'm' on stack */
+    m->stack_prev = *pstack_top;
+    *pstack_top = m;
+
     for(i = 0; i < m->req_module_entries_count; i++) {
         JSReqModuleEntry *rme = &m->req_module_entries[i];
         m1 = rme->module;
-        if (!m1->eval_mark) {
-            ret_val = js_evaluate_module(ctx, m1);
-            if (JS_IsException(ret_val)) {
-                m->eval_mark = FALSE;
-                js_free_modules(ctx, JS_FREE_MODULE_NOT_EVALUATED);
-                goto clean;
+        index = js_inner_module_evaluation(ctx, m1, index, pstack_top, pvalue);
+        if (index < 0) 
+            return -1;
+        assert(m1->status == JS_MODULE_STATUS_EVALUATING ||
+               m1->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+               m1->status == JS_MODULE_STATUS_EVALUATED);
+        if (m1->status == JS_MODULE_STATUS_EVALUATING) {
+            m->dfs_ancestor_index = min_int(m->dfs_ancestor_index,
+                                            m1->dfs_ancestor_index);
+        } else {
+            m1 = m1->cycle_root;
+            assert(m1->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+                   m1->status == JS_MODULE_STATUS_EVALUATED);
+            if (m1->eval_has_exception) {
+                *pvalue = JS_DupValue(ctx, m1->eval_exception);
+                return -1;
             }
-            if (!JS_IsUndefined(ret_val)) {
-                js_array_push(ctx, promises, 1, &ret_val, 0);
-                JS_FreeValue(ctx, ret_val);
-                async = TRUE;
+        }
+        if (m1->async_evaluation) {
+            m->pending_async_dependencies++;
+            if (js_resize_array(ctx, (void **)&m1->async_parent_modules, sizeof(m1->async_parent_modules[0]), &m1->async_parent_modules_size, m1->async_parent_modules_count + 1)) {
+                *pvalue = JS_GetException(ctx);
+                return -1;
             }
+            m1->async_parent_modules[m1->async_parent_modules_count++] = m;
         }
     }
 
-    promise = js_promise_all(ctx, ctx->promise_ctor, 1, &promises, 0);
-    if (JS_IsException(promise)) {
-        JS_FreeValue(ctx, promises);
-        return JS_EXCEPTION;
-    }
-
-    if (m->init_func) {
-        /* C module init */
-        if (m->init_func(ctx, m) < 0)
-            ret_val = JS_EXCEPTION;
-        else
-            ret_val = JS_UNDEFINED;
-    } else if (!async) {
-        ret_val = js_async_function_call(ctx, m->func_obj, JS_UNDEFINED, 0, NULL, 0);
-        JS_FreeValue(ctx, m->func_obj);
-        m->func_obj = JS_UNDEFINED;
-        JSPromiseData *s = JS_GetOpaque(ret_val, JS_CLASS_PROMISE);
-        if (s->promise_state != JS_PROMISE_PENDING) {
-            JSValue ret_val2 = ret_val;
-            if (s->promise_state == JS_PROMISE_REJECTED)
-                ret_val = JS_Throw(ctx, js_dup(s->promise_result));
-            else
-                ret_val = js_dup(s->promise_result);
-            JS_FreeValue(ctx, ret_val2);
-        }
+    if (m->pending_async_dependencies > 0) {
+        assert(!m->async_evaluation);
+        m->async_evaluation = TRUE;
+        m->async_evaluation_timestamp =
+            ctx->rt->module_async_evaluation_next_timestamp++;
+    } else if (m->has_tla) {
+        assert(!m->async_evaluation);
+        m->async_evaluation = TRUE;
+        m->async_evaluation_timestamp =
+            ctx->rt->module_async_evaluation_next_timestamp++;
+        js_execute_async_module(ctx, m);
     } else {
-        JSValue funcs[2];
-        funcs[0] = JS_NewCFunctionData(ctx, js_async_function_call2, 0, 0, 1, &m->func_obj);
-        funcs[1] = JS_UNDEFINED;
-        ret_val = js_promise_then(ctx, promise, 2, funcs);
-        JS_FreeValue(ctx, funcs[0]);
-        JS_FreeValue(ctx, m->func_obj);
-        m->func_obj = JS_UNDEFINED;
+        if (js_execute_sync_module(ctx, m, pvalue) < 0)
+            return -1;
     }
-    if (JS_IsException(ret_val)) {
-        /* save the thrown exception value */
-        m->eval_has_exception = TRUE;
-        m->eval_exception = js_dup(ctx->rt->current_exception);
-    } else if (!JS_IsUndefined(ret_val)) {
-        m->promise = js_dup(ret_val);
+
+    assert(m->dfs_ancestor_index <= m->dfs_index);
+    if (m->dfs_index == m->dfs_ancestor_index) {
+        for(;;) {
+            /* pop m1 from stack */
+            m1 = *pstack_top;
+            *pstack_top = m1->stack_prev;
+            if (!m1->async_evaluation) {
+                m1->status = JS_MODULE_STATUS_EVALUATED;
+            } else {
+                m1->status = JS_MODULE_STATUS_EVALUATING_ASYNC;
+            }
+            /* spec bug: cycle_root must be assigned before the test */
+            m1->cycle_root = m;
+            if (m1 == m)
+                break;
+        }
     }
-    m->eval_mark = FALSE;
-    m->evaluated = TRUE;
-clean:
-    JS_FreeValue(ctx, promises);
-    JS_FreeValue(ctx, promise);
-    return ret_val;
+    *pvalue = JS_UNDEFINED;
+    return index;
+}
+
+/* Run the <eval> function of the module and of all its requested
+   modules. Return a promise or an exception. */
+static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
+{
+    JSModuleDef *m1, *stack_top;
+    JSValue ret_val, result;
+
+    assert(m->status == JS_MODULE_STATUS_LINKED ||
+           m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+           m->status == JS_MODULE_STATUS_EVALUATED);
+    if (m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+        m->status == JS_MODULE_STATUS_EVALUATED) {
+        m = m->cycle_root;
+    }
+    /* a promise may be created only on the cycle_root of a cycle */
+    if (!JS_IsUndefined(m->promise))
+        return JS_DupValue(ctx, m->promise);
+    m->promise = JS_NewPromiseCapability(ctx, m->resolving_funcs);
+    if (JS_IsException(m->promise))
+        return JS_EXCEPTION;
+
+    stack_top = NULL;
+    if (js_inner_module_evaluation(ctx, m, 0, &stack_top, &result) < 0) {
+        while (stack_top != NULL) {
+            m1 = stack_top;
+            assert(m1->status == JS_MODULE_STATUS_EVALUATING);
+            m1->status = JS_MODULE_STATUS_EVALUATED;
+            m1->eval_has_exception = TRUE;
+            m1->eval_exception = JS_DupValue(ctx, result);
+            m1->cycle_root = m; /* spec bug: should be present */
+            stack_top = m1->stack_prev;
+        }
+        JS_FreeValue(ctx, result);
+        assert(m->status == JS_MODULE_STATUS_EVALUATED);
+        assert(m->eval_has_exception);
+        ret_val = JS_Call(ctx, m->resolving_funcs[1], JS_UNDEFINED,
+                          1, (JSValueConst *)&m->eval_exception);
+        JS_FreeValue(ctx, ret_val);
+    } else {
+        assert(m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
+               m->status == JS_MODULE_STATUS_EVALUATED);
+        assert(!m->eval_has_exception);
+        if (!m->async_evaluation) {
+            JSValue value;
+            assert(m->status == JS_MODULE_STATUS_EVALUATED);
+            value = JS_UNDEFINED;
+            ret_val = JS_Call(ctx, m->resolving_funcs[0], JS_UNDEFINED,
+                              1, (JSValueConst *)&value);
+            JS_FreeValue(ctx, ret_val);
+        }
+        assert(stack_top == NULL);
+    }
+    return JS_DupValue(ctx, m->promise);
 }
 
 static __exception JSAtom js_parse_from_clause(JSParseState *s)
@@ -32297,10 +32772,22 @@ static __exception int js_parse_program(JSParseState *s)
 
     if (!s->is_module) {
         /* return the value of the hidden variable eval_ret_idx  */
-        emit_op(s, OP_get_loc);
-        emit_u16(s, fd->eval_ret_idx);
+        if (fd->func_kind == JS_FUNC_ASYNC) {
+            /* wrap the return value in an object so that promises can
+               be safely returned */
+            emit_op(s, OP_object);
+            emit_op(s, OP_dup);
 
-        emit_op(s, OP_return);
+            emit_op(s, OP_get_loc);
+            emit_u16(s, fd->eval_ret_idx);
+
+            emit_op(s, OP_put_field);
+            emit_atom(s, JS_ATOM_value);
+        } else {
+            emit_op(s, OP_get_loc);
+            emit_u16(s, fd->eval_ret_idx);
+        }
+        emit_return(s, TRUE);
     } else {
         emit_return(s, FALSE);
     }
@@ -32349,7 +32836,6 @@ static JSValue JS_EvalFunctionInternal(JSContext *ctx, JSValue fun_obj,
         ret_val = js_evaluate_module(ctx, m);
         if (JS_IsException(ret_val)) {
         fail:
-            js_free_modules(ctx, JS_FREE_MODULE_NOT_EVALUATED);
             return JS_EXCEPTION;
         }
     } else {
@@ -32414,10 +32900,6 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
     fd = js_new_function_def(ctx, NULL, TRUE, FALSE, filename, 1, 1);
     if (!fd)
         goto fail1;
-    if (m != NULL) {
-        fd->in_function_body = TRUE;
-        fd->func_kind = JS_FUNC_ASYNC;
-    }
     s->cur_func = fd;
     fd->eval_type = eval_type;
     fd->has_this_binding = (eval_type != JS_EVAL_TYPE_DIRECT);
@@ -32440,6 +32922,10 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
             goto fail;
     }
     fd->module = m;
+    if (m != NULL || (flags & JS_EVAL_FLAG_ASYNC)) {
+        fd->in_function_body = TRUE;
+        fd->func_kind = JS_FUNC_ASYNC;
+    }
     s->is_module = (m != NULL);
     s->allow_html_comments = !s->is_module;
 
@@ -32454,6 +32940,9 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
         goto fail1;
     }
 
+    if (m != NULL)
+        m->has_tla = fd->has_await;
+
     /* create the function object and all the enclosed functions */
     fun_obj = js_create_function(ctx, fd);
     if (JS_IsException(fun_obj))
@@ -32463,7 +32952,7 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
         m->func_obj = fun_obj;
         if (js_resolve_module(ctx, m) < 0)
             goto fail1;
-        fun_obj = js_dup(JS_MKPTR(JS_TAG_MODULE, m));
+        fun_obj = JS_NewModuleValue(ctx, m);
     }
     if (flags & JS_EVAL_FLAG_COMPILE_ONLY) {
         ret_val = fun_obj;
@@ -33158,6 +33647,8 @@ static int JS_WriteModule(BCWriterState *s, JSValue obj)
         bc_put_atom(s, mi->import_name);
         bc_put_leb128(s, mi->req_module_idx);
     }
+
+    bc_put_u8(s, m->has_tla);
 
     if (JS_WriteObjectRec(s, m->func_obj))
         goto fail;
@@ -34199,6 +34690,7 @@ static JSValue JS_ReadModule(BCReaderState *s)
     obj = js_dup(JS_MKPTR(JS_TAG_MODULE, m));
     if (bc_get_leb128_int(s, &m->req_module_entries_count))
         goto fail;
+    obj = JS_NewModuleValue(ctx, m);
     if (m->req_module_entries_count != 0) {
         m->req_module_entries_size = m->req_module_entries_count;
         m->req_module_entries = js_mallocz(ctx, sizeof(m->req_module_entries[0]) * m->req_module_entries_size);
@@ -34268,6 +34760,10 @@ static JSValue JS_ReadModule(BCReaderState *s)
                 goto fail;
         }
     }
+
+    if (bc_get_u8(s, &v8))
+        goto fail;
+    m->has_tla = (v8 != 0);
 
     m->func_obj = JS_ReadObjectRec(s);
     if (JS_IsException(m->func_obj))
@@ -39076,7 +39572,7 @@ static int js_get_radix(JSContext *ctx, JSValue val)
     if (JS_ToInt32Sat(ctx, &radix, val))
         return -1;
     if (radix < 2 || radix > 36) {
-        JS_ThrowRangeError(ctx, "radix must be between 2 and 36");
+        JS_ThrowRangeError(ctx, "toString() radix argument must be between 2 and 36");
         return -1;
     }
     return radix;
@@ -39101,22 +39597,21 @@ static JSValue js_number_toString(JSContext *ctx, JSValue this_val,
         base = 10;
     } else {
         base = js_get_radix(ctx, argv[0]);
-        if (base < 0)
-            goto fail;
+        if (base < 0) {
+            JS_FreeValue(ctx, val);
+            return JS_EXCEPTION;
+        }
     }
     if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
-        size_t len = i64toa_radix(buf, JS_VALUE_GET_INT(val), base);
+        size_t len = i32toa_radix(buf, JS_VALUE_GET_INT(val), base);
         return js_new_string8_len(ctx, buf, len);
     }
     if (JS_ToFloat64Free(ctx, &d, val))
         return JS_EXCEPTION;
-    if (base != 10 && isfinite(d)) {
+    if (base != 10)
         return js_dtoa_radix(ctx, d, base);
-    }
-    return js_dtoa(ctx, d, base, 0, JS_DTOA_VAR_FORMAT);
- fail:
-    JS_FreeValue(ctx, val);
-    return JS_EXCEPTION;
+
+    return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
 }
 
 static JSValue js_number_toFixed(JSContext *ctx, JSValue this_val,
@@ -39134,13 +39629,13 @@ static JSValue js_number_toFixed(JSContext *ctx, JSValue this_val,
     if (JS_ToInt32Sat(ctx, &f, argv[0]))
         return JS_EXCEPTION;
     if (f < 0 || f > 100) {
-        return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
-                                  "toFixed");
+        return JS_ThrowRangeError(ctx, "toFixed() digits argument must be between 0 and 100");
     }
     if (fabs(d) >= 1e21) {
-        return JS_ToStringFree(ctx, js_float64(d));
+        // use ToString(d)
+        return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
     } else {
-        return js_dtoa(ctx, d, 10, f, JS_DTOA_FRAC_FORMAT);
+        return js_dtoa(ctx, d, f, JS_DTOA_FIXED);
     }
 }
 
@@ -39148,8 +39643,8 @@ static JSValue js_number_toExponential(JSContext *ctx, JSValue this_val,
                                        int argc, JSValue *argv)
 {
     JSValue val;
-    int f, flags;
     double d;
+    int f;
 
     val = js_thisNumberValue(ctx, this_val);
     if (JS_IsException(val))
@@ -39158,21 +39653,15 @@ static JSValue js_number_toExponential(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     if (JS_ToInt32Sat(ctx, &f, argv[0]))
         return JS_EXCEPTION;
-    if (!isfinite(d)) {
-        return JS_ToStringFree(ctx, js_float64(d));
-    }
-    if (JS_IsUndefined(argv[0])) {
-        flags = 0;
-        f = 0;
-    } else {
+    if (!isfinite(d))
+        return js_dtoa_infinite(ctx, d);
+    if (!JS_IsUndefined(argv[0])) {
         if (f < 0 || f > 100) {
-            return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
-                                      "toExponential");
+            return JS_ThrowRangeError(ctx, "toExponential() argument must be between 0 and 100");
         }
-        f++;
-        flags = JS_DTOA_FIXED_FORMAT;
+        f += 1;  /* number of significant digits between 1 and 101 */
     }
-    return js_dtoa(ctx, d, 10, f, flags | JS_DTOA_FORCE_EXP);
+    return js_dtoa(ctx, d, f, JS_DTOA_EXPONENTIAL);
 }
 
 static JSValue js_number_toPrecision(JSContext *ctx, JSValue this_val,
@@ -39188,18 +39677,15 @@ static JSValue js_number_toPrecision(JSContext *ctx, JSValue this_val,
     if (JS_ToFloat64Free(ctx, &d, val))
         return JS_EXCEPTION;
     if (JS_IsUndefined(argv[0]))
-        goto to_string;
+        return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
     if (JS_ToInt32Sat(ctx, &p, argv[0]))
         return JS_EXCEPTION;
-    if (!isfinite(d)) {
-    to_string:
-        return JS_ToStringFree(ctx, js_float64(d));
-    }
+    if (!isfinite(d))
+        return js_dtoa_infinite(ctx, d);
     if (p < 1 || p > 100) {
-        return JS_ThrowRangeError(ctx, "%s() argument must be between 1 and 100",
-                                  "toPrecision");
+        return JS_ThrowRangeError(ctx, "toPrecision() argument must be between 1 and 100");
     }
-    return js_dtoa(ctx, d, 10, p, JS_DTOA_FIXED_FORMAT);
+    return js_dtoa(ctx, d, p, JS_DTOA_PRECISION);
 }
 
 static const JSCFunctionListEntry js_number_proto_funcs[] = {
@@ -39214,25 +39700,24 @@ static const JSCFunctionListEntry js_number_proto_funcs[] = {
 static JSValue js_parseInt(JSContext *ctx, JSValue this_val,
                            int argc, JSValue *argv)
 {
-    const char *str, *p;
+    const char *str;
     int radix, flags;
     JSValue ret;
+    size_t len;
 
-    str = JS_ToCString(ctx, argv[0]);
+    str = JS_ToCStringLen(ctx, &len, argv[0]);
     if (!str)
         return JS_EXCEPTION;
     if (JS_ToInt32(ctx, &radix, argv[1])) {
         JS_FreeCString(ctx, str);
         return JS_EXCEPTION;
     }
-    if (radix != 0 && (radix < 2 || radix > 36)) {
-        ret = JS_NAN;
-    } else {
-        p = str;
-        p += skip_spaces(p);
-        flags = ATOD_INT_ONLY | ATOD_ACCEPT_PREFIX_AFTER_SIGN;
-        ret = js_atof(ctx, p, NULL, radix, flags);
+    flags = ATOD_TRIM_SPACES;
+    if (radix == 0) {
+        flags |= ATOD_ACCEPT_HEX_PREFIX;  // Only 0x and 0X are supported
+        radix = 10;
     }
+    ret = js_atof(ctx, str, len, NULL, radix, flags);
     JS_FreeCString(ctx, str);
     return ret;
 }
@@ -39240,15 +39725,16 @@ static JSValue js_parseInt(JSContext *ctx, JSValue this_val,
 static JSValue js_parseFloat(JSContext *ctx, JSValue this_val,
                              int argc, JSValue *argv)
 {
-    const char *str, *p;
+    const char *str;
     JSValue ret;
+    int flags;
+    size_t len;
 
-    str = JS_ToCString(ctx, argv[0]);
+    str = JS_ToCStringLen(ctx, &len, argv[0]);
     if (!str)
         return JS_EXCEPTION;
-    p = str;
-    p += skip_spaces(p);
-    ret = js_atof(ctx, p, NULL, 10, 0);
+    flags = ATOD_TRIM_SPACES | ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_INFINITY;
+    ret = js_atof(ctx, str, len, NULL, 10, flags);
     JS_FreeCString(ctx, str);
     return ret;
 }
@@ -45686,6 +46172,14 @@ static const JSCFunctionListEntry js_generator_proto_funcs[] = {
 
 /* Promise */
 
+typedef struct JSPromiseData {
+    JSPromiseStateEnum promise_state;
+    /* 0=fulfill, 1=reject, list of JSPromiseReactionData.link */
+    struct list_head promise_reactions[2];
+    BOOL is_handled; /* Note: only useful to debug */
+    JSValue promise_result;
+} JSPromiseData;
+
 typedef struct JSPromiseFunctionDataResolved {
     int ref_count;
     BOOL already_resolved;
@@ -45702,11 +46196,11 @@ typedef struct JSPromiseReactionData {
     JSValue handler;
 } JSPromiseReactionData;
 
-JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise)
+  JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise)
 {
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)
-      return JS_INVALID_PROMISE_STATE;
+        return -1;
     return s->promise_state;
 }
 
@@ -45715,7 +46209,7 @@ JSValue JS_PromiseResult(JSContext *ctx, JSValue promise)
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)
         return JS_UNDEFINED;
-    return js_dup(s->promise_result);
+    return JS_DupValue(ctx, s->promise_result);
 }
 
 static int js_create_resolving_functions(JSContext *ctx, JSValue *args,
