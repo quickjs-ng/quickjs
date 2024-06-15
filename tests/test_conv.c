@@ -94,14 +94,20 @@ static inline int clz32(unsigned int a)
 static inline int clz64(uint64_t a)
 {
 #if defined(_MSC_VER) && !defined(__clang__)
+#if INTPTR_MAX == INT64_MAX
     unsigned long index;
     _BitScanReverse64(&index, a);
     return 63 - index;
 #else
+    if (a >> 32)
+        return clz32((unsigned)(a >> 32));
+    else
+        return clz32((unsigned)a) + 32;
+#endif	
+#else
     return __builtin_clzll(a);
 #endif
 }
-
 // prototypes for final functions
 extern char const digits36[36];
 size_t u32toa(char buf[minimum_length(11)], uint32_t n);
