@@ -91,12 +91,21 @@ static inline int clz32(unsigned int a)
 }
 
 /* WARNING: undefined if a = 0 */
+/* WARNING: undefined if a = 0 */
 static inline int clz64(uint64_t a)
 {
-#if defined(_MSC_VER) && !defined(__clang__)
+#if defined(_MSC_VER)&& defined(_WIN64) && !defined(__clang__)
     unsigned long index;
     _BitScanReverse64(&index, a);
     return 63 - index;
+#elif(_MSC_VER)
+unsigned long i = 0, hi = 0;
+    if (_BitScanReverse(&hi, a>> 32))
+    {
+        return (int)hi + 32;
+    }
+    _BitScanReverse(&i, (uint32_t)a);
+    return (int)i;
 #else
     return __builtin_clzll(a);
 #endif
