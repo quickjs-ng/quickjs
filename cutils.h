@@ -202,7 +202,7 @@ static inline int clz32(unsigned int a)
 /* WARNING: undefined if a = 0 */
 static inline int clz64(uint64_t a)
 {
-#if defined(_MSC_VER)&& defined(_WIN64) && !defined(__clang__)
+#if defined(_MSC_VER) && defined(_WIN64) && !defined(__clang__)
     unsigned long index;
     _BitScanReverse64(&index, a);
     return 63 - index;
