@@ -356,12 +356,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        arch: [x64, Win32]
         buildType: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
       - name: build
         run: |
-          cmake -B build -G "Visual Studio 17 2022"
+          cmake -B build -G "Visual Studio 17 2022" -A ${{matrix.arch}}
           cmake --build build --config ${{matrix.buildType}} --target qjs_exe
           cmake --build build --config ${{matrix.buildType}} --target function_source
       - name: stats
