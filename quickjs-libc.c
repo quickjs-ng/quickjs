@@ -3231,7 +3231,7 @@ typedef struct {
 
 typedef struct {
     int ref_count;
-    uint64_t buf[0];
+    uint64_t buf[];
 } JSSABHeader;
 
 static JSClassID js_worker_class_id;

@@ -474,8 +474,8 @@ struct JSString {
     struct list_head link; /* string list */
 #endif
     union {
-        uint8_t str8[0]; /* 8 bit strings will get an extra null terminator */
-        uint16_t str16[0];
+        __extension__ uint8_t str8[0]; /* 8 bit strings will get an extra null terminator */
+        __extension__ uint16_t str16[0];
     } u;
 };
 
@@ -664,7 +664,7 @@ typedef struct JSBoundFunction {
     JSValue func_obj;
     JSValue this_val;
     int argc;
-    JSValue argv[0];
+    JSValue argv[];
 } JSBoundFunction;
 
 typedef enum JSIteratorKindEnum {
@@ -822,7 +822,7 @@ typedef struct JSJobEntry {
     JSContext *ctx;
     JSJobFunc *job_func;
     int argc;
-    JSValue argv[0];
+    JSValue argv[];
 } JSJobEntry;
 
 typedef struct JSProperty {
@@ -871,7 +871,7 @@ struct JSShape {
     int deleted_prop_count;
     JSShape *shape_hash_next; /* in JSRuntime.shape_hash[h] list */
     JSObject *proto;
-    JSShapeProperty prop[0]; /* prop_size elements */
+    JSShapeProperty prop[]; /* prop_size elements */
 };
 
 struct JSObject {
@@ -5019,7 +5019,7 @@ typedef struct JSCFunctionDataRecord {
     uint8_t length;
     uint8_t data_len;
     uint16_t magic;
-    JSValue data[0];
+    JSValue data[];
 } JSCFunctionDataRecord;
 
 static void js_c_function_data_finalizer(JSRuntime *rt, JSValue val)
