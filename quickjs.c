@@ -209,7 +209,7 @@ typedef enum {
     JS_GC_PHASE_REMOVE_CYCLES,
 } JSGCPhaseEnum;
 
-typedef enum OPCodeEnum OPCodeEnum;
+__extension__ typedef enum OPCodeEnum OPCodeEnum;
 
 struct JSRuntime {
     JSMallocFunctions mf;
