@@ -36,8 +36,10 @@
 #define LIMB_BITS (1 << LIMB_LOG2_BITS)
 
 #if LIMB_BITS == 64
+#ifndef INT128_MAX
 __extension__ typedef __int128 int128_t;
 __extension__ typedef unsigned __int128 uint128_t;
+#endif
 typedef int64_t slimb_t;
 typedef uint64_t limb_t;
 typedef uint128_t dlimb_t;
