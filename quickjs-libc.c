@@ -58,6 +58,9 @@
 #define rmdir _rmdir
 #define getcwd _getcwd
 #define chdir _chdir
+#ifdef USE_WINPTHREAD
+#define pipe(fds) _pipe(fds,1024, _O_BINARY)
+#endif
 #else
 #include <sys/ioctl.h>
 #if !defined(__wasi__)
@@ -80,7 +83,7 @@ extern char **environ;
 
 #endif /* _WIN32 */
 
-#if !defined(_WIN32) && !defined(__wasi__)
+#if (!defined(_WIN32) || defined(USE_WINPTHREAD)) && !defined(__wasi__)
 /* enable the os.Worker API. IT relies on POSIX threads */
 #define USE_WORKER
 #endif

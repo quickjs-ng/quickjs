@@ -158,6 +158,9 @@ if(WIN32)
 endif()
 list(APPEND qjs_libs qjs ${CMAKE_DL_LIBS})
 find_package(Threads)
+if(MINGW AND CMAKE_USE_PTHREADS_INIT)
+    list(APPEND qjs_defines USE_WINPTHREAD)
+endif()
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
     list(APPEND qjs_libs ${CMAKE_THREAD_LIBS_INIT})
 endif()
@@ -235,7 +238,7 @@ endif()
 #
 
 # run-test262 uses pthreads.
-if(NOT WIN32 AND NOT EMSCRIPTEN)
+if((NOT WIN32 AND NOT EMSCRIPTEN) OR (MINGW AND CMAKE_USE_PTHREADS_INIT))
     add_executable(run-test262
         quickjs-libc.c
         run-test262.c
