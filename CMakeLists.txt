@@ -35,7 +35,6 @@ xcheck_add_c_compiler_flag(-Wno-implicit-fallthrough)
 xcheck_add_c_compiler_flag(-Wno-sign-compare)
 xcheck_add_c_compiler_flag(-Wno-missing-field-initializers)
 xcheck_add_c_compiler_flag(-Wno-unused-parameter)
-xcheck_add_c_compiler_flag(-Wno-unused-variable)
 xcheck_add_c_compiler_flag(-Wno-unused-but-set-variable)
 xcheck_add_c_compiler_flag(-Wno-array-bounds)
 xcheck_add_c_compiler_flag(-Wno-format-truncation)
@@ -173,7 +172,7 @@ if(CMAKE_BUILD_TYPE MATCHES Debug OR DUMP_LEAKS)
     )
 endif()
 target_include_directories(qjs PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>  
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
