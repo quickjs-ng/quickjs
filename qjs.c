@@ -43,6 +43,112 @@ extern const uint32_t qjsc_repl_size;
 
 static JSCFunctionListEntry argv0;
 
+static const char trailer_magic[] = "1qu1ckJS";
+static const int trailer_magic_size = sizeof(trailer_magic) - 1;
+static const int trailer_size = 16; /* 8 bytes for the trailer magic + 6 bytes for the offset. */
+
+static int compile_standalone(const char *exe, const char *js_file, const char *out) {
+    FILE *exe_f = fopen(exe, "rb");
+    if (!exe_f) {
+        perror(exe);
+        exit(1);
+    }
+    if (fseek(exe_f, 0, SEEK_END) < 0) {
+        exit(1);
+    }
+    size_t exe_size = ftell(exe_f);
+    rewind(exe_f);
+
+    FILE *js_f = fopen(js_file, "rb");
+    if (!js_f) {
+        perror(js_file);
+        exit(1);
+    }
+    if (fseek(js_f, 0, SEEK_END) < 0) {
+        exit(1);
+    }
+    size_t js_size = ftell(js_f);
+    rewind(js_f);
+
+    size_t buf_size = exe_size + js_size + trailer_size;
+    uint8_t *buf = malloc(buf_size);
+    if (!buf) {
+        perror("malloc");
+        exit(1);
+    }
+
+    if (fread(buf, 1, exe_size, exe_f) != exe_size) {
+        perror("fread exe");
+        exit(1);
+    }
+
+    if (fread(buf+exe_size, 1, js_size, js_f) != js_size) {
+        perror("fread js");
+        exit(1);
+    }
+
+    memcpy(buf+exe_size+js_size, trailer_magic, trailer_magic_size);
+    memcpy(buf+exe_size+js_size+trailer_magic_size, &exe_size, sizeof(uint64_t));
+
+    FILE *out_f = fopen(out, "wb");
+    if (!out_f) {
+        perror(out);
+        exit(1);
+    }
+
+    if (fwrite(buf, 1, buf_size, out_f) != buf_size) {
+        perror("fwrite");
+        exit(1);
+    }
+
+    free(buf);
+    fclose(exe_f);
+    fclose(js_f);
+    fclose(out_f);
+
+    return 0;
+}
+
+static uint8_t* read_trailer(const char *exe, size_t *bsize) {
+    FILE *exe_f = fopen(exe, "rb");
+    if (!exe_f) {
+        perror(exe);
+        exit(1);
+    }
+    if (fseek(exe_f, -trailer_size, SEEK_END) < 0) {
+        exit(1);
+    }
+    size_t trailer_start = ftell(exe_f);
+    uint8_t buf[trailer_size];
+    if (fread(buf, 1, trailer_size, exe_f) != trailer_size) {
+        perror("fread exe trailer");
+        exit(1);
+    }
+
+    if (memcmp(buf, trailer_magic, trailer_magic_size)) {
+        return NULL;
+    }
+    uint64_t offset;
+    memcpy(&offset, buf+trailer_magic_size, sizeof(uint64_t));
+
+    if (fseek(exe_f, offset, SEEK_SET) < 0) {
+        perror("fseek to offset");
+        exit(1);
+    }
+
+    size_t bundle_size = trailer_start - offset;
+    uint8_t *bundle = malloc(bundle_size);
+    if (fread(bundle, 1, bundle_size, exe_f) != bundle_size) {
+        perror("fread exe bundle");
+        exit(1);
+    }
+
+    fclose(exe_f);
+
+    *bsize = bundle_size;
+    return bundle;
+}
+
 static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
                     const char *filename, int eval_flags)
 {
@@ -297,12 +403,14 @@ void help(void)
     printf("QuickJS-ng version %s\n"
            "usage: " PROG_NAME " [options] [file [args]]\n"
            "-h  --help         list options\n"
+           "-c  --compile FILE compiles the given file into an executable\n"
            "-e  --eval EXPR    evaluate EXPR\n"
            "-i  --interactive  go to interactive mode\n"
            "-m  --module       load as ES6 module (default=autodetect)\n"
            "    --script       load as ES6 script (default=autodetect)\n"
            "-I  --include file include an additional file\n"
            "    --std          make 'std' and 'os' available to the loaded script\n"
+           "-o  --output file  output file name when using -c\n"
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
            "    --memory-limit n       limit the memory usage to 'n' Kbytes\n"
@@ -318,6 +426,10 @@ int main(int argc, char **argv)
     JSContext *ctx;
     struct trace_malloc_data trace_data = { NULL };
     int optind;
+    uint8_t *bundle = NULL;
+    size_t bundle_size = 0;
+    char *compile_file = NULL;
+    char *out_file = NULL;
     char *expr = NULL;
     int interactive = 0;
     int dump_memory = 0;
@@ -334,6 +446,13 @@ int main(int argc, char **argv)
 
     argv0 = (JSCFunctionListEntry)JS_PROP_STRING_DEF("argv0", argv[0],
                                                      JS_PROP_C_W_E);
+
+    bundle = read_trailer(argv[0], &bundle_size);
+    if (bundle) {
+        /* Skip all options. */
+        optind = 1;
+        goto start;
+    }
 
     /* cannot use getopt because we want to pass the command line to
        the script */
@@ -365,6 +484,28 @@ int main(int argc, char **argv)
             }
             if (opt == 'h' || opt == '?' || !strcmp(longopt, "help")) {
                 help();
+                continue;
+            }
+            if (opt == 'c' || !strcmp(longopt, "compile")) {
+                if (!opt_arg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "qjs: missing file for -c\n");
+                        exit(2);
+                    }
+                    opt_arg = argv[optind++];
+                }
+                compile_file = opt_arg;
+                continue;
+            }
+            if (opt == 'o' || !strcmp(longopt, "output")) {
+                if (!opt_arg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "qjs: missing file for -o\n");
+                        exit(2);
+                    }
+                    opt_arg = argv[optind++];
+                }
+                out_file = opt_arg;
                 continue;
             }
             if (opt == 'e' || !strcmp(longopt, "eval")) {
@@ -457,6 +598,18 @@ int main(int argc, char **argv)
         }
     }
 
+    if (compile_file) {
+        if (!out_file) {
+            fprintf(stderr, "qjs: output file must be specified\n");
+            exit(2);
+        }
+
+        compile_standalone(argv[0], compile_file, out_file);
+
+        return 0;
+    }
+
+start:
     if (trace_memory) {
         js_trace_malloc_init(&trace_data);
         rt = JS_NewRuntime2(&trace_mf, &trace_data);
@@ -506,7 +659,10 @@ int main(int argc, char **argv)
                 goto fail;
         }
 
-        if (expr) {
+        if (bundle) {
+            if (eval_buf(ctx, bundle, bundle_size, "<bundle>", 0))
+                goto fail;
+        } else if (expr) {
             if (eval_buf(ctx, expr, strlen(expr), "<cmdline>", 0))
                 goto fail;
         } else
