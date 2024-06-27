@@ -371,7 +371,7 @@ static void enumerate_tests(const char *path)
           namelist_cmp_indirect);
 }
 
-static JSValue js_print(JSContext *ctx, JSValue this_val,
+static JSValue js_print_262(JSContext *ctx, JSValue this_val,
                         int argc, JSValue *argv)
 {
     int i;
@@ -404,7 +404,7 @@ static JSValue js_detachArrayBuffer(JSContext *ctx, JSValue this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
+static JSValue js_evalScript_262(JSContext *ctx, JSValue this_val,
                              int argc, JSValue *argv)
 {
     const char *str;
@@ -764,7 +764,7 @@ static JSValue add_helpers1(JSContext *ctx)
     global_obj = JS_GetGlobalObject(ctx);
 
     JS_SetPropertyStr(ctx, global_obj, "print",
-                      JS_NewCFunction(ctx, js_print, "print", 1));
+                      JS_NewCFunction(ctx, js_print_262, "print", 1));
 
     /* $262 special object used by the tests */
     obj262 = JS_NewObject(ctx);
@@ -772,7 +772,7 @@ static JSValue add_helpers1(JSContext *ctx)
                       JS_NewCFunction(ctx, js_detachArrayBuffer,
                                       "detachArrayBuffer", 1));
     JS_SetPropertyStr(ctx, obj262, "evalScript",
-                      JS_NewCFunction(ctx, js_evalScript,
+                      JS_NewCFunction(ctx, js_evalScript_262,
                                       "evalScript", 1));
     JS_SetPropertyStr(ctx, obj262, "codePointRange",
                       JS_NewCFunction(ctx, js_string_codePointRange,
@@ -1258,7 +1258,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
             if (!is_error)
                 fprintf(outfile, "%sThrow: ", (eval_flags & JS_EVAL_FLAG_STRICT) ?
                         "strict mode: " : "");
-            js_print(ctx, JS_NULL, 1, &exception_val);
+            js_print_262(ctx, JS_NULL, 1, &exception_val);
         }
         if (is_error) {
             JSValue name, stack;
@@ -1849,7 +1849,7 @@ int run_test262_harness_test(const char *filename, BOOL is_module)
     JSValue res_val;
     BOOL can_block;
 
-    outfile = stdout; /* for js_print */
+    outfile = stdout; /* for js_print_262 */
 
     rt = JS_NewRuntime();
     if (rt == NULL) {
