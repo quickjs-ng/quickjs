@@ -47750,7 +47750,7 @@ static int64_t math_mod(int64_t a, int64_t b) {
     return m + (m < 0) * b;
 }
 
-static int64_t floor_div(int64_t a, int64_t b) {
+static int64_t floor_div_int64(int64_t a, int64_t b) {
     /* integer division rounding toward -Infinity */
     int64_t m = a % b;
     return (a - (m + (m < 0) * b)) / b;
@@ -47784,8 +47784,8 @@ static JSValue JS_SetThisTimeValue(JSContext *ctx, JSValue this_val, double v)
 }
 
 static int64_t days_from_year(int64_t y) {
-    return 365 * (y - 1970) + floor_div(y - 1969, 4) -
-        floor_div(y - 1901, 100) + floor_div(y - 1601, 400);
+    return 365 * (y - 1970) + floor_div_int64(y - 1969, 4) -
+        floor_div_int64(y - 1901, 100) + floor_div_int64(y - 1601, 400);
 }
 
 static int64_t days_in_year(int64_t y) {
@@ -47795,7 +47795,7 @@ static int64_t days_in_year(int64_t y) {
 /* return the year, update days */
 static int64_t year_from_days(int64_t *days) {
     int64_t y, d1, nd, d = *days;
-    y = floor_div(d * 10000, 3652425) + 1970;
+    y = floor_div_int64(d * 10000, 3652425) + 1970;
     /* the initial approximation is very good, so only a few
        iterations are necessary */
     for(;;) {
@@ -53183,3 +53183,7 @@ static void _JS_AddIntrinsicCallSite(JSContext *ctx)
                                js_callsite_proto_funcs,
                                countof(js_callsite_proto_funcs));
 }
+
+#undef malloc
+#undef free
+#undef realloc
