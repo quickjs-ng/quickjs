@@ -139,6 +139,11 @@ endif()
 #
 
 xoption(BUILD_QJS_LIBC "Build standard library modules as part of the library" OFF)
+macro(add_qjs_libc_if_needed target)
+    if(NOT BUILD_QJS_LIBC)
+        target_sources(${target} PRIVATE quickjs-libc.c)
+    endif()
+endmacro()
 
 set(qjs_sources
     cutils.c
@@ -200,8 +205,8 @@ endif()
 
 add_executable(qjsc
     qjsc.c
-    quickjs-libc.c
 )
+add_qjs_libc_if_needed(qjsc)
 target_compile_definitions(qjsc PRIVATE ${qjs_defines})
 target_link_libraries(qjsc ${qjs_libs})
 
@@ -212,8 +217,8 @@ target_link_libraries(qjsc ${qjs_libs})
 add_executable(qjs_exe
     gen/repl.c
     qjs.c
-    quickjs-libc.c
 )
+add_qjs_libc_if_needed(qjs_exe)
 set_target_properties(qjs_exe PROPERTIES
     OUTPUT_NAME "qjs"
 )
@@ -236,9 +241,9 @@ endif()
 # run-test262 uses pthreads.
 if(NOT WIN32 AND NOT EMSCRIPTEN)
     add_executable(run-test262
-        quickjs-libc.c
         run-test262.c
     )
+    add_qjs_libc_if_needed(run-test262)
     target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
     target_link_libraries(run-test262 ${qjs_libs})
 endif()
@@ -255,8 +260,8 @@ target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
 
 add_executable(function_source
     gen/function_source.c
-    quickjs-libc.c
 )
+add_qjs_libc_if_needed(function_source)
 target_include_directories(function_source PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(function_source PRIVATE ${qjs_defines})
 target_link_libraries(function_source ${qjs_libs})
@@ -267,16 +272,16 @@ target_link_libraries(function_source ${qjs_libs})
 if(BUILD_EXAMPLES AND NOT WIN32)
     add_executable(hello
         gen/hello.c
-        quickjs-libc.c
     )
+    add_qjs_libc_if_needed(hello)
     target_include_directories(hello PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(hello PRIVATE ${qjs_defines})
     target_link_libraries(hello ${qjs_libs})
 
     add_executable(hello_module
         gen/hello_module.c
-        quickjs-libc.c
     )
+    add_qjs_libc_if_needed(hello_module)
     target_include_directories(hello_module PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(hello_module PRIVATE ${qjs_defines})
     target_link_libraries(hello_module ${qjs_libs})
@@ -316,8 +321,8 @@ if(BUILD_EXAMPLES AND NOT WIN32)
     add_executable(test_fib
         examples/fib.c
         gen/test_fib.c
-        quickjs-libc.c
     )
+    add_qjs_libc_if_needed(test_fib)
     target_include_directories(test_fib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(test_fib PRIVATE ${qjs_defines})
     target_link_libraries(test_fib ${qjs_libs})
