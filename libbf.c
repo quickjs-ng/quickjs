@@ -2833,7 +2833,7 @@ int bf_mul_pow_radix(bf_t *r, const bf_t *T, limb_t radix,
     return ret;
 }
 
-static inline int to_digit(int c)
+static inline int bf_to_digit(int c)
 {
     if (c >= '0' && c <= '9')
         return c - '0';
@@ -2940,7 +2940,7 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
             goto no_prefix;
         }
         /* there must be a digit after the prefix */
-        if (to_digit((uint8_t)*p) >= radix) {
+        if (bf_to_digit((uint8_t)*p) >= radix) {
             bf_set_nan(r);
             ret = 0;
             goto done;
@@ -2988,14 +2988,14 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
     int_len = digit_count = 0;
     for(;;) {
         limb_t c;
-        if (*p == '.' && (p > p_start || to_digit(p[1]) < radix)) {
+        if (*p == '.' && (p > p_start || bf_to_digit(p[1]) < radix)) {
             if (has_decpt)
                 break;
             has_decpt = TRUE;
             int_len = digit_count;
             p++;
         }
-        c = to_digit(*p);
+        c = bf_to_digit(*p);
         if (c >= radix)
             break;
         digit_count++;
@@ -3076,7 +3076,7 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
         }
         for(;;) {
             int c;
-            c = to_digit(*p);
+            c = bf_to_digit(*p);
             if (c >= 10)
                 break;
             if (unlikely(expn > ((BF_RAW_EXP_MAX - 2 - 9) / 10))) {
@@ -8410,3 +8410,7 @@ int bf_get_fft_size(int *pdpl, int *pnb_mods, limb_t len)
 }
 
 #endif /* !USE_FFT_MUL */
+
+#undef malloc
+#undef free
+#undef realloc
