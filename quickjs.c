@@ -1232,6 +1232,8 @@ static __exception int js_get_length32(JSContext *ctx, uint32_t *pres,
                                        JSValue obj);
 static __exception int js_get_length64(JSContext *ctx, int64_t *pres,
                                        JSValue obj);
+static __exception int js_set_length64(JSContext *ctx, JSValue obj,
+                                       int64_t len);
 static void free_arg_list(JSContext *ctx, JSValue *tab, uint32_t len);
 static JSValue *build_arg_list(JSContext *ctx, uint32_t *plen,
                                JSValue array_arg);
@@ -6998,6 +7000,10 @@ static JSValue JS_GetPrototypeFree(JSContext *ctx, JSValue obj)
 
 int JS_GetLength(JSContext *ctx, JSValue obj, int64_t *pres) {
     return js_get_length64(ctx, pres, obj);
+}
+
+int JS_SetLength(JSContext *ctx, JSValue obj, int64_t len) {
+    return js_set_length64(ctx, obj, len);
 }
 
 /* return TRUE, FALSE or (-1) in case of exception */
@@ -36855,6 +36861,15 @@ static __exception int js_get_length64(JSContext *ctx, int64_t *pres,
         return -1;
     }
     return JS_ToLengthFree(ctx, pres, len_val);
+}
+
+static __exception int js_set_length64(JSContext *ctx, JSValue obj, int64_t len)
+{
+    JSValue len_val;
+    len_val = JS_NewInt64(ctx, len);
+    if (JS_IsException(len_val))
+        return -1;
+    return JS_SetProperty(ctx, obj, JS_ATOM_length, len_val);
 }
 
 static void free_arg_list(JSContext *ctx, JSValue *tab, uint32_t len)
