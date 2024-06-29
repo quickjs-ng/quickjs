@@ -307,6 +307,9 @@ JS_EXTERN void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
 JS_EXTERN void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
 JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
 JS_EXTERN void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
+JS_EXTERN void JS_SetGCThresholdFixed(JSRuntime *rt, JS_BOOL fixed);
+JS_EXTERN void JS_SetGCBeforeCallback(JSRuntime *rt, JS_BOOL(*cb)());
+JS_EXTERN void JS_SetGCAfterCallback(JSRuntime *rt, void(*cb)());
 /* use 0 to disable maximum stack size check */
 JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
 /* should be called when changing thread to update the stack top value
