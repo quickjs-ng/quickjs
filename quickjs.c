@@ -1388,7 +1388,7 @@ void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size)
     return rt->mf.js_realloc(&rt->malloc_state, ptr, size);
 }
 
-void *js_realloc_opaque(void *opaque, void *ptr, size_t size)
+static void *js_realloc_opaque(void *opaque, void *ptr, size_t size)
 {
     JSRuntime *rt = opaque;
     return js_realloc_rt(rt, ptr, size);
