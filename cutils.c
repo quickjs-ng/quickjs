@@ -121,7 +121,7 @@ int dbuf_realloc(DynBuf *s, size_t new_size)
         size = s->allocated_size * 3 / 2;
         if (size > new_size)
             new_size = size;
-        new_buf = s->realloc_func(s->opaque, s->buf, new_size);
+        new_buf = (uint8_t *)s->realloc_func(s->opaque, s->buf, new_size);
         if (!new_buf) {
             s->error = TRUE;
             return -1;
@@ -587,8 +587,7 @@ overflow:
    - return the string length
  */
 
-/* 2 <= base <= 36 */
-char const digits36[36] = "0123456789abcdefghijklmnopqrstuvwxyz";
+char const digits36[37] = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 #define USE_SPECIAL_RADIX_10  1  // special case base 10 radix conversions
 #define USE_SINGLE_CASE_FAST  1  // special case single digit numbers
@@ -1039,7 +1038,7 @@ void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
             /* select median of 3 from 1/4, 1/2, 3/4 positions */
             /* should use median of 5 or 9? */
             m4 = (nmemb >> 2) * size;
-            m = med3(ptr + m4, ptr + 2 * m4, ptr + 3 * m4, cmp, opaque);
+            m = (uint8_t *)med3(ptr + m4, ptr + 2 * m4, ptr + 3 * m4, cmp, opaque);
             swap(ptr, m, size);  /* move the pivot to the start or the array */
             i = lt = 1;
             pi = plt = ptr + size;
