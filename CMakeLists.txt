@@ -53,6 +53,12 @@ if(MSVC)
     xcheck_add_c_compiler_flag(/experimental:c11atomics)
 endif()
 
+# MacOS and GCC 11 or later need -Wno-maybe-uninitialized
+# https://github.com/quickjs-ng/quickjs/issues/453
+if(APPLE AND CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+    xcheck_add_c_compiler_flag(-Wno-maybe-uninitialized)
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     add_compile_definitions(
         _WASI_EMULATED_PROCESS_CLOCKS
