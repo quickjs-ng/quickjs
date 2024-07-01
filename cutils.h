@@ -29,13 +29,14 @@
 #include <string.h>
 #include <inttypes.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#if defined(_WIN32)
-#include <windows.h>
-#endif
 #if defined(_MSC_VER)
 #include <winsock2.h>
 #include <malloc.h>
