@@ -209,8 +209,6 @@ typedef enum {
     JS_GC_PHASE_REMOVE_CYCLES,
 } JSGCPhaseEnum;
 
-typedef enum OPCodeEnum OPCodeEnum;
-
 struct JSRuntime {
     JSMallocFunctions mf;
     JSMallocState malloc_state;
@@ -474,8 +472,8 @@ struct JSString {
     struct list_head link; /* string list */
 #endif
     union {
-        uint8_t str8[0]; /* 8 bit strings will get an extra null terminator */
-        uint16_t str16[0];
+        __extension__ uint8_t str8[0]; /* 8 bit strings will get an extra null terminator */
+        __extension__ uint16_t str16[0];
     } u;
 };
 
@@ -664,7 +662,7 @@ typedef struct JSBoundFunction {
     JSValue func_obj;
     JSValue this_val;
     int argc;
-    JSValue argv[0];
+    JSValue argv[];
 } JSBoundFunction;
 
 typedef enum JSIteratorKindEnum {
@@ -822,7 +820,7 @@ typedef struct JSJobEntry {
     JSContext *ctx;
     JSJobFunc *job_func;
     int argc;
-    JSValue argv[0];
+    JSValue argv[];
 } JSJobEntry;
 
 typedef struct JSProperty {
@@ -871,7 +869,7 @@ struct JSShape {
     int deleted_prop_count;
     JSShape *shape_hash_next; /* in JSRuntime.shape_hash[h] list */
     JSObject *proto;
-    JSShapeProperty prop[0]; /* prop_size elements */
+    JSShapeProperty prop[]; /* prop_size elements */
 };
 
 struct JSObject {
@@ -990,7 +988,7 @@ typedef enum OPCodeFormat {
 #undef FMT
 } OPCodeFormat;
 
-enum OPCodeEnum {
+typedef enum OPCodeEnum {
 #define FMT(f)
 #define DEF(id, size, n_pop, n_push, f) OP_ ## id,
 #define def(id, size, n_pop, n_push, f)
@@ -1010,7 +1008,7 @@ enum OPCodeEnum {
 #undef DEF
 #undef FMT
     OP_TEMP_END,
-};
+} OPCodeEnum;
 
 static int JS_InitAtoms(JSRuntime *rt);
 static JSAtom __JS_NewAtomInit(JSRuntime *rt, const char *str, int len,
@@ -5013,7 +5011,7 @@ typedef struct JSCFunctionDataRecord {
     uint8_t length;
     uint8_t data_len;
     uint16_t magic;
-    JSValue data[0];
+    JSValue data[];
 } JSCFunctionDataRecord;
 
 static void js_c_function_data_finalizer(JSRuntime *rt, JSValue val)
@@ -14578,13 +14576,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
 #define DEFAULT         default
 #define BREAK           break
 #else
-    static const void * const dispatch_table[256] = {
+    __extension__ static const void * const dispatch_table[256] = {
 #define DEF(id, size, n_pop, n_push, f) && case_OP_ ## id,
 #define def(id, size, n_pop, n_push, f)
 #include "quickjs-opcode.h"
         [ OP_COUNT ... 255 ] = &&case_default
     };
-#define SWITCH(pc)      DUMP_BYTECODE_OR_DONT(pc) goto *dispatch_table[opcode = *pc++];
+#define SWITCH(pc)      DUMP_BYTECODE_OR_DONT(pc) __extension__ ({ goto *dispatch_table[opcode = *pc++]; });
 #define CASE(op)        case_ ## op
 #define DEFAULT         case_default
 #define BREAK           SWITCH(pc)
