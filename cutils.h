@@ -32,6 +32,11 @@
 #if defined(_WIN32)
 #include <windows.h>
 #endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if defined(_MSC_VER)
 #include <winsock2.h>
 #include <malloc.h>
@@ -212,7 +217,7 @@ static inline int clz64(uint64_t a)
         return clz32((unsigned)(a >> 32));
     else
         return clz32((unsigned)a) + 32;
-#endif	
+#endif
 #else
     return __builtin_clzll(a);
 #endif
@@ -526,5 +531,9 @@ void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex);
 int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout);
 
 #endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
+
+#ifdef __cplusplus
+} /* extern "C" { */
+#endif
 
 #endif  /* CUTILS_H */

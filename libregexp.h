@@ -28,6 +28,10 @@
 
 #include "libunicode.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define LRE_BOOL  int       /* for documentation purposes */
 
 #define LRE_FLAG_GLOBAL     (1 << 0)
@@ -83,5 +87,9 @@ static inline int lre_js_is_ident_next(int c)
 }
 
 #undef LRE_BOOL
+
+#ifdef __cplusplus
+} /* extern "C" { */
+#endif
 
 #endif /* LIBREGEXP_H */
