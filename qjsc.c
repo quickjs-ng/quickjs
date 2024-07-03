@@ -39,6 +39,12 @@
 #include "cutils.h"
 #include "quickjs-libc.h"
 
+typedef enum {
+    OUTPUT_C,
+    OUTPUT_C_MAIN,
+    OUTPUT_RAW,
+} OutputTypeEnum;
+
 typedef struct {
     char *name;
     char *short_name;
@@ -220,7 +226,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
 {
     JSModuleDef *m;
     namelist_entry_t *e;
-    BOOL raw = *(BOOL *)opaque;
+    BOOL raw = *(BOOL *)opaque == OUTPUT_RAW;
 
     /* check if it is a declared C or system module */
     e = namelist_find(&cmodule_list, module_name);
@@ -345,12 +351,6 @@ void help(void)
            JS_DEFAULT_STACK_SIZE);
     exit(1);
 }
-
-typedef enum {
-    OUTPUT_C,
-    OUTPUT_C_MAIN,
-    OUTPUT_RAW,
-} OutputTypeEnum;
 
 int main(int argc, char **argv)
 {
