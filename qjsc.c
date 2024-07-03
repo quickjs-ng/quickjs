@@ -172,12 +172,9 @@ static void output_object_code(JSContext *ctx,
 
     namelist_add(&cname_list, c_name, NULL, load_only);
 
-    if (raw)
-    {
+    if (raw) {
         fwrite(out_buf, 1, out_buf_len, fo);
-    }
-    else
-    {
+    } else {
         fprintf(fo, "const uint32_t %s_size = %u;\n\n",
                 c_name, (unsigned int)out_buf_len);
         fprintf(fo, "const uint8_t %s[%u] = {\n",
@@ -461,42 +458,37 @@ int main(int argc, char **argv)
     *output_type_ptr = output_type;
     JS_SetModuleLoaderFunc(rt, NULL, jsc_module_loader, output_type_ptr);
 
-    if (output_type != OUTPUT_RAW)
-    {
+    if (output_type != OUTPUT_RAW) {
         fprintf(fo, "/* File generated automatically by the QuickJS-ng compiler. */\n"
-                    "\n");
+                "\n"
+                );
     }
 
-    if (output_type == OUTPUT_C_MAIN)
-    {
+    if (output_type == OUTPUT_C_MAIN) {
         fprintf(fo, "#include \"quickjs-libc.h\"\n"
-                    "\n");
-    }
-    else if (output_type == OUTPUT_C)
-    {
+                "\n"
+                );
+    } else if (output_type == OUTPUT_C) {
         fprintf(fo, "#include <inttypes.h>\n"
-                    "\n");
+                "\n"
+                );
     }
 
-    for (i = optind; i < argc; i++)
-    {
+    for(i = optind; i < argc; i++) {
         const char *filename = argv[i];
         compile_file(ctx, fo, filename, cname, module, output_type == OUTPUT_RAW);
         cname = NULL;
     }
 
-    for (i = 0; i < dynamic_module_list.count; i++)
-    {
-        if (!jsc_module_loader(ctx, dynamic_module_list.array[i].name, NULL))
-        {
+    for (i = 0; i < dynamic_module_list.count; i++) {
+        if (!jsc_module_loader(ctx, dynamic_module_list.array[i].name, NULL)) {
             fprintf(stderr, "Could not load dynamic module '%s'\n",
                     dynamic_module_list.array[i].name);
             exit(1);
         }
     }
 
-    if (output_type == OUTPUT_C_MAIN)
-    {
+    if (output_type == OUTPUT_C_MAIN) {
         fprintf(fo,
                 "static JSContext *JS_NewCustomContext(JSRuntime *rt)\n"
                 "{\n"
