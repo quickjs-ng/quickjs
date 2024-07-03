@@ -480,7 +480,7 @@ int main(int argc, char **argv)
         cname = NULL;
     }
 
-    for (i = 0; i < dynamic_module_list.count; i++) {
+    for(i = 0; i < dynamic_module_list.count; i++) {
         if (!jsc_module_loader(ctx, dynamic_module_list.array[i].name, NULL)) {
             fprintf(stderr, "Could not load dynamic module '%s'\n",
                     dynamic_module_list.array[i].name);
