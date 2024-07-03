@@ -341,6 +341,7 @@ void help(void)
            "-D module_name         compile a dynamically loaded module or worker\n"
            "-M module_name[,cname] add initialization code for an external C module\n"
            "-p prefix   set the prefix of the generated C names\n"
+           "-r          output raw bytecode instead of C code\n"
            "-S n        set the maximum stack size to 'n' bytes (default=%d)\n",
            JS_GetVersion(),
            JS_DEFAULT_STACK_SIZE);
