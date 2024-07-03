@@ -379,7 +379,7 @@ int main(int argc, char **argv)
     namelist_add(&cmodule_list, "os", "os", 0);
 
     for(;;) {
-        c = getopt(argc, argv, "ho:N:mxesvM:p:S:D:");
+        c = getopt(argc, argv, "ho:N:mrxesvM:p:S:D:");
         if (c == -1)
             break;
         switch(c) {
