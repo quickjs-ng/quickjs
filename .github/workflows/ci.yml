@@ -24,93 +24,137 @@ jobs:
           make codegen
       - name: Check if the git repository is clean
         run: $(exit $(git status --porcelain --untracked-files=no | head -255 | wc -l)) || (echo "Dirty git tree"; git diff; exit 1)
-  linux:
-    runs-on: ubuntu-latest
+
+  ci:
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} (${{ matrix.config.configType }}${{ matrix.config.arch }})
+    env:
+      ASAN_OPTIONS: halt_on_error=1
+      MSAN_OPTIONS: halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1
+    defaults:
+      run:
+        shell: ${{ matrix.config.arch == '' && 'sh' || 'alpine.sh' }} {0}
+
     strategy:
       fail-fast: false
       matrix:
-        buildType: [Debug, Release]
+        config:
+          - { os: ubuntu-latest, configType: Debug }
+          - { os: ubuntu-latest, configType: Release, runTest262: true, runV8: true }
+          - { os: ubuntu-latest, configType: examples }
+          - { os: ubuntu-latest, configType: shared }
+          - { os: ubuntu-latest, configType: asan, runTest262: true }
+          - { os: ubuntu-latest, configType: ubsan, runTest262: true }
+          - { os: ubuntu-latest, configType: msan }
+          - { os: ubuntu-latest, configType: tcc }
+          - { os: ubuntu-latest, arch: x86 }
+          - { os: ubuntu-latest, arch: riscv64 }
+          - { os: ubuntu-latest, arch: s390x }
+
+          - { os: macos-14, configType: Debug }
+          - { os: macos-14, configType: Release }
+          - { os: macos-14, configType: examples }
+          - { os: macos-14, configType: shared }
+          - { os: macos-14, configType: asan }
+          - { os: macos-14, configType: ubsan }
+
+          - { os: macos-12, configType: Debug }
+          - { os: macos-12, configType: Release }
+          - { os: macos-12, configType: examples }
+          - { os: macos-12, configType: shared }
+          - { os: macos-12, configType: asan }
+          - { os: macos-12, configType: ubsan }
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
+
+      # ASLR with big PIE slides does not work well with [AM]San
+      - name: disable ASLR
+        if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan' || matrix.config.configType == 'ubsan' || matrix.config.configType == 'msan')}}
+        run: |
+          sudo sysctl -w kernel.randomize_va_space=0
+
+      - name: install TCC
+        if: ${{ matrix.config.configType == 'tcc' }}
+        run: |
+          pushd /tmp
+          git clone https://repo.or.cz/tinycc.git
+          cd tinycc
+          git checkout 9d2068c6309dc50dfdbbc30a5d6757683d3f884c
+          ./configure
+          make
+          sudo make install
+          tcc -v
+          popd
+          echo "CC=tcc" >> $GITHUB_ENV;
+
+      - name: Setup Alpine
+        if: ${{ matrix.config.arch != '' }}
+        uses: jirutka/setup-alpine@v1
+        with:
+          arch: ${{ matrix.config.arch }}
+          packages: "build-base make cmake"
+
+      - name: Set build ENV vars
+        run: |
+          if [ "${{ matrix.config.configType }}" = "Debug" ]; then
+            echo "BUILD_TYPE=Debug" >> $GITHUB_ENV;
+          elif [ "${{ matrix.config.configType }}" = "examples" ]; then
+            echo "BUILD_EXAMPLES=ON" >> $GITHUB_ENV;
+          elif [ "${{ matrix.config.configType }}" = "shared" ]; then
+            echo "BUILD_SHARED_LIBS=ON" >> $GITHUB_ENV;
+          elif [ "${{ matrix.config.configType }}" = "asan" ]; then
+            echo "CONFIG_ASAN=ON" >> $GITHUB_ENV;
+          elif [ "${{ matrix.config.configType }}" = "ubsan" ]; then
+            echo "CONFIG_UBSAN=ON" >> $GITHUB_ENV;
+          elif [ "${{ matrix.config.configType }}" = "msan" ]; then
+            echo "CONFIG_MSAN=ON" >> $GITHUB_ENV;
+            echo "CC=clang" >> $GITHUB_ENV;
+          fi
+
       - name: build
         run: |
-          make BUILD_TYPE=${{matrix.buildType}}
+          make \
+            BUILD_TYPE=$BUILD_TYPE \
+            BUILD_EXAMPLES=$BUILD_EXAMPLES \
+            BUILD_SHARED_LIBS=$BUILD_SHARED_LIBS \
+            CONFIG_ASAN=$CONFIG_ASAN \
+            CONFIG_UBSAN=$CONFIG_UBSAN \
+            CONFIG_MSAN=$CONFIG_MSAN
+
       - name: stats
+        if: ${{ matrix.config.configType != 'examples' }}
         run: |
           make stats
+
       - name: test
+        if: ${{ matrix.config.configType != 'examples' }}
         run: |
           make test
+
+      - name: test examples
+        if: ${{ matrix.config.configType == 'examples' }}
+        run: |
+          cp build/fib.so examples/
+          cp build/point.so examples/
+          cp build/bjson.so tests/
+          ./build/qjs examples/test_fib.js
+          ./build/qjs examples/test_point.js
+          ./build/qjs tests/test_bjson.js
+          ./build/function_source
+
       - name: test 262
-        if: ${{ matrix.buildType == 'Release' }}
+        if: ${{ matrix.config.runTest262 }}
         run: |
           time make test262
+
       - name: test v8 mjsunit
-        if: ${{ matrix.buildType == 'Release' }}
+        if: ${{ matrix.config.runV8 }}
         run: |
           ./v8.sh
-  linux-32bits:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: alpine.sh {0}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jirutka/setup-alpine@v1
-        with:
-          arch: x86
-          packages: "build-base make cmake"
-      - name: build
-        run: |
-          make
-      - name: stats
-        run: |
-          make stats
-      - name: test
-        run: |
-          make test
-  linux-riscv64:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: alpine.sh {0}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: jirutka/setup-alpine@v1
-        with:
-          arch: riscv64
-          packages: "build-base make cmake"
-      - name: build
-        run: |
-          make
-      - name: stats
-        run: |
-          make stats
-      - name: test
-        run: |
-          make test
-  linux-s390x:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: alpine.sh {0}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: jirutka/setup-alpine@v1
-        with:
-          arch: s390x
-          packages: "build-base make cmake"
-      - name: build
-        run: |
-          make
-      - name: stats
-        run: |
-          make stats
-      - name: test
-        run: |
-          make test
+
   linux-gcc48:
     runs-on: ubuntu-latest
     container:
@@ -138,218 +182,6 @@ jobs:
       - name: stats
         run: |
           ./build/qjs -qd
-  linux-examples:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: |
-          make BUILD_EXAMPLES=ON
-      - name: test
-        run: |
-          ldd build/hello
-          ldd build/hello_module
-          ldd build/test_fib
-          ./build/hello
-          ./build/hello_module
-          ./build/test_fib
-          cp build/fib.so examples/
-          cp build/point.so examples/
-          cp build/bjson.so tests/
-          ./build/qjs examples/test_fib.js
-          ./build/qjs examples/test_point.js
-          ./build/qjs tests/test_bjson.js
-          ./build/function_source
-  linux-shared:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: |
-          make BUILD_SHARED_LIBS=ON
-          ldd build/qjs
-      - name: stats
-        run: |
-          make stats
-  linux-asan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      # ASLR with big PIE slides does not work well with [AM]San
-      - name: disable ASLR
-        run: |
-          sudo sysctl -w kernel.randomize_va_space=0
-      - name: build
-        run: |
-          make CONFIG_ASAN=ON
-      - name: test
-        env:
-          ASAN_OPTIONS: halt_on_error=1
-        run: |
-          make test
-      - name: test 262
-        env:
-          ASAN_OPTIONS: halt_on_error=1
-        run: |
-          time make test262
-  linux-msan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      # ASLR with big PIE slides does not work well with [AM]San
-      - name: disable ASLR
-        run: |
-          sudo sysctl -w kernel.randomize_va_space=0
-      - name: build
-        env:
-          CC: clang
-        run: |
-          make CONFIG_MSAN=ON
-      - name: test
-        env:
-          MSAN_OPTIONS: halt_on_error=1
-        run: |
-          make test
-  linux-ubsan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - name: build
-        run: |
-          make CONFIG_UBSAN=ON
-      - name: test
-        env:
-          UBSAN_OPTIONS: halt_on_error=1
-        run: |
-          make test
-      - name: test 262
-        env:
-          UBSAN_OPTIONS: halt_on_error=1
-        run: |
-          time make test262
-  linux-tcc:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - name: install TCC
-        run: |
-          pushd /tmp
-          git clone https://repo.or.cz/tinycc.git
-          cd tinycc
-          git checkout 9d2068c6309dc50dfdbbc30a5d6757683d3f884c
-          ./configure
-          make
-          sudo make install
-          tcc -v
-          popd
-      - name: build
-        env:
-          CC: tcc
-        run: |
-          make
-      - name: stats
-        run: |
-          make stats
-
-  macos:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        buildType: [Debug, Release]
-        os: [macos-12, macos-14]
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: |
-          make BUILD_TYPE=${{matrix.buildType}}
-      - name: stats
-        run: |
-          make stats
-      - name: test
-        run: |
-          make test
-  macos-examples:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-12, macos-14]
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: |
-          make BUILD_EXAMPLES=ON
-      - name: test
-        run: |
-          otool -L build/hello
-          otool -L build/hello_module
-          otool -L build/test_fib
-          ./build/hello
-          ./build/hello_module
-          ./build/test_fib
-          cp build/fib.so examples/
-          cp build/point.so examples/
-          cp build/bjson.so tests/
-          ./build/qjs examples/test_fib.js
-          ./build/qjs examples/test_point.js
-          ./build/qjs tests/test_bjson.js
-          ./build/function_source
-  macos-shared:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-12, macos-14]
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: |
-          make BUILD_SHARED_LIBS=ON
-          otool -L build/qjs
-      - name: stats
-        run: |
-          make stats
-  macos-asan:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-12, macos-14]
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: |
-          make CONFIG_ASAN=ON
-      - name: test
-        env:
-          ASAN_OPTIONS: halt_on_error=1
-        run: |
-          make test
-  macos-ubsan:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-12, macos-14]
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: |
-          make CONFIG_UBSAN=ON
-      - name: test
-        env:
-          UBSAN_OPTIONS: halt_on_error=1
-        run: |
-          make test
 
   windows-msvc:
     runs-on: windows-latest
