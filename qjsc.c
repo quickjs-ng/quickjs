@@ -546,7 +546,6 @@ int main(int argc, char **argv)
         fputs(main_c_template2, fo);
     }
 
-    js_free(ctx, output_type_ptr);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 
