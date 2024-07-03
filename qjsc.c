@@ -151,7 +151,8 @@ static void dump_hex(FILE *f, const uint8_t *buf, size_t len)
 
 static void output_object_code(JSContext *ctx,
                                FILE *fo, JSValue obj, const char *c_name,
-                               BOOL load_only)
+                               BOOL load_only,
+                               BOOL raw)
 {
     uint8_t *out_buf;
     size_t out_buf_len;
@@ -171,12 +172,19 @@ static void output_object_code(JSContext *ctx,
 
     namelist_add(&cname_list, c_name, NULL, load_only);
 
-    fprintf(fo, "const uint32_t %s_size = %u;\n\n",
-            c_name, (unsigned int)out_buf_len);
-    fprintf(fo, "const uint8_t %s[%u] = {\n",
-            c_name, (unsigned int)out_buf_len);
-    dump_hex(fo, out_buf, out_buf_len);
-    fprintf(fo, "};\n\n");
+    if (raw)
+    {
+        fwrite(out_buf, 1, out_buf_len, fo);
+    }
+    else
+    {
+        fprintf(fo, "const uint32_t %s_size = %u;\n\n",
+                c_name, (unsigned int)out_buf_len);
+        fprintf(fo, "const uint8_t %s[%u] = {\n",
+                c_name, (unsigned int)out_buf_len);
+        dump_hex(fo, out_buf, out_buf_len);
+        fprintf(fo, "};\n\n");
+    }
 
     js_free(ctx, out_buf);
 }
@@ -250,7 +258,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
         if (namelist_find(&cname_list, cname)) {
             find_unique_cname(cname, sizeof(cname));
         }
-        output_object_code(ctx, outfile, func_val, cname, TRUE);
+        output_object_code(ctx, outfile, func_val, cname, TRUE, raw);
 
         /* the module is already referenced, so we must free it */
         m = JS_VALUE_GET_PTR(func_val);
@@ -262,7 +270,8 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
 static void compile_file(JSContext *ctx, FILE *fo,
                          const char *filename,
                          const char *c_name1,
-                         int module)
+                         int module,
+                         BOOL raw)
 {
     uint8_t *buf;
     char c_name[1024];
@@ -295,7 +304,7 @@ static void compile_file(JSContext *ctx, FILE *fo,
     } else {
         get_c_name(c_name, sizeof(c_name), filename);
     }
-    output_object_code(ctx, fo, obj, c_name, FALSE);
+    output_object_code(ctx, fo, obj, c_name, FALSE, raw);
     JS_FreeValue(ctx, obj);
 }
 
@@ -341,6 +350,7 @@ void help(void)
 typedef enum {
     OUTPUT_C,
     OUTPUT_C_MAIN,
+    OUTPUT_RAW,
 } OutputTypeEnum;
 
 int main(int argc, char **argv)
@@ -416,6 +426,9 @@ int main(int argc, char **argv)
         case 'p':
             c_ident_prefix = optarg;
             break;
+        case 'r':
+            output_type = OUTPUT_RAW;
+            break;
         case 'S':
             stack_size = (size_t)strtod(optarg, NULL);
             break;
@@ -443,37 +456,46 @@ int main(int argc, char **argv)
     ctx = JS_NewContext(rt);
 
     /* loader for ES6 modules */
-    JS_SetModuleLoaderFunc(rt, NULL, jsc_module_loader, NULL);
+    OutputTypeEnum *output_type_ptr = (OutputTypeEnum *)js_malloc(ctx, sizeof(OutputTypeEnum));
+    *output_type_ptr = output_type;
+    JS_SetModuleLoaderFunc(rt, NULL, jsc_module_loader, output_type_ptr);
 
-    fprintf(fo, "/* File generated automatically by the QuickJS-ng compiler. */\n"
-            "\n"
-            );
-
-    if (output_type != OUTPUT_C) {
-        fprintf(fo, "#include \"quickjs-libc.h\"\n"
-                "\n"
-                );
-    } else {
-        fprintf(fo, "#include <inttypes.h>\n"
-                "\n"
-                );
+    if (output_type != OUTPUT_RAW)
+    {
+        fprintf(fo, "/* File generated automatically by the QuickJS-ng compiler. */\n"
+                    "\n");
     }
 
-    for(i = optind; i < argc; i++) {
+    if (output_type == OUTPUT_C_MAIN)
+    {
+        fprintf(fo, "#include \"quickjs-libc.h\"\n"
+                    "\n");
+    }
+    else if (output_type == OUTPUT_C)
+    {
+        fprintf(fo, "#include <inttypes.h>\n"
+                    "\n");
+    }
+
+    for (i = optind; i < argc; i++)
+    {
         const char *filename = argv[i];
-        compile_file(ctx, fo, filename, cname, module);
+        compile_file(ctx, fo, filename, cname, module, output_type == OUTPUT_RAW);
         cname = NULL;
     }
 
-    for(i = 0; i < dynamic_module_list.count; i++) {
-        if (!jsc_module_loader(ctx, dynamic_module_list.array[i].name, NULL)) {
+    for (i = 0; i < dynamic_module_list.count; i++)
+    {
+        if (!jsc_module_loader(ctx, dynamic_module_list.array[i].name, NULL))
+        {
             fprintf(stderr, "Could not load dynamic module '%s'\n",
                     dynamic_module_list.array[i].name);
             exit(1);
         }
     }
 
-    if (output_type != OUTPUT_C) {
+    if (output_type == OUTPUT_C_MAIN)
+    {
         fprintf(fo,
                 "static JSContext *JS_NewCustomContext(JSRuntime *rt)\n"
                 "{\n"
@@ -528,6 +550,7 @@ int main(int argc, char **argv)
         fputs(main_c_template2, fo);
     }
 
+    js_free(ctx, output_type_ptr);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 
