@@ -273,6 +273,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
 
 static void compile_file(JSContext *ctx, FILE *fo,
                          const char *filename,
+                         const char *script_name,
                          const char *c_name1,
                          int module,
                          BOOL raw)
@@ -297,7 +298,7 @@ static void compile_file(JSContext *ctx, FILE *fo,
         eval_flags |= JS_EVAL_TYPE_MODULE;
     else
         eval_flags |= JS_EVAL_TYPE_GLOBAL;
-    obj = JS_Eval(ctx, (const char *)buf, buf_len, filename, eval_flags);
+    obj = JS_Eval(ctx, (const char *)buf, buf_len, script_name ? script_name : filename, eval_flags);
     if (JS_IsException(obj)) {
         js_std_dump_error(ctx);
         exit(1);
@@ -340,12 +341,14 @@ void help(void)
            "options are:\n"
            "-e          output main() and bytecode in a C file\n"
            "-o output   set the output filename\n"
+           "-n script_name    set the script name (as used in stack traces)\n"
            "-N cname    set the C name of the generated data\n"
            "-m          compile as Javascript module (default=autodetect)\n"
            "-D module_name         compile a dynamically loaded module or worker\n"
            "-M module_name[,cname] add initialization code for an external C module\n"
            "-p prefix   set the prefix of the generated C names\n"
            "-r          output raw bytecode instead of C code\n"
+           "-s          strip the source code, specify twice to also strip debug info\n"
            "-S n        set the maximum stack size to 'n' bytes (default=%d)\n",
            JS_GetVersion(),
            JS_DEFAULT_STACK_SIZE);
@@ -355,7 +358,7 @@ void help(void)
 int main(int argc, char **argv)
 {
     int c, i, verbose;
-    const char *out_filename, *cname;
+    const char *out_filename, *cname, *script_name;
     char cfilename[1024];
     FILE *fo;
     JSRuntime *rt;
@@ -366,6 +369,7 @@ int main(int argc, char **argv)
     namelist_t dynamic_module_list;
 
     out_filename = NULL;
+    script_name = NULL;
     output_type = OUTPUT_C;
     cname = NULL;
     module = -1;
@@ -379,7 +383,7 @@ int main(int argc, char **argv)
     namelist_add(&cmodule_list, "os", "os", 0);
 
     for(;;) {
-        c = getopt(argc, argv, "ho:N:mrxesvM:p:S:D:");
+        c = getopt(argc, argv, "ho:N:mn:rxesvM:p:S:D:");
         if (c == -1)
             break;
         switch(c) {
@@ -390,6 +394,9 @@ int main(int argc, char **argv)
             break;
         case 'e':
             output_type = OUTPUT_C_MAIN;
+            break;
+        case 'n':
+            script_name = optarg;
             break;
         case 'N':
             cname = optarg;
@@ -477,7 +484,7 @@ int main(int argc, char **argv)
 
     for(i = optind; i < argc; i++) {
         const char *filename = argv[i];
-        compile_file(ctx, fo, filename, cname, module, output_type == OUTPUT_RAW);
+        compile_file(ctx, fo, filename, script_name, cname, module, output_type == OUTPUT_RAW);
         cname = NULL;
     }
 
