@@ -60,6 +60,7 @@ typedef struct namelist_t {
 static namelist_t cname_list;
 static namelist_t cmodule_list;
 static namelist_t init_module_list;
+static OutputTypeEnum output_type;
 static FILE *outfile;
 static const char *c_ident_prefix = "qjsc_";
 static int strip;
@@ -157,8 +158,7 @@ static void dump_hex(FILE *f, const uint8_t *buf, size_t len)
 
 static void output_object_code(JSContext *ctx,
                                FILE *fo, JSValue obj, const char *c_name,
-                               BOOL load_only,
-                               BOOL raw)
+                               BOOL load_only)
 {
     uint8_t *out_buf;
     size_t out_buf_len;
@@ -178,7 +178,7 @@ static void output_object_code(JSContext *ctx,
 
     namelist_add(&cname_list, c_name, NULL, load_only);
 
-    if (raw) {
+    if (output_type == OUTPUT_RAW) {
         fwrite(out_buf, 1, out_buf_len, fo);
     } else {
         fprintf(fo, "const uint32_t %s_size = %u;\n\n",
@@ -226,7 +226,6 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
 {
     JSModuleDef *m;
     namelist_entry_t *e;
-    BOOL raw = *(BOOL *)opaque == OUTPUT_RAW;
 
     /* check if it is a declared C or system module */
     e = namelist_find(&cmodule_list, module_name);
@@ -262,7 +261,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
         if (namelist_find(&cname_list, cname)) {
             find_unique_cname(cname, sizeof(cname));
         }
-        output_object_code(ctx, outfile, func_val, cname, TRUE, raw);
+        output_object_code(ctx, outfile, func_val, cname, TRUE);
 
         /* the module is already referenced, so we must free it */
         m = JS_VALUE_GET_PTR(func_val);
@@ -275,8 +274,7 @@ static void compile_file(JSContext *ctx, FILE *fo,
                          const char *filename,
                          const char *script_name,
                          const char *c_name1,
-                         int module,
-                         BOOL raw)
+                         int module)
 {
     uint8_t *buf;
     char c_name[1024];
@@ -309,7 +307,7 @@ static void compile_file(JSContext *ctx, FILE *fo,
     } else {
         get_c_name(c_name, sizeof(c_name), filename);
     }
-    output_object_code(ctx, fo, obj, c_name, FALSE, raw);
+    output_object_code(ctx, fo, obj, c_name, FALSE);
     JS_FreeValue(ctx, obj);
 }
 
@@ -364,7 +362,6 @@ int main(int argc, char **argv)
     JSRuntime *rt;
     JSContext *ctx;
     int module;
-    OutputTypeEnum output_type;
     size_t stack_size;
     namelist_t dynamic_module_list;
 
@@ -462,9 +459,7 @@ int main(int argc, char **argv)
     ctx = JS_NewContext(rt);
 
     /* loader for ES6 modules */
-    OutputTypeEnum *output_type_ptr = (OutputTypeEnum *)js_malloc(ctx, sizeof(OutputTypeEnum));
-    *output_type_ptr = output_type;
-    JS_SetModuleLoaderFunc(rt, NULL, jsc_module_loader, output_type_ptr);
+    JS_SetModuleLoaderFunc(rt, NULL, jsc_module_loader, NULL);
 
     if (output_type != OUTPUT_RAW) {
         fprintf(fo, "/* File generated automatically by the QuickJS-ng compiler. */\n"
@@ -484,7 +479,7 @@ int main(int argc, char **argv)
 
     for(i = optind; i < argc; i++) {
         const char *filename = argv[i];
-        compile_file(ctx, fo, filename, script_name, cname, module, output_type == OUTPUT_RAW);
+        compile_file(ctx, fo, filename, script_name, cname, module);
         cname = NULL;
     }
 
