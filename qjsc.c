@@ -372,7 +372,7 @@ int main(int argc, char **argv)
     namelist_add(&cmodule_list, "std", "std", 0);
     namelist_add(&cmodule_list, "os", "os", 0);
 
-    for (;;) {
+    for(;;) {
         c = getopt(argc, argv, "ho:N:mn:mxesvM:p:S:D:");
         if (c == -1)
             break;
