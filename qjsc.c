@@ -220,6 +220,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
 {
     JSModuleDef *m;
     namelist_entry_t *e;
+    BOOL raw = *(BOOL *)opaque;
 
     /* check if it is a declared C or system module */
     e = namelist_find(&cmodule_list, module_name);
