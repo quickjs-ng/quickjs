@@ -337,6 +337,7 @@ void help(void)
            "usage: " PROG_NAME " [options] [files]\n"
            "\n"
            "options are:\n"
+           "-b          output raw bytecode instead of C code\n"
            "-e          output main() and bytecode in a C file\n"
            "-o output   set the output filename\n"
            "-n script_name    set the script name (as used in stack traces)\n"
@@ -345,7 +346,6 @@ void help(void)
            "-D module_name         compile a dynamically loaded module or worker\n"
            "-M module_name[,cname] add initialization code for an external C module\n"
            "-p prefix   set the prefix of the generated C names\n"
-           "-r          output raw bytecode instead of C code\n"
            "-s          strip the source code, specify twice to also strip debug info\n"
            "-S n        set the maximum stack size to 'n' bytes (default=%d)\n",
            JS_GetVersion(),
@@ -380,12 +380,15 @@ int main(int argc, char **argv)
     namelist_add(&cmodule_list, "os", "os", 0);
 
     for(;;) {
-        c = getopt(argc, argv, "ho:N:mn:rxesvM:p:S:D:");
+        c = getopt(argc, argv, "ho:N:mn:bxesvM:p:S:D:");
         if (c == -1)
             break;
         switch(c) {
         case 'h':
             help();
+        case 'b':
+            output_type = OUTPUT_RAW;
+            break;
         case 'o':
             out_filename = optarg;
             break;
@@ -429,9 +432,6 @@ int main(int argc, char **argv)
         case 'p':
             c_ident_prefix = optarg;
             break;
-        case 'r':
-            output_type = OUTPUT_RAW;
-            break;
         case 'S':
             stack_size = (size_t)strtod(optarg, NULL);
             break;
@@ -448,7 +448,11 @@ int main(int argc, char **argv)
 
     pstrcpy(cfilename, sizeof(cfilename), out_filename);
 
-    fo = fopen(cfilename, "w");
+    if (output_type == OUTPUT_RAW)
+        fo = fopen(cfilename, "wb");
+    else
+        fo = fopen(cfilename, "w");
+
     if (!fo) {
         perror(cfilename);
         exit(1);
