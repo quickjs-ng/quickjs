@@ -33957,6 +33957,8 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValue obj,
     *psize = s->dbuf.size;
     if (psab_tab)
         *psab_tab = s->sab_tab;
+    else
+        js_free(ctx, s->sab_tab);
     if (psab_tab_len)
         *psab_tab_len = s->sab_tab_len;
     return s->dbuf.buf;
