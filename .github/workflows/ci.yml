@@ -159,6 +159,10 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ubuntu:18.04
+    # Work around an issue where the node from actions/checkout is too new
+    # to run inside the old container image.
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     steps:
       - name: install dependencies
         run: |
