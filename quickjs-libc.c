@@ -3532,17 +3532,17 @@ static JSValue js_worker_postMessage(JSContext *ctx, JSValue this_val,
 {
     JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, js_worker_class_id);
     JSWorkerMessagePipe *ps;
-    size_t data_len, sab_tab_len, i;
+    size_t data_len, i;
     uint8_t *data;
     JSWorkerMessage *msg;
-    uint8_t **sab_tab;
+    JSSABTab sab_tab;
 
     if (!worker)
         return JS_EXCEPTION;
 
     data = JS_WriteObject2(ctx, &data_len, argv[0],
                            JS_WRITE_OBJ_SAB | JS_WRITE_OBJ_REFERENCE,
-                           &sab_tab, &sab_tab_len);
+                           &sab_tab);
     if (!data)
         return JS_EXCEPTION;
 
@@ -3559,16 +3559,16 @@ static JSValue js_worker_postMessage(JSContext *ctx, JSValue this_val,
     memcpy(msg->data, data, data_len);
     msg->data_len = data_len;
 
-    if (sab_tab_len > 0) {
-        msg->sab_tab = malloc(sizeof(msg->sab_tab[0]) * sab_tab_len);
+    if (sab_tab.len > 0) {
+        msg->sab_tab = malloc(sizeof(msg->sab_tab[0]) * sab_tab.len);
         if (!msg->sab_tab)
             goto fail;
-        memcpy(msg->sab_tab, sab_tab, sizeof(msg->sab_tab[0]) * sab_tab_len);
+        memcpy(msg->sab_tab, sab_tab.tab, sizeof(msg->sab_tab[0]) * sab_tab.len);
     }
-    msg->sab_tab_len = sab_tab_len;
+    msg->sab_tab_len = sab_tab.len;
 
     js_free(ctx, data);
-    js_free(ctx, sab_tab);
+    js_free(ctx, sab_tab.tab);
 
     /* increment the SAB reference counts */
     for(i = 0; i < msg->sab_tab_len; i++) {
@@ -3599,7 +3599,7 @@ static JSValue js_worker_postMessage(JSContext *ctx, JSValue this_val,
         free(msg);
     }
     js_free(ctx, data);
-    js_free(ctx, sab_tab);
+    js_free(ctx, sab_tab.tab);
     return JS_EXCEPTION;
 
 }

@@ -33928,7 +33928,7 @@ static int JS_WriteObjectAtoms(BCWriterState *s)
 }
 
 uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValue obj,
-                         int flags, uint8_t ***psab_tab, size_t *psab_tab_len)
+                         int flags, JSSABTab *psab_tab)
 {
     BCWriterState ss, *s = &ss;
 
@@ -33955,12 +33955,12 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValue obj,
     js_free(ctx, s->atom_to_idx);
     js_free(ctx, s->idx_to_atom);
     *psize = s->dbuf.size;
-    if (psab_tab)
-        *psab_tab = s->sab_tab;
-    else
+    if (psab_tab) {
+        psab_tab->tab = s->sab_tab;
+        psab_tab->len = s->sab_tab_len;
+    } else {
         js_free(ctx, s->sab_tab);
-    if (psab_tab_len)
-        *psab_tab_len = s->sab_tab_len;
+    }
     return s->dbuf.buf;
  fail:
     js_object_list_end(ctx, &s->object_list);
@@ -33968,17 +33968,17 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValue obj,
     js_free(ctx, s->idx_to_atom);
     dbuf_free(&s->dbuf);
     *psize = 0;
-    if (psab_tab)
-        *psab_tab = NULL;
-    if (psab_tab_len)
-        *psab_tab_len = 0;
+    if (psab_tab) {
+        psab_tab->tab = NULL;
+        psab_tab->len = 0;
+    }
     return NULL;
 }
 
 uint8_t *JS_WriteObject(JSContext *ctx, size_t *psize, JSValue obj,
                         int flags)
 {
-    return JS_WriteObject2(ctx, psize, obj, flags, NULL, NULL);
+    return JS_WriteObject2(ctx, psize, obj, flags, NULL);
 }
 
 typedef struct BCReaderState {
@@ -35165,7 +35165,7 @@ static void bc_reader_free(BCReaderState *s)
 }
 
 JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
-                       int flags, uint8_t ***psab_tab, size_t *psab_tab_len)
+                       int flags, JSSABTab *psab_tab)
 {
     BCReaderState ss, *s = &ss;
     JSValue obj;
@@ -35190,12 +35190,12 @@ JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
     } else {
         obj = JS_ReadObjectRec(s);
     }
-    if (psab_tab)
-        *psab_tab = s->sab_tab;
-    else
+    if (psab_tab) {
+        psab_tab->tab = s->sab_tab;
+        psab_tab->len = s->sab_tab_len;
+    } else {
         js_free(ctx, s->sab_tab);
-    if (psab_tab_len)
-        *psab_tab_len = s->sab_tab_len;
+    }
     bc_reader_free(s);
     return obj;
 }
@@ -35203,7 +35203,7 @@ JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
 JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len,
                       int flags)
 {
-    return JS_ReadObject2(ctx, buf, buf_len, flags, NULL, NULL);
+    return JS_ReadObject2(ctx, buf, buf_len, flags, NULL);
 }
 
 /*******************************************************************/
