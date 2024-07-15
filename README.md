@@ -1,10 +1,10 @@
 # ⚡️ QuickJS - A mighty JavaScript engine
 
-Friendly [QuickJS]() fork focused on reigniting the project.
+Friendly [QuickJS](https://github.com/bellard/quickjs) fork focused on reigniting the project.
 
 ## Overview
 
-In October 2023 [@bnoordhuis] and [@saghul] decided to fork the [QuickJS] project with
+In October 2023 [@bnoordhuis] and [@saghul] decided to fork the [QuickJS](https://github.com/bellard/quickjs) project with
 the aim of reigniting it. They reached out to the original authors ([@bellard] and [@chqrlie])
 about their intentions.
 
