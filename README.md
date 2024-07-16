@@ -1,6 +1,6 @@
 # ⚡️ QuickJS - A mighty JavaScript engine
 
-Friendly [QuickJS]() fork focused on reigniting the project.
+Friendly [QuickJS] fork focused on reigniting the project.
 
 ## Overview
 
