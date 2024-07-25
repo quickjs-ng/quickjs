@@ -349,10 +349,17 @@ function test_class()
     assert(S.z === 42);
     
     class P {
+        get;
+        set;
+        async;
         get = () => "123";
+        set = () => "456";
+        async = () => "789";
         static() { return 42; }
     }
     assert(new P().get() === "123");
+    assert(new P().set() === "456");
+    assert(new P().async() === "789");
     assert(new P().static() === 42);
 };
 
