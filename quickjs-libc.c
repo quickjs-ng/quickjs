@@ -3845,17 +3845,48 @@ static JSValue js_print(JSContext *ctx, JSValue this_val,
     const char *str;
     size_t len;
 
+#ifdef _WIN32
+    wchar_t *wstr;
+    DWORD written;
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hConsole == INVALID_HANDLE_VALUE)
+        return JS_EXCEPTION;
+#endif
+
     for(i = 0; i < argc; i++) {
-        if (i != 0)
+        if (i != 0) {
+#ifdef _WIN32
+            WriteConsoleW(hConsole, L" ", 1, &written, NULL);
+#else
             putchar(' ');
+#endif
+        }
         str = JS_ToCStringLen(ctx, &len, argv[i]);
         if (!str)
             return JS_EXCEPTION;
+#ifdef _WIN32
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, str, len, NULL, 0);
+        wstr = (wchar_t*)js_malloc(ctx, (wlen + 1) * sizeof(wchar_t));
+        if (!wstr) {
+            JS_FreeCString(ctx, str);
+            return JS_EXCEPTION;
+        }
+        MultiByteToWideChar(CP_UTF8, 0, str, len, wstr, wlen);
+        wstr[wlen] = L'\0';
+        WriteConsoleW(hConsole, wstr, wlen, &written, NULL);
+        js_free(ctx, wstr);
+#else
         fwrite(str, 1, len, stdout);
+#endif
         JS_FreeCString(ctx, str);
     }
+#ifdef _WIN32
+    WriteConsoleW(hConsole, L"\n", 1, &written, NULL);
+    FlushFileBuffers(hConsole);
+#else
     putchar('\n');
     fflush(stdout);
+#endif
     return JS_UNDEFINED;
 }
 
