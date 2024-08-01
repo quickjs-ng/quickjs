@@ -235,6 +235,9 @@ struct JSRuntime {
     struct list_head tmp_obj_list; /* used during GC */
     JSGCPhaseEnum gc_phase : 8;
     size_t malloc_gc_threshold;
+    BOOL fix_malloc_gc_threshold : 8;
+    BOOL (*gc_before_callback)(); /* Callback before the gc event takes place */
+    void (*gc_after_callback)(); /* Callback after the gc event takes place */
 #ifdef DUMP_LEAKS
     struct list_head string_list; /* list of JSString.link */
 #endif
@@ -1360,9 +1363,21 @@ static void js_trigger_gc(JSRuntime *rt, size_t size)
                    (uint64_t)rt->malloc_state.malloc_size);
         }
 #endif
-        JS_RunGC(rt);
-        rt->malloc_gc_threshold = rt->malloc_state.malloc_size +
-            (rt->malloc_state.malloc_size >> 1);
+        //To ensure JS_RunGC cannot be executed again within callbacks, disable and restore it after.
+        size_t tmp_threshold = rt->malloc_gc_threshold;
+        rt->malloc_gc_threshold=-1;
+        
+        if((rt->gc_before_callback == NULL) || rt->gc_before_callback()){
+            JS_RunGC(rt);
+            if(rt->gc_after_callback != NULL)rt->gc_after_callback();
+        }
+
+        rt->malloc_gc_threshold=tmp_threshold;
+
+        if(rt->fix_malloc_gc_threshold == FALSE) {
+            rt->malloc_gc_threshold = rt->malloc_state.malloc_size +
+                (rt->malloc_state.malloc_size >> 1);
+        }
     }
 }
 
@@ -1635,6 +1650,10 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     rt->malloc_state = ms;
     rt->malloc_gc_threshold = 256 * 1024;
 
+    rt->fix_malloc_gc_threshold = FALSE;
+    rt->gc_after_callback = NULL;
+    rt->gc_before_callback = NULL;
+
     bf_context_init(&rt->bf_ctx, js_bf_realloc, rt);
 
     init_list_head(&rt->context_list);
@@ -1779,6 +1798,22 @@ size_t JS_GetGCThreshold(JSRuntime *rt) {
 void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold)
 {
     rt->malloc_gc_threshold = gc_threshold;
+}
+
+void JS_SetGCThresholdFixed(JSRuntime *rt, BOOL fix)
+{
+    rt->fix_malloc_gc_threshold = fix;
+}
+
+
+void JS_SetGCBeforeCallback(JSRuntime *rt, BOOL(*fn)())
+{
+    rt->gc_before_callback = fn;
+}
+
+void JS_SetGCAfterCallback(JSRuntime *rt, void(*fn)())
+{
+    rt->gc_after_callback = fn;
 }
 
 #define malloc(s) malloc_is_forbidden(s)
