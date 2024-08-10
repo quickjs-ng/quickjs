@@ -206,6 +206,7 @@ jobs:
       - name: test
         run: |
           build\${{matrix.buildType}}\qjs.exe tests\test_bigint.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_bjson.js
           build\${{matrix.buildType}}\qjs.exe tests\test_closure.js
           build\${{matrix.buildType}}\qjs.exe tests\test_language.js
           build\${{matrix.buildType}}\qjs.exe tests\test_builtin.js
@@ -234,6 +235,7 @@ jobs:
       - name: test
         run: |
           build\${{matrix.buildType}}\qjs.exe tests\test_bigint.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_bjson.js
           build\${{matrix.buildType}}\qjs.exe tests\test_closure.js
           build\${{matrix.buildType}}\qjs.exe tests\test_language.js
           build\${{matrix.buildType}}\qjs.exe tests\test_builtin.js
@@ -266,6 +268,7 @@ jobs:
       - name: test
         run: |
           build\qjs.exe tests\test_bigint.js
+          build\qjs.exe tests\test_bjson.js
           build\qjs.exe tests\test_closure.js
           build\qjs.exe tests\test_language.js
           build\qjs.exe tests\test_builtin.js
