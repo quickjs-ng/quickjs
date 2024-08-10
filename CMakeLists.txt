@@ -312,16 +312,6 @@ if(BUILD_EXAMPLES AND NOT WIN32)
         if(APPLE)
             target_link_options(point PRIVATE -undefined dynamic_lookup)
         endif()
-
-        add_library(bjson MODULE tests/bjson.c)
-        set_target_properties(bjson PROPERTIES
-            PREFIX ""
-            C_VISIBILITY_PRESET default
-        )
-        target_compile_definitions(bjson PRIVATE JS_SHARED_LIBRARY)
-        if(APPLE)
-            target_link_options(bjson PRIVATE -undefined dynamic_lookup)
-        endif()
     endif()
 
     add_executable(test_fib

@@ -139,7 +139,6 @@ jobs:
         run: |
           cp build/fib.so examples/
           cp build/point.so examples/
-          cp build/bjson.so tests/
           ./build/qjs examples/test_fib.js
           ./build/qjs examples/test_point.js
           ./build/qjs tests/test_bjson.js
