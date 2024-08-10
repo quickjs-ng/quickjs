@@ -378,6 +378,7 @@ int main(int argc, char **argv)
     /* add system modules */
     namelist_add(&cmodule_list, "std", "std", 0);
     namelist_add(&cmodule_list, "os", "os", 0);
+    namelist_add(&cmodule_list, "bjson", "bjson", 0);
 
     for(;;) {
         c = getopt(argc, argv, "ho:N:mn:bxesvM:p:S:D:");

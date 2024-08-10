@@ -24,9 +24,11 @@
  */
 import * as std from "std";
 import * as os from "os";
+import * as bjson from "bjson";
 
 (function(g) {
-    /* add 'os' and 'std' bindings */
+    /* add 'bjson', 'os' and 'std' bindings */
+    g.bjson = bjson;
     g.os = os;
     g.std = std;
     
