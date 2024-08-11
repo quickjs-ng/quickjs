@@ -4103,14 +4103,13 @@ static JSValue js_bjson_read(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     if (JS_ToIndex(ctx, &len, argv[2]))
         return JS_EXCEPTION;
+    if (JS_ToInt32(ctx, &flags, argv[3]))
+        return JS_EXCEPTION;
     buf = JS_GetArrayBuffer(ctx, &size, argv[0]);
     if (!buf)
         return JS_EXCEPTION;
     if (pos + len > size)
         return JS_ThrowRangeError(ctx, "array buffer overflow");
-    flags = 0;
-    if (JS_ToBool(ctx, argv[3]))
-        flags |= JS_READ_OBJ_REFERENCE;
     obj = JS_ReadObject(ctx, buf + pos, len, flags);
     return obj;
 }
@@ -4123,9 +4122,8 @@ static JSValue js_bjson_write(JSContext *ctx, JSValue this_val,
     JSValue array;
     int flags;
 
-    flags = 0;
-    if (JS_ToBool(ctx, argv[1]))
-        flags |= JS_WRITE_OBJ_REFERENCE;
+    if (JS_ToInt32(ctx, &flags, argv[1]))
+        return JS_EXCEPTION;
     buf = JS_WriteObject(ctx, &len, argv[0], flags);
     if (!buf)
         return JS_EXCEPTION;
@@ -4138,6 +4136,16 @@ static JSValue js_bjson_write(JSContext *ctx, JSValue this_val,
 static const JSCFunctionListEntry js_bjson_funcs[] = {
     JS_CFUNC_DEF("read", 4, js_bjson_read ),
     JS_CFUNC_DEF("write", 2, js_bjson_write ),
+#define DEF(x) JS_PROP_INT32_DEF(#x, JS_##x, JS_PROP_CONFIGURABLE)
+    DEF(READ_OBJ_BYTECODE),
+    DEF(READ_OBJ_REFERENCE),
+    DEF(READ_OBJ_SAB),
+    DEF(WRITE_OBJ_BYTECODE),
+    DEF(WRITE_OBJ_REFERENCE),
+    DEF(WRITE_OBJ_SAB),
+    DEF(WRITE_OBJ_STRIP_DEBUG),
+    DEF(WRITE_OBJ_STRIP_SOURCE),
+#undef DEF
 };
 
 static int js_bjson_init(JSContext *ctx, JSModuleDef *m)
