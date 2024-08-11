@@ -872,8 +872,7 @@ Examples are available in @file{quickjs-libc.c}.
 @subsection C Modules
 
 Native ES6 modules are supported and can be dynamically or statically
-linked. Look at the @file{test_bjson} and @file{bjson.so}
-examples. The standard library @file{quickjs-libc.c} is also a good example
+linked. The standard library @file{quickjs-libc.c} is a good example
 of a native module.
 
 @subsection Memory handling
