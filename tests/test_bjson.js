@@ -129,9 +129,9 @@ function bjson_test_reference()
         array[i].idx = i;
         array[i].typed_array = new Uint8Array(array_buffer, i, 1);
     }
-    buf = bjson.write(array, true);
+    buf = bjson.write(array, bjson.WRITE_OBJ_REFERENCE);
 
-    array = bjson.read(buf, 0, buf.byteLength, true);
+    array = bjson.read(buf, 0, buf.byteLength, bjson.READ_OBJ_REFERENCE);
 
     /* check the result */
     for(i = 0; i < n; i++) {
