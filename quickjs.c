@@ -33114,9 +33114,11 @@ typedef enum BCTagEnum {
     BC_TAG_DATE,
     BC_TAG_OBJECT_VALUE,
     BC_TAG_OBJECT_REFERENCE,
+    BC_TAG_MAP,
+    BC_TAG_SET,
 } BCTagEnum;
 
-#define BC_VERSION 12
+#define BC_VERSION 13
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -33757,6 +33759,9 @@ static int JS_WriteRegExp(BCWriterState *s, JSRegExp regexp)
     return 0;
 }
 
+static int JS_WriteMap(BCWriterState *s, struct JSMapState *map_state);
+static int JS_WriteSet(BCWriterState *s, struct JSMapState *map_state);
+
 static int JS_WriteObjectRec(BCWriterState *s, JSValue obj)
 {
     uint32_t tag;
@@ -33859,6 +33864,14 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValue obj)
             case JS_CLASS_BIG_INT:
                 bc_put_u8(s, BC_TAG_OBJECT_VALUE);
                 ret = JS_WriteObjectRec(s, p->u.object_data);
+                break;
+            case JS_CLASS_MAP:
+                bc_put_u8(s, BC_TAG_MAP);
+                ret = JS_WriteMap(s, p->u.map_state);
+                break;
+            case JS_CLASS_SET:
+                bc_put_u8(s, BC_TAG_SET);
+                ret = JS_WriteSet(s, p->u.map_state);
                 break;
             default:
                 if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
@@ -34996,6 +35009,9 @@ static JSValue JS_ReadObjectValue(BCReaderState *s)
     return JS_EXCEPTION;
 }
 
+static JSValue JS_ReadMap(BCReaderState *s);
+static JSValue JS_ReadSet(BCReaderState *s);
+
 static JSValue JS_ReadObjectRec(BCReaderState *s)
 {
     JSContext *ctx = s->ctx;
@@ -35102,6 +35118,12 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
             }
             obj = js_dup(JS_MKPTR(JS_TAG_OBJECT, s->objects[val]));
         }
+        break;
+    case BC_TAG_MAP:
+        obj = JS_ReadMap(s);
+        break;
+    case BC_TAG_SET:
+        obj = JS_ReadSet(s);
         break;
     default:
     invalid_tag:
@@ -46024,6 +46046,99 @@ static JSValue js_map_iterator_next(JSContext *ctx, JSValue this_val,
             return js_create_array(ctx, 2, args);
         }
     }
+}
+
+static JSValue js_map_read(BCReaderState *s, int magic)
+{
+    JSContext *ctx = s->ctx;
+    JSValue obj, rv, argv[2];
+    uint32_t i, prop_count;
+
+    argv[0] = JS_UNDEFINED;
+    argv[1] = JS_UNDEFINED;
+    obj = js_map_constructor(ctx, JS_UNDEFINED, 0, NULL, magic);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    if (BC_add_object_ref(s, obj))
+        goto fail;
+    if (bc_get_leb128(s, &prop_count))
+        goto fail;
+    for(i = 0; i < prop_count; i++) {
+        argv[0] = JS_ReadObjectRec(s);
+        if (JS_IsException(argv[0]))
+            goto fail;
+        if (!(magic & MAGIC_SET)) {
+            argv[1] = JS_ReadObjectRec(s);
+            if (JS_IsException(argv[1]))
+                goto fail;
+        }
+        rv = js_map_set(ctx, obj, countof(argv), argv, magic);
+        if (JS_IsException(rv))
+            goto fail;
+        JS_FreeValue(ctx, rv);
+        JS_FreeValue(ctx, argv[0]);
+        JS_FreeValue(ctx, argv[1]);
+        argv[0] = JS_UNDEFINED;
+        argv[1] = JS_UNDEFINED;
+    }
+    return obj;
+ fail:
+    JS_FreeValue(ctx, obj);
+    JS_FreeValue(ctx, argv[0]);
+    JS_FreeValue(ctx, argv[1]);
+    return JS_EXCEPTION;
+}
+
+static int js_map_write(BCWriterState *s, struct JSMapState *map_state,
+                        int magic)
+{
+    struct list_head *el;
+    JSMapRecord *mr;
+    uint32_t count;
+
+    count = 0;
+
+    if (map_state) {
+        list_for_each(el, &map_state->records) {
+            count++;
+        }
+    }
+
+    bc_put_leb128(s, count);
+
+    if (map_state) {
+        list_for_each(el, &map_state->records) {
+            mr = list_entry(el, JSMapRecord, link);
+            if (JS_WriteObjectRec(s, mr->key))
+                return -1;
+            // mr->value is always JS_UNDEFINED for sets
+            if (!(magic & MAGIC_SET))
+                if (JS_WriteObjectRec(s, mr->value))
+                    return -1;
+        }
+    }
+
+    return 0;
+}
+
+static JSValue JS_ReadMap(BCReaderState *s)
+{
+    return js_map_read(s, 0);
+}
+
+static JSValue JS_ReadSet(BCReaderState *s)
+{
+    return js_map_read(s, MAGIC_SET);
+}
+
+static int JS_WriteMap(BCWriterState *s, struct JSMapState *map_state)
+{
+    return js_map_write(s, map_state, 0);
+}
+
+static int JS_WriteSet(BCWriterState *s, struct JSMapState *map_state)
+{
+    return js_map_write(s, map_state, MAGIC_SET);
 }
 
 static const JSCFunctionListEntry js_map_funcs[] = {
