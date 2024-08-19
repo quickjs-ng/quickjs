@@ -155,6 +155,28 @@ function bjson_test_regexp()
     assert("sup dog".match(r).groups["𝓓𝓸𝓰"], "dog");
 }
 
+function bjson_test_map()
+{
+    var buf, r, xs;
+
+    xs = [["key", "value"]];
+    buf = bjson.write(new Map(xs));
+    r = bjson.read(buf, 0, buf.byteLength);
+    assert(r instanceof Map);
+    assert([...r].toString(), xs.toString());
+}
+
+function bjson_test_set()
+{
+    var buf, r, xs;
+
+    xs = ["one", "two", "three"];
+    buf = bjson.write(new Set(xs));
+    r = bjson.read(buf, 0, buf.byteLength);
+    assert(r instanceof Set);
+    assert([...r].toString(), xs.toString());
+}
+
 function bjson_test_all()
 {
     var obj;
@@ -184,6 +206,8 @@ function bjson_test_all()
 
     bjson_test_reference();
     bjson_test_regexp();
+    bjson_test_map();
+    bjson_test_set();
 }
 
 bjson_test_all();
