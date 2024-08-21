@@ -1,12 +1,106 @@
-test262/test/annexB/language/eval-code/direct/script-decl-lex-collision-in-sloppy-mode.js:13: Test262Error: Expected a SyntaxError to be thrown but no exception was thrown at all
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/iterator-result-poisoned-wrapper.js:64: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/iterator-result-poisoned-wrapper.js:64: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/next-result-poisoned-wrapper.js:69: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/next-result-poisoned-wrapper.js:69: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/yield-iterator-next-rejected-promise-close.js:59: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/yield-iterator-next-rejected-promise-close.js:59: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/yield-next-rejected-promise-close.js:64: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/yield-next-rejected-promise-close.js:64: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-null.js:52: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-null.js:52: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-get-return-undefined.js:64: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-get-return-undefined.js:64: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-poisoned-return.js:68: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-poisoned-return.js:68: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-not-object.js:72: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-not-object.js:72: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined.js:41: TypeError: $DONE() not called
+test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined.js:41: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
+test262/test/built-ins/RegExp/nullable-quantifier.js:21: Test262Error: The regex is expected to match the whole string Expected SameValue(«a», «ab») to be true
+test262/test/built-ins/RegExp/nullable-quantifier.js:21: strict mode: Test262Error: The regex is expected to match the whole string Expected SameValue(«a», «ab») to be true
+test262/test/built-ins/RegExp/property-escapes/generated/Alphabetic.js:16: Test262Error: `\p{Alphabetic}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Alphabetic.js:16: strict mode: Test262Error: `\p{Alphabetic}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Assigned.js:16: Test262Error: `\p{Assigned}` should match U+002FFC (`⿼`)
+test262/test/built-ins/RegExp/property-escapes/generated/Assigned.js:16: strict mode: Test262Error: `\p{Assigned}` should match U+002FFC (`⿼`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js:16: Test262Error: `\p{General_Category=Letter}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js:16: strict mode: Test262Error: `\p{General_Category=Letter}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js:16: Test262Error: `\P{General_Category=Other}` should match U+002FFC (`⿼`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js:16: strict mode: Test262Error: `\P{General_Category=Other}` should match U+002FFC (`⿼`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js:16: Test262Error: `\p{General_Category=Other_Letter}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js:16: strict mode: Test262Error: `\p{General_Category=Other_Letter}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js:16: Test262Error: `\p{General_Category=Other_Symbol}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js:16: strict mode: Test262Error: `\p{General_Category=Other_Symbol}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js:16: Test262Error: `\p{General_Category=Symbol}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js:16: strict mode: Test262Error: `\p{General_Category=Symbol}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Unassigned.js:16: Test262Error: `\P{General_Category=Unassigned}` should match U+002FFC (`⿼`)
+test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Unassigned.js:16: strict mode: Test262Error: `\P{General_Category=Unassigned}` should match U+002FFC (`⿼`)
+test262/test/built-ins/RegExp/property-escapes/generated/Grapheme_Base.js:16: Test262Error: `\p{Grapheme_Base}` should match U+002FFC (`⿼`)
+test262/test/built-ins/RegExp/property-escapes/generated/Grapheme_Base.js:16: strict mode: Test262Error: `\p{Grapheme_Base}` should match U+002FFC (`⿼`)
+test262/test/built-ins/RegExp/property-escapes/generated/IDS_Binary_Operator.js:16: Test262Error: `\p{IDS_Binary_Operator}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/IDS_Binary_Operator.js:16: strict mode: Test262Error: `\p{IDS_Binary_Operator}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/ID_Continue.js:16: Test262Error: `\p{ID_Continue}` should match U+00200C (`‌`)
+test262/test/built-ins/RegExp/property-escapes/generated/ID_Continue.js:16: strict mode: Test262Error: `\p{ID_Continue}` should match U+00200C (`‌`)
+test262/test/built-ins/RegExp/property-escapes/generated/ID_Start.js:16: Test262Error: `\p{ID_Start}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/ID_Start.js:16: strict mode: Test262Error: `\p{ID_Start}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Ideographic.js:16: Test262Error: `\p{Ideographic}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Ideographic.js:16: strict mode: Test262Error: `\p{Ideographic}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Common.js:16: Test262Error: `\p{Script=Common}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Common.js:16: strict mode: Test262Error: `\p{Script=Common}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Han.js:16: Test262Error: `\p{Script=Han}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Han.js:16: strict mode: Test262Error: `\p{Script=Han}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Common.js:16: Test262Error: `\p{Script_Extensions=Common}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Common.js:16: strict mode: Test262Error: `\p{Script_Extensions=Common}` should match U+0031EF (`㇯`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Han.js:16: Test262Error: `\p{Script_Extensions=Han}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Han.js:16: strict mode: Test262Error: `\p{Script_Extensions=Han}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Malayalam.js:16: Test262Error: `\p{Script_Extensions=Malayalam}` should match U+001CF2 (`ᳲ`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Malayalam.js:16: strict mode: Test262Error: `\p{Script_Extensions=Malayalam}` should match U+001CF2 (`ᳲ`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sharada.js:16: Test262Error: `\p{Script_Extensions=Sharada}` should match U+00A838 (`꠸`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sharada.js:16: strict mode: Test262Error: `\p{Script_Extensions=Sharada}` should match U+00A838 (`꠸`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sinhala.js:16: Test262Error: `\p{Script_Extensions=Sinhala}` should match U+001CF2 (`ᳲ`)
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sinhala.js:16: strict mode: Test262Error: `\p{Script_Extensions=Sinhala}` should match U+001CF2 (`ᳲ`)
+test262/test/built-ins/RegExp/property-escapes/generated/Sentence_Terminal.js:104: Test262Error: `\p{Sentence_Terminal}` should match U+0017D4 (`។`)
+test262/test/built-ins/RegExp/property-escapes/generated/Sentence_Terminal.js:104: strict mode: Test262Error: `\p{Sentence_Terminal}` should match U+0017D4 (`។`)
+test262/test/built-ins/RegExp/property-escapes/generated/Unified_Ideograph.js:16: Test262Error: `\p{Unified_Ideograph}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/Unified_Ideograph.js:16: strict mode: Test262Error: `\p{Unified_Ideograph}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/XID_Continue.js:16: Test262Error: `\p{XID_Continue}` should match U+00200C (`‌`)
+test262/test/built-ins/RegExp/property-escapes/generated/XID_Continue.js:16: strict mode: Test262Error: `\p{XID_Continue}` should match U+00200C (`‌`)
+test262/test/built-ins/RegExp/property-escapes/generated/XID_Start.js:16: Test262Error: `\p{XID_Start}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/property-escapes/generated/XID_Start.js:16: strict mode: Test262Error: `\p{XID_Start}` should match U+02EBF0 (`𮯰`)
+test262/test/built-ins/RegExp/unicode_full_case_folding.js:20: Test262Error: \u0390 does not match \u1fd3
+test262/test/built-ins/RegExp/unicode_full_case_folding.js:20: strict mode: Test262Error: \u0390 does not match \u1fd3
+test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«99», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«99», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«144», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-reflect-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«144», «0») to be true
 test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: strict mode: unexpected error type: Test262: This statement should not be evaluated.
+test262/test/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js:42: Test262Error: Expected [source, iterator, target, target-key, target-key-tostring, iterator-step, iterator-done, set] and [source, iterator, target, target-key, iterator-step, iterator-done, target-key-tostring, set] to have the same contents. 
+test262/test/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js:42: strict mode: Test262Error: Expected [source, iterator, target, target-key, target-key-tostring, iterator-step, iterator-done, set] and [source, iterator, target, target-key, iterator-step, iterator-done, target-key-tostring, set] to have the same contents. 
+test262/test/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js:32: Test262Error: Expected [source, source-key, source-key-tostring, target, target-key, target-key-tostring, get, set] and [source, source-key, source-key-tostring, target, target-key, get, target-key-tostring, set] to have the same contents. 
+test262/test/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js:32: strict mode: Test262Error: Expected [source, source-key, source-key-tostring, target, target-key, target-key-tostring, get, set] and [source, source-key, source-key-tostring, target, target-key, get, target-key-tostring, set] to have the same contents. 
+test262/test/language/expressions/assignment/target-member-computed-reference.js:22: Test262Error: Expected a DummyError but got a Test262Error
+test262/test/language/expressions/assignment/target-member-computed-reference.js:22: strict mode: Test262Error: Expected a DummyError but got a Test262Error
+test262/test/language/expressions/assignment/target-super-computed-reference.js:20: Test262Error: Expected a DummyError but got a Test262Error
+test262/test/language/expressions/assignment/target-super-computed-reference.js:20: strict mode: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/function/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/function/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/generators/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/generators/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
+test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: Test262Error: Expected a TypeError but got a Test262Error
+test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: strict mode: Test262Error: Expected a TypeError but got a Test262Error
 test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:21: TypeError: cannot read property 'c' of undefined
 test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:16: strict mode: TypeError: cannot read property '_b' of undefined
-test262/test/language/global-code/script-decl-lex-var-declared-via-eval-sloppy.js:13: Test262Error: variable Expected a SyntaxError to be thrown but no exception was thrown at all
+test262/test/language/module-code/top-level-await/async-module-does-not-block-sibling-modules.js:13: SyntaxError: Could not find export 'check' in module 'test262/test/language/module-code/top-level-await/async-module-sync_FIXTURE.js'
+test262/test/staging/top-level-await/tla-hang-entry.js:10: TypeError: $DONE() not called

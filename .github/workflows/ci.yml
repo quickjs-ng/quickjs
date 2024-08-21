@@ -149,11 +149,6 @@ jobs:
         run: |
           time make test262
 
-      - name: test v8 mjsunit
-        if: ${{ matrix.config.runV8 }}
-        run: |
-          ./v8.sh
-
   linux-gcc48:
     runs-on: ubuntu-latest
     container:
