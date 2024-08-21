@@ -6609,36 +6609,45 @@ JSValue JS_NewError(JSContext *ctx)
     return JS_NewObjectClass(ctx, JS_CLASS_ERROR);
 }
 
+static JSValue JS_MakeError(JSContext *ctx, JSErrorEnum error_num,
+                            const char *message, BOOL add_backtrace)
+{
+    JSValue obj, msg;
+
+    if (error_num == JS_PLAIN_ERROR) {
+        obj = JS_NewError(ctx);
+    } else {
+        obj = JS_NewObjectProtoClass(ctx, ctx->native_error_proto[error_num],
+                                     JS_CLASS_ERROR);
+    }
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    msg = JS_NewString(ctx, message);
+    if (JS_IsException(msg))
+        msg = JS_NewString(ctx, "Invalid error message");
+    if (!JS_IsException(msg)) {
+        JS_DefinePropertyValue(ctx, obj, JS_ATOM_message, msg,
+                               JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+    }
+    if (add_backtrace)
+        build_backtrace(ctx, obj, NULL, 0, 0, 0);
+    return obj;
+}
+
 /* fmt and arguments may be pure ASCII or UTF-8 encoded contents */
 static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
                               const char *fmt, va_list ap, BOOL add_backtrace)
 {
     char buf[256];
-    JSValue obj, ret, msg;
+    JSValue obj;
 
     vsnprintf(buf, sizeof(buf), fmt, ap);
-    if (error_num == JS_PLAIN_ERROR)
-        obj = JS_NewError(ctx);
-    else
-        obj = JS_NewObjectProtoClass(ctx, ctx->native_error_proto[error_num],
-                                     JS_CLASS_ERROR);
+    obj = JS_MakeError(ctx, error_num, buf, add_backtrace);
     if (unlikely(JS_IsException(obj))) {
         /* out of memory: throw JS_NULL to avoid recursing */
         obj = JS_NULL;
-    } else {
-        msg = JS_NewString(ctx, buf);
-        if (JS_IsException(msg))
-            msg = JS_NewString(ctx, "Invalid error message");
-        if (!JS_IsException(msg)) {
-            JS_DefinePropertyValue(ctx, obj, JS_ATOM_message, msg,
-                                   JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-        }
     }
-    if (add_backtrace) {
-        build_backtrace(ctx, obj, NULL, 0, 0, 0);
-    }
-    ret = JS_Throw(ctx, obj);
-    return ret;
+    return JS_Throw(ctx, obj);
 }
 
 static JSValue JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
@@ -47393,7 +47402,8 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValue this_val
                 err = js_create_iterator_result(ctx, js_dup(argv[0]), TRUE);
                 is_reject = 0;
             } else {
-                err = js_dup(argv[0]);
+                err = JS_MakeError(ctx, JS_TYPE_ERROR, "throw is not a method",
+                                   TRUE);
                 is_reject = 1;
             }
             goto done_resolve;

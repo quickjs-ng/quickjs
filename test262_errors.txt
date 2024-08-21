@@ -8,8 +8,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/yield-next-rejected-p
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/yield-next-rejected-promise-close.js:64: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-null.js:52: TypeError: $DONE() not called
-test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-null.js:52: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-get-return-undefined.js:64: TypeError: $DONE() not called
@@ -20,8 +18,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-retu
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-not-object.js:72: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined.js:41: TypeError: $DONE() not called
-test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined.js:41: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
 test262/test/built-ins/RegExp/nullable-quantifier.js:21: Test262Error: The regex is expected to match the whole string Expected SameValue(«a», «ab») to be true
