@@ -46103,18 +46103,8 @@ static int js_map_write(BCWriterState *s, struct JSMapState *map_state,
 {
     struct list_head *el;
     JSMapRecord *mr;
-    uint32_t count;
 
-    count = 0;
-
-    if (map_state) {
-        list_for_each(el, &map_state->records) {
-            count++;
-        }
-    }
-
-    bc_put_leb128(s, count);
-
+    bc_put_leb128(s, map_state ? map_state->record_count : 0);
     if (map_state) {
         list_for_each(el, &map_state->records) {
             mr = list_entry(el, JSMapRecord, link);
