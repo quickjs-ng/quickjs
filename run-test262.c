@@ -2077,7 +2077,7 @@ int main(int argc, char **argv)
         } else if (str_equal(arg, "-f")) {
             is_dir_list = FALSE;
         } else if (str_equal(arg, "-r")) {
-            report_filename = get_opt_arg(arg, argv[optind++]);
+            report_filename = strdup(get_opt_arg(arg, argv[optind++]));
         } else if (str_equal(arg, "-E")) {
             only_check_errors = TRUE;
         } else if (str_equal(arg, "-T")) {
