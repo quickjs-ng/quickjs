@@ -59,8 +59,8 @@
 #define getcwd _getcwd
 #define chdir _chdir
 
-#ifndef NATIVE_MODULE_SUFFIX
-#define NATIVE_MODULE_SUFFIX ".dll"
+#ifndef QJS_NATIVE_MODULE_SUFFIX
+#define QJS_NATIVE_MODULE_SUFFIX ".dll"
 #endif
 
 #else
@@ -83,8 +83,8 @@ typedef sig_t sighandler_t;
 extern char **environ;
 #endif
 
-#ifndef NATIVE_MODULE_SUFFIX
-#define NATIVE_MODULE_SUFFIX ".so"
+#ifndef QJS_NATIVE_MODULE_SUFFIX
+#define QJS_NATIVE_MODULE_SUFFIX ".so"
 #endif
 
 #endif /* _WIN32 */
@@ -663,7 +663,7 @@ JSModuleDef *js_module_loader(JSContext *ctx,
 {
     JSModuleDef *m;
 
-    if (has_suffix(module_name, NATIVE_MODULE_SUFFIX)) {
+    if (has_suffix(module_name, QJS_NATIVE_MODULE_SUFFIX)) {
         m = js_module_loader_so(ctx, module_name);
     } else {
         size_t buf_len;
