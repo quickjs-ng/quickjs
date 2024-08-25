@@ -428,6 +428,10 @@ static inline int isfp16nan(uint16_t v) {
     return (v & 0x7FFF) > 0x7C00;
 }
 
+static inline int isfp16zero(uint16_t v) {
+    return (v & 0x7FFF) == 0;
+}
+
 /* XXX: should take an extra argument to pass slack information to the caller */
 typedef void *DynBufReallocFunc(void *opaque, void *ptr, size_t size);
 

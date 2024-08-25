@@ -50839,6 +50839,15 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValue this_val,
                     break;
                 }
             }
+        } else if (d == 0) {
+            // special case: includes also finds negative zero
+            const uint16_t *pv = p->u.array.u.fp16_ptr;
+            for (; k != stop; k += inc) {
+                if (isfp16zero(pv[k])) {
+                    res = k;
+                    break;
+                }
+            }
         } else if (hf = tofp16(d), d == fromfp16(hf)) {
             const uint16_t *pv = p->u.array.u.fp16_ptr;
             for (; k != stop; k += inc) {
