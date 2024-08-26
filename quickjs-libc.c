@@ -510,36 +510,24 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
         strcpy(filename + 2, module_name);
     }
     {
-        wchar_t wfilename[PATH_MAX + 1];
-        size_t n;
-        int error = dirent_mbstowcs_s(
-                &n,
-                wfilename,
-                PATH_MAX + 1,
-                filename,
-                PATH_MAX + 1);
+        hd = LoadLibraryA(filename);
         if (filename!= module_name)
             js_free(ctx, filename);
-        if (error) {
-            JS_ThrowReferenceError(ctx, "could not convert '%s' to wide character string", module_name);
-            goto fail;
-        }
-        hd = LoadLibraryW(wfilename);
         if (hd == NULL) {
-            JS_ThrowReferenceError(ctx, "could not load module filename '%s' as shared library: %s",
+            JS_ThrowReferenceError(ctx, "js_load_module '%s' error: %lu",
                                 module_name, GetLastError());
             goto fail;
         }
     }
     init = (JSInitModuleFunc *)GetProcAddress(hd, "js_init_module");
     if (!init) {
-        JS_ThrowReferenceError(ctx, "could not load module filename '%s': js_init_module not found",
+        JS_ThrowReferenceError(ctx, "js_init_module '%s' not found: %lu",
                                module_name, GetLastError());
         goto fail;
     }
     m = init(ctx, module_name);
     if (!m) {
-        JS_ThrowReferenceError(ctx, "could not load module filename '%s': initialization error",
+        JS_ThrowReferenceError(ctx, "js_call_module '%s' initialization error",
                                module_name);
     fail:
         if (hd != NULL) FreeLibrary(hd);
