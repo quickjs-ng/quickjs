@@ -495,7 +495,7 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
     JSModuleDef *m;
     HINSTANCE hd;
     JSInitModuleFunc *init;
-    char *filename;
+    char *filename = NULL;
     int len = strlen(module_name);
     if (len > 2 &&
         ((module_name[0] >= 'A' && module_name[0] <= 'Z') ||
@@ -519,7 +519,7 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
             goto fail;
         }
     }
-    init = (JSInitModuleFunc *)GetProcAddress(hd, "js_init_module");
+    init = (JSInitModuleFunc *)(void *)GetProcAddress(hd, "js_init_module");
     if (!init) {
         JS_ThrowReferenceError(ctx, "js_init_module '%s' not found: %lu",
                                module_name, GetLastError());
