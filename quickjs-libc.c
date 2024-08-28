@@ -496,28 +496,26 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
     HINSTANCE hd;
     JSInitModuleFunc *init;
     char *filename = NULL;
-    int len = strlen(module_name);
-    if (len > 2 &&
-        ((module_name[0] >= 'A' && module_name[0] <= 'Z') ||
-            (module_name[0] >= 'a' && module_name[0] <= 'z')) &&
-        module_name[1] == ':') {
+    size_t len = strlen(module_name);
+    JS_BOOL is_absolute = len > 2 && ((module_name[0] >= 'A' && module_name[0] <= 'Z') ||
+            (module_name[0] >= 'a' && module_name[0] <= 'z')) && module_name[1] == ':';
+    JS_BOOL is_relative = len > 2 && module_name[0] != '.' && (module_name[1] == '/' || module_name[1] == '\\');
+    if (is_absolute || is_relative) {
         filename = (char *)module_name;
-    } else if (len > 2 && module_name[0] != '.' && (module_name[1]!= '/' || module_name[1] == '\\')) {
-        filename = js_malloc(ctx, strlen(module_name) + 2 + 1);
+    } else {
+        filename = js_malloc(ctx, len + 2 + 1);
         if (!filename)
             return NULL;
         strcpy(filename, "./");
         strcpy(filename + 2, module_name);
     }
-    {
-        hd = LoadLibraryA(filename);
-        if (filename!= module_name)
-            js_free(ctx, filename);
-        if (hd == NULL) {
-            JS_ThrowReferenceError(ctx, "js_load_module '%s' error: %lu",
-                                module_name, GetLastError());
-            goto fail;
-        }
+    hd = LoadLibraryA(filename);
+    if (filename != module_name)
+        js_free(ctx, filename);
+    if (hd == NULL) {
+        JS_ThrowReferenceError(ctx, "js_load_module '%s' error: %lu",
+                               module_name, GetLastError());
+        goto fail;
     }
     init = (JSInitModuleFunc *)(void *)GetProcAddress(hd, "js_init_module");
     if (!init) {
