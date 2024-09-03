@@ -992,6 +992,23 @@ function test_proxy_is_array()
   }
 }
 
+function test_finalization_registry()
+{
+    {
+        let expected = {};
+        let actual;
+        let finrec = new FinalizationRegistry(v => { actual = v });
+        finrec.register({}, expected); // {} goes out of scope immediately
+        assert(actual, expected);
+    }
+    {
+        let actual;
+        let finrec = new FinalizationRegistry(v => { actual = v });
+        finrec.register({}, 42); // {} goes out of scope immediately
+        assert(actual, 42);
+    }
+}
+
 function test_cur_pc()
 {
     var a = [];
@@ -1059,6 +1076,7 @@ test_weak_set();
 test_generator();
 test_proxy_iter();
 test_proxy_is_array();
+test_finalization_registry();
 test_exception_source_pos();
 test_function_source_pos();
 test_exception_prepare_stack();
