@@ -499,7 +499,7 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
     size_t len = strlen(module_name);
     JS_BOOL is_absolute = len > 2 && ((module_name[0] >= 'A' && module_name[0] <= 'Z') ||
             (module_name[0] >= 'a' && module_name[0] <= 'z')) && module_name[1] == ':';
-    JS_BOOL is_relative = len > 2 && module_name[0] != '.' && (module_name[1] == '/' || module_name[1] == '\\');
+    JS_BOOL is_relative = len > 2 && module_name[0] == '.' && (module_name[1] == '/' || module_name[1] == '\\');
     if (is_absolute || is_relative) {
         filename = (char *)module_name;
     } else {
