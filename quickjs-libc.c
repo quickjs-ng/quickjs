@@ -528,7 +528,8 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
         JS_ThrowReferenceError(ctx, "js_call_module '%s' initialization error",
                                module_name);
     fail:
-        if (hd != NULL) FreeLibrary(hd);
+        if (hd != NULL)
+            FreeLibrary(hd);
         return NULL;
     }
     return m;
