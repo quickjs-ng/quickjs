@@ -34043,6 +34043,7 @@ typedef struct BCReaderState {
 } BCReaderState;
 
 #ifdef DUMP_READ_OBJECT
+#pragma GCC diagnostic ignored "-Wformat-zero-length"
 static void __attribute__((format(printf, 2, 3))) bc_read_trace(BCReaderState *s, const char *fmt, ...) {
     va_list ap;
     int i, n, n0;
@@ -34076,6 +34077,7 @@ static void __attribute__((format(printf, 2, 3))) bc_read_trace(BCReaderState *s
     if (strchr(fmt, '{'))
         s->level++;
 }
+#pragma GCC diagnostic warning "-Wformat-zero-length"
 #else
 #define bc_read_trace(...)
 #endif
