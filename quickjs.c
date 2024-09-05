@@ -26493,8 +26493,10 @@ JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m)
 
 #ifdef DUMP_MODULE_RESOLVE
 #define module_trace(ctx, ...) \
-   do if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) \
-       printf(__VA_ARGS__); while (0)
+   do { \
+     if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) \
+       printf(__VA_ARGS__); \
+   } while (0)
 #else
 #define module_trace(...)
 #endif
@@ -46338,8 +46340,10 @@ static void promise_reaction_data_free(JSRuntime *rt,
 
 #ifdef DUMP_PROMISE
 #define promise_trace(ctx, ...) \
-   do if (check_dump_flag(ctx->rt, DUMP_PROMISE)) \
-       printf(__VA_ARGS__); while (0)
+   do { \
+     if (check_dump_flag(ctx->rt, DUMP_PROMISE)) \
+       printf(__VA_ARGS__); \
+   } while (0)
 #else
 #define promise_trace(...)
 #endif
