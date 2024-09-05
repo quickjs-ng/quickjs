@@ -67,31 +67,30 @@
 #define CONFIG_ATOMICS
 #endif
 
-// Debug trace system:
-// uncomment one or more DUMP_XXX definition to produce debug output.
-// define the DUMP_XXX symbol as empty or 0 for unconditional output
-// otherwhise the debug output will be produced to the dump stream (currently
-// stdout) if qjs is invoked with -d<bitmask> with the corresponding bit set.
+// Debug trace system: the debug output will be produced to the dump stream (currently
+// stdout) if qjs is invoked with -D<bitmask> with the corresponding bit set.
 
-//#define DUMP_BYTECODE_FINAL   0x01  /* dump pass 3 final byte code */
-//#define DUMP_BYTECODE_PASS2   0x02  /* dump pass 2 code */
-//#define DUMP_BYTECODE_PASS1   0x04  /* dump pass 1 code */
-//#define DUMP_BYTECODE_HEX     0x10  /* dump bytecode in hex */
-//#define DUMP_BYTECODE_PC2LINE 0x20  /* dump line number table */
-//#define DUMP_BYTECODE_STACK   0x40  /* dump compute_stack_size */
-//#define DUMP_BYTECODE_STEP    0x80  /* dump executed bytecode */
-//#define DUMP_READ_OBJECT     0x100  /* dump the marshalled objects at load time */
-//#define DUMP_FREE            0x200  /* dump every object free */
-//#define DUMP_GC              0x400  /* dump the occurrence of the automatic GC */
-//#define DUMP_GC_FREE         0x800  /* dump objects freed by the GC */
-//#define DUMP_MODULE_RESOLVE 0x1000  /* dump module resolution steps */
-//#define DUMP_PROMISE        0x2000  /* dump promise steps */
-//#define DUMP_LEAKS          0x4000  /* dump leaked objects and strings in JS_FreeRuntime */
-//#define DUMP_ATOM_LEAKS     0x8000  /* dump leaked atoms in JS_FreeRuntime */
-//#define DUMP_MEM           0x10000  /* dump memory usage in JS_FreeRuntime */
-//#define DUMP_OBJECTS       0x20000  /* dump objects in JS_FreeRuntime */
-//#define DUMP_ATOMS         0x40000  /* dump atoms in JS_FreeRuntime */
-//#define DUMP_SHAPES        0x80000  /* dump shapes in JS_FreeRuntime */
+#ifndef NDEBUG
+#define DUMP_BYTECODE_FINAL   0x01  /* dump pass 3 final byte code */
+#define DUMP_BYTECODE_PASS2   0x02  /* dump pass 2 code */
+#define DUMP_BYTECODE_PASS1   0x04  /* dump pass 1 code */
+#define DUMP_BYTECODE_HEX     0x10  /* dump bytecode in hex */
+#define DUMP_BYTECODE_PC2LINE 0x20  /* dump line number table */
+#define DUMP_BYTECODE_STACK   0x40  /* dump compute_stack_size */
+#define DUMP_BYTECODE_STEP    0x80  /* dump executed bytecode */
+#define DUMP_READ_OBJECT     0x100  /* dump the marshalled objects at load time */
+#define DUMP_FREE            0x200  /* dump every object free */
+#define DUMP_GC              0x400  /* dump the occurrence of the automatic GC */
+#define DUMP_GC_FREE         0x800  /* dump objects freed by the GC */
+#define DUMP_MODULE_RESOLVE 0x1000  /* dump module resolution steps */
+#define DUMP_PROMISE        0x2000  /* dump promise steps */
+#define DUMP_LEAKS          0x4000  /* dump leaked objects and strings in JS_FreeRuntime */
+#define DUMP_ATOM_LEAKS     0x8000  /* dump leaked atoms in JS_FreeRuntime */
+#define DUMP_MEM           0x10000  /* dump memory usage in JS_FreeRuntime */
+#define DUMP_OBJECTS       0x20000  /* dump objects in JS_FreeRuntime */
+#define DUMP_ATOMS         0x40000  /* dump atoms in JS_FreeRuntime */
+#define DUMP_SHAPES        0x80000  /* dump shapes in JS_FreeRuntime */
+#endif
 
 //#define FORCE_GC_AT_MALLOC  /* test the GC by forcing it before each object allocation */
 
