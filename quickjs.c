@@ -46163,6 +46163,107 @@ static int JS_WriteSet(BCWriterState *s, struct JSMapState *map_state)
     return js_map_write(s, map_state, MAGIC_SET);
 }
 
+static int js_setlike_check(JSContext *ctx, JSValue setlike, int64_t *size)
+{
+    JSValue val;
+    double d;
+    BOOL ok;
+
+    if (JS_GetOpaque(setlike, JS_CLASS_SET))
+        return 0;
+    val = JS_GetProperty(ctx, setlike, JS_ATOM_size);
+    if (JS_IsException(val))
+        return -1;
+    if (JS_IsUndefined(val)) {
+        JS_ThrowTypeError(ctx, ".size is undefined");
+        return -1;
+    }
+    if (JS_ToFloat64Free(ctx, &d, val) < 0)
+        return -1;
+    if (isnan(d)) {
+        JS_ThrowTypeError(ctx, ".size is not a number");
+        return -1;
+    }
+    val = JS_GetProperty(ctx, setlike, JS_ATOM_has);
+    if (JS_IsException(val))
+        return -1;
+    if (JS_IsUndefined(val)) {
+        JS_ThrowTypeError(ctx, ".has is undefined");
+        return -1;
+    }
+    ok = JS_IsFunction(ctx, val);
+    JS_FreeValue(ctx, val);
+    if (!ok) {
+        JS_ThrowTypeError(ctx, ".has is not a function");
+        return -1;
+    }
+    *size = 0;
+    if (is_safe_integer(d))
+        *size = d;
+    return 0;
+}
+
+static JSValue js_set_union(JSContext *ctx, JSValue this_val,
+                            int argc, JSValue *argv)
+{
+    JSValue newset, item, iter, next, rv;
+    struct list_head *el;
+    JSMapRecord *mr;
+    JSMapState *s;
+    int64_t size;
+    BOOL done;
+
+    s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
+    if (!s)
+        return JS_EXCEPTION;
+    newset = js_map_constructor(ctx, JS_UNDEFINED, 0, NULL, MAGIC_SET);
+    if (JS_IsException(newset))
+        return JS_EXCEPTION;
+    iter = JS_UNDEFINED;
+    next = JS_UNDEFINED;
+    // note: has JS-observable side effects
+    if (js_setlike_check(ctx, argv[0], &size) < 0)
+        goto exception;
+    list_for_each(el, &s->records) {
+        mr = list_entry(el, JSMapRecord, link);
+        if (mr->empty)
+            continue;
+        rv = js_map_set(ctx, newset, 1, &mr->key, MAGIC_SET);
+        if (JS_IsException(rv))
+            goto exception;
+        JS_FreeValue(ctx, rv);
+    }
+    iter = JS_GetProperty(ctx, argv[0], JS_ATOM_keys);
+    if (JS_IsException(iter))
+        goto exception;
+    iter = JS_CallFree(ctx, iter, argv[0], 0, NULL);
+    if (JS_IsException(iter))
+        goto exception;
+    next = JS_GetProperty(ctx, iter, JS_ATOM_next);
+    if (JS_IsException(next))
+        goto exception;
+    for (;;) {
+        item = JS_IteratorNext(ctx, iter, next, 0, NULL, &done);
+        if (JS_IsException(item))
+            goto exception;
+        if (done) // item is JS_UNDEFINED
+            break;
+        rv = js_map_set(ctx, newset, 1, &item, MAGIC_SET);
+        JS_FreeValue(ctx, item);
+        if (JS_IsException(rv))
+            goto exception;
+        JS_FreeValue(ctx, rv);
+    }
+    JS_FreeValue(ctx, next);
+    JS_FreeValue(ctx, iter);
+    return newset;
+exception:
+    JS_FreeValue(ctx, next);
+    JS_FreeValue(ctx, iter);
+    JS_FreeValue(ctx, newset);
+    return JS_EXCEPTION;
+}
+
 static const JSCFunctionListEntry js_map_funcs[] = {
     JS_CFUNC_DEF("groupBy", 2, js_map_groupBy ),
     JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
@@ -46195,6 +46296,7 @@ static const JSCFunctionListEntry js_set_proto_funcs[] = {
     JS_CFUNC_MAGIC_DEF("clear", 0, js_map_clear, MAGIC_SET ),
     JS_CGETSET_MAGIC_DEF("size", js_map_get_size, NULL, MAGIC_SET ),
     JS_CFUNC_MAGIC_DEF("forEach", 1, js_map_forEach, MAGIC_SET ),
+    JS_CFUNC_DEF("union", 1, js_set_union ),
     JS_CFUNC_MAGIC_DEF("values", 0, js_create_map_iterator, (JS_ITERATOR_KIND_KEY << 2) | MAGIC_SET ),
     JS_ALIAS_DEF("keys", "values" ),
     JS_ALIAS_DEF("[Symbol.iterator]", "values" ),
