@@ -479,7 +479,58 @@ typedef JSModuleDef *(JSInitModuleFunc)(JSContext *ctx,
                                         const char *module_name);
 
 
-#if defined(_WIN32) || defined(__wasi__)
+#if defined(_WIN32)
+static JSModuleDef *js_module_loader_so(JSContext *ctx,
+                                        const char *module_name)
+{
+    JSModuleDef *m;
+    HINSTANCE hd;
+    JSInitModuleFunc *init;
+    // allocate enough space
+    char *filename = js_malloc(ctx, strlen(module_name) + 2 + 1 + 1);
+    if (!strchr(module_name, '/')) {
+        if (!filename) return NULL;
+        strcpy(filename, "./");
+        strcpy(filename + 2, module_name);
+    } else {
+        strcpy(filename, module_name);
+    }
+    // change the suffix of filename from `.so` to `.dll`
+    char *start = filename + strlen(filename) - 2;
+    const char suffix[4] = "dll";
+    strcpy(start, suffix);
+
+    hd = LoadLibrary(filename);
+    if (!hd) {
+        JS_ThrowReferenceError(
+            ctx, "could not load module filename '%s' as shared library",
+            filename);
+        goto fail;
+    }
+
+    init = (JSInitModuleFunc *)GetProcAddress(hd, "js_init_module");
+    if (!init) {
+        JS_ThrowReferenceError(
+            ctx, "could not load module filename '%s': js_init_module not found",
+            filename);
+        goto fail;
+    }
+
+    // module_name or filename?
+    m = init(ctx, module_name);
+    if (!m) {
+        JS_ThrowReferenceError(
+            ctx, "could not load module filename '%s': initialization error",
+            filename);
+    fail:
+        // free the filename
+        js_free(ctx, filename);
+        if (hd) FreeLibrary(hd);
+        return NULL;
+    }
+    return m;
+}
+#elif defined(__wasi__)
 static JSModuleDef *js_module_loader_so(JSContext *ctx,
                                         const char *module_name)
 {
