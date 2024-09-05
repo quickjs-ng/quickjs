@@ -21,7 +21,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "../quickjs.h"
+#include "quickjs.h"
+
+#if defined(_WIN32)
+#define FIB_API  __declspec(dllexport)
+#else
+#define FIB_API
+#endif
 
 #define countof(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -61,7 +67,7 @@ static int js_fib_init(JSContext *ctx, JSModuleDef *m)
 #define JS_INIT_MODULE js_init_module_fib
 #endif
 
-JSModuleDef *JS_INIT_MODULE(JSContext *ctx, const char *module_name)
+FIB_API JSModuleDef *JS_INIT_MODULE(JSContext *ctx, const char *module_name)
 {
     JSModuleDef *m;
     m = JS_NewCModule(ctx, module_name, js_fib_init);

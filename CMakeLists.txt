@@ -93,7 +93,7 @@ if(BUILD_SHARED_LIBS)
     message(STATUS "Building a shared library")
 endif()
 
-xoption(BUILD_EXAMPLES "Build examples" OFF)
+xoption(BUILD_EXAMPLES "Build examples" ON)
 xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
 xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
@@ -275,7 +275,7 @@ target_link_libraries(function_source ${qjs_libs})
 # Examples
 #
 
-if(BUILD_EXAMPLES AND NOT WIN32)
+if(BUILD_EXAMPLES) #  AND NOT WIN32
     add_executable(hello
         gen/hello.c
     )
@@ -292,12 +292,14 @@ if(BUILD_EXAMPLES AND NOT WIN32)
     target_compile_definitions(hello_module PRIVATE ${qjs_defines})
     target_link_libraries(hello_module ${qjs_libs})
 
-    if(NOT WIN32)
+    # if(NOT WIN32)
         add_library(fib MODULE examples/fib.c)
         set_target_properties(fib PROPERTIES
             PREFIX ""
             C_VISIBILITY_PRESET default
         )
+        target_include_directories(fib PRIVATE .)
+        target_link_libraries(fib PRIVATE qjs)
         target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
             target_link_options(fib PRIVATE -undefined dynamic_lookup)
@@ -308,11 +310,13 @@ if(BUILD_EXAMPLES AND NOT WIN32)
             PREFIX ""
             C_VISIBILITY_PRESET default
         )
+        target_include_directories(point PRIVATE .)
+        target_link_libraries(point PRIVATE qjs)
         target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
         if(APPLE)
             target_link_options(point PRIVATE -undefined dynamic_lookup)
         endif()
-    endif()
+    # endif()
 
     add_executable(test_fib
         examples/fib.c

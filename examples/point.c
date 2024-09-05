@@ -21,8 +21,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include "../quickjs.h"
+
+ /* point.c */
+#include "quickjs.h"
 #include <math.h>
+
+#if defined(_WIN32)
+#define POINT_API  __declspec(dllexport)
+#else
+#define POINT_API
+#endif
 
 #define countof(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -35,18 +43,18 @@ typedef struct {
 
 static JSClassID js_point_class_id;
 
-static void js_point_finalizer(JSRuntime *rt, JSValue val)
+static void js_point_finalizer(JSRuntime* rt, JSValue val)
 {
-    JSPointData *s = JS_GetOpaque(val, js_point_class_id);
+    JSPointData* s = JS_GetOpaque(val, js_point_class_id);
     /* Note: 's' can be NULL in case JS_SetOpaque() was not called */
     js_free_rt(rt, s);
 }
 
-static JSValue js_point_ctor(JSContext *ctx,
-                             JSValue new_target,
-                             int argc, JSValue *argv)
+static JSValue js_point_ctor(JSContext* ctx,
+    JSValue new_target,
+    int argc, JSValue* argv)
 {
-    JSPointData *s;
+    JSPointData* s;
     JSValue obj = JS_UNDEFINED;
     JSValue proto;
 
@@ -68,15 +76,15 @@ static JSValue js_point_ctor(JSContext *ctx,
         goto fail;
     JS_SetOpaque(obj, s);
     return obj;
- fail:
+fail:
     js_free(ctx, s);
     JS_FreeValue(ctx, obj);
     return JS_EXCEPTION;
 }
 
-static JSValue js_point_get_xy(JSContext *ctx, JSValue this_val, int magic)
+static JSValue js_point_get_xy(JSContext* ctx, JSValue this_val, int magic)
 {
-    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    JSPointData* s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
     if (!s)
         return JS_EXCEPTION;
     if (magic == 0)
@@ -85,9 +93,9 @@ static JSValue js_point_get_xy(JSContext *ctx, JSValue this_val, int magic)
         return JS_NewInt32(ctx, s->y);
 }
 
-static JSValue js_point_set_xy(JSContext *ctx, JSValue this_val, JSValue val, int magic)
+static JSValue js_point_set_xy(JSContext* ctx, JSValue this_val, JSValue val, int magic)
 {
-    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    JSPointData* s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
     int v;
     if (!s)
         return JS_EXCEPTION;
@@ -100,10 +108,10 @@ static JSValue js_point_set_xy(JSContext *ctx, JSValue this_val, JSValue val, in
     return JS_UNDEFINED;
 }
 
-static JSValue js_point_norm(JSContext *ctx, JSValue this_val,
-                             int argc, JSValue *argv)
+static JSValue js_point_norm(JSContext* ctx, JSValue this_val,
+    int argc, JSValue* argv)
 {
-    JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
+    JSPointData* s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
     if (!s)
         return JS_EXCEPTION;
     return JS_NewFloat64(ctx, sqrt((double)s->x * s->x + (double)s->y * s->y));
@@ -120,10 +128,10 @@ static const JSCFunctionListEntry js_point_proto_funcs[] = {
     JS_CFUNC_DEF("norm", 0, js_point_norm),
 };
 
-static int js_point_init(JSContext *ctx, JSModuleDef *m)
+static int js_point_init(JSContext* ctx, JSModuleDef* m)
 {
     JSValue point_proto, point_class;
-    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSRuntime* rt = JS_GetRuntime(ctx);
 
     /* create the Point class */
     JS_NewClassID(rt, &js_point_class_id);
@@ -141,9 +149,15 @@ static int js_point_init(JSContext *ctx, JSModuleDef *m)
     return 0;
 }
 
-JSModuleDef *js_init_module(JSContext *ctx, const char *module_name)
+#ifdef JS_SHARED_LIBRARY
+#define JS_INIT_MODULE js_init_module
+#else
+#define JS_INIT_MODULE js_init_module_fib
+#endif
+
+POINT_API JSModuleDef* JS_INIT_MODULE(JSContext* ctx, const char* module_name)
 {
-    JSModuleDef *m;
+    JSModuleDef* m;
     m = JS_NewCModule(ctx, module_name, js_point_init);
     if (!m)
         return NULL;
