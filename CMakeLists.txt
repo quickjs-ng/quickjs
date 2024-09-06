@@ -180,10 +180,8 @@ target_compile_definitions(qjs PRIVATE ${qjs_defines})
 if(NOT MSVC)
     target_compile_options(qjs PRIVATE -fPIC)
 endif()
-if(CMAKE_BUILD_TYPE MATCHES Debug OR DUMP_LEAKS)
-    target_compile_definitions(qjs PRIVATE
-        DUMP_LEAKS
-    )
+if(NOT MSVC)
+    target_compile_options(qjs PRIVATE -fPIC)
 endif()
 target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
