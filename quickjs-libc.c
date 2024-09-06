@@ -508,7 +508,7 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
         goto fail;
     }
 
-    init = (JSInitModuleFunc *)GetProcAddress(hd, "js_init_module");
+    init = (JSInitModuleFunc *)(uintptr_t)GetProcAddress(hd, "js_init_module");
     if (!init) {
         JS_ThrowReferenceError(
             ctx, "could not load module filename '%s': js_init_module not found",
