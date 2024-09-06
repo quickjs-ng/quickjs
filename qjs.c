@@ -321,6 +321,7 @@ int main(int argc, char **argv)
     struct trace_malloc_data trace_data = { NULL };
     int optind;
     char *expr = NULL;
+    char *dump_flags_str = NULL;
     int interactive = 0;
     int dump_memory = 0;
     int dump_flags = 0;
@@ -336,6 +337,9 @@ int main(int argc, char **argv)
 
     argv0 = (JSCFunctionListEntry)JS_PROP_STRING_DEF("argv0", argv[0],
                                                      JS_PROP_C_W_E);
+
+    dump_flags_str = getenv("QJS_DUMP_FLAGS");
+    dump_flags = dump_flags_str ? strtol(dump_flags_str, NULL, 16) : 0;
 
     /* cannot use getopt because we want to pass the command line to
        the script */
