@@ -998,14 +998,19 @@ function test_finalization_registry()
         let expected = {};
         let actual;
         let finrec = new FinalizationRegistry(v => { actual = v });
-        finrec.register({}, expected); // {} goes out of scope immediately
-        assert(actual, expected);
+        finrec.register({}, expected);
+        queueMicrotask(() => {
+            assert(actual, expected);
+        });
     }
     {
+        let expected = 42;
         let actual;
         let finrec = new FinalizationRegistry(v => { actual = v });
-        finrec.register({}, 42); // {} goes out of scope immediately
-        assert(actual, 42);
+        finrec.register({}, expected);
+        queueMicrotask(() => {
+            assert(actual, expected);
+        });
     }
 }
 
