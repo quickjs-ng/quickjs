@@ -177,6 +177,9 @@ endif()
 
 add_library(qjs ${qjs_sources})
 target_compile_definitions(qjs PRIVATE ${qjs_defines})
+if(NOT MSVC)
+    target_compile_options(qjs PRIVATE -fPIC)
+endif()
 if(CMAKE_BUILD_TYPE MATCHES Debug OR DUMP_LEAKS)
     target_compile_definitions(qjs PRIVATE
         DUMP_LEAKS
