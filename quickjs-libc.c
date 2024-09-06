@@ -58,11 +58,6 @@
 #define rmdir _rmdir
 #define getcwd _getcwd
 #define chdir _chdir
-
-#ifndef QJS_NATIVE_MODULE_SUFFIX
-#define QJS_NATIVE_MODULE_SUFFIX ".dll"
-#endif
-
 #else
 #include <sys/ioctl.h>
 #if !defined(__wasi__)
@@ -83,10 +78,6 @@ typedef sig_t sighandler_t;
 extern char **environ;
 #endif
 
-#ifndef QJS_NATIVE_MODULE_SUFFIX
-#define QJS_NATIVE_MODULE_SUFFIX ".so"
-#endif
-
 #endif /* _WIN32 */
 
 #if !defined(_WIN32) && !defined(__wasi__)
@@ -102,6 +93,10 @@ extern char **environ;
 #include "cutils.h"
 #include "list.h"
 #include "quickjs-libc.h"
+
+#ifndef QJS_NATIVE_MODULE_SUFFIX
+#define QJS_NATIVE_MODULE_SUFFIX ".so"
+#endif
 
 /* TODO:
    - add socket calls
