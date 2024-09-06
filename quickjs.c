@@ -248,6 +248,8 @@ struct JSRuntime {
     BOOL in_out_of_memory : 8;
     /* and likewise if inside Error.prepareStackTrace() */
     BOOL in_prepare_stack_trace : 8;
+    /* true if inside JS_FreeRuntime */
+    BOOL in_free : 8;
 
     struct JSStackFrame *current_stack_frame;
 
@@ -1812,6 +1814,8 @@ int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
     JSJobEntry *e;
     int i;
 
+    assert(!rt->in_free);
+
     e = js_malloc(ctx, sizeof(*e) + argc * sizeof(JSValue));
     if (!e)
         return -1;
@@ -1932,6 +1936,7 @@ void JS_FreeRuntime(JSRuntime *rt)
     struct list_head *el, *el1;
     int i;
 
+    rt->in_free = TRUE;
     JS_FreeValueRT(rt, rt->current_exception);
 
     list_for_each_safe(el, el1, &rt->job_list) {
@@ -53228,6 +53233,13 @@ static const JSClassShortDef js_finrec_class_def[] = {
     { JS_ATOM_FinalizationRegistry, js_finrec_finalizer, js_finrec_mark }, /* JS_CLASS_FINALIZATION_REGISTRY */
 };
 
+static JSValue js_finrec_job(JSContext *ctx, int argc, JSValue *argv)
+{
+    JSValue ret = JS_Call(ctx, argv[0], JS_UNDEFINED, 1, &argv[1]);
+    JS_FreeValue(ctx, argv[1]);
+    return ret;
+}
+
 void JS_AddIntrinsicWeakRef(JSContext *ctx)
 {
     JSRuntime *rt = ctx->rt;
@@ -53310,12 +53322,11 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             /**
              * During the GC sweep phase the held object might be collected first.
              */
-            if (!JS_IsObject(fre->held_val) || JS_IsLiveObject(frd->ctx->rt, fre->held_val)) {
-                JSValue func = js_dup(frd->cb);
-                JSValue ret = JS_Call(frd->ctx, func, JS_UNDEFINED, 1, &fre->held_val);
-                JS_FreeValueRT(rt, func);
-                JS_FreeValueRT(rt, ret);
-                JS_FreeValueRT(rt, fre->held_val);
+            if (!rt->in_free && (!JS_IsObject(fre->held_val) || JS_IsLiveObject(rt, fre->held_val))) {
+                JSValue args[2];
+                args[0] = frd->cb;
+                args[1] = fre->held_val;
+                JS_EnqueueJob(frd->ctx, js_finrec_job, 2, args);
             }
             JS_FreeValueRT(rt, fre->token);
             js_free_rt(rt, fre);
