@@ -26835,7 +26835,9 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
     }
 
 #ifdef DUMP_MODULE_RESOLVE
-    printf("js_inner_module_linking done\n");
+    if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) {
+        printf("js_inner_module_linking done\n");
+    }
 #endif
     return index;
  fail:
@@ -26849,7 +26851,7 @@ static int js_link_module(JSContext *ctx, JSModuleDef *m)
     JSModuleDef *stack_top, *m1;
 
 #ifdef DUMP_MODULE_RESOLVE
-    {
+    if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) {
         char buf1[ATOM_GET_STR_BUF_SIZE];
         printf("js_link_module '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
     }
@@ -27359,7 +27361,7 @@ static int js_inner_module_evaluation(JSContext *ctx, JSModuleDef *m,
     }
 
 #ifdef DUMP_MODULE_RESOLVE
-    {
+    if (check_dump_flag(ctx->rt, DUMP_MODULE_RESOLVE)) {
         char buf1[ATOM_GET_STR_BUF_SIZE];
         printf("js_inner_module_evaluation '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
     }
