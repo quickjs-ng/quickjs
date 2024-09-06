@@ -177,11 +177,6 @@ endif()
 
 add_library(qjs ${qjs_sources})
 target_compile_definitions(qjs PRIVATE ${qjs_defines})
-if(CMAKE_BUILD_TYPE MATCHES Debug OR DUMP_LEAKS)
-    target_compile_definitions(qjs PRIVATE
-        DUMP_LEAKS
-    )
-endif()
 target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
