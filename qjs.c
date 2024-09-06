@@ -306,6 +306,7 @@ void help(void)
            "    --std          make 'std' and 'os' available to the loaded script\n"
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
+           "-D  --dump-flags   flags for dumping debug data (see DUMP_* defines)\n"
            "    --memory-limit n       limit the memory usage to 'n' Kbytes\n"
            "    --stack-size n         limit the stack size to 'n' Kbytes\n"
            "    --unhandled-rejection  dump unhandled promise rejections\n"
