@@ -217,10 +217,4 @@ test262/test/staging/set-is-subset-table-receiver-cleared.js:25: TypeError: not 
 test262/test/staging/set-is-subset-table-receiver-cleared.js:25: strict mode: TypeError: not a function
 test262/test/staging/set-is-subset-table-transition.js:28: TypeError: not a function
 test262/test/staging/set-is-subset-table-transition.js:28: strict mode: TypeError: not a function
-test262/test/staging/set-methods/set-intersect-other-is-set-like.js:29: TypeError: not a function
-test262/test/staging/set-methods/set-intersect-other-is-set-like.js:29: strict mode: TypeError: not a function
-test262/test/staging/set-methods/set-intersection-other-is-map.js:22: TypeError: not a function
-test262/test/staging/set-methods/set-intersection-other-is-map.js:22: strict mode: TypeError: not a function
-test262/test/staging/set-methods/set-intersection-other-is-set.js:22: TypeError: not a function
-test262/test/staging/set-methods/set-intersection-other-is-set.js:22: strict mode: TypeError: not a function
 test262/test/staging/top-level-await/tla-hang-entry.js:10: TypeError: $DONE() not called
