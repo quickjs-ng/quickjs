@@ -230,52 +230,6 @@ test262/test/built-ins/Set/prototype/isSupersetOf/size-is-a-number.js:24: Test26
 test262/test/built-ins/Set/prototype/isSupersetOf/size-is-a-number.js:24: strict mode: Test262Error: GetSetRecord coerces size Expected SameValue(«0», «1») to be true
 test262/test/built-ins/Set/prototype/isSupersetOf/subclass-receiver-methods.js:32: TypeError: not a function
 test262/test/built-ins/Set/prototype/isSupersetOf/subclass-receiver-methods.js:32: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/add-not-called.js:21: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/add-not-called.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/allows-set-like-class.js:31: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/allows-set-like-class.js:31: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/allows-set-like-object.js:29: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/allows-set-like-object.js:29: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/builtins.js:9: Test262Error: Built-in objects must be extensible. Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/builtins.js:9: strict mode: Test262Error: Built-in objects must be extensible. Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-Map.js:16: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-Map.js:16: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-empty-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-empty-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-itself.js:12: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-itself.js:12: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-same-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-same-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/converts-negative-zero.js:25: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/converts-negative-zero.js:25: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/length.js:11: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/length.js:11: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/name.js:11: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/name.js:11: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/not-a-constructor.js:17: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Set/prototype/symmetricDifference/not-a-constructor.js:17: strict mode: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Set/prototype/symmetricDifference/require-internal-slot.js:17: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/require-internal-slot.js:17: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/result-order.js:15: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/result-order.js:15: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-array.js:21: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-array.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-class-mutation.js:44: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-class-mutation.js:44: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-class-order.js:66: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-class-order.js:66: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/size-is-a-number.js:24: Test262Error: GetSetRecord coerces size Expected SameValue(«0», «1») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/size-is-a-number.js:24: strict mode: Test262Error: GetSetRecord coerces size Expected SameValue(«0», «1») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass-receiver-methods.js:34: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass-receiver-methods.js:34: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass-symbol-species.js:20: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass-symbol-species.js:20: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass.js:15: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass.js:15: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/symmetricDifference.js:10: Test262Error: `typeof Set.prototype.symmetricDifference` is `'function'` Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/symmetricDifference.js:10: strict mode: Test262Error: `typeof Set.prototype.symmetricDifference` is `'function'` Expected SameValue(«undefined», «function») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true
