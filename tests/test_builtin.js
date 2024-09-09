@@ -40,15 +40,15 @@ function test_exception_prepare_stack()
         e = _e;
     }
 
+    Error.prepareStackTrace = undefined;
+
     assert(e.stack.length === 2);
     const f = e.stack[0];
     assert(f.getFunctionName() === 'test_exception_prepare_stack');
-    assert(f.getFileName() === 'tests/test_builtin.js');
+    assert(f.getFileName().endsWith('test_builtin.js'));
     assert(f.getLineNumber() === 38);
     assert(f.getColumnNumber() === 19);
     assert(!f.isNative());
-
-    Error.prepareStackTrace = undefined;
 }
 
 // Keep this at the top; it tests source positions.
@@ -68,16 +68,16 @@ function test_exception_stack_size_limit()
         e = _e;
     }
 
+    Error.stackTraceLimit = 10;
+    Error.prepareStackTrace = undefined;
+
     assert(e.stack.length === 1);
     const f = e.stack[0];
     assert(f.getFunctionName() === 'test_exception_stack_size_limit');
-    assert(f.getFileName() === 'tests/test_builtin.js');
+    assert(f.getFileName().endsWith('test_builtin.js'));
     assert(f.getLineNumber() === 66);
     assert(f.getColumnNumber() === 19);
     assert(!f.isNative());
-
-    Error.stackTraceLimit = 10;
-    Error.prepareStackTrace = undefined;
 }
 
 function assert(actual, expected, message) {
@@ -551,6 +551,9 @@ function test_typed_array()
     a = new Uint16Array(buffer, 2);
     a[0] = -1;
 
+    a = new Float16Array(buffer, 8, 1);
+    a[0] = 1;
+
     a = new Float32Array(buffer, 8, 1);
     a[0] = 1;
 
@@ -989,6 +992,28 @@ function test_proxy_is_array()
   }
 }
 
+function test_finalization_registry()
+{
+    {
+        let expected = {};
+        let actual;
+        let finrec = new FinalizationRegistry(v => { actual = v });
+        finrec.register({}, expected);
+        queueMicrotask(() => {
+            assert(actual, expected);
+        });
+    }
+    {
+        let expected = 42;
+        let actual;
+        let finrec = new FinalizationRegistry(v => { actual = v });
+        finrec.register({}, expected);
+        queueMicrotask(() => {
+            assert(actual, expected);
+        });
+    }
+}
+
 function test_cur_pc()
 {
     var a = [];
@@ -1056,6 +1081,7 @@ test_weak_set();
 test_generator();
 test_proxy_iter();
 test_proxy_is_array();
+test_finalization_registry();
 test_exception_source_pos();
 test_function_source_pos();
 test_exception_prepare_stack();
