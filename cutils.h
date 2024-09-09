@@ -30,10 +30,6 @@
 #include <inttypes.h>
 #include <math.h>
 
-#if defined(_WIN32)
-#include <windows.h>
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,6 +46,8 @@ extern "C" {
 #include <malloc.h>
 #elif defined(__FreeBSD__)
 #include <malloc_np.h>
+#elif defined(_WIN32)
+#include <windows.h>
 #endif
 #if !defined(_WIN32)
 #include <errno.h>
