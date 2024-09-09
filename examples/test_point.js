@@ -1,5 +1,8 @@
 /* example of JS module importing a C module */
-import { Point } from "./point.so";
+import * as os from "os";
+
+const isWin = os.platform === 'win32';
+const { Point } = await import(`./point.${isWin ? 'dll' : 'so'}`);
 
 function assert(b, str)
 {
