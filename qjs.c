@@ -140,6 +140,9 @@ static const JSCFunctionListEntry navigator_obj[] = {
 static const JSCFunctionListEntry global_obj[] = {
     JS_CFUNC_DEF("gc", 0, js_gc),
     JS_OBJECT_DEF("navigator", navigator_obj, countof(navigator_obj), JS_PROP_C_W_E),
+#if defined(__ASAN__) || defined(__UBSAN__)
+    JS_PROP_INT32_DEF("__running_with_sanitizer__", 1, JS_PROP_C_W_E ),
+#endif
 };
 
 /* also used to initialize the worker context */

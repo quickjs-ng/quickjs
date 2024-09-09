@@ -128,6 +128,9 @@ add_link_options(
 )
 elseif(CONFIG_UBSAN)
 message(STATUS "Building with UBSan")
+add_compile_definitions(
+    __UBSAN__=1
+)
 add_compile_options(
     -fsanitize=undefined
     -fno-sanitize-recover=all
