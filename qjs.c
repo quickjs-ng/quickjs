@@ -321,6 +321,7 @@ int main(int argc, char **argv)
 {
     JSRuntime *rt;
     JSContext *ctx;
+    JSValue ret;
     struct trace_malloc_data trace_data = { NULL };
     int optind;
     char *expr = NULL;
@@ -531,7 +532,11 @@ int main(int argc, char **argv)
         if (interactive) {
             js_std_eval_binary(ctx, qjsc_repl, qjsc_repl_size, 0);
         }
-        js_std_loop(ctx);
+        ret = js_std_loop(ctx);
+        if (!JS_IsUndefined(ret)) {
+            js_std_dump_error1(ctx, ret);
+            goto fail;
+        }
     }
 
     if (dump_memory) {
