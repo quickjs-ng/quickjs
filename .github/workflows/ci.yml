@@ -202,8 +202,8 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe -qd
       - name: test
         run: |
-          cp build\${{matrix.buildType}}\fib.so examples\
-          cp build\${{matrix.buildType}}\point.so examples\
+          cp build\${{matrix.buildType}}\fib.dll examples\
+          cp build\${{matrix.buildType}}\point.dll examples\
           build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\qjs.exe tests\test_bigint.js
@@ -237,8 +237,8 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe -qd
       - name: test
         run: |
-          cp build\${{matrix.buildType}}\fib.so examples\
-          cp build\${{matrix.buildType}}\point.so examples\
+          cp build\${{matrix.buildType}}\fib.dll examples\
+          cp build\${{matrix.buildType}}\point.dll examples\
           build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\qjs.exe tests\test_bigint.js
@@ -276,8 +276,8 @@ jobs:
           build\qjs.exe -qd
       - name: test
         run: |
-          cp build\fib.so examples\
-          cp build\point.so examples\
+          cp build\fib.dll examples\
+          cp build\point.dll examples\
           build\qjs.exe examples\test_fib.js
           build\qjs.exe examples\test_point.js
           build\qjs.exe tests\test_bigint.js
