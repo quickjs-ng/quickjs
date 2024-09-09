@@ -153,6 +153,7 @@ typedef struct JSThreadState {
     struct list_head port_list; /* list of JSWorkerMessageHandler.link */
     int eval_script_recurse; /* only used in the main thread */
     int64_t next_timer_id; /* for setTimeout / setInterval */
+    JSValue exc; /* current exception from one of our handlers */
     /* not used in the main thread */
     JSWorkerMessagePipe *recv_pipe, *send_pipe;
 } JSThreadState;
@@ -2133,51 +2134,61 @@ static JSValue js_os_sleepAsync(JSContext *ctx, JSValueConst this_val,
     return promise;
 }
 
-static void call_handler(JSContext *ctx, JSValue func)
+static int call_handler(JSContext *ctx, JSValue func)
 {
+    int r;
     JSValue ret, func1;
     /* 'func' might be destroyed when calling itself (if it frees the
        handler), so must take extra care */
     func1 = JS_DupValue(ctx, func);
     ret = JS_Call(ctx, func1, JS_UNDEFINED, 0, NULL);
     JS_FreeValue(ctx, func1);
-    if (JS_IsException(ret))
-        js_std_dump_error(ctx);
+    r = 0;
+    if (JS_IsException(ret)) {
+        JSRuntime *rt = JS_GetRuntime(ctx);
+        JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+        ts->exc = JS_GetException(ctx);
+        r = -1;
+    }
     JS_FreeValue(ctx, ret);
+    return r;
 }
 
-static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts)
+static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts, int *min_delay)
 {
     JSValue func;
     JSOSTimer *th;
-    int min_delay;
     int64_t cur_time, delay;
     struct list_head *el;
+    int r;
 
-    if (list_empty(&ts->os_timers))
-        return -1;
+    if (list_empty(&ts->os_timers)) {
+        *min_delay = -1;
+        return 0;
+    }
 
     cur_time = js__hrtime_ms();
-    min_delay = 10000;
+    *min_delay = INT32_MAX;
 
     list_for_each(el, &ts->os_timers) {
         th = list_entry(el, JSOSTimer, link);
         delay = th->timeout - cur_time;
         if (delay > 0) {
-            min_delay = min_int(min_delay, delay);
+            *min_delay = min_int(*min_delay, delay);
         } else {
+            *min_delay = 0;
             func = JS_DupValueRT(rt, th->func);
             if (th->repeats)
                 th->timeout = cur_time + th->delay;
             else
                 free_timer(rt, th);
-            call_handler(ctx, func);
+            r = call_handler(ctx, func);
             JS_FreeValueRT(rt, func);
-            return 0;
+            return r;
         }
     }
 
-    return min_delay;
+    return 0;
 }
 
 #if defined(_WIN32)
@@ -2192,7 +2203,8 @@ static int js_os_poll(JSContext *ctx)
 
     /* XXX: handle signals if useful */
 
-    min_delay = js_os_run_timers(rt, ctx, ts);
+    if (js_os_run_timers(rt, ctx, ts, &min_delay))
+        return -1;
     if (min_delay == 0)
         return 0; // expired timer
     if (min_delay < 0)
@@ -2221,9 +2233,8 @@ static int js_os_poll(JSContext *ctx)
             list_for_each(el, &ts->os_rw_handlers) {
                 rh = list_entry(el, JSOSRWHandler, link);
                 if (rh->fd == console_fd && !JS_IsNull(rh->rw_func[0])) {
-                    call_handler(ctx, rh->rw_func[0]);
+                    return call_handler(ctx, rh->rw_func[0]);
                     /* must stop because the list may have been modified */
-                    break;
                 }
             }
         }
@@ -2332,13 +2343,13 @@ static int js_os_poll(JSContext *ctx)
             mask = (uint64_t)1 << sh->sig_num;
             if (os_pending_signals & mask) {
                 os_pending_signals &= ~mask;
-                call_handler(ctx, sh->func);
-                return 0;
+                return call_handler(ctx, sh->func);
             }
         }
     }
 
-    min_delay = js_os_run_timers(rt, ctx, ts);
+    if (js_os_run_timers(rt, ctx, ts, &min_delay))
+        return -1;
     if (min_delay == 0)
         return 0; // expired timer
     if (min_delay < 0)
@@ -2379,15 +2390,13 @@ static int js_os_poll(JSContext *ctx)
             rh = list_entry(el, JSOSRWHandler, link);
             if (!JS_IsNull(rh->rw_func[0]) &&
                 FD_ISSET(rh->fd, &rfds)) {
-                call_handler(ctx, rh->rw_func[0]);
+                return call_handler(ctx, rh->rw_func[0]);
                 /* must stop because the list may have been modified */
-                goto done;
             }
             if (!JS_IsNull(rh->rw_func[1]) &&
                 FD_ISSET(rh->fd, &wfds)) {
-                call_handler(ctx, rh->rw_func[1]);
+                return call_handler(ctx, rh->rw_func[1]);
                 /* must stop because the list may have been modified */
-                goto done;
             }
         }
 
@@ -3879,6 +3888,7 @@ void js_std_init_handlers(JSRuntime *rt)
     init_list_head(&ts->port_list);
 
     ts->next_timer_id = 1;
+    ts->exc = JS_UNDEFINED;
 
     JS_SetRuntimeOpaque(rt, ts);
 
@@ -3938,7 +3948,7 @@ static void js_dump_obj(JSContext *ctx, FILE *f, JSValue val)
     }
 }
 
-static void js_std_dump_error1(JSContext *ctx, JSValue exception_val)
+void js_std_dump_error1(JSContext *ctx, JSValue exception_val)
 {
     JSValue val;
     BOOL is_error;
@@ -3974,8 +3984,10 @@ void js_std_promise_rejection_tracker(JSContext *ctx, JSValue promise,
 }
 
 /* main loop which calls the user JS callbacks */
-void js_std_loop(JSContext *ctx)
+JSValue js_std_loop(JSContext *ctx)
 {
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
     JSContext *ctx1;
     int err;
 
@@ -3985,7 +3997,8 @@ void js_std_loop(JSContext *ctx)
             err = JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx1);
             if (err <= 0) {
                 if (err < 0) {
-                    js_std_dump_error(ctx1);
+                    ts->exc = JS_GetException(ctx1);
+                    goto done;
                 }
                 break;
             }
@@ -3994,6 +4007,8 @@ void js_std_loop(JSContext *ctx)
         if (!os_poll_func || os_poll_func(ctx))
             break;
     }
+done:
+    return ts->exc;
 }
 
 /* Wait for a promise and execute pending jobs while waiting for
