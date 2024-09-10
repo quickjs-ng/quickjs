@@ -2352,7 +2352,7 @@ JSRuntime *JS_GetRuntime(JSContext *ctx)
 
 static void update_stack_limit(JSRuntime *rt)
 {
-#if defined(__wasi__)
+#if defined(__wasi__) || (defined(__ASAN__) && !defined(NDEBUG))
     rt->stack_limit = 0; /* no limit */
 #else
     if (rt->stack_size == 0) {
