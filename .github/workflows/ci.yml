@@ -106,10 +106,13 @@ jobs:
           elif [ "${{ matrix.config.configType }}" = "shared" ]; then
             echo "BUILD_SHARED_LIBS=ON" >> $GITHUB_ENV;
           elif [ "${{ matrix.config.configType }}" = "asan" ]; then
+            echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
             echo "CONFIG_ASAN=ON" >> $GITHUB_ENV;
           elif [ "${{ matrix.config.configType }}" = "ubsan" ]; then
+            echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
             echo "CONFIG_UBSAN=ON" >> $GITHUB_ENV;
           elif [ "${{ matrix.config.configType }}" = "msan" ]; then
+            echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
             echo "CONFIG_MSAN=ON" >> $GITHUB_ENV;
             echo "CC=clang" >> $GITHUB_ENV;
           fi
