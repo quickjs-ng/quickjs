@@ -96,6 +96,14 @@ extern char **environ;
 
 #define MAX_SAFE_INTEGER (((int64_t) 1 << 53) - 1)
 
+#ifndef QJS_NATIVE_MODULE_SUFFIX
+#ifdef _WIN32
+#define QJS_NATIVE_MODULE_SUFFIX ".dll"
+#else
+#define QJS_NATIVE_MODULE_SUFFIX ".so"
+#endif
+#endif
+
 /* TODO:
    - add socket calls
 */
@@ -483,7 +491,53 @@ typedef JSModuleDef *(JSInitModuleFunc)(JSContext *ctx,
                                         const char *module_name);
 
 
-#if defined(_WIN32) || defined(__wasi__)
+#if defined(_WIN32)
+static JSModuleDef *js_module_loader_so(JSContext *ctx,
+                                        const char *module_name)
+{
+    JSModuleDef *m;
+    HINSTANCE hd;
+    JSInitModuleFunc *init;
+    char *filename = NULL;
+    size_t len = strlen(module_name);
+    JS_BOOL is_absolute = len > 2 && ((module_name[0] >= 'A' && module_name[0] <= 'Z') ||
+            (module_name[0] >= 'a' && module_name[0] <= 'z')) && module_name[1] == ':';
+    JS_BOOL is_relative = len > 2 && module_name[0] == '.' && (module_name[1] == '/' || module_name[1] == '\\');
+    if (is_absolute || is_relative) {
+        filename = (char *)module_name;
+    } else {
+        filename = js_malloc(ctx, len + 2 + 1);
+        if (!filename)
+            return NULL;
+        strcpy(filename, "./");
+        strcpy(filename + 2, module_name);
+    }
+    hd = LoadLibraryA(filename);
+    if (filename != module_name)
+        js_free(ctx, filename);
+    if (hd == NULL) {
+        JS_ThrowReferenceError(ctx, "js_load_module '%s' error: %lu",
+                               module_name, GetLastError());
+        goto fail;
+    }
+    init = (JSInitModuleFunc *)(uintptr_t)GetProcAddress(hd, "js_init_module");
+    if (!init) {
+        JS_ThrowReferenceError(ctx, "js_init_module '%s' not found: %lu",
+                               module_name, GetLastError());
+        goto fail;
+    }
+    m = init(ctx, module_name);
+    if (!m) {
+        JS_ThrowReferenceError(ctx, "js_call_module '%s' initialization error",
+                               module_name);
+    fail:
+        if (hd != NULL)
+            FreeLibrary(hd);
+        return NULL;
+    }
+    return m;
+}
+#elif defined(__wasi__)
 static JSModuleDef *js_module_loader_so(JSContext *ctx,
                                         const char *module_name)
 {
@@ -599,7 +653,7 @@ JSModuleDef *js_module_loader(JSContext *ctx,
 {
     JSModuleDef *m;
 
-    if (has_suffix(module_name, ".so")) {
+    if (has_suffix(module_name, QJS_NATIVE_MODULE_SUFFIX)) {
         m = js_module_loader_so(ctx, module_name);
     } else {
         size_t buf_len;

@@ -273,7 +273,7 @@ target_link_libraries(function_source ${qjs_libs})
 # Examples
 #
 
-if(BUILD_EXAMPLES AND NOT WIN32)
+if(BUILD_EXAMPLES)
     add_executable(hello
         gen/hello.c
     )
@@ -290,27 +290,31 @@ if(BUILD_EXAMPLES AND NOT WIN32)
     target_compile_definitions(hello_module PRIVATE ${qjs_defines})
     target_link_libraries(hello_module ${qjs_libs})
 
-    if(NOT WIN32)
-        add_library(fib MODULE examples/fib.c)
-        set_target_properties(fib PROPERTIES
-            PREFIX ""
-            C_VISIBILITY_PRESET default
-        )
-        target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
-        if(APPLE)
-            target_link_options(fib PRIVATE -undefined dynamic_lookup)
-        endif()
-
-        add_library(point MODULE examples/point.c)
-        set_target_properties(point PROPERTIES
-            PREFIX ""
-            C_VISIBILITY_PRESET default
-        )
-        target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
-        if(APPLE)
-            target_link_options(point PRIVATE -undefined dynamic_lookup)
-        endif()
+    add_library(fib MODULE examples/fib.c)
+    set_target_properties(fib PROPERTIES
+        PREFIX ""
+        C_VISIBILITY_PRESET default
+    )
+    target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
+    if(WIN32)
+        target_link_libraries(fib ${qjs_libs})
     endif()
+    if(APPLE)
+        target_link_options(fib PRIVATE -undefined dynamic_lookup)
+    endif()
+
+    add_library(point MODULE examples/point.c)
+    set_target_properties(point PROPERTIES
+        PREFIX ""
+        C_VISIBILITY_PRESET default
+    )
+    target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
+    if(WIN32)
+        target_link_libraries(point ${qjs_libs})
+    endif()
+    if(APPLE)
+        target_link_options(point PRIVATE -undefined dynamic_lookup)
+        endif()
 
     add_executable(test_fib
         examples/fib.c

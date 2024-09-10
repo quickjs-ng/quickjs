@@ -141,7 +141,15 @@ static int js_point_init(JSContext *ctx, JSModuleDef *m)
     return 0;
 }
 
-JSModuleDef *js_init_module(JSContext *ctx, const char *module_name)
+#ifndef JS_EXTERN
+#ifdef _WIN32
+#define JS_EXTERN __declspec(dllexport)
+#else
+#define JS_EXTERN
+#endif
+#endif
+
+JS_EXTERN JSModuleDef *js_init_module(JSContext *ctx, const char *module_name)
 {
     JSModuleDef *m;
     m = JS_NewCModule(ctx, module_name, js_point_init);

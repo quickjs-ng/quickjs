@@ -61,7 +61,15 @@ static int js_fib_init(JSContext *ctx, JSModuleDef *m)
 #define JS_INIT_MODULE js_init_module_fib
 #endif
 
-JSModuleDef *JS_INIT_MODULE(JSContext *ctx, const char *module_name)
+#ifndef JS_EXTERN
+#ifdef _WIN32
+#define JS_EXTERN __declspec(dllexport)
+#else
+#define JS_EXTERN
+#endif
+#endif
+
+JS_EXTERN JSModuleDef *JS_INIT_MODULE(JSContext *ctx, const char *module_name)
 {
     JSModuleDef *m;
     m = JS_NewCModule(ctx, module_name, js_fib_init);
