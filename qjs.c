@@ -226,6 +226,29 @@ static void js_trace_malloc_init(struct trace_malloc_data *s)
     free(s->base = malloc(8));
 }
 
+static void *js_trace_calloc(JSMallocState *s, size_t count, size_t size)
+{
+    void *ptr;
+
+    /* Do not allocate zero bytes: behavior is platform dependent */
+    assert(count != 0 && size != 0);
+
+    if (size > 0)
+        if (unlikely(count != (count * size) / size))
+            return NULL;
+
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (unlikely(s->malloc_size + (count * size) > s->malloc_limit - 1))
+        return NULL;
+    ptr = calloc(count, size);
+    js_trace_malloc_printf(s, "C %zd %zd -> %p\n", count, size, ptr);
+    if (ptr) {
+        s->malloc_count++;
+        s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    }
+    return ptr;
+}
+
 static void *js_trace_malloc(JSMallocState *s, size_t size)
 {
     void *ptr;
@@ -288,6 +311,7 @@ static void *js_trace_realloc(JSMallocState *s, void *ptr, size_t size)
 }
 
 static const JSMallocFunctions trace_mf = {
+    js_trace_calloc,
     js_trace_malloc,
     js_trace_free,
     js_trace_realloc,

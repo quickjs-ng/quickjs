@@ -1378,6 +1378,11 @@ static size_t js_malloc_usable_size_unknown(const void *ptr)
     return 0;
 }
 
+void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size)
+{
+    return rt->mf.js_calloc(&rt->malloc_state, count, size);
+}
+
 void *js_malloc_rt(JSRuntime *rt, size_t size)
 {
     return rt->mf.js_malloc(&rt->malloc_state, size);
@@ -1404,13 +1409,16 @@ size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr)
     return rt->mf.js_malloc_usable_size(ptr);
 }
 
+/**
+ * This used to be implemented as malloc + memset, but using calloc
+ * yields better performance in initial, bursty allocations, something useful
+ * for QuickJS.
+ *
+ * More information: https://github.com/quickjs-ng/quickjs/pull/519
+ */
 void *js_mallocz_rt(JSRuntime *rt, size_t size)
 {
-    void *ptr;
-    ptr = js_malloc_rt(rt, size);
-    if (!ptr)
-        return NULL;
-    return memset(ptr, 0, size);
+    return js_calloc_rt(rt, 1, size);
 }
 
 /* called by libbf */
@@ -1418,6 +1426,18 @@ static void *js_bf_realloc(void *opaque, void *ptr, size_t size)
 {
     JSRuntime *rt = opaque;
     return js_realloc_rt(rt, ptr, size);
+}
+
+/* Throw out of memory in case of error */
+void *js_calloc(JSContext *ctx, size_t count, size_t size)
+{
+    void *ptr;
+    ptr = js_calloc_rt(ctx->rt, count, size);
+    if (unlikely(!ptr)) {
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+    return ptr;
 }
 
 /* Throw out of memory in case of error */
@@ -1631,10 +1651,9 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     ms.opaque = opaque;
     ms.malloc_limit = 0;
 
-    rt = mf->js_malloc(&ms, sizeof(JSRuntime));
+    rt = mf->js_calloc(&ms, 1, sizeof(JSRuntime));
     if (!rt)
         return NULL;
-    memset(rt, 0, sizeof(*rt));
     rt->mf = *mf;
     if (!rt->mf.js_malloc_usable_size) {
         /* use dummy function if none provided */
@@ -1699,6 +1718,30 @@ void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque)
     rt->user_opaque = opaque;
 }
 
+static void *js_def_calloc(JSMallocState *s, size_t count, size_t size)
+{
+    void *ptr;
+
+    /* Do not allocate zero bytes: behavior is platform dependent */
+    assert(count != 0 && size != 0);
+
+    if (size > 0)
+        if (unlikely(count != (count * size) / size))
+            return NULL;
+
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (unlikely(s->malloc_size + (count * size) > s->malloc_limit - 1))
+        return NULL;
+
+    ptr = calloc(count, size);
+    if (!ptr)
+        return NULL;
+
+    s->malloc_count++;
+    s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    return ptr;
+}
+
 static void *js_def_malloc(JSMallocState *s, size_t size)
 {
     void *ptr;
@@ -1758,6 +1801,7 @@ static void *js_def_realloc(JSMallocState *s, void *ptr, size_t size)
 }
 
 static const JSMallocFunctions def_malloc_funcs = {
+    js_def_calloc,
     js_def_malloc,
     js_def_free,
     js_def_realloc,
