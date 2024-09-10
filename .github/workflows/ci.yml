@@ -218,6 +218,7 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe tests\test_std.js
           build\${{matrix.buildType}}\qjs.exe tests\test_worker.js
           build\${{matrix.buildType}}\qjs.exe tests\test_queue_microtask.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_module_detect.js
           build\${{matrix.buildType}}\function_source.exe
 
   windows-clang:
@@ -253,6 +254,7 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe tests\test_std.js
           build\${{matrix.buildType}}\qjs.exe tests\test_worker.js
           build\${{matrix.buildType}}\qjs.exe tests\test_queue_microtask.js
+          build\${{matrix.buildType}}\qjs.exe tests\test_module_detect.js
           build\${{matrix.buildType}}\function_source.exe
 
   windows-ninja:
@@ -292,6 +294,7 @@ jobs:
           build\qjs.exe tests\test_std.js
           build\qjs.exe tests\test_worker.js
           build\qjs.exe tests\test_queue_microtask.js
+          build\qjs.exe tests\test_module_detect.js
           build\function_source.exe
 
   windows-mingw:

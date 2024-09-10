@@ -20007,6 +20007,9 @@ static int simple_next_token(const uint8_t **pp, BOOL no_line_terminator)
                          p[2] == 'c' && p[3] == 't' && p[4] == 'i' &&
                          p[5] == 'o' && p[6] == 'n' && !lre_js_is_ident_next(p[7])) {
                     return TOK_FUNCTION;
+                } else if (c == 'a' && p[0] == 'w' && p[1] == 'a' &&
+                         p[2] == 'i' && p[3] == 't' && !lre_js_is_ident_next(p[4])) {
+                    return TOK_AWAIT;
                 }
                 return TOK_IDENT;
             }
@@ -20048,8 +20051,11 @@ static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end)
 /* return true if 'input' contains the source of a module
    (heuristic). 'input' must be a zero terminated.
 
-   Heuristic: skip comments and expect 'import' keyword not followed
-   by '(' or '.' or export keyword.
+   Heuristic:
+     - Skip comments
+     - Expect 'import' keyword not followed by '(' or '.'
+     - Expect 'export' keyword
+     - Expect 'await' keyword 
 */
 /* input is pure ASCII or UTF-8 encoded source code */
 BOOL JS_DetectModule(const char *input, size_t input_len)
@@ -20062,6 +20068,7 @@ BOOL JS_DetectModule(const char *input, size_t input_len)
     case TOK_IMPORT:
         tok = simple_next_token(&p, FALSE);
         return (tok != '.' && tok != '(');
+    case TOK_AWAIT:
     case TOK_EXPORT:
         return TRUE;
     default:
