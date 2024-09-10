@@ -291,6 +291,7 @@ typedef struct JSMallocState {
 } JSMallocState;
 
 typedef struct JSMallocFunctions {
+    void *(*js_calloc)(JSMallocState *s, size_t count, size_t size);
     void *(*js_malloc)(JSMallocState *s, size_t size);
     void (*js_free)(JSMallocState *s, void *ptr);
     void *(*js_realloc)(JSMallocState *s, void *ptr, size_t size);
@@ -358,12 +359,14 @@ JS_EXTERN JS_BOOL JS_IsSameValueZero(JSContext *ctx, JSValue op1, JSValue op2);
 JS_EXTERN JSValue js_string_codePointRange(JSContext *ctx, JSValue this_val,
                                  int argc, JSValue *argv);
 
+JS_EXTERN void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size);
 JS_EXTERN void *js_malloc_rt(JSRuntime *rt, size_t size);
 JS_EXTERN void js_free_rt(JSRuntime *rt, void *ptr);
 JS_EXTERN void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size);
 JS_EXTERN size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr);
 JS_EXTERN void *js_mallocz_rt(JSRuntime *rt, size_t size);
 
+JS_EXTERN void *js_calloc(JSContext *ctx, size_t count, size_t size);
 JS_EXTERN void *js_malloc(JSContext *ctx, size_t size);
 JS_EXTERN void js_free(JSContext *ctx, void *ptr);
 JS_EXTERN void *js_realloc(JSContext *ctx, void *ptr, size_t size);
