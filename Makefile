@@ -88,6 +88,7 @@ test: $(QJS)
 	$(QJS) tests/test_std.js
 	$(QJS) tests/test_worker.js
 	$(QJS) tests/test_queue_microtask.js
+	$(QJS) tests/test_module_detect.js
 
 testconv: $(BUILD_DIR)/test_conv
 	$(BUILD_DIR)/test_conv
