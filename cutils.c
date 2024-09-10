@@ -37,7 +37,9 @@
 #undef NANOSEC
 #define NANOSEC ((uint64_t) 1e9)
 
+#ifdef __GNUC__
 #pragma GCC visibility push(default)
+#endif
 
 void pstrcpy(char *buf, int buf_size, const char *str)
 {
@@ -1404,4 +1406,6 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
 
 #endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
 
+#ifdef __GNUC__
 #pragma GCC visibility pop
+#endif

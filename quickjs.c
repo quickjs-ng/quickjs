@@ -67,6 +67,10 @@
 #define CONFIG_ATOMICS
 #endif
 
+#ifndef __GNUC__
+#define __extension__
+#endif
+
 // Debug trace system: the debug output will be produced to the dump stream (currently
 // stdout) if qjs is invoked with -D<bitmask> with the corresponding bit set.
 
