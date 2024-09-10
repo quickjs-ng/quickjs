@@ -169,7 +169,7 @@ list(APPEND qjs_defines _GNU_SOURCE)
 if(WIN32)
     list(APPEND qjs_defines WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0602)
 endif()
-list(APPEND qjs_libs qjs ${CMAKE_DL_LIBS})
+list(APPEND qjs_libs ${CMAKE_DL_LIBS})
 find_package(Threads)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
     list(APPEND qjs_libs ${CMAKE_THREAD_LIBS_INIT})
@@ -184,6 +184,7 @@ target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+target_link_libraries(qjs PUBLIC ${qjs_libs})
 
 if(EMSCRIPTEN)
     add_executable(qjs_wasm ${qjs_sources})
@@ -212,7 +213,7 @@ add_executable(qjsc
 )
 add_qjs_libc_if_needed(qjsc)
 target_compile_definitions(qjsc PRIVATE ${qjs_defines})
-target_link_libraries(qjsc ${qjs_libs})
+target_link_libraries(qjsc qjs)
 
 
 # QuickJS CLI
@@ -227,7 +228,7 @@ set_target_properties(qjs_exe PROPERTIES
     OUTPUT_NAME "qjs"
 )
 target_compile_definitions(qjs_exe PRIVATE ${qjs_defines})
-target_link_libraries(qjs_exe ${qjs_libs})
+target_link_libraries(qjs_exe qjs)
 if(BUILD_STATIC_QJS_EXE OR MINGW)
     target_link_options(qjs_exe PRIVATE -static)
     if(MINGW)
@@ -249,7 +250,7 @@ if(NOT WIN32 AND NOT EMSCRIPTEN)
     )
     add_qjs_libc_if_needed(run-test262)
     target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
-    target_link_libraries(run-test262 ${qjs_libs})
+    target_link_libraries(run-test262 qjs)
 endif()
 
 # Unicode generator
@@ -268,7 +269,7 @@ add_executable(function_source
 add_qjs_libc_if_needed(function_source)
 target_include_directories(function_source PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(function_source PRIVATE ${qjs_defines})
-target_link_libraries(function_source ${qjs_libs})
+target_link_libraries(function_source qjs)
 
 # Examples
 #
@@ -280,7 +281,7 @@ if(BUILD_EXAMPLES)
     add_qjs_libc_if_needed(hello)
     target_include_directories(hello PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(hello PRIVATE ${qjs_defines})
-    target_link_libraries(hello ${qjs_libs})
+    target_link_libraries(hello qjs)
 
     add_executable(hello_module
         gen/hello_module.c
@@ -288,7 +289,7 @@ if(BUILD_EXAMPLES)
     add_qjs_libc_if_needed(hello_module)
     target_include_directories(hello_module PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(hello_module PRIVATE ${qjs_defines})
-    target_link_libraries(hello_module ${qjs_libs})
+    target_link_libraries(hello_module qjs)
 
     add_library(fib MODULE examples/fib.c)
     set_target_properties(fib PROPERTIES
@@ -297,9 +298,8 @@ if(BUILD_EXAMPLES)
     )
     target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
     if(WIN32)
-        target_link_libraries(fib ${qjs_libs})
-    endif()
-    if(APPLE)
+        target_link_libraries(fib qjs)
+    elseif(APPLE)
         target_link_options(fib PRIVATE -undefined dynamic_lookup)
     endif()
 
@@ -310,11 +310,10 @@ if(BUILD_EXAMPLES)
     )
     target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
     if(WIN32)
-        target_link_libraries(point ${qjs_libs})
-    endif()
-    if(APPLE)
+        target_link_libraries(point qjs)
+    elseif(APPLE)
         target_link_options(point PRIVATE -undefined dynamic_lookup)
-        endif()
+    endif()
 
     add_executable(test_fib
         examples/fib.c
@@ -323,7 +322,7 @@ if(BUILD_EXAMPLES)
     add_qjs_libc_if_needed(test_fib)
     target_include_directories(test_fib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(test_fib PRIVATE ${qjs_defines})
-    target_link_libraries(test_fib ${qjs_libs})
+    target_link_libraries(test_fib qjs)
 endif()
 
 add_executable(test_conv
