@@ -297,10 +297,9 @@ if(BUILD_EXAMPLES)
         C_VISIBILITY_PRESET default
     )
     target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
-    if(WIN32)
-        target_link_libraries(fib ${qjs_libs})
-    endif()
-    if(APPLE)
+    if(MSVC)
+        target_link_libraries(fib qjs)
+    elseif(APPLE)
         target_link_options(fib PRIVATE -undefined dynamic_lookup)
     endif()
 
@@ -310,12 +309,11 @@ if(BUILD_EXAMPLES)
         C_VISIBILITY_PRESET default
     )
     target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
-    if(WIN32)
-        target_link_libraries(point ${qjs_libs})
-    endif()
-    if(APPLE)
+    if(MSVC)
+        target_link_libraries(point qjs)
+    elseif(APPLE)
         target_link_options(point PRIVATE -undefined dynamic_lookup)
-        endif()
+    endif()
 
     add_executable(test_fib
         examples/fib.c
