@@ -288,14 +288,14 @@ static void *js_trace_realloc(JSMallocState *s, void *ptr, size_t size)
             return NULL;
         return js_trace_malloc(s, size);
     }
-    old_size = js__malloc_usable_size(ptr);
-    if (size == 0) {
-        js_trace_malloc_printf(s, "R %zd %p\n", size, ptr);
-        s->malloc_count--;
-        s->malloc_size -= old_size + MALLOC_OVERHEAD;
-        free(ptr);
+
+    if (unlikely(size == 0)) {
+        js_trace_free(s, ptr);
         return NULL;
     }
+
+    old_size = js__malloc_usable_size(ptr);
+
     /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
     if (s->malloc_size + size - old_size > s->malloc_limit - 1)
         return NULL;
