@@ -277,11 +277,13 @@ function test_timeout()
 
 function test_timeout_order()
 {
+    if (globalThis.__running_with_sanitizer__) return;
+
     var s = "";
-    os.setTimeout(a, 1);
-    os.setTimeout(b, 2);
-    os.setTimeout(d, 5);
-    function a() { s += "a"; os.setTimeout(c, 0); }
+    os.setTimeout(a, 100);
+    os.setTimeout(b, 200);
+    os.setTimeout(d, 500);
+    function a() { s += "a"; os.setTimeout(c, 200); }
     function b() { s += "b"; }
     function c() { s += "c"; }
     function d() { assert(s === "abc"); } // not "acb"

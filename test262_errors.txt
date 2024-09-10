@@ -72,52 +72,6 @@ test262/test/built-ins/RegExp/property-escapes/generated/XID_Start.js:16: Test26
 test262/test/built-ins/RegExp/property-escapes/generated/XID_Start.js:16: strict mode: Test262Error: `\p{XID_Start}` should match U+02EBF0 (`𮯰`)
 test262/test/built-ins/RegExp/unicode_full_case_folding.js:20: Test262Error: \u0390 does not match \u1fd3
 test262/test/built-ins/RegExp/unicode_full_case_folding.js:20: strict mode: Test262Error: \u0390 does not match \u1fd3
-test262/test/built-ins/Set/prototype/intersection/add-not-called.js:21: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/add-not-called.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/allows-set-like-class.js:32: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/allows-set-like-class.js:32: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/allows-set-like-object.js:30: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/allows-set-like-object.js:30: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/builtins.js:9: Test262Error: Built-in objects must be extensible. Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Set/prototype/intersection/builtins.js:9: strict mode: Test262Error: Built-in objects must be extensible. Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Set/prototype/intersection/combines-Map.js:16: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-Map.js:16: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-empty-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-empty-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-itself.js:12: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-itself.js:12: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-same-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-same-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/combines-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/converts-negative-zero.js:25: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/converts-negative-zero.js:25: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/intersection.js:10: Test262Error: `typeof Set.prototype.intersection` is `'function'` Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/intersection/intersection.js:10: strict mode: Test262Error: `typeof Set.prototype.intersection` is `'function'` Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/intersection/length.js:11: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/intersection/length.js:11: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/intersection/name.js:11: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/intersection/name.js:11: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/intersection/not-a-constructor.js:17: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Set/prototype/intersection/not-a-constructor.js:17: strict mode: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Set/prototype/intersection/require-internal-slot.js:17: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/intersection/require-internal-slot.js:17: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/intersection/result-order.js:15: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/result-order.js:15: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/set-like-array.js:23: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/set-like-array.js:23: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/set-like-class-mutation.js:44: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/set-like-class-mutation.js:44: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/set-like-class-order.js:67: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/set-like-class-order.js:67: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/size-is-a-number.js:24: Test262Error: GetSetRecord coerces size Expected SameValue(«0», «1») to be true
-test262/test/built-ins/Set/prototype/intersection/size-is-a-number.js:24: strict mode: Test262Error: GetSetRecord coerces size Expected SameValue(«0», «1») to be true
-test262/test/built-ins/Set/prototype/intersection/subclass-receiver-methods.js:34: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/subclass-receiver-methods.js:34: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/subclass-symbol-species.js:20: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/subclass-symbol-species.js:20: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/subclass.js:15: TypeError: not a function
-test262/test/built-ins/Set/prototype/intersection/subclass.js:15: strict mode: TypeError: not a function
 test262/test/built-ins/Set/prototype/isDisjointFrom/allows-set-like-class.js:30: TypeError: not a function
 test262/test/built-ins/Set/prototype/isDisjointFrom/allows-set-like-class.js:30: strict mode: TypeError: not a function
 test262/test/built-ins/Set/prototype/isDisjointFrom/allows-set-like-object.js:28: TypeError: not a function
@@ -230,52 +184,6 @@ test262/test/built-ins/Set/prototype/isSupersetOf/size-is-a-number.js:24: Test26
 test262/test/built-ins/Set/prototype/isSupersetOf/size-is-a-number.js:24: strict mode: Test262Error: GetSetRecord coerces size Expected SameValue(«0», «1») to be true
 test262/test/built-ins/Set/prototype/isSupersetOf/subclass-receiver-methods.js:32: TypeError: not a function
 test262/test/built-ins/Set/prototype/isSupersetOf/subclass-receiver-methods.js:32: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/add-not-called.js:21: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/add-not-called.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/allows-set-like-class.js:31: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/allows-set-like-class.js:31: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/allows-set-like-object.js:29: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/allows-set-like-object.js:29: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/builtins.js:9: Test262Error: Built-in objects must be extensible. Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/builtins.js:9: strict mode: Test262Error: Built-in objects must be extensible. Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-Map.js:16: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-Map.js:16: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-empty-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-empty-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-itself.js:12: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-itself.js:12: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-same-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-same-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-sets.js:13: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/combines-sets.js:13: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/converts-negative-zero.js:25: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/converts-negative-zero.js:25: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/length.js:11: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/length.js:11: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/name.js:11: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/name.js:11: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/not-a-constructor.js:17: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Set/prototype/symmetricDifference/not-a-constructor.js:17: strict mode: Test262Error: isConstructor invoked with a non-function value
-test262/test/built-ins/Set/prototype/symmetricDifference/require-internal-slot.js:17: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/require-internal-slot.js:17: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/result-order.js:15: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/result-order.js:15: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-array.js:21: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-array.js:21: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-class-mutation.js:44: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-class-mutation.js:44: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-class-order.js:66: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/set-like-class-order.js:66: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/size-is-a-number.js:24: Test262Error: GetSetRecord coerces size Expected SameValue(«0», «1») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/size-is-a-number.js:24: strict mode: Test262Error: GetSetRecord coerces size Expected SameValue(«0», «1») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass-receiver-methods.js:34: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass-receiver-methods.js:34: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass-symbol-species.js:20: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass-symbol-species.js:20: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass.js:15: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/subclass.js:15: strict mode: TypeError: not a function
-test262/test/built-ins/Set/prototype/symmetricDifference/symmetricDifference.js:10: Test262Error: `typeof Set.prototype.symmetricDifference` is `'function'` Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Set/prototype/symmetricDifference/symmetricDifference.js:10: strict mode: Test262Error: `typeof Set.prototype.symmetricDifference` is `'function'` Expected SameValue(«undefined», «function») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true
@@ -309,10 +217,4 @@ test262/test/staging/set-is-subset-table-receiver-cleared.js:25: TypeError: not 
 test262/test/staging/set-is-subset-table-receiver-cleared.js:25: strict mode: TypeError: not a function
 test262/test/staging/set-is-subset-table-transition.js:28: TypeError: not a function
 test262/test/staging/set-is-subset-table-transition.js:28: strict mode: TypeError: not a function
-test262/test/staging/set-methods/set-intersect-other-is-set-like.js:29: TypeError: not a function
-test262/test/staging/set-methods/set-intersect-other-is-set-like.js:29: strict mode: TypeError: not a function
-test262/test/staging/set-methods/set-intersection-other-is-map.js:22: TypeError: not a function
-test262/test/staging/set-methods/set-intersection-other-is-map.js:22: strict mode: TypeError: not a function
-test262/test/staging/set-methods/set-intersection-other-is-set.js:22: TypeError: not a function
-test262/test/staging/set-methods/set-intersection-other-is-set.js:22: strict mode: TypeError: not a function
 test262/test/staging/top-level-await/tla-hang-entry.js:10: TypeError: $DONE() not called
