@@ -40,6 +40,10 @@ extern "C" {
 #define js_force_inline       inline __attribute__((always_inline))
 #define __js_printf_like(f, a)   __attribute__((format(printf, f, a)))
 #define JS_EXTERN __attribute__((visibility("default")))
+#elif defined(_WIN32)
+#define js_force_inline  inline
+#define __js_printf_like(a, b)
+#define JS_EXTERN __declspec(dllexport)
 #else
 #define js_force_inline  inline
 #define __js_printf_like(a, b)
@@ -1023,7 +1027,6 @@ JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 
 JS_EXTERN const char* JS_GetVersion(void);
 
-#undef JS_EXTERN
 #undef js_force_inline
 #undef __js_printf_like
 

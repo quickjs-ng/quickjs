@@ -94,12 +94,10 @@ extern char **environ;
 #include "list.h"
 #include "quickjs-libc.h"
 
+#ifndef QJS_NATIVE_MODULE_SUFFIX
 #ifdef _WIN32
-#ifndef QJS_NATIVE_MODULE_SUFFIX
 #define QJS_NATIVE_MODULE_SUFFIX ".dll"
-#endif
 #else
-#ifndef QJS_NATIVE_MODULE_SUFFIX
 #define QJS_NATIVE_MODULE_SUFFIX ".so"
 #endif
 #endif
