@@ -283,18 +283,11 @@ typedef JSValue JSCFunction(JSContext *ctx, JSValue this_val, int argc, JSValue 
 typedef JSValue JSCFunctionMagic(JSContext *ctx, JSValue this_val, int argc, JSValue *argv, int magic);
 typedef JSValue JSCFunctionData(JSContext *ctx, JSValue this_val, int argc, JSValue *argv, int magic, JSValue *func_data);
 
-typedef struct JSMallocState {
-    size_t malloc_count;
-    size_t malloc_size;
-    size_t malloc_limit;
-    void *opaque; /* user opaque */
-} JSMallocState;
-
 typedef struct JSMallocFunctions {
-    void *(*js_calloc)(JSMallocState *s, size_t count, size_t size);
-    void *(*js_malloc)(JSMallocState *s, size_t size);
-    void (*js_free)(JSMallocState *s, void *ptr);
-    void *(*js_realloc)(JSMallocState *s, void *ptr, size_t size);
+    void *(*js_calloc)(void *opaque, size_t count, size_t size);
+    void *(*js_malloc)(void *opaque, size_t size);
+    void (*js_free)(void *opaque, void *ptr);
+    void *(*js_realloc)(void *opaque, void *ptr, size_t size);
     size_t (*js_malloc_usable_size)(const void *ptr);
 } JSMallocFunctions;
 

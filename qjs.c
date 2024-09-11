@@ -165,12 +165,6 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     return ctx;
 }
 
-#if defined(__APPLE__)
-#define MALLOC_OVERHEAD  0
-#else
-#define MALLOC_OVERHEAD  8
-#endif
-
 struct trace_malloc_data {
     uint8_t *base;
 };
@@ -188,7 +182,7 @@ __attribute__((format(gnu_printf, 2, 3)))
 #else
 __attribute__((format(printf, 2, 3)))
 #endif
-    js_trace_malloc_printf(JSMallocState *s, const char *fmt, ...)
+    js_trace_malloc_printf(void *opaque, const char *fmt, ...)
 {
     va_list ap;
     int c;
@@ -203,7 +197,7 @@ __attribute__((format(printf, 2, 3)))
                     printf("NULL");
                 } else {
                     printf("H%+06lld.%zd",
-                           js_trace_malloc_ptr_offset(ptr, s->opaque),
+                           js_trace_malloc_ptr_offset(ptr, opaque),
                            js__malloc_usable_size(ptr));
                 }
                 fmt++;
@@ -226,87 +220,36 @@ static void js_trace_malloc_init(struct trace_malloc_data *s)
     free(s->base = malloc(8));
 }
 
-static void *js_trace_calloc(JSMallocState *s, size_t count, size_t size)
+static void *js_trace_calloc(void *opaque, size_t count, size_t size)
 {
     void *ptr;
-
-    /* Do not allocate zero bytes: behavior is platform dependent */
-    assert(count != 0 && size != 0);
-
-    if (size > 0)
-        if (unlikely(count != (count * size) / size))
-            return NULL;
-
-    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (unlikely(s->malloc_size + (count * size) > s->malloc_limit - 1))
-        return NULL;
     ptr = calloc(count, size);
-    js_trace_malloc_printf(s, "C %zd %zd -> %p\n", count, size, ptr);
-    if (ptr) {
-        s->malloc_count++;
-        s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
-    }
+    js_trace_malloc_printf(opaque, "C %zd %zd -> %p\n", count, size, ptr);
     return ptr;
 }
 
-static void *js_trace_malloc(JSMallocState *s, size_t size)
+static void *js_trace_malloc(void *opaque, size_t size)
 {
+    (void) opaque;
     void *ptr;
-
-    /* Do not allocate zero bytes: behavior is platform dependent */
-    assert(size != 0);
-
-    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (unlikely(s->malloc_size + size > s->malloc_limit - 1))
-        return NULL;
     ptr = malloc(size);
-    js_trace_malloc_printf(s, "A %zd -> %p\n", size, ptr);
-    if (ptr) {
-        s->malloc_count++;
-        s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
-    }
+    js_trace_malloc_printf(opaque, "A %zd -> %p\n", size, ptr);
     return ptr;
 }
 
-static void js_trace_free(JSMallocState *s, void *ptr)
+static void js_trace_free(void *opaque, void *ptr)
 {
     if (!ptr)
         return;
-
-    js_trace_malloc_printf(s, "F %p\n", ptr);
-    s->malloc_count--;
-    s->malloc_size -= js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    js_trace_malloc_printf(opaque, "F %p\n", ptr);
     free(ptr);
 }
 
-static void *js_trace_realloc(JSMallocState *s, void *ptr, size_t size)
+static void *js_trace_realloc(void *opaque, void *ptr, size_t size)
 {
-    size_t old_size;
-
-    if (!ptr) {
-        if (size == 0)
-            return NULL;
-        return js_trace_malloc(s, size);
-    }
-
-    if (unlikely(size == 0)) {
-        js_trace_free(s, ptr);
-        return NULL;
-    }
-
-    old_size = js__malloc_usable_size(ptr);
-
-    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (s->malloc_size + size - old_size > s->malloc_limit - 1)
-        return NULL;
-
-    js_trace_malloc_printf(s, "R %zd %p", size, ptr);
-
+    js_trace_malloc_printf(opaque, "R %zd %p", size, ptr);
     ptr = realloc(ptr, size);
-    js_trace_malloc_printf(s, " -> %p\n", ptr);
-    if (ptr) {
-        s->malloc_size += js__malloc_usable_size(ptr) - old_size;
-    }
+    js_trace_malloc_printf(opaque, " -> %p\n", ptr);
     return ptr;
 }
 

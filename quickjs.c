@@ -213,6 +213,13 @@ typedef enum {
     JS_GC_PHASE_REMOVE_CYCLES,
 } JSGCPhaseEnum;
 
+typedef struct JSMallocState {
+    size_t malloc_count;
+    size_t malloc_size;
+    size_t malloc_limit;
+    void *opaque; /* user opaque */
+} JSMallocState;
+
 struct JSRuntime {
     JSMallocFunctions mf;
     JSMallocState malloc_state;
@@ -1380,22 +1387,91 @@ static size_t js_malloc_usable_size_unknown(const void *ptr)
 
 void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size)
 {
-    return rt->mf.js_calloc(&rt->malloc_state, count, size);
+    void *ptr;
+    JSMallocState *s;
+
+    /* Do not allocate zero bytes: behavior is platform dependent */
+    assert(count != 0 && size != 0);
+
+    if (size > 0)
+        if (unlikely(count != (count * size) / size))
+            return NULL;
+
+    s = &rt->malloc_state;
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (unlikely(s->malloc_size + (count * size) > s->malloc_limit - 1))
+        return NULL;
+
+    ptr = rt->mf.js_calloc(s->opaque, count, size);
+    if (!ptr)
+        return NULL;
+
+    s->malloc_count++;
+    s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    return ptr;
 }
 
 void *js_malloc_rt(JSRuntime *rt, size_t size)
 {
-    return rt->mf.js_malloc(&rt->malloc_state, size);
+    void *ptr;
+    JSMallocState *s;
+
+    /* Do not allocate zero bytes: behavior is platform dependent */
+    assert(size != 0);
+
+    s = &rt->malloc_state;
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (unlikely(s->malloc_size + size > s->malloc_limit - 1))
+        return NULL;
+
+    ptr = rt->mf.js_malloc(s->opaque, size);
+    if (!ptr)
+        return NULL;
+
+    s->malloc_count++;
+    s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    return ptr;
 }
 
 void js_free_rt(JSRuntime *rt, void *ptr)
 {
-    rt->mf.js_free(&rt->malloc_state, ptr);
+    JSMallocState *s;
+
+    if (!ptr)
+        return;
+
+    s = &rt->malloc_state;
+    s->malloc_count--;
+    s->malloc_size -= js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    rt->mf.js_free(s->opaque, ptr);
 }
 
 void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size)
 {
-    return rt->mf.js_realloc(&rt->malloc_state, ptr, size);
+    size_t old_size;
+    JSMallocState *s;
+
+    if (!ptr) {
+        if (size == 0)
+            return NULL;
+        return js_malloc_rt(rt, size);
+    }
+    if (unlikely(size == 0)) {
+        js_free_rt(rt, ptr);
+        return NULL;
+    }
+    old_size = js__malloc_usable_size(ptr);
+    s = &rt->malloc_state;
+    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
+    if (s->malloc_size + size - old_size > s->malloc_limit - 1)
+        return NULL;
+
+    ptr = rt->mf.js_realloc(s->opaque, ptr, size);
+    if (!ptr)
+        return NULL;
+
+    s->malloc_size += js__malloc_usable_size(ptr) - old_size;
+    return ptr;
 }
 
 static void *js_dbuf_realloc(void *opaque, void *ptr, size_t size)
@@ -1651,9 +1727,12 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     ms.opaque = opaque;
     ms.malloc_limit = 0;
 
-    rt = mf->js_calloc(&ms, 1, sizeof(JSRuntime));
+    rt = mf->js_calloc(opaque, 1, sizeof(JSRuntime));
     if (!rt)
         return NULL;
+    /* Inline what js_malloc_rt does since we cannot use it here. */
+    ms.malloc_count++;
+    ms.malloc_size += js__malloc_usable_size(rt) + MALLOC_OVERHEAD;
     rt->mf = *mf;
     if (!rt->mf.js_malloc_usable_size) {
         /* use dummy function if none provided */
@@ -1718,84 +1797,24 @@ void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque)
     rt->user_opaque = opaque;
 }
 
-static void *js_def_calloc(JSMallocState *s, size_t count, size_t size)
+static void *js_def_calloc(void *opaque, size_t count, size_t size)
 {
-    void *ptr;
-
-    /* Do not allocate zero bytes: behavior is platform dependent */
-    assert(count != 0 && size != 0);
-
-    if (size > 0)
-        if (unlikely(count != (count * size) / size))
-            return NULL;
-
-    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (unlikely(s->malloc_size + (count * size) > s->malloc_limit - 1))
-        return NULL;
-
-    ptr = calloc(count, size);
-    if (!ptr)
-        return NULL;
-
-    s->malloc_count++;
-    s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
-    return ptr;
+    return calloc(count, size);
 }
 
-static void *js_def_malloc(JSMallocState *s, size_t size)
+static void *js_def_malloc(void *opaque, size_t size)
 {
-    void *ptr;
-
-    /* Do not allocate zero bytes: behavior is platform dependent */
-    assert(size != 0);
-
-    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (unlikely(s->malloc_size + size > s->malloc_limit - 1))
-        return NULL;
-
-    ptr = malloc(size);
-    if (!ptr)
-        return NULL;
-
-    s->malloc_count++;
-    s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
-    return ptr;
+    return malloc(size);
 }
 
-static void js_def_free(JSMallocState *s, void *ptr)
+static void js_def_free(void *opaque, void *ptr)
 {
-    if (!ptr)
-        return;
-
-    s->malloc_count--;
-    s->malloc_size -= js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
     free(ptr);
 }
 
-static void *js_def_realloc(JSMallocState *s, void *ptr, size_t size)
+static void *js_def_realloc(void *opaque, void *ptr, size_t size)
 {
-    size_t old_size;
-
-    if (!ptr) {
-        if (size == 0)
-            return NULL;
-        return js_def_malloc(s, size);
-    }
-    if (unlikely(size == 0)) {
-        js_def_free(s, ptr);
-        return NULL;
-    }
-    old_size = js__malloc_usable_size(ptr);
-    /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (s->malloc_size + size - old_size > s->malloc_limit - 1)
-        return NULL;
-
-    ptr = realloc(ptr, size);
-    if (!ptr)
-        return NULL;
-
-    s->malloc_size += js__malloc_usable_size(ptr) - old_size;
-    return ptr;
+    return realloc(ptr, size);
 }
 
 static const JSMallocFunctions def_malloc_funcs = {
@@ -2159,8 +2178,8 @@ void JS_FreeRuntime(JSRuntime *rt)
 #endif
 
     {
-        JSMallocState ms = rt->malloc_state;
-        rt->mf.js_free(&ms, rt);
+        JSMallocState *ms = &rt->malloc_state;
+        rt->mf.js_free(ms->opaque, rt);
     }
 }
 
