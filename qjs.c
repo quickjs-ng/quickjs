@@ -38,6 +38,10 @@
 #include "cutils.h"
 #include "quickjs-libc.h"
 
+#ifdef QJS_USE_MIMALLOC
+#include <mimalloc.h>
+#endif
+
 extern const uint8_t qjsc_repl[];
 extern const uint32_t qjsc_repl_size;
 
@@ -230,7 +234,6 @@ static void *js_trace_calloc(void *opaque, size_t count, size_t size)
 
 static void *js_trace_malloc(void *opaque, size_t size)
 {
-    (void) opaque;
     void *ptr;
     ptr = malloc(size);
     js_trace_malloc_printf(opaque, "A %zd -> %p\n", size, ptr);
@@ -260,6 +263,38 @@ static const JSMallocFunctions trace_mf = {
     js_trace_realloc,
     js__malloc_usable_size
 };
+
+#ifdef QJS_USE_MIMALLOC
+static void *js_mi_calloc(void *opaque, size_t count, size_t size)
+{
+    return mi_calloc(count, size);
+}
+
+static void *js_mi_malloc(void *opaque, size_t size)
+{
+    return mi_malloc(size);
+}
+
+static void js_mi_free(void *opaque, void *ptr)
+{
+    if (!ptr)
+        return;
+    mi_free(ptr);
+}
+
+static void *js_mi_realloc(void *opaque, void *ptr, size_t size)
+{
+    return mi_realloc(ptr, size);
+}
+
+static const JSMallocFunctions mi_mf = {
+    js_mi_calloc,
+    js_mi_malloc,
+    js_mi_free,
+    js_mi_realloc,
+    mi_malloc_usable_size
+};
+#endif
 
 #define PROG_NAME "qjs"
 
@@ -438,7 +473,11 @@ int main(int argc, char **argv)
         js_trace_malloc_init(&trace_data);
         rt = JS_NewRuntime2(&trace_mf, &trace_data);
     } else {
+#ifdef QJS_USE_MIMALLOC
+        rt = JS_NewRuntime2(&mi_mf, NULL);
+#else
         rt = JS_NewRuntime();
+#endif
     }
     if (!rt) {
         fprintf(stderr, "qjs: cannot allocate JS runtime\n");

@@ -111,6 +111,7 @@ endif()
 
 xoption(BUILD_EXAMPLES "Build examples" OFF)
 xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
+xoption(BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
 xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
 xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
@@ -254,7 +255,11 @@ endif()
 if(NOT WIN32)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
-
+if(BUILD_CLI_WITH_MIMALLOC)
+    find_package(mimalloc REQUIRED)
+    target_compile_definitions(qjs_exe PRIVATE QJS_USE_MIMALLOC)
+    target_link_libraries(qjs_exe mimalloc-static)
+endif()
 
 # Test262 runner
 #
