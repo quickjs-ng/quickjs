@@ -46362,6 +46362,60 @@ exception:
     return rval;
 }
 
+static JSValue js_set_isSubsetOf(JSContext *ctx, JSValue this_val,
+                                 int argc, JSValue *argv)
+{
+    JSValue item, iter, keys, has, next, rv, rval;
+    BOOL done, found;
+    JSMapState *s;
+    int64_t size;
+    int ok;
+
+    has = JS_UNDEFINED;
+    iter = JS_UNDEFINED;
+    keys = JS_UNDEFINED;
+    next = JS_UNDEFINED;
+    rval = JS_EXCEPTION;
+    s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
+    if (!s)
+        goto exception;
+    // order matters!
+    if (js_setlike_get_size(ctx, argv[0], &size) < 0)
+        goto exception;
+    if (js_setlike_get_has(ctx, argv[0], &has) < 0)
+        goto exception;
+    if (js_setlike_get_keys(ctx, argv[0], &keys) < 0)
+        goto exception;
+    found = FALSE;
+    if (s->record_count > size)
+        goto fini;
+    iter = js_create_map_iterator(ctx, this_val, 0, NULL, MAGIC_SET);
+    if (JS_IsException(iter))
+        goto exception;
+    found = TRUE;
+    do {
+        item = js_map_iterator_next(ctx, iter, 0, NULL, &done, MAGIC_SET);
+        if (JS_IsException(item))
+            goto exception;
+        if (done) // item is JS_UNDEFINED
+            break;
+        rv = JS_Call(ctx, has, argv[0], 1, &item);
+        JS_FreeValue(ctx, item);
+        ok = JS_ToBoolFree(ctx, rv); // returns -1 if rv is JS_EXCEPTION
+        if (ok < 0)
+            goto exception;
+        found = (ok > 0);
+    } while (found);
+fini:
+    rval = found ? JS_TRUE : JS_FALSE;
+exception:
+    JS_FreeValue(ctx, has);
+    JS_FreeValue(ctx, keys);
+    JS_FreeValue(ctx, iter);
+    JS_FreeValue(ctx, next);
+    return rval;
+}
+
 static JSValue js_set_intersection(JSContext *ctx, JSValue this_val,
                                    int argc, JSValue *argv)
 {
@@ -46739,6 +46793,7 @@ static const JSCFunctionListEntry js_set_proto_funcs[] = {
     JS_CGETSET_MAGIC_DEF("size", js_map_get_size, NULL, MAGIC_SET ),
     JS_CFUNC_MAGIC_DEF("forEach", 1, js_map_forEach, MAGIC_SET ),
     JS_CFUNC_DEF("isDisjointFrom", 1, js_set_isDisjointFrom ),
+    JS_CFUNC_DEF("isSubsetOf", 1, js_set_isSubsetOf ),
     JS_CFUNC_DEF("intersection", 1, js_set_intersection ),
     JS_CFUNC_DEF("difference", 1, js_set_difference ),
     JS_CFUNC_DEF("symmetricDifference", 1, js_set_symmetricDifference ),
