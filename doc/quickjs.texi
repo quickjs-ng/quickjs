@@ -193,30 +193,15 @@ QuickJS archive.
 
 @section Test262 (ECMAScript Test Suite)
 
-A test262 runner is included in the QuickJS archive. The test262 tests
-can be installed in the QuickJS source directory with:
+A test262 runner is included in the QuickJS archive.
+
+The tests can be run with:
 
 @example
-git clone https://github.com/tc39/test262.git test262
-cd test262
-patch -p1 < ../tests/test262.patch
-cd ..
-@end example
-
-The patch adds the implementation specific @code{harness} functions
-and optimizes the inefficient RegExp character classes and Unicode
-property escapes tests (the tests themselves are not modified, only a
-slow string initialization function is optimized).
-
-The tests can be run with
-@example
-make test2
+make test262
 @end example
 
 The configuration files @code{test262.conf}
-(resp. @code{test262o.conf} for the old ES5.1 tests@footnote{The old
-ES5.1 tests can be extracted with @code{git clone --single-branch
---branch es5-tests https://github.com/tc39/test262.git test262o}}))
 contain the options to run the various tests. Tests can be excluded
 based on features or filename.
 
@@ -264,14 +249,6 @@ The following features are not supported yet:
 @subsection ECMA402
 
 ECMA402 (Internationalization API) is not supported.
-
-@subsection Extensions
-
-@itemize
-
-@item The first line of a script beginning with @code{#!} is ignored.
-
-@end itemize
 
 @section Modules
 
