@@ -170,8 +170,6 @@ test262/test/language/expressions/generators/static-init-await-binding.js:16: Sy
 test262/test/language/expressions/generators/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: Test262Error: Expected a TypeError but got a Test262Error
 test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: strict mode: Test262Error: Expected a TypeError but got a Test262Error
-test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:21: TypeError: cannot read property 'c' of undefined
-test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:16: strict mode: TypeError: cannot read property '_b' of undefined
 test262/test/language/module-code/top-level-await/async-module-does-not-block-sibling-modules.js:13: SyntaxError: Could not find export 'check' in module 'test262/test/language/module-code/top-level-await/async-module-sync_FIXTURE.js'
 test262/test/staging/set-is-subset-on-set-like.js:24: TypeError: not a function
 test262/test/staging/set-is-subset-on-set-like.js:24: strict mode: TypeError: not a function
