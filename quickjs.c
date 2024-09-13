@@ -1700,7 +1700,7 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
 #endif
     JS_UpdateStackTop(rt);
 
-    rt->current_exception = JS_NULL;
+    rt->current_exception = JS_UNINITIALIZED;
 
     return rt;
  fail:
@@ -6353,8 +6353,13 @@ JSValue JS_GetException(JSContext *ctx)
     JSValue val;
     JSRuntime *rt = ctx->rt;
     val = rt->current_exception;
-    rt->current_exception = JS_NULL;
+    rt->current_exception = JS_UNINITIALIZED;
     return val;
+}
+
+JS_BOOL JS_HasException(JSContext *ctx)
+{
+    return !JS_IsUninitialized(ctx->rt->current_exception);
 }
 
 static void dbuf_put_leb128(DynBuf *s, uint32_t v)
@@ -13803,7 +13808,7 @@ static int JS_IteratorClose(JSContext *ctx, JSValue enum_obj,
 
     if (is_exception_pending) {
         ex_obj = ctx->rt->current_exception;
-        ctx->rt->current_exception = JS_NULL;
+        ctx->rt->current_exception = JS_UNINITIALIZED;
         res = -1;
     } else {
         ex_obj = JS_UNDEFINED;
@@ -17174,7 +17179,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                     JS_IteratorClose(ctx, sp[-1], TRUE);
                 } else {
                     *sp++ = rt->current_exception;
-                    rt->current_exception = JS_NULL;
+                    rt->current_exception = JS_UNINITIALIZED;
                     pc = b->byte_code_buf + pos;
                     goto restart;
                 }
