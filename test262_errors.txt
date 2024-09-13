@@ -133,6 +133,4 @@ test262/test/language/expressions/member-expression/computed-reference-null-or-u
 test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:21: TypeError: cannot read property 'c' of undefined
 test262/test/language/expressions/optional-chaining/optional-call-preserves-this.js:16: strict mode: TypeError: cannot read property '_b' of undefined
 test262/test/language/module-code/top-level-await/async-module-does-not-block-sibling-modules.js:13: SyntaxError: Could not find export 'check' in module 'test262/test/language/module-code/top-level-await/async-module-sync_FIXTURE.js'
-test262/test/language/statements/function/S13.2.1_A1_T1.js:10: RangeError: Maximum call stack size exceeded
-test262/test/language/statements/function/S13.2.1_A1_T1.js:10: strict mode: RangeError: Maximum call stack size exceeded
 test262/test/staging/top-level-await/tla-hang-entry.js:10: TypeError: $DONE() not called
