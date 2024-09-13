@@ -775,6 +775,14 @@ function test_regexp()
     /* test zero length matches */
     a = /()*?a/.exec(",");
     assert(a, null);
+    a = /(?:(?=(abc)))a/.exec("abc");
+    assert(a, ["a", "abc"]);
+    a = /(?:(?=(abc)))?a/.exec("abc");
+    assert(a, ["a", undefined]);
+    a = /(?:(?=(abc))){0,2}a/.exec("abc");
+    assert(a, ["a", undefined]);
+    a = /(?:|[\w])+([0-9])/.exec("123a23");
+    assert(a, ["123a23", "3"]);
 }
 
 function test_symbol()
