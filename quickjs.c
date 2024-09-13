@@ -20254,6 +20254,14 @@ static int new_label(JSParseState *s)
     return new_label_fd(s->cur_func, -1);
 }
 
+/* don't update the last opcode and don't emit line number info */
+static void emit_label_raw(JSParseState *s, int label)
+{
+    emit_u8(s, OP_label);
+    emit_u32(s, label);
+    s->cur_func->label_slots[label].pos = s->cur_func->byte_code.size;
+}
+
 /* return the label ID offset */
 static int emit_label(JSParseState *s, int label)
 {
@@ -23385,6 +23393,25 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     fd->byte_code.buf[fd->last_opcode_pos] = OP_get_field2;
                     drop_count = 2;
                     break;
+                case OP_get_field_opt_chain:
+                    {
+                        int opt_chain_label, next_label;
+                        opt_chain_label = get_u32(fd->byte_code.buf +
+                                                  fd->last_opcode_pos + 1 + 4 + 1);
+                        /* keep the object on the stack */
+                        fd->byte_code.buf[fd->last_opcode_pos] = OP_get_field2;
+                        fd->byte_code.size = fd->last_opcode_pos + 1 + 4;
+                        next_label = emit_goto(s, OP_goto, -1);
+                        emit_label(s, opt_chain_label);
+                        /* need an additional undefined value for the
+                           case where the optional field does not
+                           exists */
+                        emit_op(s, OP_undefined);
+                        emit_label(s, next_label);
+                        drop_count = 2;
+                        opcode = OP_get_field;
+                    }
+                    break;
                 case OP_scope_get_private_field:
                     /* keep the object on the stack */
                     fd->byte_code.buf[fd->last_opcode_pos] = OP_scope_get_private_field2;
@@ -23394,6 +23421,25 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     /* keep the object on the stack */
                     fd->byte_code.buf[fd->last_opcode_pos] = OP_get_array_el2;
                     drop_count = 2;
+                    break;
+                case OP_get_array_el_opt_chain:
+                    {
+                        int opt_chain_label, next_label;
+                        opt_chain_label = get_u32(fd->byte_code.buf +
+                                                  fd->last_opcode_pos + 1 + 1);
+                        /* keep the object on the stack */
+                        fd->byte_code.buf[fd->last_opcode_pos] = OP_get_array_el2;
+                        fd->byte_code.size = fd->last_opcode_pos + 1;
+                        next_label = emit_goto(s, OP_goto, -1);
+                        emit_label(s, opt_chain_label);
+                        /* need an additional undefined value for the
+                           case where the optional field does not
+                           exists */
+                        emit_op(s, OP_undefined);
+                        emit_label(s, next_label);
+                        drop_count = 2;
+                        opcode = OP_get_array_el;
+                    }
                     break;
                 case OP_scope_get_var:
                     {
@@ -23653,8 +23699,23 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             break;
         }
     }
-    if (optional_chaining_label >= 0)
-        emit_label(s, optional_chaining_label);
+    if (optional_chaining_label >= 0) {
+        JSFunctionDef *fd = s->cur_func;
+        int opcode;
+        emit_label_raw(s, optional_chaining_label);
+        /* modify the last opcode so that it is an indicator of an
+           optional chain */
+        opcode = get_prev_opcode(fd);
+        if (opcode == OP_get_field || opcode == OP_get_array_el) {
+            if (opcode == OP_get_field)
+                opcode = OP_get_field_opt_chain;
+            else
+                opcode = OP_get_array_el_opt_chain;
+            fd->byte_code.buf[fd->last_opcode_pos] = opcode;
+        } else {
+            fd->last_opcode_pos = -1;
+        }
+    }
     return 0;
 }
 
@@ -23670,26 +23731,56 @@ static __exception int js_parse_delete(JSParseState *s)
         return -1;
     switch(opcode = get_prev_opcode(fd)) {
     case OP_get_field:
+    case OP_get_field_opt_chain:
         {
             JSValue val;
-            int ret;
-
+            int ret, opt_chain_label, next_label;
+            if (opcode == OP_get_field_opt_chain) {
+                opt_chain_label = get_u32(fd->byte_code.buf +
+                                          fd->last_opcode_pos + 1 + 4 + 1);
+            } else {
+                opt_chain_label = -1;
+            }
             name = get_u32(fd->byte_code.buf + fd->last_opcode_pos + 1);
             fd->byte_code.size = fd->last_opcode_pos;
-            fd->last_opcode_pos = -1;
             val = JS_AtomToValue(s->ctx, name);
             ret = emit_push_const(s, val, 1);
             JS_FreeValue(s->ctx, val);
             JS_FreeAtom(s->ctx, name);
             if (ret)
                 return ret;
+            emit_op(s, OP_delete);
+            if (opt_chain_label >= 0) {
+                next_label = emit_goto(s, OP_goto, -1);
+                emit_label(s, opt_chain_label);
+                /* if the optional chain is not taken, return 'true' */
+                emit_op(s, OP_drop);
+                emit_op(s, OP_push_true);
+                emit_label(s, next_label);
+            }
+            fd->last_opcode_pos = -1;
         }
-        goto do_delete;
+        break;
     case OP_get_array_el:
         fd->byte_code.size = fd->last_opcode_pos;
         fd->last_opcode_pos = -1;
-    do_delete:
         emit_op(s, OP_delete);
+        break;
+    case OP_get_array_el_opt_chain:
+        {
+            int opt_chain_label, next_label;
+            opt_chain_label = get_u32(fd->byte_code.buf +
+                                      fd->last_opcode_pos + 1 + 1);
+            fd->byte_code.size = fd->last_opcode_pos;
+            emit_op(s, OP_delete);
+            next_label = emit_goto(s, OP_goto, -1);
+            emit_label(s, opt_chain_label);
+            /* if the optional chain is not taken, return 'true' */
+            emit_op(s, OP_drop);
+            emit_op(s, OP_push_true);
+            emit_label(s, next_label);
+            fd->last_opcode_pos = -1;
+        }
         break;
     case OP_scope_get_var:
         /* 'delete this': this is not a reference */
@@ -30369,6 +30460,17 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
             break;
         case OP_set_class_name:
             /* only used during parsing */
+            break;
+
+        case OP_get_field_opt_chain: /* equivalent to OP_get_field */
+            {
+                JSAtom name = get_u32(bc_buf + pos + 1);
+                dbuf_putc(&bc_out, OP_get_field);
+                dbuf_put_u32(&bc_out, name);
+            }
+            break;
+        case OP_get_array_el_opt_chain: /* equivalent to OP_get_array_el */
+            dbuf_putc(&bc_out, OP_get_array_el);
             break;
 
         default:
@@ -46362,6 +46464,60 @@ exception:
     return rval;
 }
 
+static JSValue js_set_isSubsetOf(JSContext *ctx, JSValue this_val,
+                                 int argc, JSValue *argv)
+{
+    JSValue item, iter, keys, has, next, rv, rval;
+    BOOL done, found;
+    JSMapState *s;
+    int64_t size;
+    int ok;
+
+    has = JS_UNDEFINED;
+    iter = JS_UNDEFINED;
+    keys = JS_UNDEFINED;
+    next = JS_UNDEFINED;
+    rval = JS_EXCEPTION;
+    s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
+    if (!s)
+        goto exception;
+    // order matters!
+    if (js_setlike_get_size(ctx, argv[0], &size) < 0)
+        goto exception;
+    if (js_setlike_get_has(ctx, argv[0], &has) < 0)
+        goto exception;
+    if (js_setlike_get_keys(ctx, argv[0], &keys) < 0)
+        goto exception;
+    found = FALSE;
+    if (s->record_count > size)
+        goto fini;
+    iter = js_create_map_iterator(ctx, this_val, 0, NULL, MAGIC_SET);
+    if (JS_IsException(iter))
+        goto exception;
+    found = TRUE;
+    do {
+        item = js_map_iterator_next(ctx, iter, 0, NULL, &done, MAGIC_SET);
+        if (JS_IsException(item))
+            goto exception;
+        if (done) // item is JS_UNDEFINED
+            break;
+        rv = JS_Call(ctx, has, argv[0], 1, &item);
+        JS_FreeValue(ctx, item);
+        ok = JS_ToBoolFree(ctx, rv); // returns -1 if rv is JS_EXCEPTION
+        if (ok < 0)
+            goto exception;
+        found = (ok > 0);
+    } while (found);
+fini:
+    rval = found ? JS_TRUE : JS_FALSE;
+exception:
+    JS_FreeValue(ctx, has);
+    JS_FreeValue(ctx, keys);
+    JS_FreeValue(ctx, iter);
+    JS_FreeValue(ctx, next);
+    return rval;
+}
+
 static JSValue js_set_intersection(JSContext *ctx, JSValue this_val,
                                    int argc, JSValue *argv)
 {
@@ -46739,6 +46895,7 @@ static const JSCFunctionListEntry js_set_proto_funcs[] = {
     JS_CGETSET_MAGIC_DEF("size", js_map_get_size, NULL, MAGIC_SET ),
     JS_CFUNC_MAGIC_DEF("forEach", 1, js_map_forEach, MAGIC_SET ),
     JS_CFUNC_DEF("isDisjointFrom", 1, js_set_isDisjointFrom ),
+    JS_CFUNC_DEF("isSubsetOf", 1, js_set_isSubsetOf ),
     JS_CFUNC_DEF("intersection", 1, js_set_intersection ),
     JS_CFUNC_DEF("difference", 1, js_set_difference ),
     JS_CFUNC_DEF("symmetricDifference", 1, js_set_symmetricDifference ),

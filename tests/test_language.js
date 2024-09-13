@@ -666,6 +666,31 @@ function test_syntax()
     assert_throws(SyntaxError, "if \\u0123");
 }
 
+/* optional chaining tests not present in test262 */
+function test_optional_chaining()
+{
+    var a, z;
+    z = null;
+    a = { b: { c: 2 } };
+    assert(delete z?.b.c, true);
+    assert(delete a?.b.c, true);
+    assert(JSON.stringify(a), '{"b":{}}', "optional chaining delete");
+
+    a = { b: { c: 2 } };
+    assert(delete z?.b["c"], true);
+    assert(delete a?.b["c"], true);
+    assert(JSON.stringify(a), '{"b":{}}');
+
+    a = {
+        b() { return this._b; },
+        _b: { c: 42 }
+    };
+
+    assert((a?.b)().c, 42);
+
+    assert((a?.["b"])().c, 42);
+}
+
 test_op1();
 test_cvt();
 test_eq();
@@ -688,3 +713,4 @@ test_function_expr_name();
 test_reserved_names();
 test_number_literals();
 test_syntax();
+test_optional_chaining();
