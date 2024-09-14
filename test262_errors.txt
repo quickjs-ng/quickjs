@@ -18,10 +18,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-retu
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-not-object.js:72: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
-test262/test/built-ins/RegExp/lookahead-quantifier-match-groups.js:27: strict mode: Test262Error: Expected [a, abc] and [a, undefined] to have the same contents. ? quantifier
-test262/test/built-ins/RegExp/nullable-quantifier.js:21: Test262Error: The regex is expected to match the whole string Expected SameValue(«a», «ab») to be true
-test262/test/built-ins/RegExp/nullable-quantifier.js:21: strict mode: Test262Error: The regex is expected to match the whole string Expected SameValue(«a», «ab») to be true
 test262/test/built-ins/RegExp/property-escapes/generated/Alphabetic.js:16: Test262Error: `\p{Alphabetic}` should match U+02EBF0 (`𮯰`)
 test262/test/built-ins/RegExp/property-escapes/generated/Alphabetic.js:16: strict mode: Test262Error: `\p{Alphabetic}` should match U+02EBF0 (`𮯰`)
 test262/test/built-ins/RegExp/property-escapes/generated/Assigned.js:16: Test262Error: `\p{Assigned}` should match U+002FFC (`⿼`)
