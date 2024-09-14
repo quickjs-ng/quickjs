@@ -38,10 +38,14 @@ enum {
     RUN_TYPE_LF,
     RUN_TYPE_UL,
     RUN_TYPE_LSU,
+    RUN_TYPE_U2_399_EXT2,
     RUN_TYPE_U2L_399_EXT2,
     RUN_TYPE_UF_D20,
     RUN_TYPE_UF_D1_EXT,
     RUN_TYPE_U_EXT,
+    RUN_TYPE_U_EXT2,
+    RUN_TYPE_U_EXT3,
+    RUN_TYPE_L_EXT,
     RUN_TYPE_LF_EXT,
     RUN_TYPE_UF_EXT2,
     RUN_TYPE_LF_EXT2,
@@ -87,6 +91,7 @@ static int lre_case_conv_entry(uint32_t *res, uint32_t c, int conv_type, uint32_
             c += (2 * is_lower - 1) * 2;
         }
         break;
+    case RUN_TYPE_U2_399_EXT2:
     case RUN_TYPE_U2L_399_EXT2:
         if (!is_lower) {
             res[0] = c - code + case_conv_ext[data >> 6];
@@ -107,10 +112,15 @@ static int lre_case_conv_entry(uint32_t *res, uint32_t c, int conv_type, uint32_
         c = case_conv_ext[data] + (conv_type == 2);
         break;
     case RUN_TYPE_U_EXT:
+    case RUN_TYPE_L_EXT:
     case RUN_TYPE_LF_EXT:
         if (is_lower != (type - RUN_TYPE_U_EXT))
             break;
         c = case_conv_ext[data];
+        break;
+    case RUN_TYPE_U_EXT2:
+    case RUN_TYPE_U_EXT3:
+        // TODO
         break;
     case RUN_TYPE_LF_EXT2:
         if (!is_lower)

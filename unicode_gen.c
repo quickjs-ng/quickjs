@@ -606,7 +606,7 @@ void parse_derived_core_properties(const char *filename)
             p++;
             p += strspn(p, " \t");
             q = buf;
-            while (*p != '\0' && *p != ' ' && *p != '#' && *p != '\t') {
+            while (*p != '\0' && *p != ' ' && *p != '#' && *p != ';' && *p != '\t') {
                 if ((q - buf) < sizeof(buf) - 1)
                     *q++ = *p;
                 p++;
@@ -902,10 +902,14 @@ enum {
     RUN_TYPE_LF,
     RUN_TYPE_UL,
     RUN_TYPE_LSU,
+    RUN_TYPE_U2_399_EXT2,
     RUN_TYPE_U2L_399_EXT2,
     RUN_TYPE_UF_D20,
     RUN_TYPE_UF_D1_EXT,
     RUN_TYPE_U_EXT,
+    RUN_TYPE_U_EXT2,
+    RUN_TYPE_U_EXT3,
+    RUN_TYPE_L_EXT,
     RUN_TYPE_LF_EXT,
     RUN_TYPE_UF_EXT2,
     RUN_TYPE_LF_EXT2,
@@ -1020,6 +1024,27 @@ void find_run_type(TableEntry *te, CCInfo *tab, int code)
         }
 
         if (ci->u_len == 2 && ci->u_data[1] == 0x399 &&
+            ci->l_len == 1) {
+            len = 1;
+            while (code + len <= CHARCODE_MAX) {
+                ci1 = &tab[code + len];
+                if (!(ci1->u_len == 2 &&
+                      ci1->u_data[1] == 0x399 &&
+                      ci1->u_data[0] == ci->u_data[0] + len &&
+                      ci1->l_len == 1 &&
+                      ci1->l_data[0] == ci->l_data[0] + len))
+                    break;
+                len++;
+            }
+            te->len = len;
+            te->type = RUN_TYPE_U2_399_EXT2;
+            te->ext_data[0] = ci->u_data[0];
+            te->ext_data[1] = ci->l_data[0];
+            te->ext_len = 2;
+            return;
+        }
+
+        if (ci->u_len == 2 && ci->u_data[1] == 0x399 &&
             ci->l_len == 1 &&
             ci->f_len == 1 && ci->f_data[0] == ci->l_data[0]) {
             len = 1;
@@ -1094,6 +1119,19 @@ void find_run_type(TableEntry *te, CCInfo *tab, int code)
                    ci->f_data[2] == simple_to_lower(tab, ci->u_data[2])) {
             te->len = 1;
             te->type = RUN_TYPE_UF_EXT3;
+            te->ext_data[0] = ci->u_data[0];
+            te->ext_data[1] = ci->u_data[1];
+            te->ext_data[2] = ci->u_data[2];
+            te->ext_len = 3;
+        } else if (ci->u_len == 2 && ci->l_len == 0 && ci->f_len == 0) {
+            te->len = 1;
+            te->type = RUN_TYPE_U_EXT2;
+            te->ext_data[0] = ci->u_data[0];
+            te->ext_data[1] = ci->u_data[1];
+            te->ext_len = 2;
+        } else if (ci->u_len == 3 && ci->l_len == 0 && ci->f_len == 0) {
+            te->len = 1;
+            te->type = RUN_TYPE_U_EXT3;
             te->ext_data[0] = ci->u_data[0];
             te->ext_data[1] = ci->u_data[1];
             te->ext_data[2] = ci->u_data[2];
@@ -1239,6 +1277,11 @@ void build_conv_table(CCInfo *tab)
                     te->ext_len = 1;
                     te->ext_data[0] = te->data;
                     break;
+                case RUN_TYPE_L:
+                    te->type = RUN_TYPE_L_EXT;
+                    te->ext_len = 1;
+                    te->ext_data[0] = te->data;
+                    break;
                 case RUN_TYPE_LF:
                     te->type = RUN_TYPE_LF_EXT;
                     te->ext_len = 1;
@@ -1261,7 +1304,8 @@ void build_conv_table(CCInfo *tab)
     /* find the data index for ext_data */
     for(i = 0; i < conv_table_len; i++) {
         te = &conv_table[i];
-        if (te->type == RUN_TYPE_UF_EXT3) {
+        if (te->type == RUN_TYPE_UF_EXT3 ||
+            te->type == RUN_TYPE_U_EXT3) {
             int p, v;
             v = 0;
             for(j = 0; j < 3; j++) {
@@ -1277,6 +1321,7 @@ void build_conv_table(CCInfo *tab)
         te = &conv_table[i];
         if (te->type == RUN_TYPE_LF_EXT2 ||
             te->type == RUN_TYPE_UF_EXT2 ||
+            te->type == RUN_TYPE_U2_399_EXT2 ||
             te->type == RUN_TYPE_U2L_399_EXT2) {
             int p, v;
             v = 0;
