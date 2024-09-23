@@ -2459,11 +2459,7 @@ static inline BOOL is_strict_mode(JSContext *ctx)
 
 static inline BOOL __JS_AtomIsConst(JSAtom v)
 {
-#ifdef DUMP_ATOM_LEAKS
-        return (int32_t)v <= 0;
-#else
-        return (int32_t)v < JS_ATOM_END;
-#endif
+    return (int32_t)v < JS_ATOM_END;
 }
 
 static inline BOOL __JS_AtomIsTaggedInt(JSAtom v)
@@ -34145,7 +34141,7 @@ static int JS_WriteObjectAtoms(BCWriterState *s)
     bc_put_leb128(s, s->idx_to_atom_count);
     for(i = 0; i < s->idx_to_atom_count; i++) {
         JSAtom atom = s->idx_to_atom[i];
-        if ((int32_t)atom < JS_ATOM_END) { // Cannot use __JS_AtomIsConst in debug mode
+        if (__JS_AtomIsConst(atom)) {
             bc_put_u8(s, 0 /* the type */);
             bc_put_u32(s, atom);
         } else {
@@ -35367,7 +35363,7 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
             JSAtom atom;
             if (bc_get_atom(s, &atom))
                 return JS_EXCEPTION;
-            if ((int32_t)atom < JS_ATOM_END) { // Cannot use __JS_AtomIsConst in debug mode
+            if (__JS_AtomIsConst(atom)) {
                 obj = JS_AtomToValue(s->ctx, atom);
             } else {
                 JSAtomStruct *p = s->ctx->rt->atom_array[atom];
