@@ -137,13 +137,20 @@ static JSValue js_gc(JSContext *ctx, JSValue this_val,
     return JS_UNDEFINED;
 }
 
-static const JSCFunctionListEntry navigator_obj[] = {
-    JS_PROP_STRING_DEF("userAgent", "quickjs-ng", JS_PROP_ENUMERABLE),
+static JSValue js_navigatior_get_userAgent(JSContext *ctx, JSValue this_val)
+{
+    char version[32];
+    snprintf(version, sizeof(version), "quickjs-ng/%s", JS_GetVersion());
+    return JS_NewString(ctx, version);
+}
+
+static const JSCFunctionListEntry navigator_proto_funcs[] = {
+    JS_CGETSET_DEF2("userAgent", js_navigatior_get_userAgent, NULL, JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Navigator", JS_PROP_CONFIGURABLE),
 };
 
 static const JSCFunctionListEntry global_obj[] = {
     JS_CFUNC_DEF("gc", 0, js_gc),
-    JS_OBJECT_DEF("navigator", navigator_obj, countof(navigator_obj), JS_PROP_C_W_E),
 #if defined(__ASAN__) || defined(__UBSAN__)
     JS_PROP_INT32_DEF("__running_with_sanitizer__", 1, JS_PROP_C_W_E ),
 #endif
@@ -164,7 +171,12 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyFunctionList(ctx, global, global_obj, countof(global_obj));
     JS_SetPropertyFunctionList(ctx, global, &argv0, 1);
+    JSValue navigator_proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, navigator_proto, navigator_proto_funcs, countof(navigator_proto_funcs));
+    JSValue navigator = JS_NewObjectProto(ctx, navigator_proto);
+    JS_DefinePropertyValueStr(ctx, global, "navigator", navigator, JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE);
     JS_FreeValue(ctx, global);
+    JS_FreeValue(ctx, navigator_proto);
 
     return ctx;
 }
