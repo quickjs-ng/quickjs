@@ -34143,6 +34143,8 @@ static int JS_WriteObjectAtoms(BCWriterState *s)
         JSAtom atom = s->idx_to_atom[i];
         if (__JS_AtomIsConst(atom)) {
             bc_put_u8(s, 0 /* the type */);
+            /* TODO(saghul): encoding for tagged integers and keyword-ish atoms could be
+               more efficient. */
             bc_put_u32(s, atom);
         } else {
             JSAtomStruct *p = rt->atom_array[atom];
@@ -35413,7 +35415,10 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
             if (bc_get_u32(s, &atom))
                 return -1;
         } else {
-            assert(type >= JS_ATOM_TYPE_STRING && type < JS_ATOM_TYPE_PRIVATE);
+            if (type < JS_ATOM_TYPE_STRING || type >= JS_ATOM_TYPE_PRIVATE) {
+                JS_ThrowInternalError(s->ctx, "invalid symbol type %d", type);
+                return -1;
+            }
             p = JS_ReadString(s);
             if (!p)
                 return -1;
