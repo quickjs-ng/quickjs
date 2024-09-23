@@ -1,0 +1,4 @@
+# Don't show changes in generated files when doing git diff
+
+gen/** -diff
+
