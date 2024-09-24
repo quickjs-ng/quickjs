@@ -1409,7 +1409,7 @@ void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size)
         return NULL;
 
     s->malloc_count++;
-    s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    s->malloc_size += rt->mf.js_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
     return ptr;
 }
 
@@ -1431,7 +1431,7 @@ void *js_malloc_rt(JSRuntime *rt, size_t size)
         return NULL;
 
     s->malloc_count++;
-    s->malloc_size += js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    s->malloc_size += rt->mf.js_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
     return ptr;
 }
 
@@ -1444,7 +1444,7 @@ void js_free_rt(JSRuntime *rt, void *ptr)
 
     s = &rt->malloc_state;
     s->malloc_count--;
-    s->malloc_size -= js__malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    s->malloc_size -= rt->mf.js_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
     rt->mf.js_free(s->opaque, ptr);
 }
 
@@ -1462,7 +1462,7 @@ void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size)
         js_free_rt(rt, ptr);
         return NULL;
     }
-    old_size = js__malloc_usable_size(ptr);
+    old_size = rt->mf.js_malloc_usable_size(ptr);
     s = &rt->malloc_state;
     /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
     if (s->malloc_size + size - old_size > s->malloc_limit - 1)
@@ -1472,7 +1472,7 @@ void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size)
     if (!ptr)
         return NULL;
 
-    s->malloc_size += js__malloc_usable_size(ptr) - old_size;
+    s->malloc_size += rt->mf.js_malloc_usable_size(ptr) - old_size;
     return ptr;
 }
 
@@ -1734,7 +1734,7 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
         return NULL;
     /* Inline what js_malloc_rt does since we cannot use it here. */
     ms.malloc_count++;
-    ms.malloc_size += js__malloc_usable_size(rt) + MALLOC_OVERHEAD;
+    ms.malloc_size += mf->js_malloc_usable_size(rt) + MALLOC_OVERHEAD;
     rt->mf = *mf;
     if (!rt->mf.js_malloc_usable_size) {
         /* use dummy function if none provided */

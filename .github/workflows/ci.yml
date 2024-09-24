@@ -484,3 +484,37 @@ jobs:
         run: |
           cmake --build build --config Release --target qjs
           ls -lh build
+
+  mimalloc-linux:
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_CLI_WITH_MIMALLOC: ON
+      MIMALLOC_SHOW_STATS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: install dependencies
+        run: |
+          sudo apt update && sudo apt -y install libmimalloc-dev
+      - name: build
+        run: |
+          make
+      - name: test
+        run: |
+          make test
+
+  mimalloc-macos:
+    runs-on: macos-latest
+    env:
+      BUILD_CLI_WITH_STATIC_MIMALLOC: ON
+      MIMALLOC_SHOW_STATS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: install dependencies
+        run: |
+          brew install mimalloc
+      - name: build
+        run: |
+          make
+      - name: test
+        run: |
+          make test
