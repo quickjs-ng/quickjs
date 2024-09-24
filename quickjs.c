@@ -153,6 +153,7 @@ enum {
     JS_CLASS_SET,               /* u.map_state */
     JS_CLASS_WEAKMAP,           /* u.map_state */
     JS_CLASS_WEAKSET,           /* u.map_state */
+    JS_CLASS_ITERATOR,          /* u.map_iterator_data */
     JS_CLASS_MAP_ITERATOR,      /* u.map_iterator_data */
     JS_CLASS_SET_ITERATOR,      /* u.map_iterator_data */
     JS_CLASS_ARRAY_ITERATOR,    /* u.array_iterator_data */
@@ -400,6 +401,7 @@ struct JSContext {
     JSValue error_ctor;
     JSValue error_prepare_stack;
     int error_stack_trace_limit;
+    JSValue iterator_ctor;
     JSValue iterator_proto;
     JSValue async_iterator_proto;
     JSValue array_proto_values;
@@ -1682,6 +1684,7 @@ static JSClassShortDef const js_std_class_def[] = {
     { JS_ATOM_Set, js_map_finalizer, js_map_mark },             /* JS_CLASS_SET */
     { JS_ATOM_WeakMap, js_map_finalizer, js_map_mark },         /* JS_CLASS_WEAKMAP */
     { JS_ATOM_WeakSet, js_map_finalizer, js_map_mark },         /* JS_CLASS_WEAKSET */
+    { JS_ATOM_Iterator, NULL, NULL },                           /* JS_CLASS_ITERATOR */
     { JS_ATOM_Map_Iterator, js_map_iterator_finalizer, js_map_iterator_mark }, /* JS_CLASS_MAP_ITERATOR */
     { JS_ATOM_Set_Iterator, js_map_iterator_finalizer, js_map_iterator_mark }, /* JS_CLASS_SET_ITERATOR */
     { JS_ATOM_Array_Iterator, js_array_iterator_finalizer, js_array_iterator_mark }, /* JS_CLASS_ARRAY_ITERATOR */
@@ -2208,6 +2211,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     for(i = 0; i < rt->class_count; i++)
         ctx->class_proto[i] = JS_NULL;
     ctx->array_ctor = JS_NULL;
+    ctx->iterator_ctor = JS_NULL;
     ctx->regexp_ctor = JS_NULL;
     ctx->promise_ctor = JS_NULL;
     ctx->error_ctor = JS_NULL;
@@ -2329,6 +2333,7 @@ static void JS_MarkContext(JSRuntime *rt, JSContext *ctx,
     for(i = 0; i < rt->class_count; i++) {
         JS_MarkValue(rt, ctx->class_proto[i], mark_func);
     }
+    JS_MarkValue(rt, ctx->iterator_ctor, mark_func);
     JS_MarkValue(rt, ctx->iterator_proto, mark_func);
     JS_MarkValue(rt, ctx->async_iterator_proto, mark_func);
     JS_MarkValue(rt, ctx->promise_ctor, mark_func);
@@ -2397,6 +2402,7 @@ void JS_FreeContext(JSContext *ctx)
         JS_FreeValue(ctx, ctx->class_proto[i]);
     }
     js_free_rt(rt, ctx->class_proto);
+    JS_FreeValue(ctx, ctx->iterator_ctor);
     JS_FreeValue(ctx, ctx->iterator_proto);
     JS_FreeValue(ctx, ctx->async_iterator_proto);
     JS_FreeValue(ctx, ctx->promise_ctor);
@@ -39747,13 +39753,114 @@ static JSValue js_array_iterator_next(JSContext *ctx, JSValue this_val,
     }
 }
 
+static JSValue js_iterator_constructor(JSContext *ctx, JSValue this_val,
+                                       int argc, JSValue *argv)
+{
+    JSObject *p;
+
+    if (JS_TAG_OBJECT != JS_VALUE_GET_TAG(this_val))
+        return JS_ThrowTypeError(ctx, "constructor requires 'new'");
+    p = JS_VALUE_GET_OBJ(this_val);
+    if (p->class_id == JS_CLASS_C_FUNCTION)
+        if (p->u.cfunc.c_function.generic == js_iterator_constructor)
+            return JS_ThrowTypeError(ctx, "abstract class not constructable");
+    return js_dup(this_val);
+}
+
+static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
+                                int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.from");
+}
+
+static JSValue js_iterator_proto_drop(JSContext *ctx, JSValue this_val,
+                                      int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.drop");
+}
+
+static JSValue js_iterator_proto_every(JSContext *ctx, JSValue this_val,
+                                       int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.every");
+}
+
+static JSValue js_iterator_proto_filter(JSContext *ctx, JSValue this_val,
+                                        int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.filter");
+}
+
+static JSValue js_iterator_proto_find(JSContext *ctx, JSValue this_val,
+                                      int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.find");
+}
+
+static JSValue js_iterator_proto_flatMap(JSContext *ctx, JSValue this_val,
+                                         int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.flatMap");
+}
+
+static JSValue js_iterator_proto_forEach(JSContext *ctx, JSValue this_val,
+                                         int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.forEach");
+}
+
+static JSValue js_iterator_proto_map(JSContext *ctx, JSValue this_val,
+                                     int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.map");
+}
+
+static JSValue js_iterator_proto_reduce(JSContext *ctx, JSValue this_val,
+                                        int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.reduce");
+}
+
+static JSValue js_iterator_proto_some(JSContext *ctx, JSValue this_val,
+                                      int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.some");
+}
+
+static JSValue js_iterator_proto_take(JSContext *ctx, JSValue this_val,
+                                      int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.take");
+}
+
+static JSValue js_iterator_proto_toArray(JSContext *ctx, JSValue this_val,
+                                         int argc, JSValue *argv)
+{
+    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.toArray");
+}
+
 static JSValue js_iterator_proto_iterator(JSContext *ctx, JSValue this_val,
                                           int argc, JSValue *argv)
 {
     return js_dup(this_val);
 }
 
+static const JSCFunctionListEntry js_iterator_funcs[] = {
+    JS_CFUNC_DEF("from", 1, js_iterator_from ),
+};
+
 static const JSCFunctionListEntry js_iterator_proto_funcs[] = {
+    JS_CFUNC_DEF("drop", 1, js_iterator_proto_drop ),
+    JS_CFUNC_DEF("every", 1, js_iterator_proto_every ),
+    JS_CFUNC_DEF("filter", 1, js_iterator_proto_filter ),
+    JS_CFUNC_DEF("find", 1, js_iterator_proto_find ),
+    JS_CFUNC_DEF("flatMap", 1, js_iterator_proto_flatMap ),
+    JS_CFUNC_DEF("forEach", 1, js_iterator_proto_forEach ),
+    JS_CFUNC_DEF("map", 1, js_iterator_proto_map ),
+    JS_CFUNC_DEF("reduce", 1, js_iterator_proto_reduce ),
+    JS_CFUNC_DEF("some", 1, js_iterator_proto_some ),
+    JS_CFUNC_DEF("take", 1, js_iterator_proto_take ),
+    JS_CFUNC_DEF("toArray", 0, js_iterator_proto_toArray ),
     JS_CFUNC_DEF("[Symbol.iterator]", 0, js_iterator_proto_iterator ),
 };
 
@@ -50276,11 +50383,20 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     /* CallSite */
     _JS_AddIntrinsicCallSite(ctx);
 
-    /* Iterator prototype */
-    ctx->iterator_proto = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, ctx->iterator_proto,
+    /* Iterator */
+    ctx->class_proto[JS_CLASS_ITERATOR] = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
                                js_iterator_proto_funcs,
                                countof(js_iterator_proto_funcs));
+    obj = JS_NewGlobalCConstructor(ctx, "Iterator", js_iterator_constructor, 0,
+                                   ctx->class_proto[JS_CLASS_ITERATOR]);
+    ctx->iterator_ctor = js_dup(obj);
+    JS_SetPropertyFunctionList(ctx, obj,
+                               js_iterator_funcs,
+                               countof(js_iterator_funcs));
+    ctx->iterator_proto =
+        JS_NewObjectProtoClass(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
+                               JS_CLASS_ITERATOR);
 
     /* Array */
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ARRAY],
