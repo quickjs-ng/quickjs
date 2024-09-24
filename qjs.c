@@ -137,7 +137,7 @@ static JSValue js_gc(JSContext *ctx, JSValue this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue js_navigatior_get_userAgent(JSContext *ctx, JSValue this_val)
+static JSValue js_navigator_get_userAgent(JSContext *ctx, JSValue this_val)
 {
     char version[32];
     snprintf(version, sizeof(version), "quickjs-ng/%s", JS_GetVersion());
