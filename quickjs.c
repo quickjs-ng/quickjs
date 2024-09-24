@@ -2459,11 +2459,7 @@ static inline BOOL is_strict_mode(JSContext *ctx)
 
 static inline BOOL __JS_AtomIsConst(JSAtom v)
 {
-#ifdef DUMP_ATOM_LEAKS
-        return (int32_t)v <= 0;
-#else
-        return (int32_t)v < JS_ATOM_END;
-#endif
+    return (int32_t)v < JS_ATOM_END;
 }
 
 static inline BOOL __JS_AtomIsTaggedInt(JSAtom v)
@@ -2727,11 +2723,6 @@ static JSAtomKindEnum JS_AtomGetKind(JSContext *ctx, JSAtom v)
         abort();
     }
     return (JSAtomKindEnum){-1}; // pacify compiler
-}
-
-static BOOL JS_AtomIsString(JSContext *ctx, JSAtom v)
-{
-    return JS_AtomGetKind(ctx, v) == JS_ATOM_KIND_STRING;
 }
 
 static JSAtom js_get_atom_index(JSRuntime *rt, JSAtomStruct *p)
@@ -33337,9 +33328,10 @@ typedef enum BCTagEnum {
     BC_TAG_OBJECT_REFERENCE,
     BC_TAG_MAP,
     BC_TAG_SET,
+    BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 14
+#define BC_VERSION 15
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -33385,6 +33377,9 @@ static const char * const bc_tag_str[] = {
     "Date",
     "ObjectValue",
     "ObjectReference",
+    "Map",
+    "Set",
+    "Symbol",
 };
 #endif
 
@@ -33896,9 +33891,7 @@ static int JS_WriteObjectTag(BCWriterState *s, JSValue obj)
             bc_put_leb128(s, prop_count);
         for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count; i++, pr++) {
             atom = pr->atom;
-            if (atom != JS_ATOM_NULL &&
-                JS_AtomIsString(s->ctx, atom) &&
-                (pr->flags & JS_PROP_ENUMERABLE)) {
+            if (atom != JS_ATOM_NULL && (pr->flags & JS_PROP_ENUMERABLE)) {
                 if (pr->flags & JS_PROP_TMASK) {
                     JS_ThrowTypeError(s->ctx, "only value properties are supported");
                     goto fail;
@@ -34113,6 +34106,18 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValue obj)
         if (JS_WriteBigInt(s, obj))
             goto fail;
         break;
+    case JS_TAG_SYMBOL:
+        {
+            JSAtomStruct *p = JS_VALUE_GET_PTR(obj);
+            if (p->atom_type != JS_ATOM_TYPE_GLOBAL_SYMBOL && p->atom_type != JS_ATOM_TYPE_SYMBOL) {
+                JS_ThrowTypeError(s->ctx, "unsupported symbol type");
+                goto fail;
+            }
+            JSAtom atom = js_get_atom_index(s->ctx->rt, p);
+            bc_put_u8(s, BC_TAG_SYMBOL);
+            bc_put_atom(s, atom);
+        }
+        break;
     default:
     invalid_tag:
         JS_ThrowInternalError(s->ctx, "unsupported tag (%d)", tag);
@@ -34137,8 +34142,19 @@ static int JS_WriteObjectAtoms(BCWriterState *s)
 
     bc_put_leb128(s, s->idx_to_atom_count);
     for(i = 0; i < s->idx_to_atom_count; i++) {
-        JSAtomStruct *p = rt->atom_array[s->idx_to_atom[i]];
-        JS_WriteString(s, p);
+        JSAtom atom = s->idx_to_atom[i];
+        if (__JS_AtomIsConst(atom)) {
+            bc_put_u8(s, 0 /* the type */);
+            /* TODO(saghul): encoding for tagged integers and keyword-ish atoms could be
+               more efficient. */
+            bc_put_u32(s, atom);
+        } else {
+            JSAtomStruct *p = rt->atom_array[atom];
+            uint8_t type = p->atom_type;
+            assert(type != JS_ATOM_TYPE_PRIVATE);
+            bc_put_u8(s, type);
+            JS_WriteString(s, p);
+        }
     }
     /* XXX: should check for OOM in above phase */
 
@@ -35346,6 +35362,19 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
     case BC_TAG_SET:
         obj = JS_ReadSet(s);
         break;
+    case BC_TAG_SYMBOL:
+        {
+            JSAtom atom;
+            if (bc_get_atom(s, &atom))
+                return JS_EXCEPTION;
+            if (__JS_AtomIsConst(atom)) {
+                obj = JS_AtomToValue(s->ctx, atom);
+            } else {
+                JSAtomStruct *p = s->ctx->rt->atom_array[atom];
+                obj = JS_NewSymbolFromAtom(s->ctx, atom, p->atom_type);
+            }
+        }
+        break;
     default:
     invalid_tag:
         return JS_ThrowSyntaxError(ctx, "invalid tag (tag=%d pos=%u)",
@@ -35357,7 +35386,7 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
 
 static int JS_ReadObjectAtoms(BCReaderState *s)
 {
-    uint8_t v8;
+    uint8_t v8, type;
     JSString *p;
     int i;
     JSAtom atom;
@@ -35381,10 +35410,22 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
             return s->error_state = -1;
     }
     for(i = 0; i < s->idx_to_atom_count; i++) {
-        p = JS_ReadString(s);
-        if (!p)
+        if (bc_get_u8(s, &type)) {
             return -1;
-        atom = JS_NewAtomStr(s->ctx, p);
+        }
+        if (type == 0) {
+            if (bc_get_u32(s, &atom))
+                return -1;
+        } else {
+            if (type < JS_ATOM_TYPE_STRING || type >= JS_ATOM_TYPE_PRIVATE) {
+                JS_ThrowInternalError(s->ctx, "invalid symbol type %d", type);
+                return -1;
+            }
+            p = JS_ReadString(s);
+            if (!p)
+                return -1;
+            atom = __JS_NewAtom(s->ctx->rt, p, type);
+        }
         if (atom == JS_ATOM_NULL)
             return s->error_state = -1;
         s->idx_to_atom[i] = atom;
