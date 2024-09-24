@@ -145,7 +145,7 @@ static JSValue js_navigatior_get_userAgent(JSContext *ctx, JSValue this_val)
 }
 
 static const JSCFunctionListEntry navigator_proto_funcs[] = {
-    JS_CGETSET_DEF2("userAgent", js_navigatior_get_userAgent, NULL, JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE),
+    JS_CGETSET_DEF2("userAgent", js_navigator_get_userAgent, NULL, JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE),
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Navigator", JS_PROP_CONFIGURABLE),
 };
 
