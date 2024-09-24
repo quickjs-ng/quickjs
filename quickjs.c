@@ -11574,6 +11574,8 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValue val, BOOL is_ToPropertyKey)
         return js_dtoa(ctx, JS_VALUE_GET_FLOAT64(val), 0, JS_DTOA_TOSTRING);
     case JS_TAG_BIG_INT:
         return js_bigint_to_string(ctx, val);
+    case JS_TAG_UNINITIALIZED:
+        return js_new_string8(ctx, "[uninitialized]");
     default:
         return js_new_string8(ctx, "[unsupported type]");
     }
