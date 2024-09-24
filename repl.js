@@ -412,6 +412,11 @@ import * as bjson from "bjson";
         cursor_pos = skip_word_backward(cursor_pos);
     }        
 
+    function clear_screen() {
+        directives["clear"]();
+        return -2;
+    }
+
     function accept_line() {
         std.puts("\n");
         history_add(cmd);
@@ -770,6 +775,7 @@ import * as bjson from "bjson";
         "\x09":     completion,             /* ^I - history-search-backward */
         "\x0a":     accept_line,            /* ^J - newline */
         "\x0b":     kill_line,              /* ^K - delete to end of line */
+        "\x0c":     clear_screen,           /* ^L - clear screen */
         "\x0d":     accept_line,            /* ^M - enter */
         "\x0e":     next_history,           /* ^N - down */
         "\x10":     previous_history,       /* ^P - up */
