@@ -262,6 +262,7 @@ DEF(            neq, 1, 2, 1, none)
 DEF(      strict_eq, 1, 2, 1, none)
 DEF(     strict_neq, 1, 2, 1, none)
 DEF(is_undefined_or_null, 1, 1, 1, none)
+DEF(     private_in, 1, 2, 1, none)
 /* must be the last non short and non temporary opcode */
 DEF(            nop, 1, 0, 0, none)
 
@@ -282,6 +283,7 @@ def(scope_put_var_init, 7, 0, 2, atom_u16) /* emitted in phase 1, removed in pha
 def(scope_get_private_field, 7, 1, 1, atom_u16) /* obj -> value, emitted in phase 1, removed in phase 2 */
 def(scope_get_private_field2, 7, 1, 2, atom_u16) /* obj -> obj value, emitted in phase 1, removed in phase 2 */
 def(scope_put_private_field, 7, 2, 0, atom_u16) /* obj value ->, emitted in phase 1, removed in phase 2 */
+def(scope_in_private_field, 7, 1, 1, atom_u16) /* obj -> res emitted in phase 1, removed in phase 2 */
 def(get_field_opt_chain, 5, 1, 1, atom) /* emitted in phase 1, removed in phase 2 */
 def(get_array_el_opt_chain, 1, 2, 1, none) /* emitted in phase 1, removed in phase 2 */
 def( set_class_name, 5, 1, 1, u32) /* emitted in phase 1, removed in phase 2 */

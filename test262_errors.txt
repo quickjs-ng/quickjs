@@ -88,6 +88,8 @@ test262/test/language/expressions/function/static-init-await-binding.js:16: Synt
 test262/test/language/expressions/function/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/generators/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/generators/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
+test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: unexpected error type: Test262: This statement should not be evaluated.
+test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: Test262Error: Expected a TypeError but got a Test262Error
 test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: strict mode: Test262Error: Expected a TypeError but got a Test262Error
 test262/test/language/module-code/top-level-await/async-module-does-not-block-sibling-modules.js:13: SyntaxError: Could not find export 'check' in module 'test262/test/language/module-code/top-level-await/async-module-sync_FIXTURE.js'
