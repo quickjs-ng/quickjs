@@ -54420,8 +54420,10 @@ uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *o
             goto end;
         }
         i = (i + 1) % countof(cr->shape);
-        if (unlikely(i == cr->index))
+        if (unlikely(i == cr->index)) {
+            cr->index = (cr->index + 1) % countof(cr->shape);
             break;
+        }
     }
     sh = cr->shape[i];
     if (cr->watchpoint_ref[i])
