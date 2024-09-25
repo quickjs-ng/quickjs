@@ -108,7 +108,7 @@ The library supports case conversion, Unicode normalization, Unicode
 script queries, Unicode general category queries and all Unicode
 binary properties.
 
-The full Unicode library weights about 45 KiB (x86 code).
+The full Unicode library weighs about 45 KiB (x86 code).
 
 ### BigInt
 
