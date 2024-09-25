@@ -571,10 +571,24 @@ typedef enum JSFunctionKindEnum {
 
 #define IC_CACHE_ITEM_CAPACITY 4
 
+typedef int watchpoint_delete_callback(JSRuntime* rt, intptr_t ref, uint8_t offset, JSAtom atom, intptr_t target);
+typedef int watchpoint_free_callback(JSRuntime* rt, intptr_t ref, uint8_t offset, JSAtom atom);
+
+typedef struct JSInlineCacheWatchpoint {
+    watchpoint_delete_callback *delete_callback;
+    watchpoint_free_callback *free_callback;
+    struct list_head link;
+    intptr_t ref;
+    uint32_t offset;
+    JSAtom atom;
+} JSInlineCacheWatchpoint;
+
 typedef struct JSInlineCacheRingSlot {
-    /* SoA for space optimization: 56 bytes */
+    /* SoA for space optimization: 120 bytes */
     JSShape* shape[IC_CACHE_ITEM_CAPACITY];
     uint32_t prop_offset[IC_CACHE_ITEM_CAPACITY];
+    JSObject* proto[IC_CACHE_ITEM_CAPACITY];
+    JSInlineCacheWatchpoint* watchpoint_ref[IC_CACHE_ITEM_CAPACITY];
     JSAtom atom;
     uint8_t index;
 } JSInlineCacheRingSlot;
@@ -600,10 +614,22 @@ static int rebuild_ic(JSContext *ctx, JSInlineCache *ic);
 static int resize_ic_hash(JSContext *ctx, JSInlineCache *ic);
 static int free_ic(JSRuntime *rt, JSInlineCache *ic);
 static uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *object,
-                            uint32_t prop_offset);
+                            uint32_t prop_offset, JSObject* prototype);
+
+static int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom);
+static int ic_free_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape);
+
+static int ic_watchpoint_delete_handler(JSRuntime* rt, intptr_t ref, uint8_t offset, JSAtom atom, intptr_t target);
+static int ic_watchpoint_free_handler(JSRuntime* rt, intptr_t ref, uint8_t offset, JSAtom atom);
+
+static int js_shape_delete_watchpoints(JSRuntime *rt, JSShape *shape, intptr_t target);
+static int js_shape_free_watchpoints(JSRuntime *rt, JSShape *shape);
+static JSInlineCacheWatchpoint *js_shape_create_watchpoint(JSRuntime *rt, JSShape *shape, intptr_t ptr, uint8_t offset, JSAtom atom,
+                                                           watchpoint_delete_callback *delete_callback,
+                                                           watchpoint_free_callback *free_callback);
 
 static int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
-                                  JSShape *shape)
+                                  JSShape *shape, JSObject **prototype)
 {
     uint32_t i;
     JSInlineCacheRingSlot *cr;
@@ -615,6 +641,7 @@ static int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
         shape_slot = *(cr->shape + i);
         if (likely(shape_slot == shape)) {
             cr->index = i;
+            *prototype = cr->proto[i];
             return cr->prop_offset[i];
         }
 
@@ -623,7 +650,8 @@ static int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
             break;
         }
   }
-
+  
+  *prototype = NULL;
   return -1;
 }
 
@@ -882,6 +910,7 @@ struct JSShape {
     int deleted_prop_count;
     JSShape *shape_hash_next; /* in JSRuntime.shape_hash[h] list */
     JSObject *proto;
+    struct list_head *watchpoint; /* watchpoint for prototype inline cache */
     JSShapeProperty prop[]; /* prop_size elements */
 };
 
@@ -4428,6 +4457,7 @@ static no_inline JSShape *js_new_shape2(JSContext *ctx, JSObject *proto,
     sh->hash = shape_initial_hash(proto);
     sh->is_hashed = TRUE;
     sh->has_small_array_index = FALSE;
+    sh->watchpoint = NULL;
     js_shape_hash_link(ctx->rt, sh);
     return sh;
 }
@@ -4459,6 +4489,7 @@ static JSShape *js_clone_shape(JSContext *ctx, JSShape *sh1)
     sh->header.ref_count = 1;
     add_gc_object(ctx->rt, &sh->header, JS_GC_OBJ_TYPE_SHAPE);
     sh->is_hashed = FALSE;
+    sh->watchpoint = NULL;
     if (sh->proto) {
         js_dup(JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     }
@@ -4485,6 +4516,7 @@ static void js_free_shape0(JSRuntime *rt, JSShape *sh)
     if (sh->proto != NULL) {
         JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     }
+    js_shape_free_watchpoints(rt, sh);
     pr = get_shape_prop(sh);
     for(i = 0; i < sh->prop_count; i++) {
         JS_FreeAtomRT(rt, pr->atom);
@@ -5680,6 +5712,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
         /* the template objects can be part of a cycle */
         {
             JSShape **shape, *(*shapes)[IC_CACHE_ITEM_CAPACITY];
+            JSObject **proto, *(*protos)[IC_CACHE_ITEM_CAPACITY];
             JSFunctionBytecode *b = (JSFunctionBytecode *)gp;
             int i;
             for(i = 0; i < b->cpool_count; i++) {
@@ -5693,6 +5726,10 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                     for (shape = *shapes; shape != endof(*shapes); shape++)
                         if (*shape)
                             mark_func(rt, &(*shape)->header);
+                    protos = &b->ic->cache[i].proto;
+                    for (proto = *protos; proto != endof(*protos); proto++)
+                        if (*proto)
+                            mark_func(rt, &(*proto)->header);
                 }
             }
         }
@@ -7018,6 +7055,7 @@ static int JS_SetPrototypeInternal(JSContext *ctx, JSValue obj,
     if (js_shape_prepare_update(ctx, p, NULL))
         return -1;
     sh = p->shape;
+    ic_free_shape_proto_watchpoints(ctx->rt, sh);
     if (sh->proto)
         JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     sh->proto = proto;
@@ -7234,7 +7272,7 @@ static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
                                        JSAtom prop, JSValue this_obj,
                                        JSInlineCache* ic, BOOL throw_ref_error)
 {
-    JSObject *p;
+    JSObject *p, *p1;
     JSProperty *pr;
     JSShapeProperty *prs;
     uint32_t tag, offset, proto_depth;
@@ -7275,6 +7313,7 @@ static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
         p = JS_VALUE_GET_OBJ(obj);
     }
 
+    p1 = p;
     for(;;) {
         prs = find_own_property_ic(&pr, p, prop, &offset);
         if (prs) {
@@ -7301,9 +7340,9 @@ static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
                     continue;
                 }
             } else {
-                if (ic && proto_depth == 0 && p->shape->is_hashed) {
+                if (ic && p1->shape->is_hashed && p->shape->is_hashed) {
                     ic->updated = TRUE;
-                    ic->updated_offset = add_ic_slot(ctx, ic, prop, p, offset);
+                    ic->updated_offset = add_ic_slot(ctx, ic, prop, p1, offset, proto_depth > 0 ? p : NULL);
                 }
                 return js_dup(pr->u.value);
             }
@@ -7397,14 +7436,17 @@ static JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue obj,
                                             BOOL throw_ref_error)
 {
     uint32_t tag;
-    JSObject *p;
+    JSObject *p, *proto;
     tag = JS_VALUE_GET_TAG(obj);
     if (unlikely(tag != JS_TAG_OBJECT))
         goto slow_path;
     p = JS_VALUE_GET_OBJ(obj);
-    offset = get_ic_prop_offset(ic, offset, p->shape);
-    if (likely(offset >= 0))
-        return js_dup(p->prop[offset].u.value);
+    offset = get_ic_prop_offset(ic, offset, p->shape, &proto);
+    if (likely(offset >= 0)) {
+        if (proto)
+            p = proto;
+        return JS_DupValue(ctx, p->prop[offset].u.value);
+    }
 slow_path:
     return JS_GetPropertyInternal2(ctx, obj, prop, this_obj, ic, throw_ref_error);
 }
@@ -8327,7 +8369,7 @@ static int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
             pr->flags = 0;
             pr->atom = JS_ATOM_NULL;
             pr1->u.value = JS_UNDEFINED;
-
+            ic_delete_shape_proto_watchpoints(ctx->rt, sh, atom);
             /* compact the properties if too many deleted properties */
             if (sh->deleted_prop_count >= 8 &&
                 sh->deleted_prop_count >= ((unsigned)sh->prop_count / 2)) {
@@ -8588,7 +8630,7 @@ retry:
             /* fast case */
             if (ic && p->shape->is_hashed) {
                 ic->updated = TRUE;
-                ic->updated_offset = add_ic_slot(ctx, ic, prop, p, offset);
+                ic->updated_offset = add_ic_slot(ctx, ic, prop, p, offset, NULL);
             }
             set_value(ctx, &pr->u.value, val);
             return TRUE;
@@ -8751,10 +8793,16 @@ retry:
             }
             goto generic_create_prop;
         } else {
+            ic_delete_shape_proto_watchpoints(ctx->rt, p->shape, prop);
             pr = add_property(ctx, p, prop, JS_PROP_C_W_E);
-            if (!pr)
+            if (unlikely(!pr))
                 goto fail;
             pr->u.value = val;
+            /* fast case */
+            if (ic && p->shape->is_hashed) {
+                ic->updated = TRUE;
+                ic->updated_offset = add_ic_slot(ctx, ic, prop, p, p->shape->prop_count - 1, NULL);
+            }
             return TRUE;
         }
     }
@@ -8817,13 +8865,15 @@ static int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValue this_obj,
                                         JSAtom prop, JSValue val, int flags,
                                         JSInlineCache *ic, int32_t offset) {
     uint32_t tag;
-    JSObject *p;
+    JSObject *p, *proto;
     tag = JS_VALUE_GET_TAG(this_obj);
     if (unlikely(tag != JS_TAG_OBJECT))
         goto slow_path;
     p = JS_VALUE_GET_OBJ(this_obj);
-    offset = get_ic_prop_offset(ic, offset, p->shape);
+    offset = get_ic_prop_offset(ic, offset, p->shape, &proto);
     if (likely(offset >= 0)) {
+        if (proto)
+            goto slow_path;
         set_value(ctx, &p->prop[offset].u.value, val);
         return TRUE;
     }
@@ -9199,6 +9249,62 @@ static int js_shape_prepare_update(JSContext *ctx, JSObject *p,
         }
     }
     return 0;
+}
+
+int js_shape_delete_watchpoints(JSRuntime *rt, JSShape *shape, intptr_t target) {
+    struct list_head *el, *el1;
+    if (unlikely(!shape || !shape->watchpoint))
+        goto end;
+    list_for_each_safe(el, el1, shape->watchpoint) {
+        JSInlineCacheWatchpoint *o = list_entry(el, JSInlineCacheWatchpoint, link);
+        if (o->delete_callback)
+            if (!o->delete_callback(rt, (intptr_t)o->ref, o->offset, o->atom, target)) {
+                list_del(el);
+                js_free_rt(rt, o);
+                break;
+            }
+    }
+end:
+    return 0;
+}
+
+int js_shape_free_watchpoints(JSRuntime *rt, JSShape *shape) {
+    struct list_head *el, *el1;
+    if (unlikely(!shape || !shape->watchpoint))
+        goto end;
+    list_for_each_safe(el, el1, shape->watchpoint) {
+        JSInlineCacheWatchpoint *o = list_entry(el, JSInlineCacheWatchpoint, link);
+        if (o->free_callback)
+            o->free_callback(rt, (intptr_t)o->ref, o->offset, o->atom);
+        list_del(el);
+        js_free_rt(rt, o);
+    }
+    list_empty(shape->watchpoint);
+    js_free_rt(rt, shape->watchpoint);
+end:
+    return 0;
+}
+
+JSInlineCacheWatchpoint *js_shape_create_watchpoint(JSRuntime *rt, JSShape *shape, intptr_t ptr, uint8_t offset, JSAtom atom,
+                                                    watchpoint_delete_callback *delete_callback,
+                                                    watchpoint_free_callback *free_callback)
+{
+    JSInlineCacheWatchpoint *o;
+    o = (JSInlineCacheWatchpoint *)js_malloc_rt(rt, sizeof(JSInlineCacheWatchpoint));
+    if (unlikely(!o))
+        return NULL;
+    o->ref = ptr;
+    o->atom = atom;
+    o->offset = offset;
+    o->delete_callback = delete_callback;
+    o->free_callback = free_callback;
+    if (!shape->watchpoint) {
+        shape->watchpoint = (struct list_head *)js_malloc_rt(rt, sizeof(struct list_head));
+        init_list_head(shape->watchpoint);
+    }
+    init_list_head(&o->link);
+    list_add_tail(&o->link, shape->watchpoint);
+    return o;
 }
 
 static int js_update_property_flags(JSContext *ctx, JSObject *p,
@@ -54013,12 +54119,23 @@ int free_ic(JSRuntime* rt, JSInlineCache *ic)
     uint32_t i;
     JSInlineCacheHashSlot *ch, *ch_next;
     JSShape **shape, *(*shapes)[IC_CACHE_ITEM_CAPACITY];
+    JSInlineCacheWatchpoint **ref, *(*refs)[IC_CACHE_ITEM_CAPACITY], *o;
     if (ic->cache) {
         for (i = 0; i < ic->count; i++) {
             shapes = &ic->cache[i].shape;
             JS_FreeAtomRT(rt, ic->cache[i].atom);
             for (shape = *shapes; shape != endof(*shapes); shape++)
                 js_free_shape_null(rt, *shape);
+            refs = &ic->cache[i].watchpoint_ref;
+            for (ref = *refs; ref != endof(*refs); ref++) {
+                o = *ref;
+                if (o) {
+                    if (o->free_callback)
+                        o->free_callback(rt, (intptr_t)o->ref ,o->offset, o->atom);
+                    list_del(&o->link);
+                    js_free_rt(rt, o);
+                }
+            }
         }
     }
     for (i = 0; i < ic->capacity; i++) {
@@ -54036,9 +54153,9 @@ int free_ic(JSRuntime* rt, JSInlineCache *ic)
 }
 
 uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *object,
-                     uint32_t prop_offset)
+                     uint32_t prop_offset, JSObject* prototype)
 {
-    int32_t i;
+    uint8_t i;
     uint32_t h;
     JSInlineCacheHashSlot *ch;
     JSInlineCacheRingSlot *cr;
@@ -54055,7 +54172,7 @@ uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *o
     assert(cr != NULL);
     i = cr->index;
     for (;;) {
-        if (object->shape == cr->shape[i]) {
+        if (object->shape == cr->shape[i] && prototype == cr->proto[i]) {
             cr->prop_offset[i] = prop_offset;
             goto end;
         }
@@ -54064,11 +54181,101 @@ uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *o
             break;
     }
     sh = cr->shape[i];
+    if (cr->watchpoint_ref[i])
+        js_shape_delete_watchpoints(ctx->rt, sh, (intptr_t)cr);
     cr->shape[i] = js_dup_shape(object->shape);
     js_free_shape_null(ctx->rt, sh);
     cr->prop_offset[i] = prop_offset;
+    if (prototype) {
+        JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, prototype));
+        cr->proto[i] = prototype;
+        cr->watchpoint_ref[i] = js_shape_create_watchpoint(ctx->rt, cr->shape[i], (intptr_t)cr, i,
+                          JS_DupAtom(ctx, atom),
+                          ic_watchpoint_delete_handler,
+                          ic_watchpoint_free_handler);
+    }
+
 end:
     return ch->index;
+}
+
+int ic_watchpoint_delete_handler(JSRuntime* rt, intptr_t ref, uint8_t offset, JSAtom atom, intptr_t target) {
+    JSInlineCacheRingSlot *cr;
+    cr = (JSInlineCacheRingSlot *) ref;
+    if(ref != target)
+        return 1;
+    assert(cr->proto[offset] != NULL);
+    JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, cr->proto[offset]));
+    JS_FreeAtomRT(rt, atom);
+    cr->watchpoint_ref[offset] = NULL;
+    cr->proto[offset] = NULL;
+    cr->prop_offset[offset] = 0;
+    cr->shape[offset] = NULL;
+    return 0;
+}
+
+int ic_watchpoint_free_handler(JSRuntime* rt, intptr_t ref, uint8_t offset, JSAtom atom) {
+    JSInlineCacheRingSlot *cr;
+    cr = (JSInlineCacheRingSlot *) ref;
+    assert(cr->watchpoint_ref[offset] != NULL);
+    assert(cr->proto[offset] != NULL);
+    JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, cr->proto[offset]));
+    JS_FreeAtomRT(rt, atom);
+    cr->watchpoint_ref[offset] = NULL;
+    cr->proto[offset] = NULL;
+    cr->prop_offset[offset] = 0;
+    cr->shape[offset] = NULL;
+    return 0;
+}
+
+int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom) {
+    struct list_head *el, *el1;
+    JSObject *p;
+    JSInlineCacheRingSlot *cr;
+    JSShape *sh;
+    p = shape->proto;
+    while(likely(p)) {
+        if (p->shape->watchpoint)
+            list_for_each_safe(el, el1, p->shape->watchpoint) {
+                JSInlineCacheWatchpoint *o = list_entry(el, JSInlineCacheWatchpoint, link);
+                if (o->atom == atom) {
+                    cr = (JSInlineCacheRingSlot *)o->ref;
+                    sh = cr->shape[o->offset];
+                    o->delete_callback = NULL;
+                    o->free_callback = NULL;
+                    ic_watchpoint_free_handler(rt, (intptr_t)cr, o->offset, o->atom);
+                    js_free_shape_null(rt, shape);
+                    list_del(el);
+                    js_free_rt(rt, o);
+                }
+            }
+        p = p->shape->proto;
+    }
+    return 0;
+}
+
+int ic_free_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape) {
+    struct list_head *el, *el1;
+    JSObject *p;
+    JSInlineCacheRingSlot *cr;
+    JSShape *sh;
+    p = shape->proto;
+    while(likely(p)) {
+        if (p->shape->watchpoint)
+            list_for_each_safe(el, el1, p->shape->watchpoint) {
+                JSInlineCacheWatchpoint *o = list_entry(el, JSInlineCacheWatchpoint, link);
+                cr = (JSInlineCacheRingSlot *)o->ref;
+                sh = cr->shape[o->offset];
+                o->delete_callback = NULL;
+                o->free_callback = NULL;
+                ic_watchpoint_free_handler(rt, (intptr_t)cr, o->offset, o->atom);
+                js_free_shape_null(rt, shape);
+                list_del(el);
+                js_free_rt(rt, o);
+            }
+        p = p->shape->proto;
+    }
+    return 0;
 }
 
 /* CallSite */
