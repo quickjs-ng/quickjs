@@ -7,7 +7,7 @@ on:
       - '!.gitignore'
       - '!LICENSE'
       - '!TODO'
-      - '!doc/**'
+      - '!docs/**'
       - '!examples/**'
       - '.github/workflows/ci.yml'
   push:
