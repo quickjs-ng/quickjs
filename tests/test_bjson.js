@@ -178,6 +178,32 @@ function bjson_test_set()
     assert([...r].toString(), xs.toString());
 }
 
+function bjson_test_symbol()
+{
+    var buf, r, o;
+
+    o = {[Symbol.toStringTag]: "42"};
+    buf = bjson.write(o);
+    r = bjson.read(buf, 0, buf.byteLength);
+    assert(o.toString(), r.toString());
+
+    o = Symbol('foo');
+    buf = bjson.write(o);
+    r = bjson.read(buf, 0, buf.byteLength);
+    assert(o.toString(), r.toString());
+    assert(o !== r);
+
+    o = Symbol.for('foo');
+    buf = bjson.write(o);
+    r = bjson.read(buf, 0, buf.byteLength);
+    assert(o === r);
+
+    o = Symbol.toStringTag;
+    buf = bjson.write(o);
+    r = bjson.read(buf, 0, buf.byteLength);
+    assert(o === r);
+}
+
 function bjson_test_all()
 {
     var obj;
@@ -210,6 +236,7 @@ function bjson_test_all()
     bjson_test_regexp();
     bjson_test_map();
     bjson_test_set();
+    bjson_test_symbol();
 }
 
 bjson_test_all();
