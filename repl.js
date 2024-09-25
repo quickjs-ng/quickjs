@@ -783,6 +783,7 @@ import * as bjson from "bjson";
         "\x12":     alert,                  /* ^R - reverse-search */
         "\x13":     alert,                  /* ^S - search */
         "\x14":     transpose_chars,        /* ^T - transpose */
+        "\x17":     backward_kill_word,     /* ^W - backward_kill_word */
         "\x18":     reset,                  /* ^X - cancel */
         "\x19":     yank,                   /* ^Y - yank */
         "\x1bOA":   previous_history,       /* ^[OA - up */
