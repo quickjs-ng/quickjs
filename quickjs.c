@@ -630,7 +630,7 @@ static JSInlineCacheWatchpoint *js_shape_create_watchpoint(JSRuntime *rt, JSShap
                                                            watchpoint_delete_callback *delete_callback,
                                                            watchpoint_free_callback *free_callback);
 
-static int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
+static force_inline int32_t get_ic_prop_offset(JSInlineCache *ic, uint32_t cache_offset,
                                   JSShape *shape, JSObject **prototype)
 {
     uint32_t i;
@@ -7427,7 +7427,7 @@ JSValue JS_GetProperty(JSContext *ctx, JSValue this_obj, JSAtom prop)
     return JS_GetPropertyInternal2(ctx, this_obj, prop, this_obj, NULL, FALSE);
 }
 
-static JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue obj,
+static force_inline JSValue JS_GetPropertyInternalWithIC(JSContext *ctx, JSValue obj,
                                             JSAtom prop, JSValue this_obj,
                                             JSInlineCache *ic, int32_t offset,
                                             BOOL throw_ref_error)
@@ -8858,7 +8858,7 @@ int JS_SetProperty(JSContext *ctx, JSValue this_obj, JSAtom prop, JSValue val)
     return JS_SetPropertyInternal2(ctx, this_obj, prop, val, this_obj, JS_PROP_THROW, NULL);
 }
 
-static int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValue this_obj,
+static force_inline int JS_SetPropertyInternalWithIC(JSContext *ctx, JSValue this_obj,
                                         JSAtom prop, JSValue val, int flags,
                                         JSInlineCache *ic, int32_t offset) {
     uint32_t tag;
@@ -16210,7 +16210,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 atom = get_u32(pc);
                 pc += 4;
                 sf->cur_pc = pc;
-                val = JS_GetPropertyInternal2(ctx, sp[-1], atom, sp[-1], NULL, FALSE);
+                val = JS_GetPropertyInternal2(ctx, sp[-1], atom, sp[-1], ic, FALSE);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
                 if (ic != NULL && ic->updated == TRUE) {
@@ -54428,9 +54428,9 @@ uint32_t add_ic_slot(JSContext *ctx, JSInlineCache *ic, JSAtom atom, JSObject *o
     sh = cr->shape[i];
     if (cr->watchpoint_ref[i])
         js_shape_delete_watchpoints(ctx->rt, sh, (intptr_t)cr);
+    cr->prop_offset[i] = prop_offset;
     cr->shape[i] = js_dup_shape(object->shape);
     js_free_shape_null(ctx->rt, sh);
-    cr->prop_offset[i] = prop_offset;
     if (prototype) {
         JS_DupValue(ctx, JS_MKPTR(JS_TAG_OBJECT, prototype));
         cr->proto[i] = prototype;
