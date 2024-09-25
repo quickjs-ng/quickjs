@@ -94,7 +94,7 @@ optimized to avoid recursions.
 Infinite recursions coming from quantifiers with empty terms are
 avoided.
 
-The full regexp library weights about 15 KiB (x86 code), excluding the
+The full regexp library weighs about 15 KiB (x86 code), excluding the
 Unicode library.
 
 ### Unicode
