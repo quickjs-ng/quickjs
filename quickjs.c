@@ -39753,18 +39753,18 @@ static JSValue js_array_iterator_next(JSContext *ctx, JSValue this_val,
     }
 }
 
-static JSValue js_iterator_constructor(JSContext *ctx, JSValue this_val,
+static JSValue js_iterator_constructor(JSContext *ctx, JSValue new_target,
                                        int argc, JSValue *argv)
 {
     JSObject *p;
 
-    if (JS_TAG_OBJECT != JS_VALUE_GET_TAG(this_val))
+    if (JS_TAG_OBJECT != JS_VALUE_GET_TAG(new_target))
         return JS_ThrowTypeError(ctx, "constructor requires 'new'");
-    p = JS_VALUE_GET_OBJ(this_val);
+    p = JS_VALUE_GET_OBJ(new_target);
     if (p->class_id == JS_CLASS_C_FUNCTION)
         if (p->u.cfunc.c_function.generic == js_iterator_constructor)
             return JS_ThrowTypeError(ctx, "abstract class not constructable");
-    return js_dup(this_val);
+    return js_create_from_ctor(ctx, new_target, JS_CLASS_ITERATOR);
 }
 
 static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
@@ -39836,7 +39836,37 @@ static JSValue js_iterator_proto_take(JSContext *ctx, JSValue this_val,
 static JSValue js_iterator_proto_toArray(JSContext *ctx, JSValue this_val,
                                          int argc, JSValue *argv)
 {
-    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.toArray");
+    JSValue item, method, result;
+    int64_t idx;
+    BOOL done;
+
+    result = JS_UNDEFINED;
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Iterator.prototype.toArray called on non-object");
+    method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
+    if (JS_IsException(method))
+        return JS_EXCEPTION;
+    result = JS_NewArray(ctx);
+    if (JS_IsException(result))
+        goto exception;
+    for (idx = 0; /*empty*/; idx++) {
+        item = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
+        if (JS_IsException(item))
+            goto exception;
+        if (done)
+            break;
+        if (JS_DefinePropertyValueInt64(ctx, result, idx, item,
+                                        JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+            goto exception;
+    }
+    if (JS_SetProperty(ctx, result, JS_ATOM_length, js_uint32(idx)) < 0)
+        goto exception;
+    JS_FreeValue(ctx, method);
+    return result;
+exception:
+    JS_FreeValue(ctx, result);
+    JS_FreeValue(ctx, method);
+    return JS_EXCEPTION;
 }
 
 static JSValue js_iterator_proto_iterator(JSContext *ctx, JSValue this_val,
