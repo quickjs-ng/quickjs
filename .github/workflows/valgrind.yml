@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - master
+    paths:
+      - '**'
+      - '!.gitignore'
+      - '!LICENSE'
+      - '!README.md'
+      - '!docs/**'
+      - '!examples/**'
+      - '.github/workflows/valgrind.yml'
   workflow_dispatch:
 
 jobs:

@@ -6,13 +6,21 @@ on:
       - '**'
       - '!.gitignore'
       - '!LICENSE'
-      - '!TODO'
+      - '!README.md'
       - '!docs/**'
       - '!examples/**'
       - '.github/workflows/ci.yml'
   push:
     branches:
       - master
+    paths:
+      - '**'
+      - '!.gitignore'
+      - '!LICENSE'
+      - '!README.md'
+      - '!docs/**'
+      - '!examples/**'
+      - '.github/workflows/ci.yml'
 
 jobs:
   codegen:
