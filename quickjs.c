@@ -153,7 +153,7 @@ enum {
     JS_CLASS_SET,               /* u.map_state */
     JS_CLASS_WEAKMAP,           /* u.map_state */
     JS_CLASS_WEAKSET,           /* u.map_state */
-    JS_CLASS_ITERATOR,          /* u.map_iterator_data */
+    JS_CLASS_ITERATOR,
     JS_CLASS_MAP_ITERATOR,      /* u.map_iterator_data */
     JS_CLASS_SET_ITERATOR,      /* u.map_iterator_data */
     JS_CLASS_ARRAY_ITERATOR,    /* u.array_iterator_data */
@@ -39770,7 +39770,53 @@ static JSValue js_iterator_constructor(JSContext *ctx, JSValue new_target,
 static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
                                 int argc, JSValue *argv)
 {
-    return JS_ThrowInternalError(ctx, "TODO implement Iterator.from");
+    JSValue obj, method, iter, temp;
+    int ret;
+
+    obj = argv[0];
+    if (JS_IsString(obj)) {
+        method = JS_GetProperty(ctx, obj, JS_ATOM_Symbol_iterator);
+        if (JS_IsException(method))
+            return JS_EXCEPTION;
+        return JS_CallFree(ctx, method, obj, 0, NULL);
+    }
+    if (!JS_IsObject(obj))
+        return JS_ThrowTypeError(ctx, "Iterator.from called on non-object");
+    ret = JS_OrdinaryIsInstanceOf(ctx, obj, ctx->iterator_ctor);
+    if (ret < 0)
+        return JS_EXCEPTION;
+    if (ret)
+        return js_dup(obj);
+    method = JS_GetProperty(ctx, obj, JS_ATOM_Symbol_iterator);
+    if (JS_IsException(method))
+        return JS_EXCEPTION;
+    if (JS_IsNull(method) || JS_IsUndefined(method)) {
+        method = JS_GetProperty(ctx, obj, JS_ATOM_next);
+        if (JS_IsException(method))
+            return JS_EXCEPTION;
+        // honestly kind of ghetto but avoids having to
+        // define a separate JS_CLASS_NON_GHETTO_ITERATOR
+        temp = method;
+        method = js_function_bind(ctx, method, 1, &obj);
+        JS_FreeValue(ctx, temp);
+        if (JS_IsException(method))
+            return JS_EXCEPTION;
+        iter = JS_NewObjectProtoClass(ctx, ctx->iterator_proto, JS_CLASS_ITERATOR);
+        if (JS_IsException(iter)) {
+            JS_FreeValue(ctx, method);
+            return JS_EXCEPTION;
+        }
+        if (JS_SetProperty(ctx, iter, JS_ATOM_next, method) < 0) {
+            JS_FreeValue(ctx, iter);
+            return JS_EXCEPTION;
+        }
+    } else {
+        iter = JS_GetIterator2(ctx, obj, method);
+        JS_FreeValue(ctx, method);
+        if (JS_IsException(iter))
+            return JS_EXCEPTION;
+    }
+    return iter;
 }
 
 static JSValue js_iterator_proto_drop(JSContext *ctx, JSValue this_val,
