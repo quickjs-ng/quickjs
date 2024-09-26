@@ -1549,29 +1549,21 @@ import * as bjson from "bjson";
         }
         mexpr = "";
         
-        eval_and_print_start(expr, true);
+        eval_and_print(expr);
 
         return true;
     }
 
-    function eval_and_print_start(expr, is_async) {
+    function eval_and_print(expr) {
         var result;
-        
-        try {
-            if (use_strict)
-                expr = '"use strict"; void 0;' + expr;
-            eval_start_time = os.now();
-            /* eval as a script */
-            result = std.evalScript(expr, { backtrace_barrier: true, async: is_async });
-            if (is_async) {
-                /* result is a promise */
-                result.then(print_eval_result, print_eval_error);
-            } else {
-                print_eval_result({ value: result });
-            }
-        } catch (error) {
-            print_eval_error(error);
-        }
+
+        if (use_strict)
+            expr = '"use strict"; void 0;' + expr;
+        eval_start_time = os.now();
+        /* eval as a script */
+        result = std.evalScript(expr, { backtrace_barrier: true, async: true });
+        /* result is a promise */
+        result.then(print_eval_result, print_eval_error);
     }
 
     function print_eval_result(result) {
@@ -1587,13 +1579,15 @@ import * as bjson from "bjson";
     function print_eval_error(error) {
         std.puts(colors[styles.error]);
         if (error instanceof Error) {
-            console.log(error);
+            std.puts(error);
+            std.puts('\n');
             if (error.stack) {
                 std.puts(error.stack);
             }
         } else {
             std.puts("Throw: ");
-            console.log(error);
+            std.puts(error);
+            std.puts('\n');
         }
         std.puts(colors.none);
 
