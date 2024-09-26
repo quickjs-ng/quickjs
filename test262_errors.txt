@@ -18,24 +18,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-retu
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-not-object.js:72: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/Iterator/from/callable.js:11: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/callable.js:11: strict mode: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/get-next-method-only-once.js:38: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/get-next-method-only-once.js:38: strict mode: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/get-next-method-throws.js:17: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/from/get-next-method-throws.js:17: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/from/iterable-primitives.js:33: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/from/iterable-primitives.js:33: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/from/iterable-to-iterator-fallback.js:29: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/from/iterable-to-iterator-fallback.js:29: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/from/primitives.js:14: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/from/primitives.js:14: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/from/result-proto.js:19: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/result-proto.js:19: strict mode: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/supports-iterable.js:14: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/supports-iterable.js:14: strict mode: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/supports-iterator.js:29: InternalError: TODO implement Iterator.from
-test262/test/built-ins/Iterator/from/supports-iterator.js:29: strict mode: InternalError: TODO implement Iterator.from
 test262/test/built-ins/Iterator/prototype/Symbol.iterator/prop-desc.js:15: Test262Error: obj should have an own property Symbol(Symbol.iterator)
 test262/test/built-ins/Iterator/prototype/Symbol.iterator/prop-desc.js:15: strict mode: Test262Error: obj should have an own property Symbol(Symbol.iterator)
 test262/test/built-ins/Iterator/prototype/Symbol.toStringTag/prop-desc.js:11: TypeError: cannot read property 'get' of undefined
