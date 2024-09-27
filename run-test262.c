@@ -39,6 +39,9 @@
 #include "list.h"
 #include "quickjs-libc.h"
 
+// defined in quickjs.c
+extern js_mutex_t js_atomics_mutex;
+
 /* enable test262 thread support to test SharedArrayBuffer and Atomics */
 #define CONFIG_AGENT
 
@@ -660,6 +663,11 @@ static JSValue js_agent_sleep(JSContext *ctx, JSValue this_val,
     uint32_t duration;
     if (JS_ToUint32(ctx, &duration, argv[0]))
         return JS_EXCEPTION;
+    // this is here to silence a TSan warning: we mix mutexes
+    // and atomic ops and that confuses poor TSan, see
+    // https://github.com/quickjs-ng/quickjs/issues/557
+    js_mutex_lock(&js_atomics_mutex);
+    js_mutex_unlock(&js_atomics_mutex);
     usleep(duration * 1000);
     return JS_UNDEFINED;
 }

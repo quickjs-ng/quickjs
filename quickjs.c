@@ -53574,7 +53574,7 @@ typedef struct JSAtomicsWaiter {
 } JSAtomicsWaiter;
 
 static js_once_t js_atomics_once = JS_ONCE_INIT;
-static js_mutex_t js_atomics_mutex;
+JS_EXTERN js_mutex_t js_atomics_mutex; // non-static to give run-test262 access
 static struct list_head js_atomics_waiter_list =
     LIST_HEAD_INIT(js_atomics_waiter_list);
 

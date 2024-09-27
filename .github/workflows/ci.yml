@@ -39,6 +39,7 @@ jobs:
     env:
       ASAN_OPTIONS: halt_on_error=1
       MSAN_OPTIONS: halt_on_error=1
+      TSAN_OPTIONS: halt_on_error=1
       UBSAN_OPTIONS: halt_on_error=1
     defaults:
       run:
@@ -55,6 +56,7 @@ jobs:
           - { os: ubuntu-latest, configType: asan, runTest262: true }
           - { os: ubuntu-latest, configType: ubsan, runTest262: true }
           - { os: ubuntu-latest, configType: msan }
+          - { os: ubuntu-latest, configType: tsan }
           - { os: ubuntu-latest, configType: tcc }
           - { os: ubuntu-latest, arch: x86 }
           - { os: ubuntu-latest, arch: riscv64 }
@@ -78,9 +80,9 @@ jobs:
         with:
           submodules: true
 
-      # ASLR with big PIE slides does not work well with [AM]San
+      # ASLR with big PIE slides does not work well with [AMT]San
       - name: disable ASLR
-        if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan' || matrix.config.configType == 'ubsan' || matrix.config.configType == 'msan')}}
+        if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan' || matrix.config.configType == 'ubsan' || matrix.config.configType == 'msan' || matrix.config.configType == 'tsan')}}
         run: |
           sudo sysctl -w kernel.randomize_va_space=0
 
@@ -123,6 +125,9 @@ jobs:
             echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
             echo "CONFIG_MSAN=ON" >> $GITHUB_ENV;
             echo "CC=clang" >> $GITHUB_ENV;
+          elif [ "${{ matrix.config.configType }}" = "tsan" ]; then
+            echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
+            echo "CONFIG_TSAN=ON" >> $GITHUB_ENV;
           fi
 
       - name: build
@@ -133,7 +138,8 @@ jobs:
             BUILD_SHARED_LIBS=$BUILD_SHARED_LIBS \
             CONFIG_ASAN=$CONFIG_ASAN \
             CONFIG_UBSAN=$CONFIG_UBSAN \
-            CONFIG_MSAN=$CONFIG_MSAN
+            CONFIG_MSAN=$CONFIG_MSAN \
+            CONFIG_TSAN=$CONFIG_TSAN
 
       - name: stats
         if: ${{ matrix.config.configType != 'examples' }}

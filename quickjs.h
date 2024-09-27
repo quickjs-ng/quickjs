@@ -1022,7 +1022,6 @@ JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 
 JS_EXTERN const char* JS_GetVersion(void);
 
-#undef JS_EXTERN
 #undef js_force_inline
 #undef __js_printf_like
 
