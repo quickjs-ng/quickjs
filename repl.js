@@ -1577,7 +1577,9 @@ import * as bjson from "bjson";
     }
 
     function print_eval_error(error) {
-        std.puts(colors[styles.error]);
+        if (show_colors) {
+            std.puts(colors[styles.error]);
+        }
         if (error instanceof Error) {
             std.puts(error);
             std.puts('\n');
@@ -1589,7 +1591,10 @@ import * as bjson from "bjson";
             std.puts(error);
             std.puts('\n');
         }
-        std.puts(colors.none);
+
+        if (show_colors) {
+            std.puts(colors.none);
+        }
 
         handle_cmd_end();
     }
@@ -1872,6 +1877,10 @@ import * as bjson from "bjson";
             if (+m[2] !== 0) { // light background
                 styles = themes.light;
             }
+        }
+        s = std.getenv("NO_COLOR"); // https://no-color.org/
+        if (s && +s[0] !== 0) {
+            show_colors = false;
         }
     }
 
