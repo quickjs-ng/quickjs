@@ -67,6 +67,12 @@
 #define CONFIG_ATOMICS
 #endif
 
+#if defined(__GNUC__) || defined(__TINYC__)
+#define JS_EXTERN __attribute__((visibility("default")))
+#else
+#define JS_EXTERN
+#endif
+
 #ifndef __GNUC__
 #define __extension__
 #endif
@@ -53574,7 +53580,7 @@ typedef struct JSAtomicsWaiter {
 } JSAtomicsWaiter;
 
 static js_once_t js_atomics_once = JS_ONCE_INIT;
-js_mutex_t js_atomics_mutex; // non-static to give run-test262 access
+JS_EXTERN js_mutex_t js_atomics_mutex; // non-static to give run-test262 access
 static struct list_head js_atomics_waiter_list =
     LIST_HEAD_INIT(js_atomics_waiter_list);
 
