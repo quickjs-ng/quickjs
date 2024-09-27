@@ -87,11 +87,11 @@ extern char **environ;
 
 #ifdef USE_WORKER
 #include <pthread.h>
-#include "quickjs-c-atomics.h"
 #endif
 
 #include "cutils.h"
 #include "list.h"
+#include "quickjs-c-atomics.h"
 #include "quickjs-libc.h"
 
 #define MAX_SAFE_INTEGER (((int64_t) 1 << 53) - 1)
@@ -167,7 +167,7 @@ typedef struct JSThreadState {
 } JSThreadState;
 
 static uint64_t os_pending_signals;
-static int (*os_poll_func)(JSContext *ctx);
+static _Atomic int can_js_os_poll;
 
 static void js_std_dbuf_init(JSContext *ctx, DynBuf *s)
 {
@@ -3827,7 +3827,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
 
 static int js_os_init(JSContext *ctx, JSModuleDef *m)
 {
-    os_poll_func = js_os_poll;
+    can_js_os_poll = TRUE;
 
 #ifdef USE_WORKER
     {
@@ -4058,7 +4058,7 @@ JSValue js_std_loop(JSContext *ctx)
             }
         }
 
-        if (!os_poll_func || os_poll_func(ctx))
+        if (!can_js_os_poll || js_os_poll(ctx))
             break;
     }
 done:
@@ -4090,8 +4090,8 @@ JSValue js_std_await(JSContext *ctx, JSValue obj)
             if (err < 0) {
                 js_std_dump_error(ctx1);
             }
-            if (os_poll_func)
-                os_poll_func(ctx);
+            if (can_js_os_poll)
+                js_os_poll(ctx);
         } else {
             /* not a promise */
             ret = obj;
