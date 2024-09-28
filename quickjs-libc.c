@@ -3882,17 +3882,41 @@ static JSValue js_print(JSContext *ctx, JSValue this_val,
     const char *str;
     size_t len;
 
+#ifdef _WIN32
+    DWORD written;
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hConsole == INVALID_HANDLE_VALUE)
+        return JS_EXCEPTION;
+#endif
+
     for(i = 0; i < argc; i++) {
-        if (i != 0)
+        if (i != 0) {
+#ifdef _WIN32
+            WriteConsoleW(hConsole, L" ", 1, &written, NULL);
+#else
             putchar(' ');
+#endif
+        }
         str = JS_ToCStringLen(ctx, &len, argv[i]);
         if (!str)
             return JS_EXCEPTION;
+#ifdef _WIN32
+        DWORD prev = GetConsoleOutputCP();
+        SetConsoleOutputCP(CP_UTF8);
+        WriteConsoleA(hConsole, str, len, &written, NULL);
+        SetConsoleOutputCP(prev);
+#else
         fwrite(str, 1, len, stdout);
+#endif
         JS_FreeCString(ctx, str);
     }
+#ifdef _WIN32
+    WriteConsoleW(hConsole, L"\n", 1, &written, NULL);
+    FlushFileBuffers(hConsole);
+#else
     putchar('\n');
     fflush(stdout);
+#endif
     return JS_UNDEFINED;
 }
 
