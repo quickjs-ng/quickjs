@@ -135,6 +135,15 @@ static inline int str_equal(const char *a, const char *b) {
     return !strcmp(a, b);
 }
 
+static inline int str_count(const char *a, const char *b) {
+    int count = 0;
+    while ((a = strstr(a, b))) {
+        a += strlen(b);
+        count++;
+    }
+    return count;
+}
+
 char *str_append(char **pp, const char *sep, const char *str) {
     char *res, *p;
     size_t len = 0;
@@ -1049,7 +1058,8 @@ void load_config(const char *filename, const char *ignore)
                 continue;
             }
             if (str_equal(p, "verbose")) {
-                verbose = str_equal(q, "yes");
+                int count = str_count(q, "yes");
+                verbose = max_int(verbose, count);
                 continue;
             }
             if (str_equal(p, "errorfile")) {
@@ -1194,12 +1204,13 @@ int longest_match(const char *str, const char *find, int pos, int *ppos, int lin
 static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
                     const char *filename, int is_test, int is_negative,
                     const char *error_type, FILE *outfile, int eval_flags,
-                    int is_async)
+                    int is_async, int *msec)
 {
     JSValue res_val, exception_val;
     int ret, error_line, pos, pos_line;
     BOOL is_error, has_error_line, ret_promise;
     const char *error_name;
+    int start, duration;
 
     pos = skip_comments(buf, 1, &pos_line);
     error_line = pos_line;
@@ -1211,6 +1222,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
     ret_promise = ((eval_flags & JS_EVAL_TYPE_MODULE) != 0);
     async_done = 0; /* counter of "Test262:AsyncTestComplete" messages */
 
+    start = get_clock_ms();
     res_val = JS_Eval(ctx, buf, buf_len, filename, eval_flags);
 
     if ((is_async || ret_promise) && !JS_IsException(res_val)) {
@@ -1249,6 +1261,9 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
         }
         JS_FreeValue(ctx, promise);
     }
+
+    duration = get_clock_ms() - start;
+    *msec += duration;
 
     if (JS_IsException(res_val)) {
         exception_val = JS_GetException(ctx);
@@ -1395,6 +1410,7 @@ static int eval_file(JSContext *ctx, const char *base, const char *p,
     char *buf;
     size_t buf_len;
     char *filename = compose_path(base, p);
+    int msec = 0;
 
     buf = load_file(filename, &buf_len);
     if (!buf) {
@@ -1402,7 +1418,7 @@ static int eval_file(JSContext *ctx, const char *base, const char *p,
         goto fail;
     }
     if (eval_buf(ctx, buf, buf_len, filename, FALSE, FALSE, NULL, stderr,
-                 eval_flags, FALSE)) {
+                 eval_flags, FALSE, &msec)) {
         warning("error evaluating %s", filename);
         goto fail;
     }
@@ -1550,7 +1566,7 @@ void update_stats(JSRuntime *rt, const char *filename) {
 int run_test_buf(const char *filename, char *harness, namelist_t *ip,
                  char *buf, size_t buf_len, const char* error_type,
                  int eval_flags, BOOL is_negative, BOOL is_async,
-                 BOOL can_block)
+                 BOOL can_block, int *msec)
 {
     JSRuntime *rt;
     JSContext *ctx;
@@ -1581,7 +1597,7 @@ int run_test_buf(const char *filename, char *harness, namelist_t *ip,
     }
 
     ret = eval_buf(ctx, buf, buf_len, filename, TRUE, is_negative,
-                   error_type, outfile, eval_flags, is_async);
+                   error_type, outfile, eval_flags, is_async, msec);
     ret = (ret != 0);
 
     if (dump_memory) {
@@ -1604,7 +1620,7 @@ int run_test_buf(const char *filename, char *harness, namelist_t *ip,
     return ret;
 }
 
-int run_test(const char *filename, int index)
+int run_test(const char *filename, int index, int *msec)
 {
     char harnessbuf[1024];
     char *harness;
@@ -1806,30 +1822,24 @@ int run_test(const char *filename, int index)
         test_skipped++;
         ret = -2;
     } else {
-        clock_t clocks;
-
         if (is_module) {
             eval_flags = JS_EVAL_TYPE_MODULE;
         } else {
             eval_flags = JS_EVAL_TYPE_GLOBAL;
         }
-        clocks = clock();
         ret = 0;
         if (use_nostrict) {
             ret = run_test_buf(filename, harness, ip, buf, buf_len,
                                error_type, eval_flags, is_negative, is_async,
-                               can_block);
+                               can_block, msec);
         }
         if (use_strict) {
             ret |= run_test_buf(filename, harness, ip, buf, buf_len,
                                 error_type, eval_flags | JS_EVAL_FLAG_STRICT,
-                                is_negative, is_async, can_block);
+                                is_negative, is_async, can_block, msec);
         }
-        clocks = clock() - clocks;
-        if (outfile && index >= 0 && clocks >= CLOCKS_PER_SEC / 10) {
-            /* output timings for tests that take more than 100 ms */
-            fprintf(outfile, " time: %d ms\n", (int)(clocks * 1000LL / CLOCKS_PER_SEC));
-        }
+        if (outfile && index >= 0 && *msec >= 100)
+            fprintf(outfile, " time: %d ms\n", *msec);
     }
     namelist_free(&include_list);
     free(error_type);
@@ -1964,18 +1974,10 @@ void run_test_dir_list(namelist_t *lp, int start_index, int stop_index)
         } else if (stop_index >= 0 && test_index > stop_index) {
             test_skipped++;
         } else {
-            int ti;
-            if (slow_test_threshold != 0) {
-                ti = get_clock_ms();
-            } else {
-                ti = 0;
-            }
-            run_test(p, test_index);
-            if (slow_test_threshold != 0) {
-                ti = get_clock_ms() - ti;
-                if (ti >= slow_test_threshold)
-                    fprintf(stderr, "\n%s (%d ms)\n", p, ti);
-            }
+            int msec = 0;
+            run_test(p, test_index, &msec);
+            if (verbose > 1 || (msec > 0 && msec >= slow_test_threshold))
+                fprintf(stderr, "%s (%d ms)\n", p, msec);
             show_progress(FALSE);
         }
         test_index++;
@@ -1997,6 +1999,7 @@ void help(void)
            "-u             update error file\n"
            "-C             compact output mode; enabled when stderr is not a tty\n"
            "-v             verbose: output error messages\n"
+           "-vv            like -v but also print test name and running time\n"
            "-T duration    display tests taking more than 'duration' ms\n"
            "-c file        read configuration from 'file'\n"
            "-d dir         run all test files in directory tree 'dir'\n"
@@ -2065,8 +2068,8 @@ int main(int argc, char **argv)
             test_mode = TEST_ALL;
         } else if (str_equal(arg, "-u")) {
             update_errors++;
-        } else if (str_equal(arg, "-v")) {
-            verbose++;
+        } else if (arg == strstr(arg, "-v")) {
+            verbose += str_count(arg, "v");
         } else if (str_equal(arg, "-C")) {
             compact++;
         } else if (str_equal(arg, "-c")) {
@@ -2153,7 +2156,8 @@ int main(int argc, char **argv)
     } else {
         outfile = stdout;
         while (optind < argc) {
-            run_test(argv[optind++], -1);
+            int msec = 0;
+            run_test(argv[optind++], -1, &msec);
         }
     }
 
