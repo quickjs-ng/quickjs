@@ -666,9 +666,18 @@ static JSValue js_agent_sleep(JSContext *ctx, JSValue this_val,
     // this is here to silence a TSan warning: we mix mutexes
     // and atomic ops and that confuses poor TSan, see
     // https://github.com/quickjs-ng/quickjs/issues/557
+    //
+    // Sleeping while holding a lock looks wrong but
+    // test262/harness/atomicsHelper.js only sleeps
+    // for 1 ms periods so it's probably fine.
+    //
+    // We could alternatively expose os.setTimeout as
+    // globalThis.setTimeout, because test262 will use
+    // it when available, but then we also have to drive
+    // an event loop. Maybe in the future.
     js_mutex_lock(&js_atomics_mutex);
-    js_mutex_unlock(&js_atomics_mutex);
     usleep(duration * 1000);
+    js_mutex_unlock(&js_atomics_mutex);
     return JS_UNDEFINED;
 }
 
