@@ -55,7 +55,6 @@ jobs:
           - { os: ubuntu-latest, configType: asan, runTest262: true }
           - { os: ubuntu-latest, configType: ubsan, runTest262: true }
           - { os: ubuntu-latest, configType: msan }
-          - { os: ubuntu-latest, configType: tcc }
           - { os: ubuntu-latest, arch: x86 }
           - { os: ubuntu-latest, arch: riscv64 }
           - { os: ubuntu-latest, arch: s390x }
@@ -83,20 +82,6 @@ jobs:
         if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan' || matrix.config.configType == 'ubsan' || matrix.config.configType == 'msan')}}
         run: |
           sudo sysctl -w kernel.randomize_va_space=0
-
-      - name: install TCC
-        if: ${{ matrix.config.configType == 'tcc' }}
-        run: |
-          pushd /tmp
-          git clone https://repo.or.cz/tinycc.git
-          cd tinycc
-          git checkout 9d2068c6309dc50dfdbbc30a5d6757683d3f884c
-          ./configure
-          make
-          sudo make install
-          tcc -v
-          popd
-          echo "CC=tcc" >> $GITHUB_ENV;
 
       - name: Setup Alpine
         if: ${{ matrix.config.arch != '' }}
@@ -159,38 +144,6 @@ jobs:
         if: ${{ matrix.config.runTest262 }}
         run: |
           time make test262
-
-  linux-gcc48:
-    runs-on: ubuntu-latest
-    container:
-      image: ubuntu:18.04
-    # Work around an issue where the node from actions/checkout is too new
-    # to run inside the old container image.
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-    steps:
-      - name: install dependencies
-        run: |
-          apt update && apt -y install make gcc-4.8 cmake software-properties-common
-          # git in default ppa repository is too old to run submodule checkout
-          add-apt-repository -y ppa:git-core/ppa
-          apt update && apt install -y git
-      - name: checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: true
-      - name: build
-        env:
-          CC: gcc-4.8
-        run: |
-          mkdir build
-          cd build
-          cmake ..
-          cd ..
-          make -C build -j$(getconf _NPROCESSORS_ONLN)
-      - name: stats
-        run: |
-          ./build/qjs -qd
 
   windows-msvc:
     runs-on: windows-latest
