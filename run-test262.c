@@ -75,6 +75,7 @@ int stats_count;
 JSMemoryUsage stats_all, stats_avg, stats_min, stats_max;
 char *stats_min_filename;
 char *stats_max_filename;
+js_mutex_t stats_mutex;
 int verbose;
 char *harness_dir;
 char *harness_exclude;
@@ -1535,6 +1536,7 @@ static char *get_option(char **pp, int *state)
 void update_stats(JSRuntime *rt, const char *filename) {
     JSMemoryUsage stats;
     JS_ComputeMemoryUsage(rt, &stats);
+    js_mutex_lock(&stats_mutex);
     if (stats_count++ == 0) {
         stats_avg = stats_all = stats_min = stats_max = stats;
         free(stats_min_filename);
@@ -1579,6 +1581,7 @@ void update_stats(JSRuntime *rt, const char *filename) {
         update(fast_array_elements);
     }
 #undef update
+    js_mutex_unlock(&stats_mutex);
 }
 
 int run_test_buf(const char *filename, char *harness, namelist_t *ip,
@@ -2021,6 +2024,7 @@ int main(int argc, char **argv)
 
     tls = &(ThreadLocalStorage){};
     init_thread_local_storage(tls);
+    js_mutex_init(&stats_mutex);
 
     /* Date tests assume California local time */
     setenv("TZ", "America/Los_Angeles", 1);
