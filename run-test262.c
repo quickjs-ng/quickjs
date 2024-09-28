@@ -1995,6 +1995,7 @@ void help(void)
            "-s             run tests in strict mode, skip @nostrict tests\n"
            "-E             only run tests from the error file\n"
            "-u             update error file\n"
+           "-C             compact output mode; enabled when stderr is not a tty\n"
            "-v             verbose: output error messages\n"
            "-T duration    display tests taking more than 'duration' ms\n"
            "-c file        read configuration from 'file'\n"
@@ -2066,6 +2067,8 @@ int main(int argc, char **argv)
             update_errors++;
         } else if (str_equal(arg, "-v")) {
             verbose++;
+        } else if (str_equal(arg, "-C")) {
+            compact++;
         } else if (str_equal(arg, "-c")) {
             load_config(get_opt_arg(arg, argv[optind++]), ignore);
         } else if (str_equal(arg, "-d")) {
