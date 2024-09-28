@@ -1976,7 +1976,7 @@ void run_test_dir_list(namelist_t *lp, int start_index, int stop_index)
         } else {
             int msec = 0;
             run_test(p, test_index, &msec);
-            if (verbose > 1 || (msec > 0 && msec >= slow_test_threshold))
+            if (verbose > 1 || (slow_test_threshold && msec >= slow_test_threshold))
                 fprintf(stderr, "%s (%d ms)\n", p, msec);
             show_progress(FALSE);
         }
