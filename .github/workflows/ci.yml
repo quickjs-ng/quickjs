@@ -56,7 +56,7 @@ jobs:
           - { os: ubuntu-latest, configType: asan, runTest262: true }
           - { os: ubuntu-latest, configType: ubsan, runTest262: true }
           - { os: ubuntu-latest, configType: msan }
-          - { os: ubuntu-latest, configType: tsan, runTest262: true }
+          - { os: ubuntu-24.04, configType: tsan, runTest262: true }
           - { os: ubuntu-latest, configType: tcc }
           - { os: ubuntu-latest, arch: x86 }
           - { os: ubuntu-latest, arch: riscv64 }
