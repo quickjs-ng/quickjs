@@ -269,8 +269,8 @@ endif()
 # Test262 runner
 #
 
-# run-test262 uses pthreads.
-if(NOT WIN32 AND NOT EMSCRIPTEN)
+# run-test262 uses pthreads. tcc does not understand _Thread_local.
+if(NOT WIN32 AND NOT EMSCRIPTEN AND NOT CMAKE_C_COMPILER_ID STREQUAL "TinyCC")
     add_executable(run-test262
         run-test262.c
     )
