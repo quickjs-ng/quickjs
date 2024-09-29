@@ -2026,8 +2026,11 @@ int main(int argc, char **argv)
     init_thread_local_storage(tls);
     js_mutex_init(&stats_mutex);
 
+#if !defined(__MINGW32__)
     /* Date tests assume California local time */
     setenv("TZ", "America/Los_Angeles", 1);
+    nthreads = sysconf(_SC_NPROCESSORS_ONLN) - 1;
+#endif
 
     optind = 1;
     while (optind < argc) {
@@ -2097,8 +2100,6 @@ int main(int argc, char **argv)
         return run_test262_harness_test(argv[optind], is_module);
     }
 
-    if (!nthreads)
-        nthreads = sysconf(_SC_NPROCESSORS_ONLN) - 1;
     nthreads = max_int(nthreads, 1);
     nthreads = min_int(nthreads, countof(threads));
 
