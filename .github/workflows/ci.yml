@@ -160,6 +160,38 @@ jobs:
         run: |
           time make test262
 
+  linux-gcc48:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:18.04
+    # Work around an issue where the node from actions/checkout is too new
+    # to run inside the old container image.
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+    steps:
+      - name: install dependencies
+        run: |
+          apt update && apt -y install make gcc-4.8 cmake software-properties-common
+          # git in default ppa repository is too old to run submodule checkout
+          add-apt-repository -y ppa:git-core/ppa
+          apt update && apt install -y git
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: build
+        env:
+          CC: gcc-4.8
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          cd ..
+          make -C build -j$(getconf _NPROCESSORS_ONLN)
+      - name: stats
+        run: |
+          ./build/qjs -qd
+
   windows-msvc:
     runs-on: windows-latest
     strategy:
