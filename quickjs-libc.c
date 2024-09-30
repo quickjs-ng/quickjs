@@ -3875,50 +3875,54 @@ JSModuleDef *js_init_module_os(JSContext *ctx, const char *module_name)
 
 /**********************************************************/
 
+#ifdef _WIN32
 static JSValue js_print(JSContext *ctx, JSValue this_val,
                         int argc, JSValue *argv)
 {
     int i;
     const char *str;
     size_t len;
-
-#ifdef _WIN32
     DWORD written;
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hConsole == INVALID_HANDLE_VALUE)
         return JS_EXCEPTION;
-#endif
-
     for(i = 0; i < argc; i++) {
-        if (i != 0) {
-#ifdef _WIN32
+        if (i != 0)
             WriteConsoleW(hConsole, L" ", 1, &written, NULL);
-#else
-            putchar(' ');
-#endif
-        }
         str = JS_ToCStringLen(ctx, &len, argv[i]);
         if (!str)
             return JS_EXCEPTION;
-#ifdef _WIN32
         DWORD prev = GetConsoleOutputCP();
         SetConsoleOutputCP(CP_UTF8);
         WriteConsoleA(hConsole, str, len, &written, NULL);
         SetConsoleOutputCP(prev);
-#else
-        fwrite(str, 1, len, stdout);
-#endif
         JS_FreeCString(ctx, str);
     }
-#ifdef _WIN32
     WriteConsoleW(hConsole, L"\n", 1, &written, NULL);
     FlushFileBuffers(hConsole);
-#else
-    putchar('\n');
-    fflush(stdout);
-#endif
     return JS_UNDEFINED;
 }
+#else
+static JSValue js_print(JSContext *ctx, JSValue this_val,
+                        int argc, JSValue *argv)
+{
+    int i;
+    const char *str;
+    size_t len;
+    for(i = 0; i < argc; i++) {
+        if (i != 0) 
+            putchar(' ');
+        str = JS_ToCStringLen(ctx, &len, argv[i]);
+        if (!str)
+            return JS_EXCEPTION;
+        fwrite(str, 1, len, stdout);
+        JS_FreeCString(ctx, str);
+    }
+    putchar('\n');
+    fflush(stdout);
+    return JS_UNDEFINED;
+}
+#endif
 
 void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
 {
