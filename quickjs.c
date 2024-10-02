@@ -6646,7 +6646,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
     }
  done:
     if (has_prepare) {
-        int j = 0;
+        int j = 0, k;
         stack = JS_NewArray(ctx);
         if (JS_IsException(stack)) {
             stack = JS_NULL;
@@ -6662,7 +6662,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
             }
         }
         // Clear the csd's we didn't use in case of error.
-        for (int k = j; k < i; k++) {
+        for (k = j; k < i; k++) {
             JS_FreeValue(ctx, csd[k].filename);
             JS_FreeValue(ctx, csd[k].func);
             JS_FreeValue(ctx, csd[k].func_name);
@@ -49776,6 +49776,8 @@ static struct {
 };
 
 static BOOL string_get_tzabbr(const uint8_t *sp, int *pp, int *offset) {
+    size_t i;
+
     for (size_t i = 0; i < countof(js_tzabbr); i++) {
         if (string_match(sp, pp, js_tzabbr[i].name)) {
             *offset = js_tzabbr[i].offset;
