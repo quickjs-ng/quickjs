@@ -1129,7 +1129,7 @@ void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
 
 /*---- Portable time functions ----*/
 
-#if defined(_MSC_VER) || (__MINGW32__ && !__MINGW64__)
+#if defined(_MSC_VER) || (__MINGW32__ && !defined(__MINGW64__))
  // From: https://stackoverflow.com/a/26085827
 static int gettimeofday_msvc(struct timeval *tp, struct timezone *tzp)
 {
