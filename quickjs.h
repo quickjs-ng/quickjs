@@ -585,10 +585,7 @@ JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowReferenceError(JSContext *ctx, 
 JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowRangeError(JSContext *ctx, const char *fmt, ...);
 JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
 JS_EXTERN JSValue JS_ThrowOutOfMemory(JSContext *ctx);
-
-JS_EXTERN void __JS_FreeValue(JSContext *ctx, JSValue v);
 JS_EXTERN void JS_FreeValue(JSContext *ctx, JSValue v);
-JS_EXTERN void __JS_FreeValueRT(JSRuntime *rt, JSValue v);
 JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
 JS_EXTERN JSValue JS_DupValue(JSContext *ctx, JSValue v);
 JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValue v);

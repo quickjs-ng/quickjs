@@ -5534,18 +5534,8 @@ static void free_zero_refcount(JSRuntime *rt)
     rt->gc_phase = JS_GC_PHASE_NONE;
 }
 
-void JS_FreeValueRT(JSRuntime *rt, JSValue v)
-{
-    if (JS_VALUE_HAS_REF_COUNT(v)) {
-        JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
-        if (--p->ref_count <= 0) {
-            __JS_FreeValueRT(rt, v);
-        }
-    }
-}
-
 /* called with the ref_count of 'v' reaches zero. */
-void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
+static void js_free_value_rt(JSRuntime *rt, JSValue v)
 {
     uint32_t tag = JS_VALUE_GET_TAG(v);
 
@@ -5609,19 +5599,24 @@ void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
         }
         break;
     default:
-        printf("__JS_FreeValue: unknown tag=%d\n", tag);
+        printf("js_free_value_rt: unknown tag=%d\n", tag);
         abort();
+    }
+}
+
+void JS_FreeValueRT(JSRuntime *rt, JSValue v)
+{
+    if (JS_VALUE_HAS_REF_COUNT(v)) {
+        JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
+        if (--p->ref_count <= 0) {
+            js_free_value_rt(rt, v);
+        }
     }
 }
 
 void JS_FreeValue(JSContext *ctx, JSValue v)
 {
     JS_FreeValueRT(ctx->rt,v);
-}
-
-void __JS_FreeValue(JSContext *ctx, JSValue v)
-{
-    __JS_FreeValueRT(ctx->rt, v);
 }
 
 /* garbage collection */
