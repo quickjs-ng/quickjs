@@ -630,8 +630,6 @@ test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-inv
 test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«110», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«160», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-reflect-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«160», «0») to be true
-test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/expressions/arrow-function/static-init-await-reference.js:12: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js:42: Test262Error: Expected [source, iterator, target, target-key, target-key-tostring, iterator-step, iterator-done, set] and [source, iterator, target, target-key, iterator-step, iterator-done, target-key-tostring, set] to have the same contents. 
 test262/test/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js:42: strict mode: Test262Error: Expected [source, iterator, target, target-key, target-key-tostring, iterator-step, iterator-done, set] and [source, iterator, target, target-key, iterator-step, iterator-done, target-key-tostring, set] to have the same contents. 
 test262/test/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js:32: Test262Error: Expected [source, source-key, source-key-tostring, target, target-key, target-key-tostring, get, set] and [source, source-key, source-key-tostring, target, target-key, get, target-key-tostring, set] to have the same contents. 
@@ -640,10 +638,6 @@ test262/test/language/expressions/assignment/target-member-computed-reference.js
 test262/test/language/expressions/assignment/target-member-computed-reference.js:22: strict mode: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/assignment/target-super-computed-reference.js:20: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/assignment/target-super-computed-reference.js:20: strict mode: Test262Error: Expected a DummyError but got a Test262Error
-test262/test/language/expressions/function/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
-test262/test/language/expressions/function/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
-test262/test/language/expressions/generators/static-init-await-binding.js:16: SyntaxError: 'await' is a reserved identifier
-test262/test/language/expressions/generators/static-init-await-binding.js:16: strict mode: SyntaxError: 'await' is a reserved identifier
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: Test262Error: Expected a TypeError but got a Test262Error
