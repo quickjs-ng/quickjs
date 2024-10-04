@@ -19478,16 +19478,8 @@ static __exception int next_token(JSParseState *s)
         s->token.u.ident.atom = atom;
         s->token.u.ident.has_escape = ident_has_escape;
         s->token.u.ident.is_reserved = FALSE;
-        // TODO(bnoordhuis) accept await when used in a function expression
-        // inside the static initializer block
-        if (s->cur_func->func_type == JS_PARSE_FUNC_CLASS_STATIC_INIT &&
-            (atom == JS_ATOM_arguments || atom == JS_ATOM_await)) {
-            s->token.u.ident.is_reserved = TRUE;
-            s->token.val = TOK_IDENT;
-        } else {
-            s->token.val = TOK_IDENT;
-            update_token_ident(s);
-        }
+        s->token.val = TOK_IDENT;
+        update_token_ident(s);
         break;
     case '#':
         /* private name */
@@ -32520,10 +32512,9 @@ static __exception int js_parse_function_decl2(JSParseState *s,
                  func_type == JS_PARSE_FUNC_EXPR &&
                  (func_kind & JS_FUNC_GENERATOR)) ||
                 (s->token.u.ident.atom == JS_ATOM_await &&
-                 func_type == JS_PARSE_FUNC_EXPR &&
-                 (func_kind & JS_FUNC_ASYNC)) ||
-                (s->token.u.ident.atom == JS_ATOM_await &&
-                 func_type == JS_PARSE_FUNC_CLASS_STATIC_INIT)) {
+                 ((func_type == JS_PARSE_FUNC_EXPR &&
+                   (func_kind & JS_FUNC_ASYNC)) ||
+                  func_type == JS_PARSE_FUNC_CLASS_STATIC_INIT))) {
                 return js_parse_error_reserved_identifier(s);
             }
         }
