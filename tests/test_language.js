@@ -691,6 +691,28 @@ function test_optional_chaining()
     assert((a?.["b"])().c, 42);
 }
 
+function test_parse_semicolon()
+{
+    /* 'yield' or 'await' may not be considered as a token if the
+       previous ';' is missing */
+    function *f()
+    {
+        function func() {
+        }
+        yield 1;
+        var h = x => x + 1
+        yield 2;
+    }
+    async function g()
+    {
+        function func() {
+        }
+        await 1;
+        var h = x => x + 1
+        await 2;
+    }
+}
+
 test_op1();
 test_cvt();
 test_eq();
@@ -714,3 +736,4 @@ test_reserved_names();
 test_number_literals();
 test_syntax();
 test_optional_chaining();
+test_parse_semicolon();
