@@ -364,6 +364,10 @@ typedef struct JSVarRef {
     JSValue value; /* used when the variable is no longer on the stack */
 } JSVarRef;
 
+typedef struct JSRefCountHeader {
+    int ref_count;
+} JSRefCountHeader;
+
 /* the same structure is used for big integers.
    Big integers are never infinite or NaNs */
 typedef struct JSBigInt {
@@ -1360,6 +1364,16 @@ static JSValue js_dup(JSValue v)
         p->ref_count++;
     }
     return v;
+}
+
+JSValue JS_DupValue(JSContext *ctx, JSValue v)
+{
+    return js_dup(v);
+}
+
+JSValue JS_DupValueRT(JSRuntime *rt, JSValue v)
+{
+    return js_dup(v);
 }
 
 static void js_trigger_gc(JSRuntime *rt, size_t size)
@@ -5523,7 +5537,7 @@ static void free_zero_refcount(JSRuntime *rt)
 }
 
 /* called with the ref_count of 'v' reaches zero. */
-void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
+static void js_free_value_rt(JSRuntime *rt, JSValue v)
 {
     uint32_t tag = JS_VALUE_GET_TAG(v);
 
@@ -5587,14 +5601,24 @@ void __JS_FreeValueRT(JSRuntime *rt, JSValue v)
         }
         break;
     default:
-        printf("__JS_FreeValue: unknown tag=%d\n", tag);
+        printf("js_free_value_rt: unknown tag=%d\n", tag);
         abort();
     }
 }
 
-void __JS_FreeValue(JSContext *ctx, JSValue v)
+void JS_FreeValueRT(JSRuntime *rt, JSValue v)
 {
-    __JS_FreeValueRT(ctx->rt, v);
+    if (JS_VALUE_HAS_REF_COUNT(v)) {
+        JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
+        if (--p->ref_count <= 0) {
+            js_free_value_rt(rt, v);
+        }
+    }
+}
+
+void JS_FreeValue(JSContext *ctx, JSValue v)
+{
+    JS_FreeValueRT(ctx->rt, v);
 }
 
 /* garbage collection */
@@ -20177,7 +20201,7 @@ static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end)
      - Skip comments
      - Expect 'import' keyword not followed by '(' or '.'
      - Expect 'export' keyword
-     - Expect 'await' keyword 
+     - Expect 'await' keyword
 */
 /* input is pure ASCII or UTF-8 encoded source code */
 BOOL JS_DetectModule(const char *input, size_t input_len)
