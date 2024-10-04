@@ -1366,11 +1366,13 @@ static JSValue js_dup(JSValue v)
     return v;
 }
 
-JSValue JS_DupValue(JSContext *ctx, JSValue v){
+JSValue JS_DupValue(JSContext *ctx, JSValue v)
+{
     return js_dup(v);
 }
 
-JSValue JS_DupValueRT(JSRuntime *rt, JSValue v){
+JSValue JS_DupValueRT(JSRuntime *rt, JSValue v)
+{
     return js_dup(v);
 }
 
@@ -5616,7 +5618,7 @@ void JS_FreeValueRT(JSRuntime *rt, JSValue v)
 
 void JS_FreeValue(JSContext *ctx, JSValue v)
 {
-    JS_FreeValueRT(ctx->rt,v);
+    JS_FreeValueRT(ctx->rt, v);
 }
 
 /* garbage collection */
