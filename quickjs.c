@@ -30,7 +30,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
-#if !defined(_MSC_VER)
+#if !defined(_MSC_VER) || !__MINGW32__
 #include <sys/time.h>
 #if defined(_WIN32)
 #include <timezoneapi.h>

@@ -28,7 +28,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <time.h>
-#if !defined(_MSC_VER) || __MINGW32__
+#if !defined(_MSC_VER) || !__MINGW32__
 #include <sys/time.h>
 #endif
 

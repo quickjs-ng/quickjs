@@ -33,7 +33,7 @@
 #endif
 #include <errno.h>
 #include <fcntl.h>
-#if !defined(_MSC_VER)
+#if !defined(_MSC_VER) || !__MINGW32__
 #include <sys/time.h>
 #endif
 #include <time.h>
