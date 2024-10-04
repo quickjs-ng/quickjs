@@ -1711,7 +1711,7 @@ static int __bf_div(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
 
         na = n + nb;
 
-        if (na >= (SIZE_MAX / sizeof(limb_t)) - 1) {
+        if (na >= (SIZE_MAX / sizeof(limb_t)) - 1) && !defined(_WIN32) {
             return BF_ST_MEM_ERROR;  /* Return memory error status */
         }
 
