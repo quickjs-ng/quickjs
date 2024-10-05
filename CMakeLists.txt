@@ -115,6 +115,7 @@ xoption(BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
 xoption(BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
 xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
+xoption(CONFIG_TSAN "Enable ThreadSanitizer (TSan)" OFF)
 xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 
 if(CONFIG_ASAN)
@@ -141,6 +142,18 @@ add_compile_options(
 )
 add_link_options(
     -fsanitize=memory
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+elseif(CONFIG_TSAN)
+message(STATUS "Building with TSan")
+add_compile_options(
+    -fsanitize=thread
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+add_link_options(
+    -fsanitize=thread
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer
 )

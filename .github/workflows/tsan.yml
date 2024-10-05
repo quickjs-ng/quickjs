@@ -1,4 +1,4 @@
-name: valgrind
+name: tsan
 
 on:
   push:
@@ -22,11 +22,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: install valgrind
-        run: sudo apt-get update && sudo apt-get install valgrind
       - name: build
         run: |
-          make BUILD_TYPE=RelWithDebInfo
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCONFIG_TSAN=ON
+          cmake --build build -j`nproc`
       - name: test
         run: |
-          valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1 ./build/run-test262 -m -c test262.conf -c test262-fast.conf -a
+          ./build/run-test262 -m -c test262.conf -c test262-fast.conf -a
