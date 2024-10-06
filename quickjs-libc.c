@@ -164,6 +164,8 @@ typedef struct JSThreadState {
     JSValue exc; /* current exception from one of our handlers */
     /* not used in the main thread */
     JSWorkerMessagePipe *recv_pipe, *send_pipe;
+    JSClassID std_file_class_id;
+    JSClassID worker_class_id;
 } JSThreadState;
 
 static uint64_t os_pending_signals;
@@ -874,8 +876,6 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
     return ret;
 }
 
-static JSClassID js_std_file_class_id;
-
 typedef struct {
     FILE *f;
     BOOL is_popen;
@@ -888,7 +888,8 @@ static BOOL is_stdio(FILE *f)
 
 static void js_std_file_finalizer(JSRuntime *rt, JSValue val)
 {
-    JSSTDFile *s = JS_GetOpaque(val, js_std_file_class_id);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    JSSTDFile *s = JS_GetOpaque(val, ts->std_file_class_id);
     if (s) {
         if (s->f && !is_stdio(s->f)) {
 #if !defined(__wasi__)
@@ -920,9 +921,11 @@ static JSValue js_std_strerror(JSContext *ctx, JSValue this_val,
 
 static JSValue js_new_std_file(JSContext *ctx, FILE *f, BOOL is_popen)
 {
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
     JSSTDFile *s;
     JSValue obj;
-    obj = JS_NewObjectClass(ctx, js_std_file_class_id);
+    obj = JS_NewObjectClass(ctx, ts->std_file_class_id);
     if (JS_IsException(obj))
         return obj;
     s = js_mallocz(ctx, sizeof(*s));
@@ -1078,7 +1081,9 @@ static JSValue js_std_printf(JSContext *ctx, JSValue this_val,
 
 static FILE *js_std_file_get(JSContext *ctx, JSValue obj)
 {
-    JSSTDFile *s = JS_GetOpaque2(ctx, obj, js_std_file_class_id);
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    JSSTDFile *s = JS_GetOpaque2(ctx, obj, ts->std_file_class_id);
     if (!s)
         return NULL;
     if (!s->f) {
@@ -1117,7 +1122,9 @@ static JSValue js_std_file_puts(JSContext *ctx, JSValue this_val,
 static JSValue js_std_file_close(JSContext *ctx, JSValue this_val,
                                  int argc, JSValue *argv)
 {
-    JSSTDFile *s = JS_GetOpaque2(ctx, this_val, js_std_file_class_id);
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    JSSTDFile *s = JS_GetOpaque2(ctx, this_val, ts->std_file_class_id);
     int err;
     if (!s)
         return JS_EXCEPTION;
@@ -1633,16 +1640,17 @@ static int js_std_init(JSContext *ctx, JSModuleDef *m)
 {
     JSValue proto;
     JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
 
     /* FILE class */
     /* the class ID is created once */
-    JS_NewClassID(rt, &js_std_file_class_id);
+    JS_NewClassID(rt, &ts->std_file_class_id);
     /* the class is created once per runtime */
-    JS_NewClass(rt, js_std_file_class_id, &js_std_file_class);
+    JS_NewClass(rt, ts->std_file_class_id, &js_std_file_class);
     proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, js_std_file_proto_funcs,
                                countof(js_std_file_proto_funcs));
-    JS_SetClassProto(ctx, js_std_file_class_id, proto);
+    JS_SetClassProto(ctx, ts->std_file_class_id, proto);
 
     JS_SetModuleExportList(ctx, m, js_std_funcs,
                            countof(js_std_funcs));
@@ -3278,7 +3286,6 @@ typedef struct {
     uint64_t buf[];
 } JSSABHeader;
 
-static JSClassID js_worker_class_id;
 static JSContext *(*js_worker_new_context_func)(JSRuntime *rt);
 
 static int atomic_add_int(int *ptr, int v)
@@ -3391,7 +3398,8 @@ static void js_free_port(JSRuntime *rt, JSWorkerMessageHandler *port)
 
 static void js_worker_finalizer(JSRuntime *rt, JSValue val)
 {
-    JSWorkerData *worker = JS_GetOpaque(val, js_worker_class_id);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    JSWorkerData *worker = JS_GetOpaque(val, ts->worker_class_id);
     if (worker) {
         js_free_message_pipe(worker->recv_pipe);
         js_free_message_pipe(worker->send_pipe);
@@ -3459,18 +3467,20 @@ static JSValue js_worker_ctor_internal(JSContext *ctx, JSValue new_target,
                                        JSWorkerMessagePipe *recv_pipe,
                                        JSWorkerMessagePipe *send_pipe)
 {
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
     JSValue obj = JS_UNDEFINED, proto;
     JSWorkerData *s;
 
     /* create the object */
     if (JS_IsUndefined(new_target)) {
-        proto = JS_GetClassProto(ctx, js_worker_class_id);
+        proto = JS_GetClassProto(ctx, ts->worker_class_id);
     } else {
         proto = JS_GetPropertyStr(ctx, new_target, "prototype");
         if (JS_IsException(proto))
             goto fail;
     }
-    obj = JS_NewObjectProtoClass(ctx, proto, js_worker_class_id);
+    obj = JS_NewObjectProtoClass(ctx, proto, ts->worker_class_id);
     JS_FreeValue(ctx, proto);
     if (JS_IsException(obj))
         goto fail;
@@ -3574,7 +3584,9 @@ static JSValue js_worker_ctor(JSContext *ctx, JSValue new_target,
 static JSValue js_worker_postMessage(JSContext *ctx, JSValue this_val,
                                      int argc, JSValue *argv)
 {
-    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, js_worker_class_id);
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, ts->worker_class_id);
     JSWorkerMessagePipe *ps;
     size_t data_len, i;
     uint8_t *data;
@@ -3653,7 +3665,7 @@ static JSValue js_worker_set_onmessage(JSContext *ctx, JSValue this_val,
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = JS_GetRuntimeOpaque(rt);
-    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, js_worker_class_id);
+    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, ts->worker_class_id);
     JSWorkerMessageHandler *port;
 
     if (!worker)
@@ -3685,7 +3697,9 @@ static JSValue js_worker_set_onmessage(JSContext *ctx, JSValue this_val,
 
 static JSValue js_worker_get_onmessage(JSContext *ctx, JSValue this_val)
 {
-    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, js_worker_class_id);
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+    JSWorkerData *worker = JS_GetOpaque2(ctx, this_val, ts->worker_class_id);
     JSWorkerMessageHandler *port;
     if (!worker)
         return JS_EXCEPTION;
@@ -3838,8 +3852,8 @@ static int js_os_init(JSContext *ctx, JSModuleDef *m)
         JSThreadState *ts = JS_GetRuntimeOpaque(rt);
         JSValue proto, obj;
         /* Worker class */
-        JS_NewClassID(rt, &js_worker_class_id);
-        JS_NewClass(rt, js_worker_class_id, &js_worker_class);
+        JS_NewClassID(rt, &ts->worker_class_id);
+        JS_NewClass(rt, ts->worker_class_id, &js_worker_class);
         proto = JS_NewObject(ctx);
         JS_SetPropertyFunctionList(ctx, proto, js_worker_proto_funcs, countof(js_worker_proto_funcs));
 
@@ -3847,7 +3861,7 @@ static int js_os_init(JSContext *ctx, JSModuleDef *m)
                                JS_CFUNC_constructor, 0);
         JS_SetConstructor(ctx, obj, proto);
 
-        JS_SetClassProto(ctx, js_worker_class_id, proto);
+        JS_SetClassProto(ctx, ts->worker_class_id, proto);
 
         /* set 'Worker.parent' if necessary */
         if (ts->recv_pipe && ts->send_pipe) {
@@ -3961,7 +3975,7 @@ void js_std_init_handlers(JSRuntime *rt)
 {
     JSThreadState *ts;
 
-    ts = malloc(sizeof(*ts));
+    ts = js_malloc_rt(rt, sizeof(*ts));
     if (!ts) {
         fprintf(stderr, "Could not allocate memory for the worker");
         exit(1);
@@ -3976,6 +3990,7 @@ void js_std_init_handlers(JSRuntime *rt)
     ts->exc = JS_UNDEFINED;
 
     JS_SetRuntimeOpaque(rt, ts);
+    JS_AddRuntimeFinalizer(rt, js_free_rt, ts);
 
 #ifdef USE_WORKER
     /* set the SharedArrayBuffer memory handlers */
@@ -4015,9 +4030,6 @@ void js_std_free_handlers(JSRuntime *rt)
     js_free_message_pipe(ts->recv_pipe);
     js_free_message_pipe(ts->send_pipe);
 #endif
-
-    free(ts);
-    JS_SetRuntimeOpaque(rt, NULL); /* fail safe */
 }
 
 static void js_dump_obj(JSContext *ctx, FILE *f, JSValue val)
