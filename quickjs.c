@@ -8159,15 +8159,27 @@ static JSValue JS_GetPropertyValue(JSContext *ctx, JSValue this_obj,
 {
     JSAtom atom;
     JSValue ret;
+    uint32_t tag;
 
-    if (likely(JS_VALUE_GET_TAG(this_obj) == JS_TAG_OBJECT &&
-               JS_VALUE_GET_TAG(prop) == JS_TAG_INT)) {
-        JSObject *p = JS_VALUE_GET_OBJ(this_obj);
-        uint32_t idx = JS_VALUE_GET_INT(prop);
-        JSValue val;
-        /* fast path for array and typed array access */
-        if (js_get_fast_array_element(ctx, p, idx, &val))
-            return val;
+    tag = JS_VALUE_GET_TAG(this_obj);
+    if (likely(tag == JS_TAG_OBJECT)) {
+        if (JS_VALUE_GET_TAG(prop) == JS_TAG_INT) {
+            JSObject *p = JS_VALUE_GET_OBJ(this_obj);
+            uint32_t idx = JS_VALUE_GET_INT(prop);
+            JSValue val;
+            /* fast path for array and typed array access */
+            if (js_get_fast_array_element(ctx, p, idx, &val))
+                return val;
+        }
+    } else {
+        switch(tag) {
+        case JS_TAG_NULL:
+            JS_FreeValue(ctx, prop);
+            return JS_ThrowTypeError(ctx, "cannot read property of null");
+        case JS_TAG_UNDEFINED:
+            JS_FreeValue(ctx, prop);
+            return JS_ThrowTypeError(ctx, "cannot read property of undefined");
+        }
     }
     atom = JS_ValueToAtom(ctx, prop);
     JS_FreeValue(ctx, prop);
