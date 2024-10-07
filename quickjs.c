@@ -221,6 +221,12 @@ typedef struct JSMallocState {
     void *opaque; /* user opaque */
 } JSMallocState;
 
+typedef struct JSRuntimeFinalizerState {
+    struct JSRuntimeFinalizerState *next;
+    JSRuntimeFinalizer *finalizer;
+    void *arg;
+} JSRuntimeFinalizerState;
+
 struct JSRuntime {
     JSMallocFunctions mf;
     JSMallocState malloc_state;
@@ -292,6 +298,7 @@ struct JSRuntime {
     JSShape **shape_hash;
     bf_context_t bf_ctx;
     void *user_opaque;
+    JSRuntimeFinalizerState *finalizers;
 };
 
 struct JSClass {
@@ -1816,6 +1823,19 @@ void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque)
     rt->user_opaque = opaque;
 }
 
+int JS_AddRuntimeFinalizer(JSRuntime *rt, JSRuntimeFinalizer *finalizer,
+                           void *arg)
+{
+    JSRuntimeFinalizerState *fs = js_malloc_rt(rt, sizeof(*fs));
+    if (!fs)
+        return -1;
+    fs->next       = rt->finalizers;
+    fs->finalizer  = finalizer;
+    fs->arg        = arg;
+    rt->finalizers = fs;
+    return 0;
+}
+
 static void *js_def_calloc(void *opaque, size_t count, size_t size)
 {
     return calloc(count, size);
@@ -2195,6 +2215,13 @@ void JS_FreeRuntime(JSRuntime *rt)
         }
     }
 #endif
+
+    while (rt->finalizers) {
+        JSRuntimeFinalizerState *fs = rt->finalizers;
+        rt->finalizers = fs->next;
+        fs->finalizer(rt, fs->arg);
+        js_free_rt(rt, fs);
+    }
 
     {
         JSMallocState *ms = &rt->malloc_state;

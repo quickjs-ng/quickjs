@@ -287,6 +287,11 @@ typedef struct JSMallocFunctions {
     size_t (*js_malloc_usable_size)(const void *ptr);
 } JSMallocFunctions;
 
+// Finalizers run in LIFO order at the very end of JS_FreeRuntime.
+// Intended for cleanup of associated resources; the runtime itself
+// is no longer usable.
+typedef void JSRuntimeFinalizer(JSRuntime *rt, void *arg);
+
 typedef struct JSGCObjectHeader JSGCObjectHeader;
 
 JS_EXTERN JSRuntime *JS_NewRuntime(void);
@@ -306,6 +311,8 @@ JS_EXTERN JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque);
 JS_EXTERN void JS_FreeRuntime(JSRuntime *rt);
 JS_EXTERN void *JS_GetRuntimeOpaque(JSRuntime *rt);
 JS_EXTERN void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);
+JS_EXTERN int JS_AddRuntimeFinalizer(JSRuntime *rt,
+                                     JSRuntimeFinalizer *finalizer, void *arg);
 typedef void JS_MarkFunc(JSRuntime *rt, JSGCObjectHeader *gp);
 JS_EXTERN void JS_MarkValue(JSRuntime *rt, JSValue val, JS_MarkFunc *mark_func);
 JS_EXTERN void JS_RunGC(JSRuntime *rt);
