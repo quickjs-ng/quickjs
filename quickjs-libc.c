@@ -878,15 +878,19 @@ static JSClassID js_std_file_class_id;
 
 typedef struct {
     FILE *f;
-    BOOL close_in_finalizer;
     BOOL is_popen;
 } JSSTDFile;
+
+static BOOL is_stdio(FILE *f)
+{
+    return f == stdin || f == stdout || f == stderr;
+}
 
 static void js_std_file_finalizer(JSRuntime *rt, JSValue val)
 {
     JSSTDFile *s = JS_GetOpaque(val, js_std_file_class_id);
     if (s) {
-        if (s->f && s->close_in_finalizer) {
+        if (s->f && !is_stdio(s->f)) {
 #if !defined(__wasi__)
             if (s->is_popen)
                 pclose(s->f);
@@ -914,9 +918,7 @@ static JSValue js_std_strerror(JSContext *ctx, JSValue this_val,
     return JS_NewString(ctx, strerror(err));
 }
 
-static JSValue js_new_std_file(JSContext *ctx, FILE *f,
-                               BOOL close_in_finalizer,
-                               BOOL is_popen)
+static JSValue js_new_std_file(JSContext *ctx, FILE *f, BOOL is_popen)
 {
     JSSTDFile *s;
     JSValue obj;
@@ -928,7 +930,6 @@ static JSValue js_new_std_file(JSContext *ctx, FILE *f,
         JS_FreeValue(ctx, obj);
         return JS_EXCEPTION;
     }
-    s->close_in_finalizer = close_in_finalizer;
     s->is_popen = is_popen;
     s->f = f;
     JS_SetOpaque(obj, s);
@@ -971,7 +972,7 @@ static JSValue js_std_open(JSContext *ctx, JSValue this_val,
     JS_FreeCString(ctx, mode);
     if (!f)
         return JS_NULL;
-    return js_new_std_file(ctx, f, TRUE, FALSE);
+    return js_new_std_file(ctx, f, FALSE);
  fail:
     JS_FreeCString(ctx, filename);
     JS_FreeCString(ctx, mode);
@@ -1008,7 +1009,7 @@ static JSValue js_std_popen(JSContext *ctx, JSValue this_val,
     JS_FreeCString(ctx, mode);
     if (!f)
         return JS_NULL;
-    return js_new_std_file(ctx, f, TRUE, TRUE);
+    return js_new_std_file(ctx, f, TRUE);
  fail:
     JS_FreeCString(ctx, filename);
     JS_FreeCString(ctx, mode);
@@ -1043,7 +1044,7 @@ static JSValue js_std_fdopen(JSContext *ctx, JSValue this_val,
     JS_FreeCString(ctx, mode);
     if (!f)
         return JS_NULL;
-    return js_new_std_file(ctx, f, TRUE, FALSE);
+    return js_new_std_file(ctx, f, FALSE);
  fail:
     JS_FreeCString(ctx, mode);
     return JS_EXCEPTION;
@@ -1059,7 +1060,7 @@ static JSValue js_std_tmpfile(JSContext *ctx, JSValue this_val,
         js_set_error_object(ctx, argv[0], f ? 0 : errno);
     if (!f)
         return JS_NULL;
-    return js_new_std_file(ctx, f, TRUE, FALSE);
+    return js_new_std_file(ctx, f, FALSE);
 }
 #endif
 
@@ -1122,6 +1123,8 @@ static JSValue js_std_file_close(JSContext *ctx, JSValue this_val,
         return JS_EXCEPTION;
     if (!s->f)
         return JS_ThrowTypeError(ctx, "invalid file handle");
+    if (is_stdio(s->f))
+        return JS_ThrowTypeError(ctx, "cannot close stdio");
 #if !defined(__wasi__)
     if (s->is_popen)
         err = js_get_errno(pclose(s->f));
@@ -1643,9 +1646,9 @@ static int js_std_init(JSContext *ctx, JSModuleDef *m)
 
     JS_SetModuleExportList(ctx, m, js_std_funcs,
                            countof(js_std_funcs));
-    JS_SetModuleExport(ctx, m, "in", js_new_std_file(ctx, stdin, FALSE, FALSE));
-    JS_SetModuleExport(ctx, m, "out", js_new_std_file(ctx, stdout, FALSE, FALSE));
-    JS_SetModuleExport(ctx, m, "err", js_new_std_file(ctx, stderr, FALSE, FALSE));
+    JS_SetModuleExport(ctx, m, "in", js_new_std_file(ctx, stdin, FALSE));
+    JS_SetModuleExport(ctx, m, "out", js_new_std_file(ctx, stdout, FALSE));
+    JS_SetModuleExport(ctx, m, "err", js_new_std_file(ctx, stderr, FALSE));
     return 0;
 }
 

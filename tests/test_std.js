@@ -289,6 +289,20 @@ function test_timeout_order()
     function d() { assert(s === "abc"); } // not "acb"
 }
 
+function test_stdio_close()
+{
+    for (const f of [std.in, std.out, std.err]) {
+        let caught = false;
+        try {
+            f.close();
+        } catch (e) {
+            assert(/cannot close stdio/.test(e.message));
+            caught = true;
+        }
+        assert(caught);
+    }
+}
+
 test_printf();
 test_file1();
 test_file2();
@@ -299,3 +313,4 @@ test_os();
 test_interval();
 test_timeout();
 test_timeout_order();
+test_stdio_close();
