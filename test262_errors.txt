@@ -640,7 +640,5 @@ test262/test/language/expressions/assignment/target-super-computed-reference.js:
 test262/test/language/expressions/assignment/target-super-computed-reference.js:20: strict mode: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
-test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: Test262Error: Expected a TypeError but got a Test262Error
-test262/test/language/expressions/member-expression/computed-reference-null-or-undefined.js:28: strict mode: Test262Error: Expected a TypeError but got a Test262Error
 test262/test/language/module-code/top-level-await/async-module-does-not-block-sibling-modules.js:13: SyntaxError: Could not find export 'check' in module 'test262/test/language/module-code/top-level-await/async-module-sync_FIXTURE.js'
 test262/test/staging/top-level-await/tla-hang-entry.js:10: TypeError: $DONE() not called
