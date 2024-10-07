@@ -39964,6 +39964,37 @@ static JSValue js_iterator_proto_iterator(JSContext *ctx, JSValue this_val,
     return js_dup(this_val);
 }
 
+static JSValue js_iterator_proto_get_toStringTag(JSContext *ctx, JSValue this_val)
+{
+    return JS_AtomToString(ctx, JS_ATOM_Iterator);
+}
+
+static JSValue js_iterator_proto_set_toStringTag(JSContext *ctx, JSValue this_val, JSValue val)
+{
+    JSObject *p;
+    int res;
+
+    if (JS_VALUE_GET_TAG(this_val) != JS_TAG_OBJECT)
+        return JS_ThrowTypeError(ctx,
+                                 "set Iterator.prototype[Symbol.toStringTag] called on non-object");
+    p = JS_VALUE_GET_OBJ(this_val);
+    if (p->class_id == JS_CLASS_ITERATOR) {
+        // This is home.
+        return JS_ThrowTypeError(ctx, "Cannot assign to read only property");
+    }
+    res = JS_GetOwnProperty(ctx, NULL, this_val, JS_ATOM_Symbol_toStringTag);
+    if (res < 0)
+        return JS_EXCEPTION;
+    if (res) {
+        if (JS_SetProperty(ctx, this_val, JS_ATOM_Symbol_toStringTag, js_dup(val)) < 0)
+            return JS_EXCEPTION;
+    } else {
+        if (JS_DefinePropertyValue(ctx, this_val, JS_ATOM_Symbol_toStringTag, js_dup(val), JS_PROP_C_W_E) < 0)
+            return JS_EXCEPTION;
+    }
+    return JS_UNDEFINED;
+}
+
 static const JSCFunctionListEntry js_iterator_funcs[] = {
     JS_CFUNC_DEF("from", 1, js_iterator_from ),
 };
@@ -39981,6 +40012,7 @@ static const JSCFunctionListEntry js_iterator_proto_funcs[] = {
     JS_CFUNC_DEF("take", 1, js_iterator_proto_take ),
     JS_CFUNC_DEF("toArray", 0, js_iterator_proto_toArray ),
     JS_CFUNC_DEF("[Symbol.iterator]", 0, js_iterator_proto_iterator ),
+    JS_CGETSET_DEF("[Symbol.toStringTag]", js_iterator_proto_get_toStringTag, js_iterator_proto_set_toStringTag),
 };
 
 static const JSCFunctionListEntry js_array_proto_funcs[] = {

@@ -20,10 +20,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-retu
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/Iterator/prototype/Symbol.iterator/prop-desc.js:15: Test262Error: obj should have an own property Symbol(Symbol.iterator)
 test262/test/built-ins/Iterator/prototype/Symbol.iterator/prop-desc.js:15: strict mode: Test262Error: obj should have an own property Symbol(Symbol.iterator)
-test262/test/built-ins/Iterator/prototype/Symbol.toStringTag/prop-desc.js:11: TypeError: cannot read property 'get' of undefined
-test262/test/built-ins/Iterator/prototype/Symbol.toStringTag/prop-desc.js:11: strict mode: TypeError: cannot read property 'get' of undefined
-test262/test/built-ins/Iterator/prototype/Symbol.toStringTag/weird-setter.js:20: TypeError: Cannot convert undefined or null to object
-test262/test/built-ins/Iterator/prototype/Symbol.toStringTag/weird-setter.js:20: strict mode: TypeError: Cannot convert undefined or null to object
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: Test262Error: Expected SameValue(«undefined», «function») to be true
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: TypeError: cannot read property 'call' of undefined
@@ -566,14 +562,6 @@ test262/test/built-ins/Iterator/prototype/take/underlying-iterator-closed-in-par
 test262/test/built-ins/Iterator/prototype/take/underlying-iterator-closed-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.take
 test262/test/built-ins/Iterator/prototype/take/underlying-iterator-closed.js:21: InternalError: TODO implement Iterator.prototype.take
 test262/test/built-ins/Iterator/prototype/take/underlying-iterator-closed.js:21: strict mode: InternalError: TODO implement Iterator.prototype.take
-test262/test/built-ins/Object/prototype/toString/symbol-tag-array-builtin.js:24: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Object/prototype/toString/symbol-tag-array-builtin.js:24: strict mode: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Object/prototype/toString/symbol-tag-map-builtin.js:20: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Object/prototype/toString/symbol-tag-map-builtin.js:20: strict mode: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Object/prototype/toString/symbol-tag-set-builtin.js:20: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Object/prototype/toString/symbol-tag-set-builtin.js:20: strict mode: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Object/prototype/toString/symbol-tag-string-builtin.js:24: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Object/prototype/toString/symbol-tag-string-builtin.js:24: strict mode: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
 test262/test/built-ins/RegExp/property-escapes/generated/Alphabetic.js:16: Test262Error: `\p{Alphabetic}` should match U+02EBF0 (`𮯰`)
 test262/test/built-ins/RegExp/property-escapes/generated/Alphabetic.js:16: strict mode: Test262Error: `\p{Alphabetic}` should match U+02EBF0 (`𮯰`)
 test262/test/built-ins/RegExp/property-escapes/generated/Assigned.js:16: Test262Error: `\p{Assigned}` should match U+002FFC (`⿼`)
