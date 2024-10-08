@@ -31,6 +31,10 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#include <intrin.h>
+#endif
+
 //#define USE_SINGLE_CASE  1  // special case single digit numbers
 #define USE_SPECIAL_RADIX_10  1  // special case single digit numbers
 #define USE_SINGLE_CASE_FAST  1  // special case single digit numbers
