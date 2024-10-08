@@ -284,7 +284,7 @@ endif()
 if(WIN32
 OR EMSCRIPTEN
 OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC"
-OR CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 5)
+OR (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 5))
     # Empty. run-test262 uses pthreads, sorry Windows users.
     # tcc and gcc 4.8 don't understand _Thread_local, whereas I
     # don't understand why people still use 4.8 in this day and age
