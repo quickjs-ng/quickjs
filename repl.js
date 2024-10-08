@@ -412,6 +412,11 @@ import * as bjson from "bjson";
         cursor_pos = skip_word_backward(cursor_pos);
     }        
 
+    function clear_screen() {
+        directives["clear"]();
+        return -2;
+    }
+
     function accept_line() {
         std.puts("\n");
         history_add(cmd);
@@ -770,6 +775,7 @@ import * as bjson from "bjson";
         "\x09":     completion,             /* ^I - history-search-backward */
         "\x0a":     accept_line,            /* ^J - newline */
         "\x0b":     kill_line,              /* ^K - delete to end of line */
+        "\x0c":     clear_screen,           /* ^L - clear screen */
         "\x0d":     accept_line,            /* ^M - enter */
         "\x0e":     next_history,           /* ^N - down */
         "\x10":     previous_history,       /* ^P - up */
@@ -777,6 +783,7 @@ import * as bjson from "bjson";
         "\x12":     alert,                  /* ^R - reverse-search */
         "\x13":     alert,                  /* ^S - search */
         "\x14":     transpose_chars,        /* ^T - transpose */
+        "\x17":     backward_kill_word,     /* ^W - backward_kill_word */
         "\x18":     reset,                  /* ^X - cancel */
         "\x19":     yank,                   /* ^Y - yank */
         "\x1bOA":   previous_history,       /* ^[OA - up */
@@ -1542,29 +1549,21 @@ import * as bjson from "bjson";
         }
         mexpr = "";
         
-        eval_and_print_start(expr, true);
+        eval_and_print(expr);
 
         return true;
     }
 
-    function eval_and_print_start(expr, is_async) {
+    function eval_and_print(expr) {
         var result;
-        
-        try {
-            if (use_strict)
-                expr = '"use strict"; void 0;' + expr;
-            eval_start_time = os.now();
-            /* eval as a script */
-            result = std.evalScript(expr, { backtrace_barrier: true, async: is_async });
-            if (is_async) {
-                /* result is a promise */
-                result.then(print_eval_result, print_eval_error);
-            } else {
-                print_eval_result({ value: result });
-            }
-        } catch (error) {
-            print_eval_error(error);
-        }
+
+        if (use_strict)
+            expr = '"use strict"; void 0;' + expr;
+        eval_start_time = os.now();
+        /* eval as a script */
+        result = std.evalScript(expr, { backtrace_barrier: true, async: true });
+        /* result is a promise */
+        result.then(print_eval_result, print_eval_error);
     }
 
     function print_eval_result(result) {
@@ -1578,17 +1577,24 @@ import * as bjson from "bjson";
     }
 
     function print_eval_error(error) {
-        std.puts(colors[styles.error]);
+        if (show_colors) {
+            std.puts(colors[styles.error]);
+        }
         if (error instanceof Error) {
-            console.log(error);
+            std.puts(error);
+            std.puts('\n');
             if (error.stack) {
                 std.puts(error.stack);
             }
         } else {
             std.puts("Throw: ");
-            console.log(error);
+            std.puts(error);
+            std.puts('\n');
         }
-        std.puts(colors.none);
+
+        if (show_colors) {
+            std.puts(colors.none);
+        }
 
         handle_cmd_end();
     }
@@ -1871,6 +1877,10 @@ import * as bjson from "bjson";
             if (+m[2] !== 0) { // light background
                 styles = themes.light;
             }
+        }
+        s = std.getenv("NO_COLOR"); // https://no-color.org/
+        if (s && +s[0] !== 0) {
+            show_colors = false;
         }
     }
 

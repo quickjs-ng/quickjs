@@ -38,7 +38,6 @@ xcheck_add_c_compiler_flag(-Wno-unused-parameter)
 xcheck_add_c_compiler_flag(-Wno-unused-but-set-variable)
 xcheck_add_c_compiler_flag(-Wno-array-bounds)
 xcheck_add_c_compiler_flag(-Wno-format-truncation)
-xcheck_add_c_compiler_flag(-Wno-format-zero-length)
 xcheck_add_c_compiler_flag(-funsigned-char)
 
 # ClangCL is command line compatible with MSVC, so 'MSVC' is set.
@@ -115,6 +114,7 @@ xoption(BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
 xoption(BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
 xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
+xoption(CONFIG_TSAN "Enable ThreadSanitizer (TSan)" OFF)
 xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 
 if(CONFIG_ASAN)
@@ -141,6 +141,18 @@ add_compile_options(
 )
 add_link_options(
     -fsanitize=memory
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+elseif(CONFIG_TSAN)
+message(STATUS "Building with TSan")
+add_compile_options(
+    -fsanitize=thread
+    -fno-sanitize-recover=all
+    -fno-omit-frame-pointer
+)
+add_link_options(
+    -fsanitize=thread
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer
 )
@@ -269,8 +281,15 @@ endif()
 # Test262 runner
 #
 
-# run-test262 uses pthreads.
-if(NOT WIN32 AND NOT EMSCRIPTEN)
+if(WIN32
+OR EMSCRIPTEN
+OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC"
+OR CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 5)
+    # Empty. run-test262 uses pthreads, sorry Windows users.
+    # tcc and gcc 4.8 don't understand _Thread_local, whereas I
+    # don't understand why people still use 4.8 in this day and age
+    # but hey, here we are.
+else()
     add_executable(run-test262
         run-test262.c
     )

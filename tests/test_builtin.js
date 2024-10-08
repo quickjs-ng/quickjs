@@ -783,6 +783,8 @@ function test_regexp()
     assert(a, ["a", undefined]);
     a = /(?:|[\w])+([0-9])/.exec("123a23");
     assert(a, ["123a23", "3"]);
+    a = "ab".split(/(c)*/);
+    assert(a, ["a", undefined, "b"]);
 }
 
 function test_symbol()
