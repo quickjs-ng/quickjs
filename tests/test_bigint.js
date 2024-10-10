@@ -1,4 +1,4 @@
-import { assert, assertThrows } from './assert.js';
+import { assert, assertThrows } from "./assert.js";
 
 
 function bigint_pow(a, n)
