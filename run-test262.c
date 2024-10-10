@@ -29,12 +29,19 @@
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
-#include <unistd.h>
 #include <errno.h>
 #include <time.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <process.h>
+typedef HANDLE js_thread_t;
+#else
 #include <dirent.h>
-#include <ftw.h>
 #include <pthread.h>
+#include <unistd.h>
+typedef pthread_t js_thread_t;
+#endif
 
 #include "cutils.h"
 #include "list.h"
@@ -50,8 +57,8 @@ typedef struct namelist_t {
 } namelist_t;
 
 long nthreads; // invariant: 0 < nthreads < countof(threads)
-pthread_t threads[32];
-pthread_t progress_thread;
+js_thread_t threads[32];
+js_thread_t progress_thread;
 js_cond_t progress_cond;
 js_mutex_t progress_mutex;
 
@@ -328,7 +335,7 @@ void namelist_load(namelist_t *lp, const char *filename)
     char *base_name;
     FILE *f;
 
-    f = fopen(filename, "rb");
+    f = fopen(filename, "r");
     if (!f) {
         perror_exit(1, filename);
     }
@@ -369,7 +376,7 @@ void namelist_free(namelist_t *lp)
     lp->size = 0;
 }
 
-static int add_test_file(const char *filename, const struct stat *ptr, int flag)
+static int add_test_file(const char *filename)
 {
     namelist_t *lp = &test_list;
     if (has_suffix(filename, ".js") && !has_suffix(filename, "_FIXTURE.js"))
@@ -377,12 +384,58 @@ static int add_test_file(const char *filename, const struct stat *ptr, int flag)
     return 0;
 }
 
+static void find_test_files(const char *path);
+
+static void consider_test_file(const char *path, const char *name, int is_dir)
+{
+    char s[1024];
+
+    if (str_equal(name, ".") || str_equal(name, ".."))
+        return;
+    snprintf(s, sizeof(s), "%s/%s", path, name);
+    if (is_dir)
+        find_test_files(s);
+    else
+        add_test_file(s);
+}
+
+static void find_test_files(const char *path)
+{
+#ifdef _WIN32
+    WIN32_FIND_DATAA d;
+    HANDLE h;
+    char s[1024];
+
+    snprintf(s, sizeof(s), "%s/*", path);
+    h = FindFirstFileA(s, &d);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            consider_test_file(path,
+                               d.cFileName,
+                               d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+        } while (FindNextFileA(h, &d));
+        FindClose(h);
+    }
+#else
+    struct dirent *d, **ds = NULL;
+    int i, n;
+
+    n = scandir(path, &ds, NULL, alphasort);
+    for (i = 0; i < n; i++) {
+        d = ds[i];
+        consider_test_file(path, d->d_name, d->d_type == DT_DIR);
+        free(d);
+    }
+    free(ds);
+#endif
+}
+
 /* find js files from the directory tree and sort the list */
 static void enumerate_tests(const char *path)
 {
     namelist_t *lp = &test_list;
     int start = lp->count;
-    ftw(path, add_test_file, 100);
+    find_test_files(path);
     qsort(lp->array + start, lp->count - start, sizeof(*lp->array),
           namelist_cmp_indirect);
 }
@@ -435,25 +488,64 @@ static JSValue js_evalScript_262(JSContext *ctx, JSValue this_val,
     return ret;
 }
 
-static void start_thread(pthread_t *thrd, void *(*start)(void *), void *arg)
+static void start_thread(js_thread_t *thrd, void *(*start)(void *), void *arg)
 {
+    // musl libc gives threads 80 kb stacks, much smaller than
+    // JS_DEFAULT_STACK_SIZE (256 kb)
+    static const unsigned stacksize = 2 << 20; // 2 MB, glibc default
+#ifdef _WIN32
+    HANDLE h, cp;
+
+    cp = GetCurrentProcess();
+    h = (HANDLE)_beginthread((void (*)(void *))(void *)start, stacksize, arg);
+    if (!h)
+        fatal(1, "_beginthread error");
+    // _endthread() automatically closes the handle but we want to wait on
+    // it so make a copy. Race-y for very short-lived threads. Can be solved
+    // by switching to _beginthreadex(CREATE_SUSPENDED) but means changing
+    // |start| from __cdecl to __stdcall.
+    if (!DuplicateHandle(cp, h, cp, thrd, 0, FALSE, DUPLICATE_SAME_ACCESS))
+        fatal(1, "DuplicateHandle error");
+#else
     pthread_attr_t attr;
 
     if (pthread_attr_init(&attr))
         fatal(1, "pthread_attr_init");
-    // musl libc gives threads 80 kb stacks, much smaller than
-    // JS_DEFAULT_STACK_SIZE (256 kb)
-    if (pthread_attr_setstacksize(&attr, 2 << 20)) // 2 MB, glibc default
+    if (pthread_attr_setstacksize(&attr, stacksize))
         fatal(1, "pthread_attr_setstacksize");
     if (pthread_create(thrd, &attr, start, arg))
         fatal(1, "pthread_create error");
     pthread_attr_destroy(&attr);
+#endif
 }
 
-static void join_thread(pthread_t thrd)
+static void join_thread(js_thread_t thrd)
 {
+#ifdef _WIN32
+    if (WaitForSingleObject(thrd, INFINITE))
+        fatal(1, "WaitForSingleObject error");
+    CloseHandle(thrd);
+#else
     if (pthread_join(thrd, NULL))
         fatal(1, "pthread_join error");
+#endif
+}
+
+static long cpu_count(void)
+{
+#ifdef _WIN32
+    DWORD_PTR procmask, sysmask;
+    long count;
+    int i;
+
+    count = 0;
+    if (GetProcessAffinityMask(GetCurrentProcess(), &procmask, &sysmask))
+        for (i = 0; i < 8 * sizeof(procmask); i++)
+            count += 1 & (procmask >> i);
+    return count;
+#else
+    return sysconf(_SC_NPROCESSORS_ONLN);
+#endif
 }
 
 typedef struct {
@@ -480,7 +572,7 @@ static _Thread_local ThreadLocalStorage *tls;
 
 typedef struct {
     struct list_head link;
-    pthread_t tid;
+    js_thread_t tid;
     char *script;
     JSValue broadcast_func;
     BOOL broadcast_pending;
@@ -606,7 +698,7 @@ static void js_agent_free(JSContext *ctx)
 
     list_for_each_safe(el, el1, &tls->agent_list) {
         agent = list_entry(el, Test262Agent, link);
-        pthread_join(agent->tid, NULL);
+        join_thread(agent->tid);
         JS_FreeValue(ctx, agent->broadcast_sab);
         list_del(&agent->link);
         free(agent);
@@ -695,15 +787,23 @@ static JSValue js_agent_sleep(JSContext *ctx, JSValue this_val,
     uint32_t duration;
     if (JS_ToUint32(ctx, &duration, argv[0]))
         return JS_EXCEPTION;
+#ifdef _WIN32
+    Sleep(duration);
+#else
     usleep(duration * 1000);
+#endif
     return JS_UNDEFINED;
 }
 
 static int64_t get_clock_ms(void)
 {
+#ifdef _WIN32
+    return GetTickCount64();
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+#endif
 }
 
 static JSValue js_agent_monotonicNow(JSContext *ctx, JSValue this_val,
@@ -985,7 +1085,7 @@ void load_config(const char *filename, const char *ignore)
     } section = SECTION_NONE;
     int lineno = 0;
 
-    f = fopen(filename, "rb");
+    f = fopen(filename, "r");
     if (!f) {
         perror_exit(1, filename);
     }
@@ -1936,7 +2036,7 @@ void *show_progress(void *unused) {
     js_mutex_lock(&progress_mutex);
     while (js_cond_timedwait(&progress_cond, &progress_mutex, interval)) {
         /* output progress indicator: erase end of line and return to col 0 */
-        fprintf(stderr, "%d/%d/%d\033[K\r",
+        fprintf(stderr, "%d/%d/%d        \r",
                 atomic_load(&test_failed),
                 atomic_load(&test_count),
                 atomic_load(&test_skipped));
@@ -2026,11 +2126,13 @@ int main(int argc, char **argv)
     init_thread_local_storage(tls);
     js_mutex_init(&stats_mutex);
 
-#if !defined(__MINGW32__)
+#ifndef _WIN32
     /* Date tests assume California local time */
     setenv("TZ", "America/Los_Angeles", 1);
-    nthreads = sysconf(_SC_NPROCESSORS_ONLN) - 1;
 #endif
+
+    // minus one to not (over)commit the system completely
+    nthreads = cpu_count() - 1;
 
     optind = 1;
     while (optind < argc) {
