@@ -1,3 +1,5 @@
+// This test cannot use imports because it needs to run in non-strict mode.
+
 function assert(actual, expected, message) {
     if (arguments.length == 1)
         expected = true;
@@ -14,9 +16,6 @@ function assert(actual, expected, message) {
                 ", expected |" + expected + "|" +
                 (message ? " (" + message + ")" : ""));
 }
-
-// load more elaborate version of assert if available
-try { __loadScript("test_assert.js"); } catch(e) {}
 
 /*----------------*/
 
