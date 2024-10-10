@@ -74,6 +74,7 @@ enum test_mode_t {
     TEST_STRICT,           /* run tests as strict, skip nostrict tests */
     TEST_ALL,              /* run tests in both strict and nostrict, unless restricted by spec */
 } test_mode = TEST_DEFAULT_NOSTRICT;
+int local;
 int skip_async;
 int skip_module;
 int dump_memory;
@@ -1129,6 +1130,10 @@ void load_config(const char *filename, const char *ignore)
                 printf("%s:%d: ignoring %s=%s\n", filename, lineno, p, q);
                 continue;
             }
+            if (str_equal(p, "local")) {
+                local = str_equal(q, "yes");
+                continue;
+            }
             if (str_equal(p, "testdir")) {
                 char *testdir = compose_path(base_name, q);
                 enumerate_tests(testdir);
@@ -1512,6 +1517,11 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
         JS_FreeCString(ctx, msg);
         free(s);
     }
+
+    if (local) {
+        js_std_loop(ctx);
+    }
+
     JS_FreeCString(ctx, error_name);
     JS_FreeValue(ctx, exception_val);
     JS_FreeValue(ctx, res_val);
@@ -1679,6 +1689,19 @@ void update_stats(JSRuntime *rt, const char *filename) {
     js_mutex_unlock(&stats_mutex);
 }
 
+JSContext *JS_NewCustomContext(JSRuntime *rt)
+{
+    JSContext *ctx;
+
+    ctx = JS_NewContext(rt);
+    if (ctx && local) {
+        js_init_module_std(ctx, "std");
+        js_init_module_os(ctx, "os");
+        js_init_module_bjson(ctx, "bjson");
+    }
+    return ctx;
+}
+
 int run_test_buf(const char *filename, char *harness, namelist_t *ip,
                  char *buf, size_t buf_len, const char* error_type,
                  int eval_flags, BOOL is_negative, BOOL is_async,
@@ -1692,7 +1715,8 @@ int run_test_buf(const char *filename, char *harness, namelist_t *ip,
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }
-    ctx = JS_NewContext(rt);
+    js_std_init_handlers(rt);
+    ctx = JS_NewCustomContext(rt);
     if (ctx == NULL) {
         JS_FreeRuntime(rt);
         fatal(1, "JS_NewContext failure");
@@ -1721,6 +1745,7 @@ int run_test_buf(const char *filename, char *harness, namelist_t *ip,
     }
     js_agent_free(ctx);
     JS_FreeContext(ctx);
+    js_std_free_handlers(rt);
     JS_FreeRuntime(rt);
 
     atomic_inc(&test_count);
@@ -1757,8 +1782,10 @@ int run_test(const char *filename, int *msec)
         }
         harness = harnessbuf;
     }
-    namelist_add(ip, NULL, "sta.js");
-    namelist_add(ip, NULL, "assert.js");
+    if (!local) {
+        namelist_add(ip, NULL, "sta.js");
+        namelist_add(ip, NULL, "assert.js");
+    }
     /* extract the YAML frontmatter */
     desc = extract_desc(buf, '-');
     if (desc) {
@@ -1874,6 +1901,9 @@ int run_test(const char *filename, int *msec)
         atomic_inc(&test_skipped);
         ret = -2;
     } else {
+        if (local) {
+            is_module = JS_DetectModule(buf, buf_len);
+        }
         if (is_module) {
             eval_flags = JS_EVAL_TYPE_MODULE;
         } else {
@@ -2069,6 +2099,8 @@ int main(int argc, char **argv)
     const char *ignore = "";
     BOOL is_test262_harness = FALSE;
     BOOL is_module = FALSE;
+
+    js_std_set_worker_new_context_func(JS_NewCustomContext);
 
     tls = &(ThreadLocalStorage){};
     init_thread_local_storage(tls);

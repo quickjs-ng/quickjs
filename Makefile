@@ -80,15 +80,7 @@ stats: $(QJS)
 	$(QJS) -qd
 
 test: $(QJS)
-	$(QJS) tests/test_bigint.js
-	$(QJS) tests/test_closure.js
-	$(QJS) tests/test_language.js
-	$(QJS) tests/test_builtin.js
-	$(QJS) tests/test_loop.js
-	$(QJS) tests/test_std.js
-	$(QJS) tests/test_worker.js
-	$(QJS) tests/test_queue_microtask.js
-	$(QJS) tests/test_module_detect.js
+	$(RUN262) -c tests.conf
 
 testconv: $(BUILD_DIR)/test_conv
 	$(BUILD_DIR)/test_conv
