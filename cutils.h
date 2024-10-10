@@ -96,11 +96,6 @@ static void *__builtin_frame_address(unsigned int level) {
 #define NEG_INF (-1.0/0.0)
 #endif
 
-#define xglue(x, y) x ## y
-#define glue(x, y) xglue(x, y)
-#define stringify(s)    tostring(s)
-#define tostring(s)     #s
-
 #ifndef offsetof
 #define offsetof(type, field) ((size_t) &((type *)0)->field)
 #endif
