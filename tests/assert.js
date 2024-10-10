@@ -44,6 +44,6 @@ export function assertArrayEquals(a, b)
     assert(a.length, b.length);
 
     a.forEach((value, idx) => {
-        assert(b[idx] === value);
+        assert(b[idx], value);
     });
 }
