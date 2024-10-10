@@ -90,6 +90,7 @@ function test_popen()
 {
     var str, f, fname = "tmp_file.txt";
     var content = "hello world";
+    var cmd = isWin ? "type" : "cat";
 
     f = std.open(fname, "w");
     f.puts(content);
@@ -98,8 +99,8 @@ function test_popen()
     /* test loadFile */
     assert(std.loadFile(fname), content);
 
-    /* execute the 'cat' shell command */
-    f = std.popen("cat " + fname, "r");
+    /* execute shell command */
+    f = std.popen(cmd + " " + fname, "r");
     str = f.readAsString();
     f.close();
 
