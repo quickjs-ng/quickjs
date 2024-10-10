@@ -281,8 +281,7 @@ endif()
 # Test262 runner
 #
 
-if(WIN32
-OR EMSCRIPTEN
+if(EMSCRIPTEN
 OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC"
 OR (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 5))
     # Empty. run-test262 uses pthreads, sorry Windows users.

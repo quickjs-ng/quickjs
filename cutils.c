@@ -1129,7 +1129,7 @@ void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
 
 /*---- Portable time functions ----*/
 
-#if defined(_MSC_VER)
+#ifdef _WIN32
  // From: https://stackoverflow.com/a/26085827
 static int gettimeofday_msvc(struct timeval *tp, struct timezone *tzp)
 {
@@ -1184,7 +1184,7 @@ uint64_t js__hrtime_ns(void) {
 
 int64_t js__gettimeofday_us(void) {
     struct timeval tv;
-#if defined(_MSC_VER)
+#ifdef _WIN32
     gettimeofday_msvc(&tv, NULL);
 #else
     gettimeofday(&tv, NULL);
