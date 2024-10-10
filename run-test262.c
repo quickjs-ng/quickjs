@@ -76,7 +76,6 @@ enum test_mode_t {
 } test_mode = TEST_DEFAULT_NOSTRICT;
 int skip_async;
 int skip_module;
-int new_style;
 int dump_memory;
 int stats_count;
 JSMemoryUsage stats_all, stats_avg, stats_min, stats_max;
@@ -1130,10 +1129,6 @@ void load_config(const char *filename, const char *ignore)
                 printf("%s:%d: ignoring %s=%s\n", filename, lineno, p, q);
                 continue;
             }
-            if (str_equal(p, "style")) {
-                new_style = str_equal(q, "new");
-                continue;
-            }
             if (str_equal(p, "testdir")) {
                 char *testdir = compose_path(base_name, q);
                 enumerate_tests(testdir);
@@ -1754,136 +1749,90 @@ int run_test(const char *filename, int *msec)
 
     harness = harness_dir;
 
-    if (new_style) {
-        if (!harness) {
-            p = strstr(filename, "test/");
-            if (p) {
-                snprintf(harnessbuf, sizeof(harnessbuf), "%.*s%s",
-                         (int)(p - filename), filename, "harness");
-            }
-            harness = harnessbuf;
+    if (!harness) {
+        p = strstr(filename, "test/");
+        if (p) {
+            snprintf(harnessbuf, sizeof(harnessbuf), "%.*s%s",
+                     (int)(p - filename), filename, "harness");
         }
-        namelist_add(ip, NULL, "sta.js");
-        namelist_add(ip, NULL, "assert.js");
-        /* extract the YAML frontmatter */
-        desc = extract_desc(buf, '-');
-        if (desc) {
-            char *ifile, *option;
-            int state;
-            p = find_tag(desc, "includes:", &state);
-            if (p) {
-                while ((ifile = get_option(&p, &state)) != NULL) {
-                    // skip unsupported harness files
-                    if (find_word(harness_exclude, ifile)) {
-                        skip |= 1;
-                    } else {
-                        namelist_add(ip, NULL, ifile);
-                    }
-                    free(ifile);
-                }
-            }
-            p = find_tag(desc, "flags:", &state);
-            if (p) {
-                while ((option = get_option(&p, &state)) != NULL) {
-                    if (str_equal(option, "noStrict") ||
-                        str_equal(option, "raw")) {
-                        is_nostrict = TRUE;
-                        skip |= (test_mode == TEST_STRICT);
-                    }
-                    else if (str_equal(option, "onlyStrict")) {
-                        is_onlystrict = TRUE;
-                        skip |= (test_mode == TEST_NOSTRICT);
-                    }
-                    else if (str_equal(option, "async")) {
-                        is_async = TRUE;
-                        skip |= skip_async;
-                    }
-                    else if (str_equal(option, "module")) {
-                        is_module = TRUE;
-                        skip |= skip_module;
-                    }
-                    else if (str_equal(option, "CanBlockIsFalse")) {
-                        can_block = FALSE;
-                    }
-                    free(option);
-                }
-            }
-            p = find_tag(desc, "negative:", &state);
-            if (p) {
-                /* XXX: should extract the phase */
-                char *q = find_tag(p, "type:", &state);
-                if (q) {
-                    while (isspace((unsigned char)*q))
-                        q++;
-                    error_type = strdup_len(q, strcspn(q, " \n"));
-                }
-                is_negative = TRUE;
-            }
-            p = find_tag(desc, "features:", &state);
-            if (p) {
-                while ((option = get_option(&p, &state)) != NULL) {
-                    if (find_word(harness_features, option)) {
-                        /* feature is enabled */
-                    } else if (find_word(harness_skip_features, option)) {
-                        /* skip disabled feature */
-                        skip |= 1;
-                    } else {
-                        /* feature is not listed: skip and warn */
-                        printf("%s:%d: unknown feature: %s\n", filename, 1, option);
-                        skip |= 1;
-                    }
-                    free(option);
-                }
-            }
-            free(desc);
-        }
-        if (is_async)
-            namelist_add(ip, NULL, "doneprintHandle.js");
-    } else {
-        char *ifile;
-
-        if (!harness) {
-            p = strstr(filename, "test/");
-            if (p) {
-                snprintf(harnessbuf, sizeof(harnessbuf), "%.*s%s",
-                         (int)(p - filename), filename, "test/harness");
-            }
-            harness = harnessbuf;
-        }
-
-        namelist_add(ip, NULL, "sta.js");
-
-        /* include extra harness files */
-        for (p = buf; (p = strstr(p, "$INCLUDE(\"")) != NULL; p++) {
-            p += 10;
-            ifile = strdup_len(p, strcspn(p, "\""));
-            // skip unsupported harness files
-            if (find_word(harness_exclude, ifile)) {
-                skip |= 1;
-            } else {
-                namelist_add(ip, NULL, ifile);
-            }
-            free(ifile);
-        }
-
-        /* locate the old style configuration comment */
-        desc = extract_desc(buf, '*');
-        if (desc) {
-            if (strstr(desc, "@noStrict")) {
-                is_nostrict = TRUE;
-                skip |= (test_mode == TEST_STRICT);
-            }
-            if (strstr(desc, "@onlyStrict")) {
-                is_onlystrict = TRUE;
-                skip |= (test_mode == TEST_NOSTRICT);
-            }
-            if (strstr(desc, "@negative")) {
-                /* XXX: should extract the regex to check error type */
-                is_negative = TRUE;
-            }
-            free(desc);
-        }
+        harness = harnessbuf;
     }
+    namelist_add(ip, NULL, "sta.js");
+    namelist_add(ip, NULL, "assert.js");
+    /* extract the YAML frontmatter */
+    desc = extract_desc(buf, '-');
+    if (desc) {
+        char *ifile, *option;
+        int state;
+        p = find_tag(desc, "includes:", &state);
+        if (p) {
+            while ((ifile = get_option(&p, &state)) != NULL) {
+                // skip unsupported harness files
+                if (find_word(harness_exclude, ifile)) {
+                    skip |= 1;
+                } else {
+                    namelist_add(ip, NULL, ifile);
+                }
+                free(ifile);
+            }
+        }
+        p = find_tag(desc, "flags:", &state);
+        if (p) {
+            while ((option = get_option(&p, &state)) != NULL) {
+                if (str_equal(option, "noStrict") ||
+                    str_equal(option, "raw")) {
+                    is_nostrict = TRUE;
+                    skip |= (test_mode == TEST_STRICT);
+                }
+                else if (str_equal(option, "onlyStrict")) {
+                    is_onlystrict = TRUE;
+                    skip |= (test_mode == TEST_NOSTRICT);
+                }
+                else if (str_equal(option, "async")) {
+                    is_async = TRUE;
+                    skip |= skip_async;
+                }
+                else if (str_equal(option, "module")) {
+                    is_module = TRUE;
+                    skip |= skip_module;
+                }
+                else if (str_equal(option, "CanBlockIsFalse")) {
+                    can_block = FALSE;
+                }
+                free(option);
+            }
+        }
+        p = find_tag(desc, "negative:", &state);
+        if (p) {
+            /* XXX: should extract the phase */
+            char *q = find_tag(p, "type:", &state);
+            if (q) {
+                while (isspace((unsigned char)*q))
+                    q++;
+                error_type = strdup_len(q, strcspn(q, " \n"));
+            }
+            is_negative = TRUE;
+        }
+        p = find_tag(desc, "features:", &state);
+        if (p) {
+            while ((option = get_option(&p, &state)) != NULL) {
+                if (find_word(harness_features, option)) {
+                    /* feature is enabled */
+                } else if (find_word(harness_skip_features, option)) {
+                    /* skip disabled feature */
+                    skip |= 1;
+                } else {
+                    /* feature is not listed: skip and warn */
+                    printf("%s:%d: unknown feature: %s\n", filename, 1, option);
+                    skip |= 1;
+                }
+                free(option);
+            }
+        }
+        free(desc);
+    }
+    if (is_async)
+        namelist_add(ip, NULL, "doneprintHandle.js");
 
     use_strict = use_nostrict = 0;
     /* XXX: should remove 'test_mode' or simplify it just to force
@@ -2086,7 +2035,6 @@ void help(void)
            "-h             help\n"
            "-a             run tests in strict and nostrict modes\n"
            "-m             print memory usage summary\n"
-           "-n             use new style harness\n"
            "-N             run test prepared by test262-harness+eshost\n"
            "-s             run tests in strict mode, skip @nostrict tests\n"
            "-E             only run tests from the error file\n"
@@ -2159,8 +2107,6 @@ int main(int argc, char **argv)
             help();
         } else if (str_equal(arg, "-m")) {
             dump_memory++;
-        } else if (str_equal(arg, "-n")) {
-            new_style++;
         } else if (str_equal(arg, "-s")) {
             test_mode = TEST_STRICT;
         } else if (str_equal(arg, "-a")) {
