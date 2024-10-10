@@ -9,7 +9,7 @@ export function assert(actual, expected, message) {
         }
         if (typeof actual === 'number') {
             if (isNaN(actual) && isNaN(expected))
-                return true;
+                return;
         }
         if (typeof actual === 'object') {
             if (actual !== null && expected !== null
