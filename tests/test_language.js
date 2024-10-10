@@ -118,20 +118,20 @@ function test_op1()
 
 function test_cvt()
 {
-    assert((NaN | 0) === 0);
-    assert((Infinity | 0) === 0);
-    assert(((-Infinity) | 0) === 0);
-    assert(("12345" | 0) === 12345);
-    assert(("0x12345" | 0) === 0x12345);
-    assert(((4294967296 * 3 - 4) | 0) === -4);
+    assert((NaN | 0), 0);
+    assert((Infinity | 0), 0);
+    assert(((-Infinity) | 0), 0);
+    assert(("12345" | 0), 12345);
+    assert(("0x12345" | 0), 0x12345);
+    assert(((4294967296 * 3 - 4) | 0), -4);
 
-    assert(("12345" >>> 0) === 12345);
-    assert(("0x12345" >>> 0) === 0x12345);
-    assert((NaN >>> 0) === 0);
-    assert((Infinity >>> 0) === 0);
-    assert(((-Infinity) >>> 0) === 0);
-    assert(((4294967296 * 3 - 4) >>> 0) === (4294967296 - 4));
-    assert((19686109595169230000).toString() === "19686109595169230000");
+    assert(("12345" >>> 0), 12345);
+    assert(("0x12345" >>> 0), 0x12345);
+    assert((NaN >>> 0), 0);
+    assert((Infinity >>> 0), 0);
+    assert(((-Infinity) >>> 0), 0);
+    assert(((4294967296 * 3 - 4) >>> 0), (4294967296 - 4));
+    assert((19686109595169230000).toString(), "19686109595169230000");
 }
 
 function test_eq()
@@ -316,36 +316,36 @@ function test_class()
         }
     }
 
-    assert(C.F() === -1);
+    assert(C.F(), -1);
     assert(Object.getOwnPropertyDescriptor(C.prototype, "y").get.name === "get y");
 
     o = new C();
-    assert(o.f() === 1);
-    assert(o.x === 10);
+    assert(o.f(), 1);
+    assert(o.x, 10);
 
-    assert(D.F() === -1);
-    assert(D.G() === -2);
-    assert(D.H() === -1);
+    assert(D.F(), -1);
+    assert(D.G(), -2);
+    assert(D.H(), -1);
 
     o = new D();
-    assert(o.f() === 1);
-    assert(o.g() === 2);
-    assert(o.x === 10);
-    assert(o.z === 20);
-    assert(o.h() === 1);
+    assert(o.f(), 1);
+    assert(o.g(), 2);
+    assert(o.x, 10);
+    assert(o.z, 20);
+    assert(o.h(), 1);
 
     /* test class name scope */
     var E1 = class E { static F() { return E; } };
-    assert(E1 === E1.F());
+    assert(E1, E1.F());
 
     class S {
         static x = 42;
         static y = S.x;
         static z = this.x;
     }
-    assert(S.x === 42);
-    assert(S.y === 42);
-    assert(S.z === 42);
+    assert(S.x, 42);
+    assert(S.y, 42);
+    assert(S.z, 42);
     
     class P {
         get;
@@ -356,10 +356,10 @@ function test_class()
         async = () => "789";
         static() { return 42; }
     }
-    assert(new P().get() === "123");
-    assert(new P().set() === "456");
-    assert(new P().async() === "789");
-    assert(new P().static() === 42);
+    assert(new P().get(), "123");
+    assert(new P().set(), "456");
+    assert(new P().async(), "789");
+    assert(new P().static(), 42);
 };
 
 function test_template()
@@ -389,7 +389,7 @@ function test_object_literal()
     var x = 0, get = 1, set = 2; async = 3;
     a = { get: 2, set: 3, async: 4, get a(){ return this.get} };
     assert(JSON.stringify(a), '{"get":2,"set":3,"async":4,"a":2}');
-    assert(a.a === 2);
+    assert(a.a, 2);
 
     a = { x, get, set, async };
     assert(JSON.stringify(a), '{"x":0,"get":1,"set":2,"async":3}');
@@ -399,10 +399,10 @@ function test_regexp_skip()
 {
     var a, b;
     [a, b = /abc\(/] = [1];
-    assert(a === 1);
+    assert(a, 1);
 
     [a, b =/abc\(/] = [2];
-    assert(a === 2);
+    assert(a, 2);
 }
 
 function test_labels()

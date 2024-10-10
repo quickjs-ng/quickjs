@@ -43,12 +43,12 @@ function test_exception_prepare_stack()
 
     Error.prepareStackTrace = undefined;
 
-    assert(e.stack.length === 2);
+    assert(e.stack.length, 2);
     const f = e.stack[0];
-    assert(f.getFunctionName() === 'test_exception_prepare_stack');
+    assert(f.getFunctionName(), 'test_exception_prepare_stack');
     assert(f.getFileName().endsWith('test_builtin.js'));
-    assert(f.getLineNumber() === 39);
-    assert(f.getColumnNumber() === 19);
+    assert(f.getLineNumber(), 39);
+    assert(f.getColumnNumber(), 19);
     assert(!f.isNative());
 }
 
@@ -72,12 +72,12 @@ function test_exception_stack_size_limit()
     Error.stackTraceLimit = 10;
     Error.prepareStackTrace = undefined;
 
-    assert(e.stack.length === 1);
+    assert(e.stack.length, 1);
     const f = e.stack[0];
-    assert(f.getFunctionName() === 'test_exception_stack_size_limit');
+    assert(f.getFunctionName(), 'test_exception_stack_size_limit');
     assert(f.getFileName().endsWith('test_builtin.js'));
-    assert(f.getLineNumber() === 67);
-    assert(f.getColumnNumber() === 19);
+    assert(f.getLineNumber(), 67);
+    assert(f.getColumnNumber(), 19);
     assert(!f.isNative());
 }
 

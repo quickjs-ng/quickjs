@@ -28,7 +28,7 @@ function test_while()
         c++;
         i++;
     }
-    assert(c === 3);
+    assert(c, 3);
 }
 
 function test_while_break()

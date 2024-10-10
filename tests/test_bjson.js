@@ -180,12 +180,12 @@ function bjson_test_symbol()
     o = Symbol.for('foo');
     buf = bjson.write(o);
     r = bjson.read(buf, 0, buf.byteLength);
-    assert(o === r);
+    assert(o, r);
 
     o = Symbol.toStringTag;
     buf = bjson.write(o);
     r = bjson.read(buf, 0, buf.byteLength);
-    assert(o === r);
+    assert(o, r);
 }
 
 function bjson_test_all()
