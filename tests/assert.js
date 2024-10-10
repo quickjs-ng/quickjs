@@ -41,7 +41,7 @@ export function assertArrayEquals(a, b)
     if (!Array.isArray(a) || !Array.isArray(b))
         return assert(false);
 
-    assert(a.length === b.length);
+    assert(a.length, b.length);
 
     a.forEach((value, idx) => {
         assert(b[idx] === value);
