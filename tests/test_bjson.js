@@ -1,21 +1,5 @@
 import * as bjson from "bjson";
-
-function assert(actual, expected, message) {
-    if (arguments.length == 1)
-        expected = true;
-
-    if (actual === expected)
-        return;
-
-    if (actual !== null && expected !== null
-    &&  typeof actual == 'object' && typeof expected == 'object'
-    &&  actual.toString() === expected.toString())
-        return;
-
-    throw Error("assertion failed: got |" + actual + "|" +
-                ", expected |" + expected + "|" +
-                (message ? " (" + message + ")" : ""));
-}
+import { assert } from "./assert.js";
 
 function toHex(a)
 {
@@ -196,12 +180,12 @@ function bjson_test_symbol()
     o = Symbol.for('foo');
     buf = bjson.write(o);
     r = bjson.read(buf, 0, buf.byteLength);
-    assert(o === r);
+    assert(o, r);
 
     o = Symbol.toStringTag;
     buf = bjson.write(o);
     r = bjson.read(buf, 0, buf.byteLength);
-    assert(o === r);
+    assert(o, r);
 }
 
 function bjson_test_all()

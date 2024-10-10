@@ -1,4 +1,5 @@
 import * as os from "os";
+import { assert, assertThrows } from "./assert.js";
 
 // Keep this at the top; it tests source positions.
 function test_exception_source_pos()
@@ -6,21 +7,21 @@ function test_exception_source_pos()
     var e;
 
     try {
-        throw new Error(""); // line 9, column 19
+        throw new Error(""); // line 10, column 19
     } catch(_e) {
         e = _e;
     }
 
-    assert(e.stack.includes("test_builtin.js:9:19"));
+    assert(e.stack.includes("test_builtin.js:10:19"));
 }
 
 // Keep this at the top; it tests source positions.
-function test_function_source_pos() // line 18, column 1
+function test_function_source_pos() // line 19, column 1
 {
-    function inner() {} // line 20, column 5
+    function inner() {} // line 21, column 5
     var f = eval("function f() {} f");
-    assert(`${test_function_source_pos.lineNumber}:${test_function_source_pos.columnNumber}`, "18:1");
-    assert(`${inner.lineNumber}:${inner.columnNumber}`, "20:5");
+    assert(`${test_function_source_pos.lineNumber}:${test_function_source_pos.columnNumber}`, "19:1");
+    assert(`${inner.lineNumber}:${inner.columnNumber}`, "21:5");
     assert(`${f.lineNumber}:${f.columnNumber}`, "1:1");
 }
 
@@ -35,19 +36,19 @@ function test_exception_prepare_stack()
     };
 
     try {
-        throw new Error(""); // line 38, column 19
+        throw new Error(""); // line 39, column 19
     } catch(_e) {
         e = _e;
     }
 
     Error.prepareStackTrace = undefined;
 
-    assert(e.stack.length === 2);
+    assert(e.stack.length, 2);
     const f = e.stack[0];
-    assert(f.getFunctionName() === 'test_exception_prepare_stack');
+    assert(f.getFunctionName(), 'test_exception_prepare_stack');
     assert(f.getFileName().endsWith('test_builtin.js'));
-    assert(f.getLineNumber() === 38);
-    assert(f.getColumnNumber() === 19);
+    assert(f.getLineNumber(), 39);
+    assert(f.getColumnNumber(), 19);
     assert(!f.isNative());
 }
 
@@ -63,7 +64,7 @@ function test_exception_stack_size_limit()
     };
 
     try {
-        throw new Error(""); // line 66, column 19
+        throw new Error(""); // line 67, column 19
     } catch(_e) {
         e = _e;
     }
@@ -71,60 +72,14 @@ function test_exception_stack_size_limit()
     Error.stackTraceLimit = 10;
     Error.prepareStackTrace = undefined;
 
-    assert(e.stack.length === 1);
+    assert(e.stack.length, 1);
     const f = e.stack[0];
-    assert(f.getFunctionName() === 'test_exception_stack_size_limit');
+    assert(f.getFunctionName(), 'test_exception_stack_size_limit');
     assert(f.getFileName().endsWith('test_builtin.js'));
-    assert(f.getLineNumber() === 66);
-    assert(f.getColumnNumber() === 19);
+    assert(f.getLineNumber(), 67);
+    assert(f.getColumnNumber(), 19);
     assert(!f.isNative());
 }
-
-function assert(actual, expected, message) {
-    if (arguments.length == 1)
-        expected = true;
-
-    if (typeof actual === typeof expected) {
-        if (actual === expected) {
-            if (actual !== 0 || (1 / actual) === (1 / expected))
-                return;
-        }
-        if (typeof actual === 'number') {
-            if (isNaN(actual) && isNaN(expected))
-                return true;
-        }
-        if (typeof actual === 'object') {
-            if (actual !== null && expected !== null
-            &&  actual.constructor === expected.constructor
-            &&  actual.toString() === expected.toString())
-                return;
-        }
-    }
-    throw Error("assertion failed: got |" + actual + "|" +
-                ", expected |" + expected + "|" +
-                (message ? " (" + message + ")" : ""));
-}
-
-function assert_throws(expected_error, func)
-{
-    var err = false;
-    try {
-        func();
-    } catch(e) {
-        err = true;
-        if (!(e instanceof expected_error)) {
-            throw Error("unexpected exception type");
-        }
-    }
-    if (!err) {
-        throw Error("expected exception");
-    }
-}
-
-// load more elaborate version of assert if available
-try { __loadScript("test_assert.js"); } catch(e) {}
-
-/*----------------*/
 
 function my_func(a, b)
 {
@@ -155,7 +110,7 @@ function test_function()
     r = (function () { return 1; }).apply(null, undefined);
     assert(r, 1);
 
-    assert_throws(TypeError, (function() {
+    assertThrows(TypeError, (function() {
         Reflect.apply((function () { return 1; }), null, undefined);
     }));
 
@@ -221,7 +176,7 @@ function test()
     assert(typeof a.y, "undefined", "extensible");
     assert(err, true, "extensible");
 
-    assert_throws(TypeError, () => Object.setPrototypeOf(Object.prototype, {}));
+    assertThrows(TypeError, () => Object.setPrototypeOf(Object.prototype, {}));
 }
 
 function test_enum()
@@ -1031,10 +986,10 @@ function test_cur_pc()
             get: function() { throw Error("a[1]_get"); },
             set: function(x) { throw Error("a[1]_set"); }
             });
-    assert_throws(Error, function() { return a[1]; });
-    assert_throws(Error, function() { a[1] = 1; });
-    assert_throws(Error, function() { return [...a]; });
-    assert_throws(Error, function() { return ({...b} = a); });
+    assertThrows(Error, function() { return a[1]; });
+    assertThrows(Error, function() { a[1] = 1; });
+    assertThrows(Error, function() { return [...a]; });
+    assertThrows(Error, function() { return ({...b} = a); });
 
     var o = {};
     Object.defineProperty(o, 'x', {
@@ -1042,34 +997,34 @@ function test_cur_pc()
             set: function(x) { throw Error("o.x_set"); }
             });
     o.valueOf = function() { throw Error("o.valueOf"); };
-    assert_throws(Error, function() { return +o; });
-    assert_throws(Error, function() { return -o; });
-    assert_throws(Error, function() { return o+1; });
-    assert_throws(Error, function() { return o-1; });
-    assert_throws(Error, function() { return o*1; });
-    assert_throws(Error, function() { return o/1; });
-    assert_throws(Error, function() { return o%1; });
-    assert_throws(Error, function() { return o**1; });
-    assert_throws(Error, function() { return o<<1; });
-    assert_throws(Error, function() { return o>>1; });
-    assert_throws(Error, function() { return o>>>1; });
-    assert_throws(Error, function() { return o&1; });
-    assert_throws(Error, function() { return o|1; });
-    assert_throws(Error, function() { return o^1; });
-    assert_throws(Error, function() { return o<1; });
-    assert_throws(Error, function() { return o==1; });
-    assert_throws(Error, function() { return o++; });
-    assert_throws(Error, function() { return o--; });
-    assert_throws(Error, function() { return ++o; });
-    assert_throws(Error, function() { return --o; });
-    assert_throws(Error, function() { return ~o; });
+    assertThrows(Error, function() { return +o; });
+    assertThrows(Error, function() { return -o; });
+    assertThrows(Error, function() { return o+1; });
+    assertThrows(Error, function() { return o-1; });
+    assertThrows(Error, function() { return o*1; });
+    assertThrows(Error, function() { return o/1; });
+    assertThrows(Error, function() { return o%1; });
+    assertThrows(Error, function() { return o**1; });
+    assertThrows(Error, function() { return o<<1; });
+    assertThrows(Error, function() { return o>>1; });
+    assertThrows(Error, function() { return o>>>1; });
+    assertThrows(Error, function() { return o&1; });
+    assertThrows(Error, function() { return o|1; });
+    assertThrows(Error, function() { return o^1; });
+    assertThrows(Error, function() { return o<1; });
+    assertThrows(Error, function() { return o==1; });
+    assertThrows(Error, function() { return o++; });
+    assertThrows(Error, function() { return o--; });
+    assertThrows(Error, function() { return ++o; });
+    assertThrows(Error, function() { return --o; });
+    assertThrows(Error, function() { return ~o; });
 
     Object.defineProperty(globalThis, 'xxx', {
             get: function() { throw Error("xxx_get"); },
             set: function(x) { throw Error("xxx_set"); }
             });
-    assert_throws(Error, function() { return xxx; });
-    assert_throws(Error, function() { xxx = 1; });
+    assertThrows(Error, function() { return xxx; });
+    assertThrows(Error, function() { xxx = 1; });
 }
 
 test();
