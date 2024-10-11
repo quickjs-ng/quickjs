@@ -110,10 +110,10 @@ static void *__builtin_frame_address(unsigned int level) {
 #define container_of(ptr, type, member) ((type *)((uint8_t *)(ptr) - offsetof(type, member)))
 #endif
 
-#if !defined(_MSC_VER) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-#define minimum_length(n)  static n
+#if defined(_MSC_VER)
+#define minimum_length(n) n
 #else
-#define minimum_length(n)  n
+#define minimum_length(n) static n
 #endif
 
 typedef int BOOL;
