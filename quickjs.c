@@ -6612,14 +6612,15 @@ static const char *get_func_name(JSContext *ctx, JSValue func)
 #define JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL (1 << 0)
 /* only taken into account if filename is provided */
 #define JS_BACKTRACE_FLAG_SINGLE_LEVEL     (1 << 1)
+#define JS_BACKTRACE_FLAG_FILTER_FUNC      (1 << 2)
 
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
-static void build_backtrace(JSContext *ctx, JSValue error_obj,
+static void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_func,
                             const char *filename, int line_num, int col_num,
                             int backtrace_flags)
 {
-    JSStackFrame *sf;
+    JSStackFrame *sf, *sf_start;
     JSValue stack, prepare, saved_exception;
     DynBuf dbuf;
     const char *func_name_str;
@@ -6668,7 +6669,20 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
     if (filename && (backtrace_flags & JS_BACKTRACE_FLAG_SINGLE_LEVEL))
         goto done;
 
-    for (sf = rt->current_stack_frame; sf != NULL && i < stack_trace_limit; sf = sf->prev_frame) {
+    sf_start = rt->current_stack_frame;
+
+    /* Find the frame we want to start from. Note that when a filter is used the filter
+       function will be the first, but we also specify we want to skip the first one. */
+    if (backtrace_flags & JS_BACKTRACE_FLAG_FILTER_FUNC) {
+        for (sf = sf_start; sf != NULL && i < stack_trace_limit; sf = sf->prev_frame) {
+            if (js_same_value(ctx, sf->cur_func, filter_func)) {
+                sf_start = sf;
+                break;
+            }
+        }
+    }
+
+    for (sf = sf_start; sf != NULL && i < stack_trace_limit; sf = sf->prev_frame) {
         if (backtrace_flags & JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL) {
             backtrace_flags &= ~JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL;
             continue;
@@ -6811,7 +6825,7 @@ static JSValue JS_MakeError(JSContext *ctx, JSErrorEnum error_num,
                                JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
     }
     if (add_backtrace)
-        build_backtrace(ctx, obj, NULL, 0, 0, 0);
+        build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0, 0);
     return obj;
 }
 
@@ -17380,7 +17394,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
            before if the exception happens in a bytecode
            operation */
         sf->cur_pc = pc;
-        build_backtrace(ctx, rt->current_exception, NULL, 0, 0, 0);
+        build_backtrace(ctx, rt->current_exception, JS_UNDEFINED, NULL, 0, 0, 0);
     }
     if (!JS_IsUncatchableError(ctx, rt->current_exception)) {
         while (sp > stack_buf) {
@@ -18968,7 +18982,7 @@ int __attribute__((format(printf, 2, 3))) js_parse_error(JSParseState *s, const 
     backtrace_flags = 0;
     if (s->cur_func && s->cur_func->backtrace_barrier)
         backtrace_flags = JS_BACKTRACE_FLAG_SINGLE_LEVEL;
-    build_backtrace(ctx, ctx->rt->current_exception, s->filename,
+    build_backtrace(ctx, ctx->rt->current_exception, JS_UNDEFINED, s->filename,
                     s->line_num, s->col_num, backtrace_flags);
     return -1;
 }
@@ -23470,7 +23484,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 backtrace_flags = 0;
                 if (s->cur_func && s->cur_func->backtrace_barrier)
                     backtrace_flags = JS_BACKTRACE_FLAG_SINGLE_LEVEL;
-                build_backtrace(s->ctx, s->ctx->rt->current_exception,
+                build_backtrace(s->ctx, s->ctx->rt->current_exception, JS_UNDEFINED,
                                 s->filename,
                                 s->token.line_num,
                                 s->token.col_num,
@@ -37909,7 +37923,7 @@ static JSValue js_error_constructor(JSContext *ctx, JSValue new_target,
     }
 
     /* skip the Error() function in the backtrace */
-    build_backtrace(ctx, obj, NULL, 0, 0, JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
+    build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0, JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
     return obj;
  exception:
     JS_FreeValue(ctx, obj);
@@ -37999,8 +38013,19 @@ static JSValue js_error_set_prepareStackTrace(JSContext *ctx, JSValue this_val, 
     return JS_UNDEFINED;
 }
 
+static JSValue js_error_capture_stack_trace(JSContext *ctx, JSValue this_val,
+                                            int argc, JSValue *argv)
+{
+    JSValue v = argv[0];
+    if (JS_VALUE_GET_TAG(v) != JS_TAG_OBJECT)
+        return JS_ThrowTypeErrorNotAnObject(ctx);
+    build_backtrace(ctx, v, argv[1], NULL, 0, 0, JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL|JS_BACKTRACE_FLAG_FILTER_FUNC);
+    return JS_UNDEFINED;
+}
+
 static const JSCFunctionListEntry js_error_funcs[] = {
     JS_CFUNC_DEF("isError", 1, js_error_isError ),
+    JS_CFUNC_DEF("captureStackTrace", 2, js_error_capture_stack_trace),
     JS_CGETSET_DEF("stackTraceLimit", js_error_get_stackTraceLimit, js_error_set_stackTraceLimit ),
     JS_CGETSET_DEF("prepareStackTrace", js_error_get_prepareStackTrace, js_error_set_prepareStackTrace ),
 };

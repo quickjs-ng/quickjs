@@ -81,6 +81,37 @@ function test_exception_stack_size_limit()
     assert(!f.isNative());
 }
 
+function test_exception_capture_stack_trace()
+{
+  var o = {};
+
+  assertThrows(TypeError, (function() {
+      Error.captureStackTrace();
+  }));
+
+  Error.captureStackTrace(o);
+
+  assert(typeof o.stack === 'string');
+  assert(o.stack.includes('test_exception_capture_stack_trace'));
+}
+
+function test_exception_capture_stack_trace_filter()
+{
+  var o = {};
+  const fun1 = () => { fun2(); };
+  const fun2 = () => { fun3(); };
+  const fun3 = () => { log_stack(); };
+  function log_stack() {
+      Error.captureStackTrace(o, fun3);
+  }
+  fun1();
+
+  Error.captureStackTrace(o);
+
+  assert(!o.stack.includes('fun3'));
+  assert(!o.stack.includes('log_stack'));
+}
+
 function my_func(a, b)
 {
     return a + b;
@@ -1051,4 +1082,6 @@ test_exception_source_pos();
 test_function_source_pos();
 test_exception_prepare_stack();
 test_exception_stack_size_limit();
+test_exception_capture_stack_trace();
+test_exception_capture_stack_trace_filter();
 test_cur_pc();

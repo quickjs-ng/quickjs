@@ -62,4 +62,7 @@ of ES features present in NG:
 
 Some non-standard but widely used APIs have also been added:
 
-- V8's `Error.prepareStackTrace` and `Error.stackTraceLimit`
+- V8's [stack trace API](https://v8.dev/docs/stack-trace-api)
+  - `Error.captureStackTrace`
+  - `Error.prepareStackTrace`
+  - `Error.stackTraceLimit`
