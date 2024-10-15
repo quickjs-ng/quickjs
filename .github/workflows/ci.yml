@@ -98,6 +98,12 @@ jobs:
           popd
           echo "CC=tcc" >> $GITHUB_ENV;
 
+      - name: Install extra dependencies
+        if: ${{ matrix.config.arch != '' }}
+        shell: 'sh'
+        run: |
+          sudo apt update && sudo apt install -y binfmt-support
+
       - name: Setup Alpine
         if: ${{ matrix.config.arch != '' }}
         uses: jirutka/setup-alpine@v1
