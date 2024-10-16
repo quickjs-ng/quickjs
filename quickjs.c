@@ -35587,6 +35587,10 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
         if (type == 0) {
             if (bc_get_u32(s, &atom))
                 return -1;
+            if (!__JS_AtomIsConst(atom)) {
+                JS_ThrowInternalError(s->ctx, "out of range atom");
+                return -1;
+            }
         } else {
             if (type < JS_ATOM_TYPE_STRING || type >= JS_ATOM_TYPE_PRIVATE) {
                 JS_ThrowInternalError(s->ctx, "invalid symbol type %d", type);

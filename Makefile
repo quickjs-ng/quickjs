@@ -44,6 +44,10 @@ endif
 
 all: $(QJS)
 
+fuzz:
+	clang -g -O1 -fsanitize=fuzzer -o fuzz fuzz.c
+	./fuzz
+
 $(BUILD_DIR):
 	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
 
@@ -106,4 +110,4 @@ unicode_gen: $(BUILD_DIR)
 libunicode-table.h: unicode_gen
 	$(BUILD_DIR)/unicode_gen unicode $@
 
-.PHONY: all debug install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)
+.PHONY: all debug fuzz install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)
