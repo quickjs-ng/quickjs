@@ -326,7 +326,7 @@ JS_EXTERN void JS_SetContextOpaque(JSContext *ctx, void *opaque);
 JS_EXTERN JSRuntime *JS_GetRuntime(JSContext *ctx);
 JS_EXTERN void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj);
 JS_EXTERN JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
-JS_EXTERN JSValueConst JS_GetFunctionProto(JSContext *ctx);
+JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
 
 /* the following functions are used to select the intrinsic object to
    save memory */

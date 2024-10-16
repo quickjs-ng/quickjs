@@ -2319,7 +2319,7 @@ JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id)
     return js_dup(ctx->class_proto[class_id]);
 }
 
-JSValueConst JS_GetFunctionProto(JSContext *ctx)
+JSValue JS_GetFunctionProto(JSContext *ctx)
 {
     return js_dup(ctx->function_proto);
 }
