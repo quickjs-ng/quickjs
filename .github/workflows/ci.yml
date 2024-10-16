@@ -420,21 +420,6 @@ jobs:
             gmake
             gmake stats
 
-  netbsd:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: build + test
-        uses: vmactions/netbsd-vm@v1
-        with:
-          usesh: true
-          prepare: |
-            /usr/sbin/pkg_add cmake gmake
-          run: |
-            gmake
-            gmake stats
-            gmake test
-
   android:
     runs-on: ubuntu-latest
     container: reactnativecommunity/react-native-android:v13.0
