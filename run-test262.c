@@ -1836,7 +1836,7 @@ int run_test(const char *filename, int *msec)
             if (q) {
                 while (isspace((unsigned char)*q))
                     q++;
-                error_type = strdup_len(q, strcspn(q, " \n"));
+                error_type = strdup_len(q, strcspn(q, " \r\n"));
             }
             is_negative = TRUE;
         }
