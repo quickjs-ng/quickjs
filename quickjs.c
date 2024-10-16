@@ -26774,6 +26774,11 @@ static JSValue js_build_module_ns(JSContext *ctx, JSModuleDef *m)
         case EXPORTED_NAME_NORMAL:
             {
                 JSVarRef *var_ref = en->u.var_ref;
+                if (!var_ref) {
+                    js_resolve_export_throw_error(ctx, JS_RESOLVE_RES_CIRCULAR,
+                                                  m, en->export_name);
+                    goto fail;
+                }
                 pr = add_property(ctx, p, en->export_name,
                                   JS_PROP_ENUMERABLE | JS_PROP_WRITABLE |
                                   JS_PROP_VARREF);
