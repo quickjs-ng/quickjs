@@ -2319,6 +2319,11 @@ JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id)
     return js_dup(ctx->class_proto[class_id]);
 }
 
+JSValue JS_GetFunctionProto(JSContext *ctx)
+{
+    return js_dup(ctx->function_proto);
+}
+
 typedef enum JSFreeModuleEnum {
     JS_FREE_MODULE_ALL,
     JS_FREE_MODULE_NOT_RESOLVED,
