@@ -1556,7 +1556,7 @@ fail:
     return 1;
 }
 
-char *extract_desc(const char *buf, char style)
+char *extract_desc(const char *buf)
 {
     const char *p, *desc_start;
     char *desc;
@@ -1564,7 +1564,7 @@ char *extract_desc(const char *buf, char style)
 
     p = buf;
     while (*p != '\0') {
-        if (p[0] == '/' && p[1] == '*' && p[2] == style && p[3] != '/') {
+        if (p[0] == '/' && p[1] == '*' && p[2] == '-' && p[3] != '/') {
             p += 3;
             desc_start = p;
             while (*p != '\0' && (p[0] != '*' || p[1] != '/'))
@@ -1787,7 +1787,7 @@ int run_test(const char *filename, int *msec)
         namelist_add(ip, NULL, "assert.js");
     }
     /* extract the YAML frontmatter */
-    desc = extract_desc(buf, '-');
+    desc = extract_desc(buf);
     if (desc) {
         char *ifile, *option;
         int state;
