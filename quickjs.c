@@ -35361,7 +35361,12 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         return JS_EXCEPTION;
     }
 
-    assert(!bc->is_wide_char);
+    if (bc->is_wide_char) {
+        js_free_string(ctx->rt, pattern);
+        js_free_string(ctx->rt, bc);
+        return JS_ThrowInternalError(ctx, "bad regexp bytecode");
+    }
+
     if (is_be())
         lre_byte_swap(bc->u.str8, bc->len, /*is_byte_swapped*/TRUE);
 

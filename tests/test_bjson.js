@@ -232,6 +232,7 @@ function bjson_test_fuzz()
     var corpus = [
         "EBAAAAAABGA=",
         "EObm5oIt",
+        "EAARABMGBgYGBgYGBgYGBv////8QABEALxH/vy8R/78=",
     ];
     for (var input of corpus) {
         var buf = base64decode(input);
