@@ -35571,8 +35571,13 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
     }
     if (bc_get_leb128(s, &s->idx_to_atom_count))
         return -1;
+    if (s->idx_to_atom_count > 1000*1000) {
+        JS_ThrowInternalError(s->ctx, "unreasonable atom count: %u",
+                              s->idx_to_atom_count);
+        return -1;
+    }
 
-    bc_read_trace(s, "%d atom indexes {\n", s->idx_to_atom_count);
+    bc_read_trace(s, "%u atom indexes {\n", s->idx_to_atom_count);
 
     if (s->idx_to_atom_count != 0) {
         s->idx_to_atom = js_mallocz(s->ctx, s->idx_to_atom_count *
