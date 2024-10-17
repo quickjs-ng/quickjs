@@ -223,6 +223,33 @@ jobs:
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
 
+  windows-msvc-vs2019:
+    runs-on: windows-2019
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, Win32]
+        buildType: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: |
+          cmake -B build -DBUILD_EXAMPLES=ON -G "Visual Studio 16 2019" -A ${{matrix.arch}}
+          cmake --build build --config ${{matrix.buildType}} --target qjs_exe
+          cmake --build build --config ${{matrix.buildType}} --target function_source
+          cmake --build build --config ${{matrix.buildType}} --target fib
+          cmake --build build --config ${{matrix.buildType}} --target point
+      - name: stats
+        run: |
+          build\${{matrix.buildType}}\qjs.exe -qd
+      - name: test
+        run: |
+          cp build\${{matrix.buildType}}\fib.dll examples\
+          cp build\${{matrix.buildType}}\point.dll examples\
+          build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
+          build\${{matrix.buildType}}\qjs.exe examples\test_point.js
+          build\${{matrix.buildType}}\function_source.exe
+
   windows-clang:
     runs-on: windows-latest
     strategy:
