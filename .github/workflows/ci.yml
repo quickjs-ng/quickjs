@@ -207,6 +207,8 @@ jobs:
         buildType: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: build
         run: |
           cmake -B build -DBUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -A ${{matrix.arch}}
@@ -222,6 +224,10 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
+      - name: test 262
+        run: |
+          build\${{matrix.buildType}}\run-test262.exe -m -c test262.conf -a
+
 
   windows-clang:
     runs-on: windows-latest
@@ -231,6 +237,8 @@ jobs:
         buildType: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: build
         run: |
           cmake -B build -DBUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -T ClangCL
@@ -246,6 +254,9 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
+      - name: test 262
+        run: |
+          build\${{matrix.buildType}}\run-test262.exe -m -c test262.conf -a
 
   windows-ninja:
     runs-on: windows-latest
@@ -255,6 +266,8 @@ jobs:
         buildType: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: install ninja
         run: |
           choco install ninja
@@ -274,6 +287,9 @@ jobs:
           build\qjs.exe examples\test_point.js
           build\run-test262.exe -c tests.conf
           build\function_source.exe
+      - name: test 262
+        run: |
+          build\run-test262.exe -m -c test262.conf -a
 
   windows-mingw:
     runs-on: windows-latest
@@ -291,6 +307,8 @@ jobs:
         shell: msys2 {0}
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: true
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
@@ -312,6 +330,9 @@ jobs:
     - name: test
       run: |
         make test
+    - name: test 262
+      run: |
+        make test262
   windows-mingw-shared:
     runs-on: windows-latest
     defaults:
