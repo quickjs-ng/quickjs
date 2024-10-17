@@ -1,6 +1,45 @@
 import * as bjson from "bjson";
 import { assert } from "./assert.js";
 
+function base64decode(s) {
+    var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var n = s.indexOf("=");
+    if (n < 0) n = s.length;
+    if (n & 3 === 1) throw Error("bad base64"); // too much padding
+    var r = new Uint8Array(3 * (n>>2) + (n>>1 & 1) + (n & 1));
+    var a, b, c, d, i, j;
+    a = b = c = d = i = j = 0;
+    while (i+3 < n) {
+        a = A.indexOf(s[i++]);
+        b = A.indexOf(s[i++]);
+        c = A.indexOf(s[i++]);
+        d = A.indexOf(s[i++]);
+        if (~63 & (a|b|c|d)) throw Error("bad base64");
+        r[j++] = a<<2 | b>>4;
+        r[j++] = 255 & b<<4 | c>>2;
+        r[j++] = 255 & c<<6 | d;
+    }
+    switch (n & 3) {
+    case 2:
+        a = A.indexOf(s[i++]);
+        b = A.indexOf(s[i++]);
+        if (~63 & (a|b)) throw Error("bad base64");
+        if (b & 15) throw Error("bad base64");
+        r[j++] = a<<2 | b>>4;
+        break;
+    case 3:
+        a = A.indexOf(s[i++]);
+        b = A.indexOf(s[i++]);
+        c = A.indexOf(s[i++]);
+        if (~63 & (a|b|c)) throw Error("bad base64");
+        if (c & 3) throw Error("bad base64");
+        r[j++] = a<<2 | b>>4;
+        r[j++] = 255 & b<<4 | c>>2;
+        break;
+    }
+    return r.buffer;
+}
+
 function toHex(a)
 {
     var i, s = "", tab, v;
@@ -188,6 +227,21 @@ function bjson_test_symbol()
     assert(o, r);
 }
 
+function bjson_test_fuzz()
+{
+    var corpus = [
+        "EBAAAAAABGA=",
+    ];
+    for (var input of corpus) {
+        var buf = base64decode(input);
+        try {
+            bjson.read(buf, 0, buf.byteLength);
+        } catch (e) {
+            // okay, ignore
+        }
+    }
+}
+
 function bjson_test_all()
 {
     var obj;
@@ -221,6 +275,7 @@ function bjson_test_all()
     bjson_test_map();
     bjson_test_set();
     bjson_test_symbol();
+    bjson_test_fuzz();
 }
 
 bjson_test_all();
