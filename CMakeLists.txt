@@ -108,6 +108,10 @@ if(BUILD_SHARED_LIBS)
     message(STATUS "Building a shared library")
 endif()
 
+# note: CONFIG_TSAN is currently incompatible with the other sanitizers but we
+# don't explicitly check for that because who knows what the future will bring?
+# CONFIG_MSAN only works with clang at the time of writing; also not checked
+# for the same reason
 xoption(BUILD_EXAMPLES "Build examples" OFF)
 xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
 xoption(BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
@@ -132,7 +136,9 @@ add_link_options(
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer
 )
-elseif(CONFIG_MSAN)
+endif()
+
+if(CONFIG_MSAN)
 message(STATUS "Building with MSan")
 add_compile_options(
     -fsanitize=memory
@@ -144,7 +150,9 @@ add_link_options(
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer
 )
-elseif(CONFIG_TSAN)
+endif()
+
+if(CONFIG_TSAN)
 message(STATUS "Building with TSan")
 add_compile_options(
     -fsanitize=thread
@@ -156,7 +164,9 @@ add_link_options(
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer
 )
-elseif(CONFIG_UBSAN)
+endif()
+
+if(CONFIG_UBSAN)
 message(STATUS "Building with UBSan")
 add_compile_definitions(
     __UBSAN__=1
