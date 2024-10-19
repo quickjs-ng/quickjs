@@ -16170,9 +16170,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 val = JS_GetPropertyInternalWithIC(ctx, sp[-1], atom, sp[-1], &icu, FALSE);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
-                if (icu.offset != ic_offset) {
-                    put_u32(pc - 4, icu.offset);
-                }
+                assert(icu.offset == ic_offset);
                 JS_FreeValue(ctx, sp[-1]);
                 sp[-1] = val;
             }
@@ -16213,9 +16211,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 val = JS_GetPropertyInternalWithIC(ctx, sp[-1], atom, sp[-1], &icu, FALSE);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
-                if (icu.offset != ic_offset) {
-                    put_u32(pc - 4, icu.offset);
-                }
+                assert(icu.offset == ic_offset);
                 *sp++ = val;
             }
             BREAK;
@@ -16262,9 +16258,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 sp -= 2;
                 if (unlikely(ret < 0))
                     goto exception;
-                if (icu.offset != ic_offset) {
-                    put_u32(pc - 4, icu.offset);
-                }
+                assert(icu.offset == ic_offset);
             }
             BREAK;
 
