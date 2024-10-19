@@ -16171,12 +16171,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 if (unlikely(JS_IsException(val)))
                     goto exception;
                 if (icu.offset != ic_offset) {
-                    // XXX(bnoordhuis) need to update bytecode with icu.offset here?
+                    put_u32(pc - 4, icu.offset);
                 }
                 JS_FreeValue(ctx, sp[-1]);
                 sp[-1] = val;
             }
             BREAK;
+
         CASE(OP_get_field2):
             {
                 JSValue val;
@@ -16213,7 +16214,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 if (unlikely(JS_IsException(val)))
                     goto exception;
                 if (icu.offset != ic_offset) {
-                    // XXX(bnoordhuis) need to update bytecode with icu.offset here?
+                    put_u32(pc - 4, icu.offset);
                 }
                 *sp++ = val;
             }
@@ -16262,7 +16263,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 if (unlikely(ret < 0))
                     goto exception;
                 if (icu.offset != ic_offset) {
-                    // XXX(bnoordhuis) need to update bytecode with icu.offset here?
+                    put_u32(pc - 4, icu.offset);
                 }
             }
             BREAK;
