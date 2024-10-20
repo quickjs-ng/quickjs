@@ -52,8 +52,7 @@ jobs:
           - { os: ubuntu-latest, configType: Release, runTest262: true, runV8: true }
           - { os: ubuntu-latest, configType: examples }
           - { os: ubuntu-latest, configType: shared }
-          - { os: ubuntu-latest, configType: asan, runTest262: true }
-          - { os: ubuntu-latest, configType: ubsan, runTest262: true }
+          - { os: ubuntu-latest, configType: asan+ubsan, runTest262: true }
           - { os: ubuntu-latest, configType: msan }
           - { os: ubuntu-latest, configType: tcc }
           - { os: ubuntu-latest, arch: x86 }
@@ -64,15 +63,13 @@ jobs:
           - { os: macos-14, configType: Release }
           - { os: macos-14, configType: examples }
           - { os: macos-14, configType: shared }
-          - { os: macos-14, configType: asan }
-          - { os: macos-14, configType: ubsan }
+          - { os: macos-14, configType: asan+ubsan }
 
           - { os: macos-12, configType: Debug }
           - { os: macos-12, configType: Release }
           - { os: macos-12, configType: examples }
           - { os: macos-12, configType: shared }
-          - { os: macos-12, configType: asan }
-          - { os: macos-12, configType: ubsan }
+          - { os: macos-12, configType: asan+ubsan }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,7 +77,7 @@ jobs:
 
       # ASLR with big PIE slides does not work well with [AM]San
       - name: disable ASLR
-        if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan' || matrix.config.configType == 'ubsan' || matrix.config.configType == 'msan')}}
+        if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan+ubsan' || matrix.config.configType == 'msan')}}
         run: |
           sudo sysctl -w kernel.randomize_va_space=0
 
@@ -119,11 +116,9 @@ jobs:
             echo "BUILD_EXAMPLES=ON" >> $GITHUB_ENV;
           elif [ "${{ matrix.config.configType }}" = "shared" ]; then
             echo "BUILD_SHARED_LIBS=ON" >> $GITHUB_ENV;
-          elif [ "${{ matrix.config.configType }}" = "asan" ]; then
+          elif [ "${{ matrix.config.configType }}" = "asan+ubsan" ]; then
             echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
             echo "CONFIG_ASAN=ON" >> $GITHUB_ENV;
-          elif [ "${{ matrix.config.configType }}" = "ubsan" ]; then
-            echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
             echo "CONFIG_UBSAN=ON" >> $GITHUB_ENV;
           elif [ "${{ matrix.config.configType }}" = "msan" ]; then
             echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;

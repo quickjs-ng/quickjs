@@ -45,7 +45,7 @@ endif
 all: $(QJS)
 
 fuzz:
-	clang -g -O1 -fsanitize=fuzzer -o fuzz fuzz.c
+	clang -g -O1 -fsanitize=address,undefined,fuzzer -o fuzz fuzz.c
 	./fuzz
 
 $(BUILD_DIR):
