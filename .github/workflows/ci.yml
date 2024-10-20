@@ -49,7 +49,7 @@ jobs:
       matrix:
         config:
           - { os: ubuntu-latest, configType: Debug }
-          - { os: ubuntu-latest, configType: Release, runTest262: true, runV8: true }
+          - { os: ubuntu-latest, configType: Release, runTest262: true }
           - { os: ubuntu-latest, configType: examples }
           - { os: ubuntu-latest, configType: shared }
           - { os: ubuntu-latest, configType: asan+ubsan, runTest262: true }
@@ -64,12 +64,6 @@ jobs:
           - { os: macos-14, configType: examples }
           - { os: macos-14, configType: shared }
           - { os: macos-14, configType: asan+ubsan }
-
-          - { os: macos-12, configType: Debug }
-          - { os: macos-12, configType: Release }
-          - { os: macos-12, configType: examples }
-          - { os: macos-12, configType: shared }
-          - { os: macos-12, configType: asan+ubsan }
     steps:
       - uses: actions/checkout@v4
         with:
