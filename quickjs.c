@@ -20250,34 +20250,6 @@ static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end)
     }
 }
 
-/* return true if 'input' contains the source of a module
-   (heuristic). 'input' must be a zero terminated.
-
-   Heuristic:
-     - Skip comments
-     - Expect 'import' keyword not followed by '(' or '.'
-     - Expect 'export' keyword
-     - Expect 'await' keyword
-*/
-/* input is pure ASCII or UTF-8 encoded source code */
-BOOL JS_DetectModule(const char *input, size_t input_len)
-{
-    const uint8_t *p = (const uint8_t *)input;
-    int tok;
-
-    skip_shebang(&p, p + input_len);
-    switch(simple_next_token(&p, FALSE)) {
-    case TOK_IMPORT:
-        tok = simple_next_token(&p, FALSE);
-        return (tok != '.' && tok != '(');
-    case TOK_AWAIT:
-    case TOK_EXPORT:
-        return TRUE;
-    default:
-        return FALSE;
-    }
-}
-
 static inline int get_prev_opcode(JSFunctionDef *fd) {
     if (fd->last_opcode_pos < 0)
         return OP_invalid;
@@ -26380,6 +26352,7 @@ static JSModuleDef *js_host_resolve_imported_module(JSContext *ctx,
     /* load the module */
     if (!rt->module_loader_func) {
         /* XXX: use a syntax error ? */
+        // XXX: update JS_DetectModule when you change this
         JS_ThrowReferenceError(ctx, "could not load module '%s'",
                                cname);
         js_free(ctx, cname);
@@ -54700,6 +54673,38 @@ static void _JS_AddIntrinsicCallSite(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_CALL_SITE],
                                js_callsite_proto_funcs,
                                countof(js_callsite_proto_funcs));
+}
+
+BOOL JS_DetectModule(const char *input, size_t input_len)
+{
+    JSRuntime *rt;
+    JSContext *ctx;
+    JSValue val;
+    BOOL is_module;
+
+    is_module = TRUE;
+    rt = JS_NewRuntime();
+    if (!rt)
+        return FALSE;
+    ctx = JS_NewContextRaw(rt);
+    if (!ctx) {
+        JS_FreeRuntime(rt);
+        return FALSE;
+    }
+    JS_AddIntrinsicRegExp(ctx); // otherwise regexp literals don't parse
+    val = __JS_EvalInternal(ctx, JS_UNDEFINED, input, input_len, "<unnamed>",
+                            JS_EVAL_TYPE_MODULE|JS_EVAL_FLAG_COMPILE_ONLY, -1);
+    if (JS_IsException(val)) {
+        const char *msg = JS_ToCString(ctx, rt->current_exception);
+        // gruesome hack to recognize exceptions from import statements;
+        // necessary because we don't pass in a module loader
+        is_module = !!strstr(msg, "ReferenceError: could not load module");
+        JS_FreeCString(ctx, msg);
+    }
+    JS_FreeValue(ctx, val);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    return is_module;
 }
 
 #undef malloc
