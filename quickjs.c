@@ -63,8 +63,12 @@
 #endif
 
 #if !defined(EMSCRIPTEN) && !defined(__wasi__) && !defined(__STDC_NO_ATOMICS__)
+#if defined(_MSC_VER) && _MSC_VER < 1941
+#pragma message("This msvc is too old to support c11atomics, so atomics are disabled.")
+#else
 #include "quickjs-c-atomics.h"
 #define CONFIG_ATOMICS
+#endif
 #endif
 
 #ifndef __GNUC__
