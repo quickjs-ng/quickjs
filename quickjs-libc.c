@@ -87,11 +87,11 @@ extern char **environ;
 
 #ifdef USE_WORKER
 #include <pthread.h>
+#include "quickjs-c-atomics.h"
 #endif
 
 #include "cutils.h"
 #include "list.h"
-#include "quickjs-c-atomics.h"
 #include "quickjs-libc.h"
 
 #define MAX_SAFE_INTEGER (((int64_t) 1 << 53) - 1)
@@ -162,6 +162,7 @@ typedef struct JSThreadState {
     int eval_script_recurse; /* only used in the main thread */
     int64_t next_timer_id; /* for setTimeout / setInterval */
     JSValue exc; /* current exception from one of our handlers */
+    int can_js_os_poll;
     /* not used in the main thread */
     JSWorkerMessagePipe *recv_pipe, *send_pipe;
     JSClassID std_file_class_id;
@@ -169,7 +170,6 @@ typedef struct JSThreadState {
 } JSThreadState;
 
 static uint64_t os_pending_signals;
-static _Atomic int can_js_os_poll;
 
 static void js_std_dbuf_init(JSContext *ctx, DynBuf *s)
 {
@@ -3844,12 +3844,13 @@ static const JSCFunctionListEntry js_os_funcs[] = {
 
 static int js_os_init(JSContext *ctx, JSModuleDef *m)
 {
-    atomic_store(&can_js_os_poll, TRUE);
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
+
+    ts->can_js_os_poll = TRUE;
 
 #ifdef USE_WORKER
     {
-        JSRuntime *rt = JS_GetRuntime(ctx);
-        JSThreadState *ts = JS_GetRuntimeOpaque(rt);
         JSValue proto, obj;
         /* Worker class */
         JS_NewClassID(rt, &ts->worker_class_id);
@@ -3973,12 +3974,11 @@ void js_std_init_handlers(JSRuntime *rt)
 {
     JSThreadState *ts;
 
-    ts = js_malloc_rt(rt, sizeof(*ts));
+    ts = js_mallocz_rt(rt, sizeof(*ts));
     if (!ts) {
         fprintf(stderr, "Could not allocate memory for the worker");
         exit(1);
     }
-    memset(ts, 0, sizeof(*ts));
     init_list_head(&ts->os_rw_handlers);
     init_list_head(&ts->os_signal_handlers);
     init_list_head(&ts->os_timers);
@@ -4099,7 +4099,7 @@ JSValue js_std_loop(JSContext *ctx)
             }
         }
 
-        if (!atomic_load(&can_js_os_poll) || js_os_poll(ctx))
+        if (!ts->can_js_os_poll || js_os_poll(ctx))
             break;
     }
 done:
@@ -4111,6 +4111,8 @@ done:
    rejection. */
 JSValue js_std_await(JSContext *ctx, JSValue obj)
 {
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = JS_GetRuntimeOpaque(rt);
     JSValue ret;
     int state;
 
@@ -4131,7 +4133,7 @@ JSValue js_std_await(JSContext *ctx, JSValue obj)
             if (err < 0) {
                 js_std_dump_error(ctx1);
             }
-            if (atomic_load(&can_js_os_poll))
+            if (ts->can_js_os_poll)
                 js_os_poll(ctx);
         } else {
             /* not a promise */
