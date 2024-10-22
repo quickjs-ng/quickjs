@@ -91,7 +91,15 @@ extern char **environ;
 
 #include "cutils.h"
 #include "list.h"
+
+#if !defined(EMSCRIPTEN) && !defined(__wasi__) && !defined(__STDC_NO_ATOMICS__)
+#if defined(_MSC_VER) && _MSC_VER < 1941
+#pragma message("This msvc is too old to support c11atomics, so atomics are disabled.")
+#else
 #include "quickjs-c-atomics.h"
+#define CONFIG_ATOMICS
+#endif
+#endif
 #include "quickjs-libc.h"
 
 #define MAX_SAFE_INTEGER (((int64_t) 1 << 53) - 1)
@@ -141,6 +149,9 @@ typedef struct {
 typedef struct {
     int ref_count;
 #ifdef USE_WORKER
+#ifndef CONFIG_ATOMICS
+    pthread_mutex_t ref_count_mutex;
+#endif
     pthread_mutex_t mutex;
 #endif
     struct list_head msg_queue; /* list of JSWorkerMessage.link */
@@ -169,7 +180,33 @@ typedef struct JSThreadState {
 } JSThreadState;
 
 static uint64_t os_pending_signals;
-static _Atomic int can_js_os_poll;
+#ifdef CONFIG_ATOMICS
+#define ATOMIC_OS_POLL_SET(x) atomic_store(&_can_js_os_poll, x)
+#define ATOMIC_OS_POLL_GET() atomic_load(&_can_js_os_poll)
+static _Atomic int _can_js_os_poll;
+#else
+#ifdef USE_WORKER
+#define ATOMIC_OS_POLL_SET(x) js_os_poll_set(x)
+#define ATOMIC_OS_POLL_GET() js_os_poll_get()
+static int _can_js_os_poll;
+static pthread_mutex_t _poll_mutex;
+static void js_os_poll_set(int value) {
+    pthread_mutex_lock(&_poll_mutex);
+    _can_js_os_poll = value;
+    pthread_mutex_unlock(&_poll_mutex);
+}
+static int js_os_poll_get(void) {
+    pthread_mutex_lock(&_poll_mutex);
+    int value = _can_js_os_poll;
+    pthread_mutex_unlock(&_poll_mutex);
+    return value;
+}
+#else
+// the os cannot poll safely, we always return false.
+#define ATOMIC_OS_POLL_SET(x)
+#define ATOMIC_OS_POLL_GET() 0
+#endif
+#endif
 
 static void js_std_dbuf_init(JSContext *ctx, DynBuf *s)
 {
@@ -3282,16 +3319,34 @@ typedef struct {
 } WorkerFuncArgs;
 
 typedef struct {
+#ifndef CONFIG_ATOMICS
+    pthread_mutex_t ref_count_mutex;
+#endif
     int ref_count;
     uint64_t buf[];
 } JSSABHeader;
 
 static JSContext *(*js_worker_new_context_func)(JSRuntime *rt);
 
+#ifdef CONFIG_ATOMICS
+// we do not use mutex when atomics are available
+#define ATOMIC_REF_COUNT_ADD(x, v) atomic_add_int(&x->ref_count, v)
 static int atomic_add_int(int *ptr, int v)
 {
     return atomic_fetch_add((_Atomic uint32_t*)ptr, v) + v;
 }
+#else
+// we need mutex when atomics are NOT available
+#define ATOMIC_REF_COUNT_ADD(x, v) mutex_add_int(&x->ref_count, v, &x->ref_count_mutex)
+static int mutex_add_int(int *ptr, int v, pthread_mutex_t* mutex)
+{
+    pthread_mutex_lock(mutex);
+    int updated = (*ptr) + v;
+    *ptr = updated;
+    pthread_mutex_unlock(mutex);
+    return updated;
+}
+#endif
 
 /* shared array buffer allocator */
 static void *js_sab_alloc(void *opaque, size_t size)
@@ -3309,7 +3364,7 @@ static void js_sab_free(void *opaque, void *ptr)
     JSSABHeader *sab;
     int ref_count;
     sab = (JSSABHeader *)((uint8_t *)ptr - sizeof(JSSABHeader));
-    ref_count = atomic_add_int(&sab->ref_count, -1);
+    ref_count = ATOMIC_REF_COUNT_ADD(sab, -1);
     assert(ref_count >= 0);
     if (ref_count == 0) {
         free(sab);
@@ -3320,7 +3375,7 @@ static void js_sab_dup(void *opaque, void *ptr)
 {
     JSSABHeader *sab;
     sab = (JSSABHeader *)((uint8_t *)ptr - sizeof(JSSABHeader));
-    atomic_add_int(&sab->ref_count, 1);
+    ATOMIC_REF_COUNT_ADD(sab, 1);
 }
 
 static JSWorkerMessagePipe *js_new_message_pipe(void)
@@ -3347,7 +3402,7 @@ static JSWorkerMessagePipe *js_new_message_pipe(void)
 
 static JSWorkerMessagePipe *js_dup_message_pipe(JSWorkerMessagePipe *ps)
 {
-    atomic_add_int(&ps->ref_count, 1);
+    ATOMIC_REF_COUNT_ADD(ps, 1);
     return ps;
 }
 
@@ -3372,7 +3427,7 @@ static void js_free_message_pipe(JSWorkerMessagePipe *ps)
     if (!ps)
         return;
 
-    ref_count = atomic_add_int(&ps->ref_count, -1);
+    ref_count = ATOMIC_REF_COUNT_ADD(ps, -1);
     assert(ref_count >= 0);
     if (ref_count == 0) {
         list_for_each_safe(el, el1, &ps->msg_queue) {
@@ -3844,7 +3899,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
 
 static int js_os_init(JSContext *ctx, JSModuleDef *m)
 {
-    atomic_store(&can_js_os_poll, TRUE);
+    ATOMIC_OS_POLL_SET(TRUE);
 
 #ifdef USE_WORKER
     {
@@ -4099,7 +4154,7 @@ JSValue js_std_loop(JSContext *ctx)
             }
         }
 
-        if (!atomic_load(&can_js_os_poll) || js_os_poll(ctx))
+        if (!ATOMIC_OS_POLL_GET() || js_os_poll(ctx))
             break;
     }
 done:
@@ -4131,7 +4186,7 @@ JSValue js_std_await(JSContext *ctx, JSValue obj)
             if (err < 0) {
                 js_std_dump_error(ctx1);
             }
-            if (atomic_load(&can_js_os_poll))
+            if (ATOMIC_OS_POLL_GET())
                 js_os_poll(ctx);
         } else {
             /* not a promise */
