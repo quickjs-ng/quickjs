@@ -162,7 +162,7 @@ typedef struct JSThreadState {
     int eval_script_recurse; /* only used in the main thread */
     int64_t next_timer_id; /* for setTimeout / setInterval */
     JSValue exc; /* current exception from one of our handlers */
-    int can_js_os_poll;
+    BOOL can_js_os_poll;
     /* not used in the main thread */
     JSWorkerMessagePipe *recv_pipe, *send_pipe;
     JSClassID std_file_class_id;
