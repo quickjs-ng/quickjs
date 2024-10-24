@@ -7362,9 +7362,8 @@ static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
                     continue;
                 }
             } else {
-                if (icu && proto_depth == 0 && p->shape->is_hashed) {
+                if (proto_depth == 0)
                     add_ic_slot(ctx, icu, prop, p, offset);
-                }
                 return js_dup(pr->u.value);
             }
         }
@@ -8658,9 +8657,7 @@ retry:
         if (likely((prs->flags & (JS_PROP_TMASK | JS_PROP_WRITABLE |
                                   JS_PROP_LENGTH)) == JS_PROP_WRITABLE)) {
             /* fast case */
-            if (icu && p->shape->is_hashed) {
-                add_ic_slot(ctx, icu, prop, p, offset);
-            }
+            add_ic_slot(ctx, icu, prop, p, offset);
             set_value(ctx, &pr->u.value, val);
             return TRUE;
         } else if (prs->flags & JS_PROP_LENGTH) {
@@ -54516,10 +54513,19 @@ static void add_ic_slot(JSContext *ctx, JSInlineCacheUpdate *icu,
 {
     int32_t i;
     uint32_t h;
-    JSInlineCache *ic = icu->ic;
     JSInlineCacheHashSlot *ch;
     JSInlineCacheRingSlot *cr;
+    JSInlineCache *ic;
     JSShape *sh;
+
+    if (!icu)
+        return;
+    ic = icu->ic;
+    if (!ic)
+        return;
+    sh = object->shape;
+    if (!sh->is_hashed)
+        return;
     cr = NULL;
     h = get_index_hash(atom, ic->hash_bits);
     for (ch = ic->hash[h]; ch != NULL; ch = ch->next) {
@@ -54528,21 +54534,17 @@ static void add_ic_slot(JSContext *ctx, JSInlineCacheUpdate *icu,
             break;
         }
     }
-
     assert(cr != NULL);
     i = cr->index;
-    for (;;) {
-        if (object->shape == cr->shape[i]) {
+    do {
+        if (sh == cr->shape[i]) {
             cr->prop_offset[i] = prop_offset;
             goto end;
         }
         i = (i + 1) % countof(cr->shape);
-        if (unlikely(i == cr->index))
-            break;
-    }
-    sh = cr->shape[i];
-    cr->shape[i] = js_dup_shape(object->shape);
-    js_free_shape_null(ctx->rt, sh);
+    } while (i != cr->index);
+    js_free_shape_null(ctx->rt, cr->shape[i]);
+    cr->shape[i] = js_dup_shape(sh);
     cr->prop_offset[i] = prop_offset;
 end:
     icu->offset = ch->index;
