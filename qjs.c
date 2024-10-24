@@ -164,9 +164,9 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     if (!ctx)
         return NULL;
     /* system modules */
-    js_init_module_std(ctx, "std");
-    js_init_module_os(ctx, "os");
-    js_init_module_bjson(ctx, "bjson");
+    js_init_module_std(ctx, "qjs:std");
+    js_init_module_os(ctx, "qjs:os");
+    js_init_module_bjson(ctx, "qjs:bjson");
 
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyFunctionList(ctx, global, global_obj, countof(global_obj));

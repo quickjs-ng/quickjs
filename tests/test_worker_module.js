@@ -1,6 +1,5 @@
 /* Worker code for test_worker.js */
-import * as std from "std";
-import * as os from "os";
+import * as os from "qjs:os";
 
 var parent = os.Worker.parent;
 

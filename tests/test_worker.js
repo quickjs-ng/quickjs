@@ -1,4 +1,4 @@
-import * as os from "os";
+import * as os from "qjs:os";
 import { assert } from "./assert.js";
 
 var worker;

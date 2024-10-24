@@ -1,5 +1,5 @@
-import * as std from "std";
-import * as bjson from "bjson";
+import * as std from "qjs:std";
+import * as bjson from "qjs:bjson";
 import { assert } from "./assert.js";
 
 function base64decode(s) {
