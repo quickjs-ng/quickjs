@@ -35473,12 +35473,14 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
         break;
     case BC_TAG_FUNCTION_BYTECODE:
         if (!s->allow_bytecode)
-            goto invalid_tag;
+            goto no_allow_bytecode;
         obj = JS_ReadFunctionTag(s);
         break;
     case BC_TAG_MODULE:
-        if (!s->allow_bytecode)
-            goto invalid_tag;
+        if (!s->allow_bytecode) {
+        no_allow_bytecode:
+            return JS_ThrowSyntaxError(ctx, "no bytecode allowed");
+        }
         obj = JS_ReadModule(s);
         break;
     case BC_TAG_OBJECT:

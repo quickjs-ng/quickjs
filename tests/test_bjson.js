@@ -1,3 +1,4 @@
+import * as std from "std";
 import * as bjson from "bjson";
 import { assert } from "./assert.js";
 
@@ -227,6 +228,25 @@ function bjson_test_symbol()
     assert(o, r);
 }
 
+function bjson_test_bytecode()
+{
+    var buf, o, r, e;
+
+    o = std.evalScript(";(function f(o){ return o.i })", {compile_only: true});
+    buf = bjson.write(o, /*JS_WRITE_OBJ_BYTECODE*/(1 << 0));
+    try {
+        bjson.read(buf, 0, buf.byteLength);
+    } catch (_e) {
+        e = _e;
+    }
+    assert(String(e), "SyntaxError: no bytecode allowed");
+
+    // can't really do anything with |o| at the moment,
+    // no way to pass it to JS_EvalFunction
+    o = bjson.read(buf, 0, buf.byteLength, /*JS_READ_OBJ_BYTECODE*/(1 << 0));
+    assert(String(o), "[function bytecode]");
+}
+
 function bjson_test_fuzz()
 {
     var corpus = [
@@ -277,6 +297,7 @@ function bjson_test_all()
     bjson_test_map();
     bjson_test_set();
     bjson_test_symbol();
+    bjson_test_bytecode();
     bjson_test_fuzz();
 }
 

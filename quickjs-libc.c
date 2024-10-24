@@ -837,6 +837,7 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
     JSValue ret;
     JSValue options_obj;
     BOOL backtrace_barrier = FALSE;
+    BOOL compile_only = FALSE;
     BOOL is_async = FALSE;
     int flags;
 
@@ -844,6 +845,9 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
         options_obj = argv[1];
         if (get_bool_option(ctx, &backtrace_barrier, options_obj,
                             "backtrace_barrier"))
+            return JS_EXCEPTION;
+        if (get_bool_option(ctx, &compile_only, options_obj,
+                            "compile_only"))
             return JS_EXCEPTION;
         if (get_bool_option(ctx, &is_async, options_obj,
                             "async"))
@@ -860,6 +864,8 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
     flags = JS_EVAL_TYPE_GLOBAL;
     if (backtrace_barrier)
         flags |= JS_EVAL_FLAG_BACKTRACE_BARRIER;
+    if (compile_only)
+        flags |= JS_EVAL_FLAG_COMPILE_ONLY;
     if (is_async)
         flags |= JS_EVAL_FLAG_ASYNC;
     ret = JS_Eval(ctx, str, len, "<evalScript>", flags);
