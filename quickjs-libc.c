@@ -832,11 +832,12 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = JS_GetRuntimeOpaque(rt);
-    const char *str;
+    const char *str = NULL;
     size_t len;
-    JSValue ret;
+    JSValue ret, obj;
     JSValue options_obj;
     BOOL backtrace_barrier = FALSE;
+    BOOL eval_function = FALSE;
     BOOL compile_only = FALSE;
     BOOL is_async = FALSE;
     int flags;
@@ -846,6 +847,9 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
         if (get_bool_option(ctx, &backtrace_barrier, options_obj,
                             "backtrace_barrier"))
             return JS_EXCEPTION;
+        if (get_bool_option(ctx, &eval_function, options_obj,
+                            "eval_function"))
+            return JS_EXCEPTION;
         if (get_bool_option(ctx, &compile_only, options_obj,
                             "compile_only"))
             return JS_EXCEPTION;
@@ -854,9 +858,11 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
             return JS_EXCEPTION;
     }
 
-    str = JS_ToCStringLen(ctx, &len, argv[0]);
-    if (!str)
-        return JS_EXCEPTION;
+    if (!eval_function) {
+        str = JS_ToCStringLen(ctx, &len, argv[0]);
+        if (!str)
+            return JS_EXCEPTION;
+    }
     if (!ts->recv_pipe && ++ts->eval_script_recurse == 1) {
         /* install the interrupt handler */
         JS_SetInterruptHandler(JS_GetRuntime(ctx), interrupt_handler, NULL);
@@ -868,7 +874,12 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
         flags |= JS_EVAL_FLAG_COMPILE_ONLY;
     if (is_async)
         flags |= JS_EVAL_FLAG_ASYNC;
-    ret = JS_Eval(ctx, str, len, "<evalScript>", flags);
+    if (eval_function) {
+        obj = JS_DupValue(ctx, argv[0]);
+        ret = JS_EvalFunction(ctx, obj); // takes ownership of |obj|
+    } else {
+        ret = JS_Eval(ctx, str, len, "<evalScript>", flags);
+    }
     JS_FreeCString(ctx, str);
     if (!ts->recv_pipe && --ts->eval_script_recurse == 0) {
         /* remove the interrupt handler */

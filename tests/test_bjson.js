@@ -230,7 +230,7 @@ function bjson_test_symbol()
 
 function bjson_test_bytecode()
 {
-    var buf, o, r, e;
+    var buf, o, r, e, i;
 
     o = std.evalScript(";(function f(o){ return o.i })", {compile_only: true});
     buf = bjson.write(o, /*JS_WRITE_OBJ_BYTECODE*/(1 << 0));
@@ -241,10 +241,10 @@ function bjson_test_bytecode()
     }
     assert(String(e), "SyntaxError: no bytecode allowed");
 
-    // can't really do anything with |o| at the moment,
-    // no way to pass it to JS_EvalFunction
     o = bjson.read(buf, 0, buf.byteLength, /*JS_READ_OBJ_BYTECODE*/(1 << 0));
     assert(String(o), "[function bytecode]");
+    o = std.evalScript(o, {eval_function: true});
+    for (i = 0; i < 42; i++) o({i}); // exercise o.i IC
 }
 
 function bjson_test_fuzz()
