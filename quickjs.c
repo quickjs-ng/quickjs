@@ -39990,7 +39990,50 @@ static JSValue js_iterator_proto_flatMap(JSContext *ctx, JSValue this_val,
 static JSValue js_iterator_proto_forEach(JSContext *ctx, JSValue this_val,
                                          int argc, JSValue *argv)
 {
-    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.forEach");
+    JSValue item, method, ret, func, index_val;
+    JSValue args[2];
+    int64_t idx;
+    BOOL done;
+
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Iterator.prototype.forEach called on non-object");
+    if (check_function(ctx, argv[0]))
+        return JS_EXCEPTION;
+    func = js_dup(argv[0]);
+    method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
+    if (JS_IsException(method))
+        goto exception;
+    for (idx = 0; /*empty*/; idx++) {
+        item = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
+        if (JS_IsException(item))
+            goto exception;
+        if (done)
+            break;
+        index_val = JS_NewInt64(ctx, idx);
+        if (JS_IsException(index_val)) {
+            JS_FreeValue(ctx, item);
+            goto exception;
+        }
+        args[0] = item;
+        args[1] = index_val;
+        ret = JS_Call(ctx, func, JS_UNDEFINED, countof(args), args);
+        JS_FreeValue(ctx, item);
+        JS_FreeValue(ctx, index_val);
+        if (JS_IsException(ret))
+            goto exception;
+        JS_FreeValue(ctx, ret);
+        index_val = JS_UNDEFINED;
+        ret = JS_UNDEFINED;
+        item = JS_UNDEFINED;
+    }
+    JS_FreeValue(ctx, func);
+    JS_FreeValue(ctx, method);
+    return JS_UNDEFINED;
+exception:
+    JS_IteratorClose(ctx, this_val, TRUE);
+    JS_FreeValue(ctx, func);
+    JS_FreeValue(ctx, method);
+    return JS_EXCEPTION;
 }
 
 static JSValue js_iterator_proto_map(JSContext *ctx, JSValue this_val,
