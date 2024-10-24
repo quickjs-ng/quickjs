@@ -1,5 +1,5 @@
-import * as std from "std";
-import * as os from "os";
+import * as std from "qjs:std";
+import * as os from "qjs:os";
 import { assert } from  "./assert.js";
 
 const isWin = os.platform === 'win32';

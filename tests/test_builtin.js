@@ -1,4 +1,4 @@
-import * as os from "os";
+import * as os from "qjs:os";
 import { assert, assertThrows } from "./assert.js";
 
 // Keep this at the top; it tests source positions.

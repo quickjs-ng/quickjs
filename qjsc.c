@@ -375,7 +375,11 @@ int main(int argc, char **argv)
     stack_size = 0;
     memset(&dynamic_module_list, 0, sizeof(dynamic_module_list));
 
+    
     /* add system modules */
+    namelist_add(&cmodule_list, "qjs:std", "std", 0);
+    namelist_add(&cmodule_list, "qjs:os", "os", 0);
+    namelist_add(&cmodule_list, "qjs:bjson", "bjson", 0);
     namelist_add(&cmodule_list, "std", "std", 0);
     namelist_add(&cmodule_list, "os", "os", 0);
     namelist_add(&cmodule_list, "bjson", "bjson", 0);

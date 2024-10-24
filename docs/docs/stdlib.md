@@ -33,7 +33,7 @@ Returns `quickjs-ng/<version>`.
 
 Shorthand for `std.gc()`.
 
-## `bjson` module
+## `qjs:bjson` module
 
 ### `bjson.write(obj, [flags])`
 
@@ -58,7 +58,7 @@ Supported flags:
 - `READ_OBJ_REFERENCE`: allow de-serializing object references
 - `READ_OBJ_SAB`: allow de-serializing SharedArrayBuffer instances
 
-## `os` module
+## `qjs:os` module
 
 The `os` module provides Operating System specific functions:
 
@@ -323,7 +323,7 @@ The worker instances have the following properties:
   received message. The thread is not terminated if there is at least
   one non `null` `onmessage` handler.
 
-## `std` module
+## `qjs:std` module
 
 The `std` module provides wrappers to libc (`stdlib.h` and `stdio.h`) and a few other utilities.
 
