@@ -314,46 +314,6 @@ test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed-in-
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.flatMap
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed.js:21: InternalError: TODO implement Iterator.prototype.flatMap
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed.js:21: strict mode: InternalError: TODO implement Iterator.prototype.flatMap
-test262/test/built-ins/Iterator/prototype/forEach/argument-effect-order.js:21: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/argument-effect-order.js:21: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/callable.js:10: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/callable.js:10: strict mode: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/fn-args.js:37: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/fn-args.js:37: strict mode: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/fn-called-for-each-yielded-value.js:26: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/fn-called-for-each-yielded-value.js:26: strict mode: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/fn-this.js:27: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/fn-this.js:27: strict mode: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/fn-throws-then-closing-iterator-also-throws.js:30: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/fn-throws-then-closing-iterator-also-throws.js:30: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/fn-throws.js:32: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/fn-throws.js:32: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/get-next-method-only-once.js:33: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/get-next-method-only-once.js:33: strict mode: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/get-next-method-throws.js:15: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/get-next-method-throws.js:15: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/iterator-already-exhausted.js:21: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/iterator-already-exhausted.js:21: strict mode: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/next-method-returns-non-object.js:21: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/next-method-returns-non-object.js:21: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/next-method-returns-throwing-done.js:17: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/next-method-returns-throwing-done.js:17: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/next-method-returns-throwing-value-done.js:28: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/next-method-returns-throwing-value-done.js:28: strict mode: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/next-method-returns-throwing-value.js:18: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/next-method-returns-throwing-value.js:18: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/next-method-throws.js:15: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/next-method-throws.js:15: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/non-callable-predicate.js:18: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/non-callable-predicate.js:18: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/result-is-undefined.js:12: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/result-is-undefined.js:12: strict mode: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/this-non-callable-next.js:13: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/this-non-callable-next.js:13: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/this-non-object.js:19: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/this-non-object.js:19: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/forEach/this-plain-iterator.js:26: InternalError: TODO implement Iterator.prototype.forEach
-test262/test/built-ins/Iterator/prototype/forEach/this-plain-iterator.js:26: strict mode: InternalError: TODO implement Iterator.prototype.forEach
 test262/test/built-ins/Iterator/prototype/map/argument-effect-order.js:21: Test262Error: Expected a TypeError but got a InternalError
 test262/test/built-ins/Iterator/prototype/map/argument-effect-order.js:21: strict mode: Test262Error: Expected a TypeError but got a InternalError
 test262/test/built-ins/Iterator/prototype/map/callable.js:10: InternalError: TODO implement Iterator.prototype.map
