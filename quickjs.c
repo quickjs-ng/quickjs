@@ -35019,7 +35019,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         goto fail;
     if (b->source_len) {
         bc_read_trace(s, "source: %d bytes\n", b->source_len);
-        s->ptr_last += b->source_len;  // omit source code hex dump
+        if (s->ptr_last)
+            s->ptr_last += b->source_len;  // omit source code hex dump
         /* b->source is a UTF-8 encoded null terminated C string */
         b->source = js_mallocz(ctx, b->source_len + 1);
         if (!b->source)
