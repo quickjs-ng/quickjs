@@ -83,6 +83,12 @@ distclean:
 stats: $(QJS)
 	$(QJS) -qd
 
+# implicitly .PHONY because it doesn't generate output
+cxxtest: CXXFLAGS+=-std=c++11 -fsyntax-only -Wall -Wextra -Werror -Wno-unused-parameter
+cxxtest: cxxtest.cc quickjs.h
+	$(CXX) $(CXXFLAGS) -DJS_NAN_BOXING=0 $<
+	$(CXX) $(CXXFLAGS) -DJS_NAN_BOXING=1 $<
+
 test: $(QJS)
 	$(RUN262) -c tests.conf
 
@@ -110,4 +116,4 @@ unicode_gen: $(BUILD_DIR)
 libunicode-table.h: unicode_gen
 	$(BUILD_DIR)/unicode_gen unicode $@
 
-.PHONY: all debug fuzz install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)
+.PHONY: all cxxtest debug fuzz install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)

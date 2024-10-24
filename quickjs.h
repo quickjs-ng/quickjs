@@ -61,9 +61,11 @@ typedef uint32_t JSAtom;
    - string contents is either pure ASCII or is UTF-8 encoded.
  */
 
+/* Overridable purely for testing purposes; don't touch. */
+#ifndef JS_NAN_BOXING
 #if INTPTR_MAX < INT64_MAX
-/* Use NAN boxing for 32bit builds. */
-#define JS_NAN_BOXING
+#define JS_NAN_BOXING 1 /* Use NAN boxing for 32bit builds. */
+#endif
 #endif
 
 enum {
@@ -90,7 +92,7 @@ enum {
 #define JS_FLOAT64_NAN NAN
 #define JSValueConst JSValue /* For backwards compatibility. */
 
-#if defined(JS_NAN_BOXING)
+#if defined(JS_NAN_BOXING) && JS_NAN_BOXING
 
 typedef uint64_t JSValue;
 
@@ -174,12 +176,17 @@ typedef struct JSValue {
 #define JS_VALUE_GET_FLOAT64(v) ((v).u.float64)
 #define JS_VALUE_GET_PTR(v) ((v).u.ptr)
 
+#ifdef __cplusplus
+#define JS_MKPTR(tag, p)   JSValue{ JSValueUnion{ .ptr = p }, tag }
+#define JS_MKVAL(tag, val) JSValue{ JSValueUnion{ .int32 = val }, tag }
+#define JS_NAN             JSValue{ JSValueUnion{ .float64 = JS_FLOAT64_NAN }, JS_TAG_FLOAT64 }
+#else
+#define JS_MKPTR(tag, p)   (JSValue){ (JSValueUnion){ .ptr = p }, tag }
 #define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .int32 = val }, tag }
-#define JS_MKPTR(tag, p) (JSValue){ (JSValueUnion){ .ptr = p }, tag }
+#define JS_NAN             (JSValue){ (JSValueUnion){ .float64 = JS_FLOAT64_NAN }, JS_TAG_FLOAT64 }
+#endif
 
 #define JS_TAG_IS_FLOAT64(tag) ((unsigned)(tag) == JS_TAG_FLOAT64)
-
-#define JS_NAN (JSValue){ (JSValueUnion){ .float64 = JS_FLOAT64_NAN }, JS_TAG_FLOAT64 }
 
 static inline JSValue __JS_NewFloat64(double d)
 {
@@ -900,7 +907,8 @@ static inline JSValue JS_NewCFunctionMagic(JSContext *ctx, JSCFunctionMagic *fun
                                            int length, JSCFunctionEnum cproto, int magic)
 {
     /* Used to squelch a -Wcast-function-type warning. */
-    JSCFunctionType ft = { .generic_magic = func };
+    JSCFunctionType ft;
+    ft.generic_magic = func;
     return JS_NewCFunction2(ctx, ft.generic, name, length, cproto, magic);
 }
 JS_EXTERN void JS_SetConstructor(JSContext *ctx, JSValue func_obj,

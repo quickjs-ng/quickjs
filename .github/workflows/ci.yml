@@ -135,6 +135,10 @@ jobs:
         run: |
           make stats
 
+      - name: cxxtest
+        run: |
+          make cxxtest
+
       - name: test
         if: ${{ matrix.config.configType != 'examples' && matrix.config.configType != 'tcc' }}
         run: |
@@ -211,6 +215,14 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
+      - name: Set up Visual Studio shell
+        uses: egor-tensin/vs-shell@v2
+        with:
+          arch: ${{ matrix.arch == 'x64' && 'x64' || 'x86' }}
+      - name: cxxtest
+        run: |
+          cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
+          cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
 
   windows-msvc-vs2019:
     runs-on: windows-2019
@@ -228,6 +240,14 @@ jobs:
       - name: stats
         run: |
           build\${{matrix.buildType}}\qjs.exe -qd
+      - name: Set up Visual Studio shell
+        uses: egor-tensin/vs-shell@v2
+        with:
+          arch: ${{ matrix.arch == 'x64' && 'x64' || 'x86' }}
+      - name: cxxtest
+        run: |
+          cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
+          cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
 
   windows-clang:
     runs-on: windows-latest
@@ -244,6 +264,10 @@ jobs:
       - name: stats
         run: |
           build\${{matrix.buildType}}\qjs.exe -qd
+      - name: cxxtest
+        run: |
+          clang-cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
+          clang-cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
       - name: test
         run: |
           cp build\${{matrix.buildType}}\fib.dll examples\
@@ -315,6 +339,14 @@ jobs:
       run: |
         make stats
         ldd build/qjs
+    - name: cxxtest
+      if: ${{ matrix.sys != 'clang64' }}
+      run: |
+        make cxxtest
+    - name: cxxtest
+      if: ${{ matrix.sys == 'clang64' }}
+      run: |
+        make cxxtest CXX=clang++
     - name: test
       run: |
         make test
@@ -395,6 +427,10 @@ jobs:
       - name: stats
         run: make stats
 
+      - name: cxxtest
+        run: |
+          make cxxtest
+
       - name: test
         run: make test
 
@@ -467,6 +503,9 @@ jobs:
       - name: build
         run: |
           make
+      - name: cxxtest
+        run: |
+          make cxxtest
       - name: test
         run: |
           make test
@@ -484,6 +523,9 @@ jobs:
       - name: build
         run: |
           make
+      - name: cxxtest
+        run: |
+          make cxxtest
       - name: test
         run: |
           make test
