@@ -530,7 +530,7 @@ int main(int argc, char **argv)
         }
 
         for(i = 0; i < include_count; i++) {
-            if (eval_file(ctx, include_list[i], module))
+            if (eval_file(ctx, include_list[i], 0))
                 goto fail;
         }
 
