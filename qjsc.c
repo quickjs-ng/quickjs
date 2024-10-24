@@ -377,9 +377,9 @@ int main(int argc, char **argv)
 
     
     /* add system modules */
-    namelist_add(&cmodule_list, "qjs:std", "qjs:std", 0);
-    namelist_add(&cmodule_list, "qjs:os", "qjs:os", 0);
-    namelist_add(&cmodule_list, "qjs:bjson", "qjs:bjson", 0);
+    namelist_add(&cmodule_list, "qjs:std", "std", 0);
+    namelist_add(&cmodule_list, "qjs:os", "os", 0);
+    namelist_add(&cmodule_list, "qjs:bjson", "bjson", 0);
     namelist_add(&cmodule_list, "std", "std", 0);
     namelist_add(&cmodule_list, "os", "os", 0);
     namelist_add(&cmodule_list, "bjson", "bjson", 0);
