@@ -37793,7 +37793,18 @@ static JSValue js_error_set_prepareStackTrace(JSContext *ctx, JSValue this_val, 
     return JS_UNDEFINED;
 }
 
+static JSValue js_error_capture_stack_trace(JSContext *ctx, JSValue this_val,
+                                            int argc, JSValue *argv)
+{
+    JSValue v = argv[0];
+    if (JS_VALUE_GET_TAG(v) != JS_TAG_OBJECT)
+        return JS_ThrowTypeErrorNotAnObject(ctx);
+    build_backtrace(ctx, v, NULL, 0, 0, JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
+    return JS_UNDEFINED;
+}
+
 static const JSCFunctionListEntry js_error_funcs[] = {
+    JS_CFUNC_DEF("captureStackTrace", 1, js_error_capture_stack_trace),
     JS_CGETSET_DEF("stackTraceLimit", js_error_get_stackTraceLimit, js_error_set_stackTraceLimit ),
     JS_CGETSET_DEF("prepareStackTrace", js_error_get_prepareStackTrace, js_error_set_prepareStackTrace ),
 };
