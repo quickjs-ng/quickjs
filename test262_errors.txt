@@ -138,56 +138,6 @@ test262/test/built-ins/Iterator/prototype/filter/underlying-iterator-closed-in-p
 test262/test/built-ins/Iterator/prototype/filter/underlying-iterator-closed-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.filter
 test262/test/built-ins/Iterator/prototype/filter/underlying-iterator-closed.js:21: InternalError: TODO implement Iterator.prototype.filter
 test262/test/built-ins/Iterator/prototype/filter/underlying-iterator-closed.js:21: strict mode: InternalError: TODO implement Iterator.prototype.filter
-test262/test/built-ins/Iterator/prototype/find/argument-effect-order.js:16: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/argument-effect-order.js:16: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/callable.js:10: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/callable.js:10: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/get-next-method-only-once.js:33: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/get-next-method-only-once.js:33: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/get-next-method-throws.js:15: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/get-next-method-throws.js:15: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/get-return-method-throws.js:21: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/get-return-method-throws.js:21: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/iterator-already-exhausted.js:19: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/iterator-already-exhausted.js:19: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/iterator-has-no-return.js:17: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/iterator-has-no-return.js:17: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/iterator-return-method-throws.js:21: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/iterator-return-method-throws.js:21: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/next-method-returns-non-object.js:21: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/next-method-returns-non-object.js:21: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/next-method-returns-throwing-done.js:17: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/next-method-returns-throwing-done.js:17: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/next-method-returns-throwing-value-done.js:28: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/next-method-returns-throwing-value-done.js:28: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/next-method-returns-throwing-value.js:18: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/next-method-returns-throwing-value.js:18: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/next-method-throws.js:15: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/next-method-throws.js:15: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/non-callable-predicate.js:18: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/non-callable-predicate.js:18: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/predicate-args.js:38: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-args.js:38: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-returns-falsey-then-truthy.js:25: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-returns-falsey-then-truthy.js:25: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-returns-falsey.js:20: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-returns-falsey.js:20: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-returns-non-boolean.js:29: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-returns-non-boolean.js:29: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-returns-truthy.js:25: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-returns-truthy.js:25: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-this.js:28: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-this.js:28: strict mode: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/predicate-throws-then-closing-iterator-also-throws.js:30: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/predicate-throws-then-closing-iterator-also-throws.js:30: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/predicate-throws.js:32: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/predicate-throws.js:32: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/this-non-callable-next.js:13: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/this-non-callable-next.js:13: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/this-non-object.js:19: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/this-non-object.js:19: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/find/this-plain-iterator.js:27: InternalError: TODO implement Iterator.prototype.find
-test262/test/built-ins/Iterator/prototype/find/this-plain-iterator.js:27: strict mode: InternalError: TODO implement Iterator.prototype.find
 test262/test/built-ins/Iterator/prototype/flatMap/argument-effect-order.js:21: Test262Error: Expected a TypeError but got a InternalError
 test262/test/built-ins/Iterator/prototype/flatMap/argument-effect-order.js:21: strict mode: Test262Error: Expected a TypeError but got a InternalError
 test262/test/built-ins/Iterator/prototype/flatMap/callable.js:10: InternalError: TODO implement Iterator.prototype.flatMap
