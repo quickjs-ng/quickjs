@@ -40055,7 +40055,67 @@ static JSValue js_iterator_proto_map(JSContext *ctx, JSValue this_val,
 static JSValue js_iterator_proto_reduce(JSContext *ctx, JSValue this_val,
                                         int argc, JSValue *argv)
 {
-    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.reduce");
+    JSValue item, method, ret, func, index_val, acc;
+    JSValue args[3];
+    int64_t idx;
+    BOOL done;
+
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Iterator.prototype.reduce called on non-object");
+    if (check_function(ctx, argv[0]))
+        return JS_EXCEPTION;
+    acc = JS_UNDEFINED;
+    func = js_dup(argv[0]);
+    method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
+    if (JS_IsException(method))
+        goto exception;
+    if (argc > 1) {
+        acc = js_dup(argv[1]);
+        idx = 0;
+    } else {
+        acc = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
+        if (JS_IsException(acc))
+            goto exception;
+        if (done) {
+            JS_ThrowTypeError(ctx, "empty iterator");
+            goto exception;
+        }
+        idx = 1;
+    }
+    for (/* empty */; /*empty*/; idx++) {
+        item = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
+        if (JS_IsException(item))
+            goto exception;
+        if (done)
+            break;
+        index_val = JS_NewInt64(ctx, idx);
+        if (JS_IsException(index_val)) {
+            JS_FreeValue(ctx, item);
+            goto exception;
+        }
+        args[0] = acc;
+        args[1] = item;
+        args[2] = index_val;
+        ret = JS_Call(ctx, func, JS_UNDEFINED, countof(args), args);
+        JS_FreeValue(ctx, item);
+        JS_FreeValue(ctx, index_val);
+        if (JS_IsException(ret))
+            goto exception;
+        JS_FreeValue(ctx, acc);
+        acc = ret;
+        index_val = JS_UNDEFINED;
+        ret = JS_UNDEFINED;
+        item = JS_UNDEFINED;
+    }
+    JS_FreeValue(ctx, func);
+    JS_FreeValue(ctx, method);
+    return acc;
+exception:
+    JS_IteratorClose(ctx, this_val, TRUE);
+    JS_FreeValue(ctx, acc);
+    JS_FreeValue(ctx, func);
+    JS_FreeValue(ctx, method);
+    return JS_EXCEPTION;
 }
 
 static JSValue js_iterator_proto_some(JSContext *ctx, JSValue this_val,

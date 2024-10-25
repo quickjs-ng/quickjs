@@ -320,52 +320,6 @@ test262/test/built-ins/Iterator/prototype/map/underlying-iterator-closed-in-para
 test262/test/built-ins/Iterator/prototype/map/underlying-iterator-closed-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.map
 test262/test/built-ins/Iterator/prototype/map/underlying-iterator-closed.js:21: InternalError: TODO implement Iterator.prototype.map
 test262/test/built-ins/Iterator/prototype/map/underlying-iterator-closed.js:21: strict mode: InternalError: TODO implement Iterator.prototype.map
-test262/test/built-ins/Iterator/prototype/reduce/argument-effect-order.js:16: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/argument-effect-order.js:16: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/callable.js:10: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/callable.js:10: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/get-next-method-only-once.js:33: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/get-next-method-only-once.js:33: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/get-next-method-throws.js:15: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/get-next-method-throws.js:15: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/iterator-already-exhausted-initial-value.js:20: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/iterator-already-exhausted-initial-value.js:20: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/iterator-already-exhausted-no-initial-value.js:19: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/iterator-already-exhausted-no-initial-value.js:19: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/iterator-yields-once-initial-value.js:32: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/iterator-yields-once-initial-value.js:32: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/iterator-yields-once-no-initial-value.js:23: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/iterator-yields-once-no-initial-value.js:23: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/next-method-returns-non-object.js:21: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/next-method-returns-non-object.js:21: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/next-method-returns-throwing-done.js:17: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/next-method-returns-throwing-done.js:17: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/next-method-returns-throwing-value-done.js:28: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/next-method-returns-throwing-value-done.js:28: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/next-method-returns-throwing-value.js:18: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/next-method-returns-throwing-value.js:18: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/next-method-throws.js:15: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/next-method-throws.js:15: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/non-callable-reducer.js:18: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/non-callable-reducer.js:18: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/reducer-args-initial-value.js:42: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/reducer-args-initial-value.js:42: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/reducer-args-no-initial-value.js:38: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/reducer-args-no-initial-value.js:38: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/reducer-memo-can-be-any-type.js:28: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/reducer-memo-can-be-any-type.js:28: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/reducer-this.js:29: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/reducer-this.js:29: strict mode: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/reducer-throws-then-closing-iterator-also-throws.js:30: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/reducer-throws-then-closing-iterator-also-throws.js:30: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/reducer-throws.js:32: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/reducer-throws.js:32: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/this-non-callable-next.js:13: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/this-non-callable-next.js:13: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/this-non-object.js:23: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/this-non-object.js:23: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/reduce/this-plain-iterator.js:29: InternalError: TODO implement Iterator.prototype.reduce
-test262/test/built-ins/Iterator/prototype/reduce/this-plain-iterator.js:29: strict mode: InternalError: TODO implement Iterator.prototype.reduce
 test262/test/built-ins/Iterator/prototype/some/argument-effect-order.js:16: Test262Error: Expected a TypeError but got a InternalError
 test262/test/built-ins/Iterator/prototype/some/argument-effect-order.js:16: strict mode: Test262Error: Expected a TypeError but got a InternalError
 test262/test/built-ins/Iterator/prototype/some/callable.js:10: InternalError: TODO implement Iterator.prototype.some
