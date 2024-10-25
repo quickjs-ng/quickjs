@@ -270,58 +270,6 @@ test262/test/built-ins/Iterator/prototype/map/underlying-iterator-closed-in-para
 test262/test/built-ins/Iterator/prototype/map/underlying-iterator-closed-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.map
 test262/test/built-ins/Iterator/prototype/map/underlying-iterator-closed.js:21: InternalError: TODO implement Iterator.prototype.map
 test262/test/built-ins/Iterator/prototype/map/underlying-iterator-closed.js:21: strict mode: InternalError: TODO implement Iterator.prototype.map
-test262/test/built-ins/Iterator/prototype/some/argument-effect-order.js:16: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/argument-effect-order.js:16: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/callable.js:10: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/callable.js:10: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/get-next-method-only-once.js:33: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/get-next-method-only-once.js:33: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/get-next-method-throws.js:15: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/get-next-method-throws.js:15: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/get-return-method-throws.js:21: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/get-return-method-throws.js:21: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/iterator-already-exhausted.js:19: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/iterator-already-exhausted.js:19: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/iterator-has-no-return.js:17: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/iterator-has-no-return.js:17: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/iterator-return-method-throws.js:21: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/iterator-return-method-throws.js:21: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/next-method-returns-non-object.js:21: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/next-method-returns-non-object.js:21: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/next-method-returns-throwing-done.js:17: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/next-method-returns-throwing-done.js:17: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/next-method-returns-throwing-value-done.js:28: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/next-method-returns-throwing-value-done.js:28: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/next-method-returns-throwing-value.js:18: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/next-method-returns-throwing-value.js:18: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/next-method-throws.js:15: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/next-method-throws.js:15: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/non-callable-predicate.js:18: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/non-callable-predicate.js:18: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/predicate-args.js:38: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-args.js:38: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-returns-falsey-then-truthy.js:25: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-returns-falsey-then-truthy.js:25: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-returns-falsey.js:20: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-returns-falsey.js:20: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-returns-non-boolean.js:29: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-returns-non-boolean.js:29: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-returns-truthy.js:25: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-returns-truthy.js:25: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-this.js:28: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-this.js:28: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/predicate-throws-then-closing-iterator-also-throws.js:30: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/predicate-throws-then-closing-iterator-also-throws.js:30: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/predicate-throws.js:32: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/predicate-throws.js:32: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/result-is-boolean.js:11: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/result-is-boolean.js:11: strict mode: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/this-non-callable-next.js:13: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/this-non-callable-next.js:13: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/this-non-object.js:19: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/this-non-object.js:19: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/some/this-plain-iterator.js:27: InternalError: TODO implement Iterator.prototype.some
-test262/test/built-ins/Iterator/prototype/some/this-plain-iterator.js:27: strict mode: InternalError: TODO implement Iterator.prototype.some
 test262/test/built-ins/Iterator/prototype/take/argument-effect-order.js:39: InternalError: TODO implement Iterator.prototype.take
 test262/test/built-ins/Iterator/prototype/take/argument-effect-order.js:39: strict mode: InternalError: TODO implement Iterator.prototype.take
 test262/test/built-ins/Iterator/prototype/take/callable.js:10: InternalError: TODO implement Iterator.prototype.take
