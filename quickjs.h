@@ -514,21 +514,25 @@ JS_EXTERN int JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id);
 
 static js_force_inline JSValue JS_NewBool(JSContext *ctx, JS_BOOL val)
 {
+    (void)&ctx;
     return JS_MKVAL(JS_TAG_BOOL, (val != 0));
 }
 
 static js_force_inline JSValue JS_NewInt32(JSContext *ctx, int32_t val)
 {
+    (void)&ctx;
     return JS_MKVAL(JS_TAG_INT, val);
 }
 
 static js_force_inline JSValue JS_NewFloat64(JSContext *ctx, double val)
 {
+    (void)&ctx;
     return __JS_NewFloat64(val);
 }
 
 static js_force_inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
 {
+    (void)&ctx;
     return JS_MKVAL(JS_TAG_CATCH_OFFSET, val);
 }
 
@@ -566,8 +570,8 @@ static inline JS_BOOL JS_IsNumber(JSValue v)
 
 static inline JS_BOOL JS_IsBigInt(JSContext *ctx, JSValue v)
 {
-    int tag = JS_VALUE_GET_TAG(v);
-    return tag == JS_TAG_BIG_INT;
+    (void)&ctx;
+    return JS_VALUE_GET_TAG(v) == JS_TAG_BIG_INT;
 }
 
 static inline JS_BOOL JS_IsBool(JSValue v)
