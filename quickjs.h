@@ -61,9 +61,11 @@ typedef uint32_t JSAtom;
    - string contents is either pure ASCII or is UTF-8 encoded.
  */
 
+/* Overridable purely for testing purposes; don't touch. */
+#ifndef JS_NAN_BOXING
 #if INTPTR_MAX < INT64_MAX
-/* Use NAN boxing for 32bit builds. */
-#define JS_NAN_BOXING
+#define JS_NAN_BOXING 1 /* Use NAN boxing for 32bit builds. */
+#endif
 #endif
 
 enum {
@@ -90,7 +92,7 @@ enum {
 #define JS_FLOAT64_NAN NAN
 #define JSValueConst JSValue /* For backwards compatibility. */
 
-#if defined(JS_NAN_BOXING)
+#if defined(JS_NAN_BOXING) && JS_NAN_BOXING
 
 typedef uint64_t JSValue;
 
@@ -174,12 +176,40 @@ typedef struct JSValue {
 #define JS_VALUE_GET_FLOAT64(v) ((v).u.float64)
 #define JS_VALUE_GET_PTR(v) ((v).u.ptr)
 
+/* msvc doesn't understand designated initializers without /std:c++20 */
+#ifdef __cplusplus
+static inline JSValue JS_MKPTR(int64_t tag, void *ptr)
+{
+    JSValue v;
+    v.u.ptr = ptr;
+    v.tag = tag;
+    return v;
+}
+static inline JSValue JS_MKVAL(int64_t tag, int32_t int32)
+{
+    JSValue v;
+    v.u.int32 = int32;
+    v.tag = tag;
+    return v;
+}
+static inline JSValue JS_MKNAN(void)
+{
+    JSValue v;
+    v.u.float64 = JS_FLOAT64_NAN;
+    v.tag = JS_TAG_FLOAT64;
+    return v;
+}
+/* provide as macros for consistency and backward compat reasons */
+#define JS_MKPTR(tag, ptr) JS_MKPTR(tag, ptr)
+#define JS_MKVAL(tag, val) JS_MKVAL(tag, val)
+#define JS_NAN             JS_MKNAN() /* alas, not a constant expression */
+#else
+#define JS_MKPTR(tag, p)   (JSValue){ (JSValueUnion){ .ptr = p }, tag }
 #define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .int32 = val }, tag }
-#define JS_MKPTR(tag, p) (JSValue){ (JSValueUnion){ .ptr = p }, tag }
+#define JS_NAN             (JSValue){ (JSValueUnion){ .float64 = JS_FLOAT64_NAN }, JS_TAG_FLOAT64 }
+#endif
 
 #define JS_TAG_IS_FLOAT64(tag) ((unsigned)(tag) == JS_TAG_FLOAT64)
-
-#define JS_NAN (JSValue){ (JSValueUnion){ .float64 = JS_FLOAT64_NAN }, JS_TAG_FLOAT64 }
 
 static inline JSValue __JS_NewFloat64(double d)
 {
@@ -900,7 +930,8 @@ static inline JSValue JS_NewCFunctionMagic(JSContext *ctx, JSCFunctionMagic *fun
                                            int length, JSCFunctionEnum cproto, int magic)
 {
     /* Used to squelch a -Wcast-function-type warning. */
-    JSCFunctionType ft = { .generic_magic = func };
+    JSCFunctionType ft;
+    ft.generic_magic = func;
     return JS_NewCFunction2(ctx, ft.generic, name, length, cproto, magic);
 }
 JS_EXTERN void JS_SetConstructor(JSContext *ctx, JSValue func_obj,
