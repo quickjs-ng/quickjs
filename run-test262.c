@@ -460,10 +460,14 @@ static JSValue js_print_262(JSContext *ctx, JSValue this_val,
                 fputc(' ', outfile);
             fputs(str, outfile);
         }
+        if (verbose > 1)
+            printf("%s%s", &" "[i < 1], str);
         JS_FreeCString(ctx, str);
     }
     if (outfile)
         fputc('\n', outfile);
+    if (verbose > 1)
+        printf("\n");
     return JS_UNDEFINED;
 }
 
@@ -1455,6 +1459,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
         int s_line;
         char *s = find_error(filename, &s_line, eval_flags & JS_EVAL_FLAG_STRICT);
         const char *strict_mode = (eval_flags & JS_EVAL_FLAG_STRICT) ? "strict mode: " : "";
+        BOOL is_unexpected_error = TRUE;
 
         if (!JS_IsUndefined(exception_val)) {
             msg_val = JS_ToString(ctx, exception_val);
@@ -1472,6 +1477,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
                     printf("%s:%d: %sOK, now has error %s\n",
                            filename, error_line, strict_mode, msg);
                     atomic_inc(&fixed_errors);
+                    is_unexpected_error = FALSE;
                 }
             } else {
                 if (!s) {   // not yet reported
@@ -1509,8 +1515,21 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
             } else {
                 if (s) {
                     printf("%s:%d: %sOK, fixed error: %s\n", filename, s_line, strict_mode, s);
-                    fixed_errors++;
+                    atomic_inc(&fixed_errors);
+                    is_unexpected_error = FALSE;
                 }
+            }
+        }
+        if (is_unexpected_error && verbose > 1) {
+            JSValue val = JS_GetPropertyStr(ctx, exception_val, "stack");
+            if (!JS_IsException(val) &&
+                !JS_IsUndefined(val) &&
+                !JS_IsNull(val)) {
+                const char *str = JS_ToCString(ctx, val);
+                if (str)
+                    printf("%s\n", str);
+                JS_FreeCString(ctx, str);
+                JS_FreeValue(ctx, val);
             }
         }
         JS_FreeValue(ctx, msg_val);
