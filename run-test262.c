@@ -1522,11 +1522,15 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
         }
         if (is_unexpected_error && verbose > 1) {
             JSValue val = JS_GetPropertyStr(ctx, exception_val, "stack");
-            const char *str = JS_ToCString(ctx, val);
-            if (str)
-                printf("%s\n", str);
-            JS_FreeCString(ctx, str);
-            JS_FreeValue(ctx, val);
+            if (!JS_IsException(val) &&
+                !JS_IsUndefined(val) &&
+                !JS_IsNull(val)) {
+                const char *str = JS_ToCString(ctx, val);
+                if (str)
+                    printf("%s\n", str);
+                JS_FreeCString(ctx, str);
+                JS_FreeValue(ctx, val);
+            }
         }
         JS_FreeValue(ctx, msg_val);
         JS_FreeCString(ctx, msg);
