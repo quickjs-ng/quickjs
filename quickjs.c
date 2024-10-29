@@ -6507,6 +6507,8 @@ static int find_line_num(JSContext *ctx, JSFunctionBytecode *b,
 
     *col = 1;
     p = b->pc2line_buf;
+    if (!p)
+        goto fail;
     p_end = p + b->pc2line_len;
     pc = 0;
     line_num = b->line_num;
