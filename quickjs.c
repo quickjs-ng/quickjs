@@ -1738,6 +1738,17 @@ static int init_class_range(JSRuntime *rt, JSClassShortDef const *tab,
     return 0;
 }
 
+#if defined(__wasi__) || defined(__ASAN__)
+static inline uintptr_t js_get_stack_pointer(void)
+{
+    return 0;
+}
+
+static inline BOOL js_check_stack_overflow(JSRuntime *rt, size_t alloca_size)
+{
+    return FALSE;
+}
+#else
 /* Note: OS and CPU dependent */
 static inline uintptr_t js_get_stack_pointer(void)
 {
@@ -1750,6 +1761,7 @@ static inline BOOL js_check_stack_overflow(JSRuntime *rt, size_t alloca_size)
     sp = js_get_stack_pointer() - alloca_size;
     return unlikely(sp < rt->stack_limit);
 }
+#endif
 
 JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
 {
@@ -1807,9 +1819,6 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     rt->js_class_id_alloc = JS_CLASS_INIT_COUNT;
 
     rt->stack_size = JS_DEFAULT_STACK_SIZE;
-#ifdef __ASAN__
-    rt->stack_size *= 2; // stack frames are bigger under AddressSanitizer
-#endif
     JS_UpdateStackTop(rt);
 
     rt->current_exception = JS_UNINITIALIZED;
@@ -2478,15 +2487,11 @@ JSRuntime *JS_GetRuntime(JSContext *ctx)
 
 static void update_stack_limit(JSRuntime *rt)
 {
-#if defined(__wasi__) || (defined(__ASAN__) && !defined(NDEBUG))
-    rt->stack_limit = 0; /* no limit */
-#else
     if (rt->stack_size == 0) {
         rt->stack_limit = 0; /* no limit */
     } else {
         rt->stack_limit = rt->stack_top - rt->stack_size;
     }
-#endif
 }
 
 void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size)
