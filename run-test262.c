@@ -1783,6 +1783,7 @@ int run_test(const char *filename, int *msec)
     char *error_type;
     int ret, eval_flags, use_strict, use_nostrict;
     BOOL is_negative, is_nostrict, is_onlystrict, is_async, is_module, skip;
+    BOOL detect_module = TRUE;
     BOOL can_block;
     namelist_t include_list = { 0 }, *ip = &include_list;
 
@@ -1837,6 +1838,9 @@ int run_test(const char *filename, int *msec)
                 else if (str_equal(option, "async")) {
                     is_async = TRUE;
                     skip |= skip_async;
+                }
+                else if (str_equal(option, "qjs:no-detect-module")) {
+                    detect_module = FALSE;
                 }
                 else if (str_equal(option, "module")) {
                     is_module = TRUE;
@@ -1920,7 +1924,7 @@ int run_test(const char *filename, int *msec)
         atomic_inc(&test_skipped);
         ret = -2;
     } else {
-        if (local) {
+        if (local && detect_module) {
             is_module = JS_DetectModule(buf, buf_len);
         }
         if (is_module) {

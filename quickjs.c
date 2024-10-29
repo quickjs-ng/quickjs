@@ -22709,9 +22709,17 @@ static __exception int js_define_var(JSParseState *s, JSAtom name, int tok)
     &&  fd->is_strict_mode) {
         return js_parse_error(s, "invalid variable name in strict mode");
     }
-    if ((name == JS_ATOM_let || name == JS_ATOM_undefined)
-    &&  (tok == TOK_LET || tok == TOK_CONST)) {
-        return js_parse_error(s, "invalid lexical variable name");
+    if (tok == TOK_LET || tok == TOK_CONST) {
+        if (name == JS_ATOM_let)
+            return js_parse_error(s, "invalid lexical variable name 'let'");
+        // |undefined| is allowed as an identifier except at the global
+        // scope of a classic script; sloppy or strict doesn't matter
+        if (name == JS_ATOM_undefined
+        && fd->scope_level == 1
+        && fd->is_global_var
+        && !fd->module) {
+            return js_parse_error(s, "'undefined' already declared");
+        }
     }
     switch(tok) {
     case TOK_LET:
