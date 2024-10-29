@@ -123,9 +123,6 @@ xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 
 if(CONFIG_ASAN)
 message(STATUS "Building with ASan")
-add_compile_definitions(
-    __ASAN__=1
-)
 add_compile_options(
     -fsanitize=address
     -fno-sanitize-recover=all
@@ -168,6 +165,7 @@ endif()
 
 if(CONFIG_UBSAN)
 message(STATUS "Building with UBSan")
+# __has_feature(undefined_sanitizer) or __SANITIZE_UNDEFINED__ don't exist
 add_compile_definitions(
     __UBSAN__=1
 )
