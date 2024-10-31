@@ -3910,54 +3910,56 @@ JSModuleDef *js_init_module_os(JSContext *ctx, const char *module_name)
 
 /**********************************************************/
 
+static JSValue js_print(JSContext *ctx, JSValue this_val,
+                        int argc, JSValue *argv)
+{
 #ifdef _WIN32
-static JSValue js_print(JSContext *ctx, JSValue this_val,
-                        int argc, JSValue *argv)
-{
-    int i;
-    const char *str;
-    size_t len;
-    DWORD written;
-    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hConsole == INVALID_HANDLE_VALUE)
-        return JS_EXCEPTION;
-    for(i = 0; i < argc; i++) {
-        if (i != 0)
-            WriteConsoleW(hConsole, L" ", 1, &written, NULL);
-        str = JS_ToCStringLen(ctx, &len, argv[i]);
-        if (!str)
-            return JS_EXCEPTION;
-        DWORD prev = GetConsoleOutputCP();
-        SetConsoleOutputCP(CP_UTF8);
-        WriteConsoleA(hConsole, str, len, &written, NULL);
-        SetConsoleOutputCP(prev);
-        JS_FreeCString(ctx, str);
-    }
-    WriteConsoleW(hConsole, L"\n", 1, &written, NULL);
-    FlushFileBuffers(hConsole);
-    return JS_UNDEFINED;
-}
-#else
-static JSValue js_print(JSContext *ctx, JSValue this_val,
-                        int argc, JSValue *argv)
-{
-    int i;
-    const char *str;
-    size_t len;
-    for(i = 0; i < argc; i++) {
-        if (i != 0) 
-            putchar(' ');
-        str = JS_ToCStringLen(ctx, &len, argv[i]);
-        if (!str)
-            return JS_EXCEPTION;
-        fwrite(str, 1, len, stdout);
-        JS_FreeCString(ctx, str);
-    }
-    putchar('\n');
-    fflush(stdout);
-    return JS_UNDEFINED;
-}
+    HANDLE handle;
+    DWORD mode;
 #endif
+    const char *s;
+    DynBuf b;
+    int i;
+
+    dbuf_init(&b);
+    for(i = 0; i < argc; i++) {
+        s = JS_ToCString(ctx, argv[i]);
+        if (s) {
+            dbuf_printf(&b, "%s%s", &" "[!i], s);
+            JS_FreeCString(ctx, s);
+        } else {
+            dbuf_printf(&b, "%s<exception>", &" "[!i]);
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        }
+    }
+    dbuf_putc(&b, '\n');
+#ifdef _WIN32
+    // use WriteConsoleA with CP_UTF8 for better Unicode handling vis-a-vis
+    // the mangling that happens when going through msvcrt's stdio layer,
+    // *except* when stdout is redirected to something that is not a console
+    handle = (HANDLE)_get_osfhandle(/*STDOUT_FILENO*/1); // don't CloseHandle
+    if (GetFileType(handle) != FILE_TYPE_CHAR)
+        goto fallback;
+    if (!GetConsoleMode(handle, &mode))
+        goto fallback;
+    handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (handle == INVALID_HANDLE_VALUE)
+        goto fallback;
+    mode = GetConsoleOutputCP();
+    SetConsoleOutputCP(CP_UTF8);
+    WriteConsoleA(handle, b.buf, b.size, NULL, NULL);
+    SetConsoleOutputCP(mode);
+    FlushFileBuffers(handle);
+    goto done;
+fallback:
+#endif
+    fwrite(b.buf, 1, b.size, stdout);
+    fflush(stdout);
+    goto done; // avoid unused label warning
+done:
+    dbuf_free(&b);
+    return JS_UNDEFINED;
+}
 
 void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
 {
