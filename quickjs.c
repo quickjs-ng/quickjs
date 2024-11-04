@@ -35357,13 +35357,22 @@ static JSValue JS_ReadArrayBuffer(BCReaderState *s)
 static JSValue JS_ReadSharedArrayBuffer(BCReaderState *s)
 {
     JSContext *ctx = s->ctx;
-    uint32_t byte_length;
+    uint32_t byte_length, max_byte_length;
+    uint64_t max_byte_length_u64, *pmax_byte_length = NULL;
     uint8_t *data_ptr;
     JSValue obj;
     uint64_t u64;
 
     if (bc_get_leb128(s, &byte_length))
         return JS_EXCEPTION;
+    if (bc_get_leb128(s, &max_byte_length))
+        return JS_EXCEPTION;
+    if (max_byte_length < byte_length)
+        return JS_ThrowTypeError(ctx, "invalid array buffer");
+    if (max_byte_length != UINT32_MAX) {
+        max_byte_length_u64 = max_byte_length;
+        pmax_byte_length = &max_byte_length_u64;
+    }
     if (bc_get_u64(s, &u64))
         return JS_EXCEPTION;
     data_ptr = (uint8_t *)(uintptr_t)u64;
@@ -35373,7 +35382,8 @@ static JSValue JS_ReadSharedArrayBuffer(BCReaderState *s)
     /* keep the SAB pointer so that the user can clone it or free it */
     s->sab_tab[s->sab_tab_len++] = data_ptr;
     /* the SharedArrayBuffer is cloned */
-    obj = js_array_buffer_constructor3(ctx, JS_UNDEFINED, byte_length, NULL,
+    obj = js_array_buffer_constructor3(ctx, JS_UNDEFINED,
+                                       byte_length, pmax_byte_length,
                                        JS_CLASS_SHARED_ARRAY_BUFFER,
                                        data_ptr,
                                        NULL, NULL, FALSE);
