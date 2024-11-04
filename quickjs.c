@@ -51603,6 +51603,7 @@ static JSValue js_array_buffer_resize(JSContext *ctx, JSValue this_val,
         abuf->byte_length = len;
         abuf->data = data;
     }
+    data = abuf->data;
     // update lengths of all typed arrays backed by this array buffer
     list_for_each(el, &abuf->array_list) {
         ta = list_entry(el, JSTypedArray, link);
