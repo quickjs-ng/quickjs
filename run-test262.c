@@ -1753,6 +1753,15 @@ int run_test_buf(const char *filename, char *harness, namelist_t *ip,
         if (eval_file(ctx, harness, ip->array[i], JS_EVAL_TYPE_GLOBAL)) {
             fatal(1, "error including %s for %s", ip->array[i], filename);
         }
+        // hack to get useful stack traces from Test262Error exceptions
+        if (verbose > 1 && str_equal(ip->array[i], "sta.js")) {
+            static const char hack[] =
+                ";(function(C){"
+                "globalThis.Test262Error = class Test262Error extends Error {};"
+                "globalThis.Test262Error.thrower = C.thrower;"
+                "})(Test262Error)";
+            JS_FreeValue(ctx, JS_Eval(ctx, hack, sizeof(hack)-1, "sta.js", JS_EVAL_TYPE_GLOBAL));
+        }
     }
 
     ret = eval_buf(ctx, buf, buf_len, filename, TRUE, is_negative,
