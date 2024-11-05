@@ -1218,8 +1218,6 @@ static BOOL typed_array_is_oob(JSObject *p);
 static BOOL typed_array_is_resizable(JSObject *p);
 static uint32_t typed_array_get_length(JSContext *ctx, JSObject *p);
 static JSValue JS_ThrowTypeErrorDetachedArrayBuffer(JSContext *ctx);
-// if you think the current name is lousy,
-// I considered naming it JS_ThrowTypeErrorRABOOB
 static JSValue JS_ThrowTypeErrorArrayBufferOOB(JSContext *ctx);
 static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf, int var_idx,
                              BOOL is_arg);
@@ -51560,13 +51558,6 @@ static JSValue js_array_buffer_resize(JSContext *ctx, JSValue this_val,
     abuf = JS_GetOpaque2(ctx, this_val, class_id);
     if (!abuf)
         return JS_EXCEPTION;
-    if (abuf->shared) {
-        if (class_id == JS_CLASS_ARRAY_BUFFER)
-            return JS_ThrowTypeError(ctx, "resize called on SharedArrayBuffer");
-    } else {
-        if (class_id == JS_CLASS_SHARED_ARRAY_BUFFER)
-            return JS_ThrowTypeError(ctx, "grow called on ArrayBuffer");
-    }
     if (abuf->detached)
         return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
     if (!array_buffer_is_resizable(abuf))
@@ -52000,12 +51991,8 @@ static JSValue js_typed_array_at(JSContext *ctx, JSValue this_val,
     p = get_typed_array(ctx, this_val);
     if (!p)
         return JS_EXCEPTION;
-
-    if (typed_array_is_oob(p)) {
-        JS_ThrowTypeErrorArrayBufferOOB(ctx);
-        return JS_EXCEPTION;
-    }
-
+    if (typed_array_is_oob(p))
+        return JS_ThrowTypeErrorArrayBufferOOB(ctx);
     len = p->u.array.count;
 
     // note: can change p->u.array.count
@@ -53234,10 +53221,8 @@ static JSValue js_typed_array_sort(JSContext *ctx, JSValue this_val,
     p = get_typed_array(ctx, this_val);
     if (!p)
         return JS_EXCEPTION;
-    if (typed_array_is_oob(p)) {
-        JS_ThrowTypeErrorArrayBufferOOB(ctx);
-        return JS_EXCEPTION;
-    }
+    if (typed_array_is_oob(p))
+        return JS_ThrowTypeErrorArrayBufferOOB(ctx);
 
     tsc.ctx = ctx;
     tsc.exception = 0;
