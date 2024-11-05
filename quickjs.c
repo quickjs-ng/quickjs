@@ -38391,12 +38391,12 @@ static JSObject *get_typed_array(JSContext *ctx, JSValue this_val)
 
 // Be *very* careful if you touch the typed array's memory directly:
 // the length is only valid until the next call into JS land because
-// JS code may detach or resize the backing array buffer. Functions
+// JS code can detach or resize the backing array buffer. Functions
 // like JS_GetProperty and JS_ToIndex call JS code.
 //
 // Exclusively reading or writing elements with JS_GetProperty,
-// JS_GetPropertyInt64, JS_SetProperty, &c is safe because they
-// perform bounds checks, ditto js_get_fast_array_element.
+// JS_GetPropertyInt64, JS_SetProperty, etc. is safe because they
+// perform bounds checks, as does js_get_fast_array_element.
 static int js_typed_array_get_length_unsafe(JSContext *ctx, JSValue obj)
 {
     JSObject *p;
@@ -51368,7 +51368,7 @@ static const JSCFunctionListEntry js_array_buffer_funcs[] = {
 
 static JSValue JS_ThrowTypeErrorDetachedArrayBuffer(JSContext *ctx)
 {
-    return JS_ThrowTypeError(ctx, "ArrayBuffer is detached or resized");
+    return JS_ThrowTypeError(ctx, "ArrayBuffer is detached");
 }
 
 static JSValue JS_ThrowTypeErrorArrayBufferOOB(JSContext *ctx)
