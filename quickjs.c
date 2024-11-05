@@ -1215,7 +1215,6 @@ static JSValue js_typed_array_constructor_ta(JSContext *ctx,
                                              JSValue src_obj,
                                              int classid, uint32_t len);
 static BOOL typed_array_is_oob(JSObject *p);
-static BOOL typed_array_is_resizable(JSObject *p);
 static uint32_t typed_array_get_length(JSContext *ctx, JSObject *p);
 static JSValue JS_ThrowTypeErrorDetachedArrayBuffer(JSContext *ctx);
 static JSValue JS_ThrowTypeErrorArrayBufferOOB(JSContext *ctx);
@@ -9034,14 +9033,9 @@ static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
             if (unlikely(idx >= (uint32_t)p->u.array.count)) {
             ta_out_of_bound:
                 if (typed_array_is_oob(p))
-                    if (!(flags & JS_PROP_DEFINE_PROPERTY))
-                        return TRUE; // per spec: no OOB exception
-                // XXX(bnoordhuis) questionable but generic methods like
-                // Array.prototype.fill invoked on RABs can end up here
-                // and should, per spec, not error
-                if (typed_array_is_resizable(p))
-                    return TRUE;
-                return JS_ThrowTypeErrorOrFalse(ctx, flags, "out-of-bound numeric index");
+                    if (flags & JS_PROP_DEFINE_PROPERTY)
+                        return JS_ThrowTypeErrorOrFalse(ctx, flags, "out-of-bound numeric index");
+                return TRUE; // per spec: no OOB exception
             }
             p->u.array.u.double_ptr[idx] = d;
             break;
@@ -51743,20 +51737,6 @@ static BOOL typed_array_is_oob(JSObject *p)
     size_elem = 1 << typed_array_size_log2(p->class_id);
     end = (int64_t)ta->offset + (int64_t)p->u.array.count * size_elem;
     return end > len;
-}
-
-// |p| must be a typed array, *not* a DataView
-static BOOL typed_array_is_resizable(JSObject *p)
-{
-    JSArrayBuffer *abuf;
-    JSTypedArray *ta;
-
-    assert(p->class_id >= JS_CLASS_UINT8C_ARRAY);
-    assert(p->class_id <= JS_CLASS_FLOAT64_ARRAY);
-
-    ta = p->u.typed_array;
-    abuf = ta->buffer->u.array_buffer;
-    return array_buffer_is_resizable(abuf);
 }
 
 /* WARNING: 'p' must be a typed array. Works even if the array buffer
