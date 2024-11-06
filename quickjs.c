@@ -54737,10 +54737,12 @@ typedef struct JSWeakRefData {
     JSValue obj;
 } JSWeakRefData;
 
+static JSWeakRefData js_weakref_sentinel;
+
 static void js_weakref_finalizer(JSRuntime *rt, JSValue val)
 {
     JSWeakRefData *wrd = JS_GetOpaque(val, JS_CLASS_WEAK_REF);
-    if (!wrd)
+    if (!wrd || wrd == &js_weakref_sentinel)
         return;
 
     /* Delete weak ref */
@@ -54796,6 +54798,8 @@ static JSValue js_weakref_deref(JSContext *ctx, JSValue this_val, int argc, JSVa
     JSWeakRefData *wrd = JS_GetOpaque2(ctx, this_val, JS_CLASS_WEAK_REF);
     if (!wrd)
         return JS_EXCEPTION;
+    if (wrd == &js_weakref_sentinel)
+        return JS_UNDEFINED;
     return js_dup(wrd->target);
 }
 
@@ -55055,7 +55059,7 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             break;
         case JS_WEAK_REF_KIND_WEAK_REF:
             wrd = wr->u.weak_ref_data;
-            JS_SetOpaque(wrd->obj, NULL);
+            JS_SetOpaque(wrd->obj, &js_weakref_sentinel);
             js_free_rt(rt, wrd);
             break;
         case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY: {
