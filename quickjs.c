@@ -2217,6 +2217,16 @@ void JS_FreeRuntime(JSRuntime *rt)
         if (rt->rt_info)
             printf("\n");
     }
+#endif
+
+    while (rt->finalizers) {
+        JSRuntimeFinalizerState *fs = rt->finalizers;
+        rt->finalizers = fs->next;
+        fs->finalizer(rt, fs->arg);
+        js_free_rt(rt, fs);
+    }
+
+#ifdef DUMP_LEAKS
     if (check_dump_flag(rt, DUMP_LEAKS)) {
         JSMallocState *s = &rt->malloc_state;
         if (s->malloc_count > 1) {
@@ -2228,13 +2238,6 @@ void JS_FreeRuntime(JSRuntime *rt)
         }
     }
 #endif
-
-    while (rt->finalizers) {
-        JSRuntimeFinalizerState *fs = rt->finalizers;
-        rt->finalizers = fs->next;
-        fs->finalizer(rt, fs->arg);
-        js_free_rt(rt, fs);
-    }
 
     // FinalizationRegistry finalizers have run, no objects should remain
     assert(list_empty(&rt->gc_obj_list));
