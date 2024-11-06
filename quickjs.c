@@ -2106,7 +2106,6 @@ void JS_FreeRuntime(JSRuntime *rt)
             printf("Secondary object leaks: %d\n", count);
     }
 #endif
-    assert(list_empty(&rt->gc_obj_list));
 
     /* free the classes */
     for(i = 0; i < rt->class_count; i++) {
@@ -2236,6 +2235,9 @@ void JS_FreeRuntime(JSRuntime *rt)
         fs->finalizer(rt, fs->arg);
         js_free_rt(rt, fs);
     }
+
+    // FinalizationRegistry finalizers have run, no objects should remain
+    assert(list_empty(&rt->gc_obj_list));
 
     {
         JSMallocState *ms = &rt->malloc_state;
