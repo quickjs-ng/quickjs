@@ -54793,9 +54793,9 @@ static JSValue js_weakref_constructor(JSContext *ctx, JSValue new_target, int ar
 
 static JSValue js_weakref_deref(JSContext *ctx, JSValue this_val, int argc, JSValue *argv)
 {
-    JSWeakRefData *wrd = JS_GetOpaque2(ctx, this_val, JS_CLASS_WEAK_REF);
+    JSWeakRefData *wrd = JS_GetOpaque(this_val, JS_CLASS_WEAK_REF);
     if (!wrd)
-        return JS_EXCEPTION;
+        return JS_UNDEFINED;
     return js_dup(wrd->target);
 }
 
