@@ -54702,7 +54702,7 @@ void JS_AddPerformance(JSContext *ctx)
                            JS_PROP_ENUMERABLE);
     JS_DefinePropertyValueStr(ctx, ctx->global_obj, "performance",
                            js_dup(performance),
-                           JS_PROP_ENUMERABLE | JS_PROP_CONFIGURABLE);
+                           JS_PROP_WRITABLE | JS_PROP_ENUMERABLE | JS_PROP_CONFIGURABLE);
     JS_FreeValue(ctx, performance);
 }
 
