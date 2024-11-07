@@ -755,7 +755,7 @@ JS_EXTERN int JS_DefinePropertyValueStr(JSContext *ctx, JSValue this_obj,
 JS_EXTERN int JS_DefinePropertyGetSet(JSContext *ctx, JSValue this_obj,
                                       JSAtom prop, JSValue getter, JSValue setter,
                                       int flags);
-JS_EXTERN void JS_SetOpaque(JSValue obj, void *opaque);
+JS_EXTERN JS_BOOL JS_SetOpaque(JSValue obj, void *opaque);
 JS_EXTERN void *JS_GetOpaque(JSValue obj, JSClassID class_id);
 JS_EXTERN void *JS_GetOpaque2(JSContext *ctx, JSValue obj, JSClassID class_id);
 JS_EXTERN void *JS_GetAnyOpaque(JSValue obj, JSClassID *class_id);
