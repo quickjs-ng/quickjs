@@ -2107,6 +2107,8 @@ void JS_FreeRuntime(JSRuntime *rt)
     }
 #endif
 
+    assert(list_empty(&rt->gc_obj_list));
+
     /* free the classes */
     for(i = 0; i < rt->class_count; i++) {
         JSClass *cl = &rt->class_array[i];
@@ -2238,9 +2240,6 @@ void JS_FreeRuntime(JSRuntime *rt)
         }
     }
 #endif
-
-    // FinalizationRegistry finalizers have run, no objects should remain
-    assert(list_empty(&rt->gc_obj_list));
 
     {
         JSMallocState *ms = &rt->malloc_state;
@@ -54985,9 +54984,7 @@ static const JSClassShortDef js_finrec_class_def[] = {
 
 static JSValue js_finrec_job(JSContext *ctx, int argc, JSValue *argv)
 {
-    JSValue ret = JS_Call(ctx, argv[0], JS_UNDEFINED, 1, &argv[1]);
-    JS_FreeValue(ctx, argv[1]);
-    return ret;
+    return JS_Call(ctx, argv[0], JS_UNDEFINED, 1, &argv[1]);
 }
 
 void JS_AddIntrinsicWeakRef(JSContext *ctx)
@@ -55078,6 +55075,7 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
                 args[1] = fre->held_val;
                 JS_EnqueueJob(frd->ctx, js_finrec_job, 2, args);
             }
+            JS_FreeValueRT(rt, fre->held_val);
             JS_FreeValueRT(rt, fre->token);
             js_free_rt(rt, fre);
             break;
