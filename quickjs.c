@@ -18711,8 +18711,6 @@ typedef struct JSFunctionDef {
 
     DynBuf byte_code;
     int last_opcode_pos; /* -1 if no last opcode */
-    int last_opcode_line_num;
-    int last_opcode_col_num;
     BOOL use_short_opcodes; /* true if short opcodes are used in byte_code */
 
     LabelSlot *label_slots;
@@ -19558,6 +19556,7 @@ static __exception int next_token(JSParseState *s)
     case '_':
     case '$':
         /* identifier */
+        s->mark = p;
         p++;
         ident_has_escape = FALSE;
     has_ident:
@@ -19873,7 +19872,7 @@ static __exception int next_token(JSParseState *s)
         p++;
         break;
     }
-    s->token.col_num = s->mark - s->eol;
+    s->token.col_num = max_int(1, s->mark - s->eol);
     s->buf_ptr = p;
 
     //    dump_token(s, &s->token);
@@ -20338,22 +20337,21 @@ static void emit_u32(JSParseState *s, uint32_t val)
     dbuf_put_u32(&s->cur_func->byte_code, val);
 }
 
+static void emit_source_loc(JSParseState *s)
+{
+    JSFunctionDef *fd = s->cur_func;
+    DynBuf *bc = &fd->byte_code;
+
+    dbuf_putc(bc, OP_source_loc);
+    dbuf_put_u32(bc, s->last_line_num);
+    dbuf_put_u32(bc, s->last_col_num);
+}
+
 static void emit_op(JSParseState *s, uint8_t val)
 {
     JSFunctionDef *fd = s->cur_func;
     DynBuf *bc = &fd->byte_code;
 
-    /* Use the line and column number of the last token used,
-       not the next token, nor the current offset in the source file.
-     */
-    if (unlikely(fd->last_opcode_line_num != s->last_line_num ||
-                 fd->last_opcode_col_num != s->last_col_num)) {
-        dbuf_putc(bc, OP_source_loc);
-        dbuf_put_u32(bc, s->last_line_num);
-        dbuf_put_u32(bc, s->last_col_num);
-        fd->last_opcode_line_num = s->last_line_num;
-        fd->last_opcode_col_num = s->last_col_num;
-    }
     fd->last_opcode_pos = bc->size;
     dbuf_putc(bc, val);
 }
@@ -23481,6 +23479,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             emit_atom(s, JS_ATOM_new_target);
             emit_u16(s, 0);
         } else {
+            emit_source_loc(s);
             if (js_parse_postfix_expr(s, 0))
                 return -1;
             accept_lparen = TRUE;
@@ -23580,6 +23579,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
 
             if (call_type == FUNC_CALL_NORMAL) {
             parse_func_call2:
+                emit_source_loc(s);
                 switch(opcode = get_prev_opcode(fd)) {
                 case OP_get_field:
                     /* keep the object on the stack */
@@ -26035,6 +26035,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
 
     default:
     hasexpr:
+        emit_source_loc(s);
         if (js_parse_expr(s))
             goto fail;
         if (s->cur_func->eval_ret_idx >= 0) {
@@ -28329,7 +28330,6 @@ static JSFunctionDef *js_new_function_def(JSContext *ctx,
     js_dbuf_init(ctx, &fd->pc2line);
     //fd->pc2line_last_line_num = line_num;
     //fd->pc2line_last_pc = 0;
-    fd->last_opcode_line_num = line_num;
 
     fd->ic = init_ic(ctx);
     return fd;
