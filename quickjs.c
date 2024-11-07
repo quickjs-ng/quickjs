@@ -1302,6 +1302,8 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
 static void js_new_callsite_data2(JSContext *ctx, JSCallSiteData *csd, const char *filename, int line_num, int col_num);
 static void _JS_AddIntrinsicCallSite(JSContext *ctx);
 
+static void JS_SetOpaqueInternal(JSValue obj, void *opaque);
+
 static const JSClassExoticMethods js_arguments_exotic_methods;
 static const JSClassExoticMethods js_string_exotic_methods;
 static const JSClassExoticMethods js_proxy_exotic_methods;
@@ -5226,7 +5228,7 @@ JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
     s->magic = magic;
     for(i = 0; i < data_len; i++)
         s->data[i] = js_dup(data[i]);
-    JS_SetOpaque(func_obj, s);
+    JS_SetOpaqueInternal(func_obj, s);
     js_function_set_properties(ctx, func_obj,
                                JS_ATOM_empty_string, length);
     return func_obj;
@@ -10072,13 +10074,29 @@ void JS_ResetUncatchableError(JSContext *ctx)
     JS_SetUncatchableError(ctx, ctx->rt->current_exception, FALSE);
 }
 
-void JS_SetOpaque(JSValue obj, void *opaque)
+JS_BOOL JS_SetOpaque(JSValue obj, void *opaque)
 {
-   JSObject *p;
+    JSObject *p;
     if (JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
         p = JS_VALUE_GET_OBJ(obj);
-        p->u.opaque = opaque;
+        // User code can't set the opaque of internal objects.
+        if (p->class_id >= JS_CLASS_INIT_COUNT) {
+            p->u.opaque = opaque;
+            return 0;
+        }
     }
+
+    return 1;
+}
+
+/* |obj| must be a JSObject of an internal class. */
+static void JS_SetOpaqueInternal(JSValue obj, void *opaque)
+{
+    JSObject *p;
+    assert(JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT);
+    p = JS_VALUE_GET_OBJ(obj);
+    assert(p->class_id < JS_CLASS_INIT_COUNT);
+    p->u.opaque = opaque;
 }
 
 /* return NULL if not an object of class class_id */
@@ -17807,7 +17825,7 @@ static JSValue js_generator_function_call(JSContext *ctx, JSValue func_obj,
     obj = js_create_from_ctor(ctx, func_obj, JS_CLASS_GENERATOR);
     if (JS_IsException(obj))
         goto fail;
-    JS_SetOpaque(obj, s);
+    JS_SetOpaqueInternal(obj, s);
     return obj;
  fail:
     free_generator_stack_rt(ctx->rt, s);
@@ -18438,7 +18456,7 @@ static JSValue js_async_generator_function_call(JSContext *ctx, JSValue func_obj
     if (JS_IsException(obj))
         goto fail;
     s->generator = JS_VALUE_GET_OBJ(obj);
-    JS_SetOpaque(obj, s);
+    JS_SetOpaqueInternal(obj, s);
     return obj;
  fail:
     js_async_generator_free(ctx->rt, s);
@@ -39862,7 +39880,7 @@ static JSValue js_create_array_iterator(JSContext *ctx, JSValue this_val,
     it->obj = arr;
     it->kind = kind;
     it->idx = 0;
-    JS_SetOpaque(enum_obj, it);
+    JS_SetOpaqueInternal(enum_obj, it);
     return enum_obj;
  fail1:
     JS_FreeValue(ctx, enum_obj);
@@ -43862,7 +43880,7 @@ static JSValue js_regexp_Symbol_matchAll(JSContext *ctx, JSValue this_val,
     it->global = string_indexof_char(strp, 'g', 0) >= 0;
     it->unicode = string_indexof_char(strp, 'u', 0) >= 0;
     it->done = FALSE;
-    JS_SetOpaque(iter, it);
+    JS_SetOpaqueInternal(iter, it);
 
     JS_FreeValue(ctx, C);
     JS_FreeValue(ctx, flags);
@@ -46112,7 +46130,7 @@ static JSValue js_proxy_constructor(JSContext *ctx, JSValue this_val,
     s->handler = js_dup(handler);
     s->is_func = JS_IsFunction(ctx, target);
     s->is_revoked = FALSE;
-    JS_SetOpaque(obj, s);
+    JS_SetOpaqueInternal(obj, s);
     JS_SetConstructorBit(ctx, obj, JS_IsConstructor(ctx, target));
     return obj;
 }
@@ -46345,7 +46363,7 @@ static JSValue js_map_constructor(JSContext *ctx, JSValue new_target,
         goto fail;
     init_list_head(&s->records);
     s->is_weak = is_weak;
-    JS_SetOpaque(obj, s);
+    JS_SetOpaqueInternal(obj, s);
     s->hash_size = 1;
     s->hash_table = js_malloc(ctx, sizeof(s->hash_table[0]) * s->hash_size);
     if (!s->hash_table)
@@ -46993,7 +47011,7 @@ static JSValue js_create_map_iterator(JSContext *ctx, JSValue this_val,
     it->obj = js_dup(this_val);
     it->kind = kind;
     it->cur_record = NULL;
-    JS_SetOpaque(enum_obj, it);
+    JS_SetOpaqueInternal(enum_obj, it);
     return enum_obj;
  fail:
     return JS_EXCEPTION;
@@ -48091,7 +48109,7 @@ static int js_create_resolving_functions(JSContext *ctx,
         sr->ref_count++;
         s->presolved = sr;
         s->promise = js_dup(promise);
-        JS_SetOpaque(obj, s);
+        JS_SetOpaqueInternal(obj, s);
         js_function_set_properties(ctx, obj, JS_ATOM_empty_string, 1);
         resolving_funcs[i] = obj;
     }
@@ -48236,7 +48254,7 @@ static JSValue js_promise_constructor(JSContext *ctx, JSValue new_target,
     for(i = 0; i < 2; i++)
         init_list_head(&s->promise_reactions[i]);
     s->promise_result = JS_UNDEFINED;
-    JS_SetOpaque(obj, s);
+    JS_SetOpaqueInternal(obj, s);
     if (js_create_resolving_functions(ctx, args, obj))
         goto fail;
     ret = JS_Call(ctx, executor, JS_UNDEFINED, 2, args);
@@ -48991,7 +49009,7 @@ static JSValue JS_CreateAsyncFromSyncIterator(JSContext *ctx,
     }
     s->sync_iter = js_dup(sync_iter);
     s->next_method = next_method;
-    JS_SetOpaque(async_iter, s);
+    JS_SetOpaqueInternal(async_iter, s);
     return async_iter;
 }
 
@@ -51202,7 +51220,7 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
     abuf->free_func = free_func;
     if (alloc_flag && buf)
         memcpy(abuf->data, buf, len);
-    JS_SetOpaque(obj, abuf);
+    JS_SetOpaqueInternal(obj, abuf);
     return obj;
  fail:
     JS_FreeValue(ctx, obj);
@@ -54771,7 +54789,7 @@ static JSValue js_weakref_constructor(JSContext *ctx, JSValue new_target, int ar
     wr->u.weak_ref_data = wrd;
     insert_weakref_record(arg, wr);
 
-    JS_SetOpaque(obj, wrd);
+    JS_SetOpaqueInternal(obj, wrd);
     return obj;
 }
 
@@ -54881,7 +54899,7 @@ static JSValue js_finrec_constructor(JSContext *ctx, JSValue new_target, int arg
     init_list_head(&frd->entries);
     frd->ctx = ctx;
     frd->cb = js_dup(cb);
-    JS_SetOpaque(obj, frd);
+    JS_SetOpaqueInternal(obj, frd);
     return obj;
 }
 
@@ -55039,7 +55057,7 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             break;
         case JS_WEAK_REF_KIND_WEAK_REF:
             wrd = wr->u.weak_ref_data;
-            JS_SetOpaque(wrd->obj, &js_weakref_sentinel);
+            JS_SetOpaqueInternal(wrd->obj, &js_weakref_sentinel);
             js_free_rt(rt, wrd);
             break;
         case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY: {
@@ -55271,7 +55289,7 @@ static JSValue js_new_callsite(JSContext *ctx, JSCallSiteData *csd) {
 
     memcpy(csd1, csd, sizeof(*csd));
 
-    JS_SetOpaque(obj, csd1);
+    JS_SetOpaqueInternal(obj, csd1);
 
     return obj;
 }
