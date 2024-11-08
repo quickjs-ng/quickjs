@@ -29,4 +29,5 @@ jobs:
           make BUILD_TYPE=RelWithDebInfo
       - name: test
         run: |
+          git submodule update --init --checkout --depth 1
           valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1 ./build/run-test262 -m -c test262.conf -c test262-fast.conf -a

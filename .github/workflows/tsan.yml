@@ -28,4 +28,5 @@ jobs:
           cmake --build build -j`nproc`
       - name: test
         run: |
+          git submodule update --init --checkout --depth 1
           ./build/run-test262 -m -c test262.conf -c test262-fast.conf -a
