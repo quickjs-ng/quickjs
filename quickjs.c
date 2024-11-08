@@ -26306,16 +26306,6 @@ static char *js_default_module_normalize_name(JSContext *ctx,
     int len;
 
     if (name[0] != '.') {
-        /* Backwards compatibility for stdlib rename. */
-        static const char names[] = "qjs:bjson\0qjs:std\0qjs:os";
-        for (const char *p = names; p < endof(names); p += 1 + strlen(p)) {
-            if (!strcmp(name, p+4)) {
-#ifndef NDEBUG
-                printf("WARN: Standard library modules should be prefixed with `qjs:`. Example: %s\n", p);
-#endif
-                return js_strdup(ctx, p);
-            }
-        }
         /* if no initial dot, the module name is not modified */
         return js_strdup(ctx, name);
     }
