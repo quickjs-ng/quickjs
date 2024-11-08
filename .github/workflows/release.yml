@@ -10,8 +10,6 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: jirutka/setup-alpine@v1
         with:
           arch: aarch64
@@ -19,6 +17,7 @@ jobs:
       - name: build
         shell: alpine.sh {0}
         run: |
+          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
@@ -40,8 +39,6 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: jirutka/setup-alpine@v1
         with:
           arch: riscv64
@@ -49,6 +46,7 @@ jobs:
       - name: build
         shell: alpine.sh {0}
         run: |
+          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
@@ -70,8 +68,6 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: jirutka/setup-alpine@v1
         with:
           arch: x86
@@ -79,6 +75,7 @@ jobs:
       - name: build
         shell: alpine.sh {0}
         run: |
+          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
@@ -101,8 +98,6 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: jirutka/setup-alpine@v1
         with:
           arch: x86_64
@@ -110,6 +105,7 @@ jobs:
       - name: build
         shell: alpine.sh {0}
         run: |
+          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
@@ -132,10 +128,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: build
         run: |
+          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ..
@@ -158,8 +153,6 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -173,6 +166,7 @@ jobs:
             toolchain:p
       - name: build
         run: |
+          git submodule update --init --checkout --depth 1
           make
           mv build/qjs.exe build/qjs-windows-x86.exe
           mv build/qjsc.exe build/qjsc-windows-x86.exe
@@ -192,8 +186,6 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -207,6 +199,7 @@ jobs:
             toolchain:p
       - name: build
         run: |
+          git submodule update --init --checkout --depth 1
           make
           mv build/qjs.exe build/qjs-windows-x86_64.exe
           mv build/qjsc.exe build/qjsc-windows-x86_64.exe
@@ -223,14 +216,13 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: setup wasi-sdk
         run: |
           wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk_21.0_amd64.deb -P /tmp
           sudo apt install /tmp/wasi-sdk*.deb
       - name: build
         run: |
+          git submodule update --init --checkout --depth 1
           cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
           make -C build qjs_exe
           mv build/qjs build/qjs-wasi.wasm
