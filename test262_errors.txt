@@ -24,60 +24,6 @@ test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: Test262Er
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: TypeError: cannot read property 'call' of undefined
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Iterator/prototype/drop/argument-effect-order.js:16: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/argument-effect-order.js:16: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/callable.js:10: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/callable.js:10: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/exhaustion-does-not-call-return.js:38: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/exhaustion-does-not-call-return.js:38: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/get-next-method-only-once.js:38: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/get-next-method-only-once.js:38: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/get-next-method-throws.js:17: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/drop/get-next-method-throws.js:17: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/drop/get-return-method-throws.js:25: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/get-return-method-throws.js:25: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-equals-total.js:18: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-equals-total.js:18: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-greater-than-total.js:19: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-greater-than-total.js:19: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-less-than-total.js:18: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-less-than-total.js:18: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-rangeerror.js:18: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-rangeerror.js:18: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-tonumber-throws.js:16: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/drop/limit-tonumber-throws.js:16: strict mode: Test262Error: Expected a Test262Error but got a InternalError
-test262/test/built-ins/Iterator/prototype/drop/limit-tonumber.js:22: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/limit-tonumber.js:22: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-returns-non-object.js:23: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-returns-non-object.js:23: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-returns-throwing-done.js:31: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-returns-throwing-done.js:31: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-returns-throwing-value-done.js:32: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-returns-throwing-value-done.js:32: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-returns-throwing-value.js:29: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-returns-throwing-value.js:29: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-throws.js:23: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/next-method-throws.js:23: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/result-is-iterator.js:11: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/result-is-iterator.js:11: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/return-is-forwarded.js:31: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/return-is-forwarded.js:31: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/return-is-not-forwarded-after-exhaustion.js:27: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/return-is-not-forwarded-after-exhaustion.js:27: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/this-non-callable-next.js:15: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/this-non-callable-next.js:15: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/this-non-object.js:22: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/drop/this-non-object.js:22: strict mode: Test262Error: Expected a TypeError but got a InternalError
-test262/test/built-ins/Iterator/prototype/drop/this-plain-iterator.js:25: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/this-plain-iterator.js:25: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/throws-typeerror-when-generator-is-running.js:33: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/throws-typeerror-when-generator-is-running.js:33: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/underlying-iterator-advanced-in-parallel.js:19: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/underlying-iterator-advanced-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/underlying-iterator-closed-in-parallel.js:19: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/underlying-iterator-closed-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/underlying-iterator-closed.js:21: InternalError: TODO implement Iterator.prototype.drop
-test262/test/built-ins/Iterator/prototype/drop/underlying-iterator-closed.js:21: strict mode: InternalError: TODO implement Iterator.prototype.drop
 test262/test/built-ins/Iterator/prototype/filter/argument-effect-order.js:16: Test262Error: Expected a TypeError but got a InternalError
 test262/test/built-ins/Iterator/prototype/filter/argument-effect-order.js:16: strict mode: Test262Error: Expected a TypeError but got a InternalError
 test262/test/built-ins/Iterator/prototype/filter/callable.js:10: InternalError: TODO implement Iterator.prototype.filter

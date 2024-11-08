@@ -154,6 +154,7 @@ enum {
     JS_CLASS_WEAKMAP,           /* u.map_state */
     JS_CLASS_WEAKSET,           /* u.map_state */
     JS_CLASS_ITERATOR,
+    JS_CLASS_ITERATOR_HELPER,   /* u.iterator_helper_data */
     JS_CLASS_MAP_ITERATOR,      /* u.map_iterator_data */
     JS_CLASS_SET_ITERATOR,      /* u.map_iterator_data */
     JS_CLASS_ARRAY_ITERATOR,    /* u.array_iterator_data */
@@ -705,6 +706,14 @@ typedef enum JSIteratorKindEnum {
     JS_ITERATOR_KIND_KEY_AND_VALUE,
 } JSIteratorKindEnum;
 
+typedef enum JSIteratorHelperKindEnum {
+    JS_ITERATOR_HELPER_KIND_DROP,
+    JS_ITERATOR_HELPER_KIND_FILTER,
+    JS_ITERATOR_HELPER_KIND_FLAT_MAP,
+    JS_ITERATOR_HELPER_KIND_MAP,
+    JS_ITERATOR_HELPER_KIND_TAKE,
+} JSIteratorHelperKindEnum;
+
 typedef struct JSForInIterator {
     JSValue obj;
     BOOL is_array;
@@ -944,6 +953,7 @@ struct JSObject {
         struct JSArrayIteratorData *array_iterator_data; /* JS_CLASS_ARRAY_ITERATOR, JS_CLASS_STRING_ITERATOR */
         struct JSRegExpStringIteratorData *regexp_string_iterator_data; /* JS_CLASS_REGEXP_STRING_ITERATOR */
         struct JSGeneratorData *generator_data; /* JS_CLASS_GENERATOR */
+        struct JSIteratorHelperData *iterator_helper_data; /* JS_CLASS_ITERATOR_HELPER */
         struct JSProxyData *proxy_data; /* JS_CLASS_PROXY */
         struct JSPromiseData *promise_data; /* JS_CLASS_PROMISE */
         struct JSPromiseFunctionData *promise_function_data; /* JS_CLASS_PROMISE_RESOLVE_FUNCTION, JS_CLASS_PROMISE_REJECT_FUNCTION */
@@ -1120,6 +1130,9 @@ static void js_map_iterator_mark(JSRuntime *rt, JSValue val,
 static void js_array_iterator_finalizer(JSRuntime *rt, JSValue val);
 static void js_array_iterator_mark(JSRuntime *rt, JSValue val,
                                 JS_MarkFunc *mark_func);
+static void js_iterator_helper_finalizer(JSRuntime *rt, JSValue val);
+static void js_iterator_helper_mark(JSRuntime *rt, JSValue val,
+                                    JS_MarkFunc *mark_func);
 static void js_regexp_string_iterator_finalizer(JSRuntime *rt, JSValue val);
 static void js_regexp_string_iterator_mark(JSRuntime *rt, JSValue val,
                                 JS_MarkFunc *mark_func);
@@ -1722,6 +1735,7 @@ static JSClassShortDef const js_std_class_def[] = {
     { JS_ATOM_WeakMap, js_map_finalizer, js_map_mark },         /* JS_CLASS_WEAKMAP */
     { JS_ATOM_WeakSet, js_map_finalizer, js_map_mark },         /* JS_CLASS_WEAKSET */
     { JS_ATOM_Iterator, NULL, NULL },                           /* JS_CLASS_ITERATOR */
+    { JS_ATOM_IteratorHelper, js_iterator_helper_finalizer, js_iterator_helper_mark }, /* JS_CLASS_ITERATOR_HELPER */
     { JS_ATOM_Map_Iterator, js_map_iterator_finalizer, js_map_iterator_mark }, /* JS_CLASS_MAP_ITERATOR */
     { JS_ATOM_Set_Iterator, js_map_iterator_finalizer, js_map_iterator_mark }, /* JS_CLASS_SET_ITERATOR */
     { JS_ATOM_Array_Iterator, js_array_iterator_finalizer, js_array_iterator_mark }, /* JS_CLASS_ARRAY_ITERATOR */
@@ -33531,7 +33545,7 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 17
+#define BC_VERSION 18
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -40007,10 +40021,46 @@ static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
     return iter;
 }
 
+static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
+                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t limit);
+
 static JSValue js_iterator_proto_drop(JSContext *ctx, JSValue this_val,
                                       int argc, JSValue *argv)
 {
-    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.drop");
+    JSValue v;
+    double dlimit;
+    int64_t limit;
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Iterator.prototype.drop called on non-object");
+    v = JS_ToNumber(ctx, argv[0]);
+    if (JS_IsException(v))
+        return JS_EXCEPTION;
+    // Check for Infinity.
+    if (JS_ToFloat64(ctx, &dlimit, v)) {
+        JS_FreeValue(ctx, v);
+        return JS_EXCEPTION;
+    }
+    if (isnan(dlimit)) {
+        JS_FreeValue(ctx, v);
+        goto fail;
+    }
+    if (!isfinite(dlimit)) {
+        JS_FreeValue(ctx, v);
+        if (dlimit < 0)
+            goto fail;
+        else
+            limit = MAX_SAFE_INTEGER;
+    } else {
+        v = JS_ToIntegerFree(ctx, v);
+        if (JS_IsException(v))
+            return JS_EXCEPTION;
+        if (JS_ToInt64Free(ctx, &limit, v))
+            return JS_EXCEPTION;
+    }
+    if (limit < 0)
+    fail:
+        return JS_ThrowRangeError(ctx, "must be positive");
+    return js_create_iterator_helper(ctx, this_val, JS_ITERATOR_HELPER_KIND_DROP, JS_UNDEFINED, limit);
 }
 
 static JSValue js_iterator_proto_every(JSContext *ctx, JSValue this_val,
@@ -40396,6 +40446,142 @@ static JSValue js_iterator_proto_set_toStringTag(JSContext *ctx, JSValue this_va
     return JS_UNDEFINED;
 }
 
+typedef struct JSIteratorHelperData {
+    JSIteratorHelperKindEnum kind; 
+    JSValue obj;
+    JSValue next;
+    JSValue func; // predicate (filter) or mapper (flatMap, map)
+    int64_t limit; // (drop, take)
+    BOOL executing;
+    BOOL done;
+} JSIteratorHelperData;
+
+static void js_iterator_helper_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSObject *p = JS_VALUE_GET_OBJ(val);
+    JSIteratorHelperData *it = p->u.iterator_helper_data;
+    if (it) {
+        JS_FreeValueRT(rt, it->obj);
+        JS_FreeValueRT(rt, it->func);
+        JS_FreeValueRT(rt, it->next);
+        js_free_rt(rt, it);
+    }
+}
+
+static void js_iterator_helper_mark(JSRuntime *rt, JSValue val,
+                                   JS_MarkFunc *mark_func)
+{
+    JSObject *p = JS_VALUE_GET_OBJ(val);
+    JSIteratorHelperData *it = p->u.iterator_helper_data;
+    if (it) {
+        JS_MarkValue(rt, it->obj, mark_func);
+        JS_MarkValue(rt, it->func, mark_func);
+        JS_MarkValue(rt, it->next, mark_func);
+    }
+}
+
+static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
+                                      int argc, JSValue *argv,
+                                      BOOL *pdone, int magic)
+{
+    JSIteratorHelperData *it;
+    JSValue ret;
+
+    it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_HELPER);
+    if (!it)
+        goto fail;
+    if (it->executing)
+        return JS_ThrowTypeError(ctx, "cannot invoke a running iterator");
+    if (magic == GEN_MAGIC_RETURN && it->done)
+        return JS_UNDEFINED;
+
+    it->executing = TRUE;
+
+    switch (it->kind) {
+    case JS_ITERATOR_HELPER_KIND_DROP:
+        {
+            JSValue item, method;
+            if (magic == GEN_MAGIC_NEXT) {
+                method = js_dup(it->next);
+            } else {
+                method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
+                if (JS_IsException(method))
+                    goto fail;
+            }
+            while (it->limit > 0) {
+                it->limit--;
+                item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
+                if (JS_IsException(item)) {
+                    JS_FreeValue(ctx, method);
+                    goto fail;
+                }
+                JS_FreeValue(ctx, item);
+                if (magic == GEN_MAGIC_RETURN)
+                    *pdone = TRUE;
+                if (*pdone) {
+                    JS_FreeValue(ctx, method);
+                    ret = JS_UNDEFINED;
+                    goto done;
+                }
+            }
+
+            item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
+            JS_FreeValue(ctx, method);
+            if (JS_IsException(item))
+                goto fail;
+            ret = item;
+            goto done;
+        }
+        break;
+    default:
+        abort();
+    }
+
+done:
+    it->done = magic == GEN_MAGIC_NEXT ? *pdone : TRUE;
+    it->executing = FALSE;
+    return ret;
+fail:
+    it->executing = FALSE;
+    if (it && JS_IsObject(it->obj)) {
+        /* close the iterator object, preserving pending exception */
+        JS_IteratorClose(ctx, it->obj, TRUE);
+    }
+    *pdone = FALSE;
+    return JS_EXCEPTION;
+}
+
+static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
+                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t limit)
+{
+    JSValue obj, method;
+    JSIteratorHelperData *it;
+
+    method = JS_GetProperty(ctx, iterator, JS_ATOM_next);
+    if (JS_IsException(method))
+        return JS_EXCEPTION;
+    obj = JS_NewObjectClass(ctx, JS_CLASS_ITERATOR_HELPER);
+    if (JS_IsException(obj)) {
+        JS_FreeValue(ctx, method);
+        return JS_EXCEPTION;
+    }
+    it = js_malloc(ctx, sizeof(*it));
+    if (!it) {
+        JS_FreeValue(ctx, obj);
+        JS_FreeValue(ctx, method);
+        return JS_EXCEPTION;
+    }
+    it->kind = kind;
+    it->obj = js_dup(iterator);
+    it->func = js_dup(func);
+    it->next = method;
+    it->limit = limit;
+    it->executing = FALSE;
+    it->done = FALSE;
+    JS_SetOpaqueInternal(obj, it);
+    return obj;
+}
+
 static const JSCFunctionListEntry js_iterator_funcs[] = {
     JS_CFUNC_DEF("from", 1, js_iterator_from ),
 };
@@ -40414,6 +40600,12 @@ static const JSCFunctionListEntry js_iterator_proto_funcs[] = {
     JS_CFUNC_DEF("toArray", 0, js_iterator_proto_toArray ),
     JS_CFUNC_DEF("[Symbol.iterator]", 0, js_iterator_proto_iterator ),
     JS_CGETSET_DEF("[Symbol.toStringTag]", js_iterator_proto_get_toStringTag, js_iterator_proto_set_toStringTag),
+};
+
+static const JSCFunctionListEntry js_iterator_helper_proto_funcs[] = {
+    JS_ITERATOR_NEXT_DEF("next", 0, js_iterator_helper_next, GEN_MAGIC_NEXT ),
+    JS_ITERATOR_NEXT_DEF("return", 0, js_iterator_helper_next, GEN_MAGIC_RETURN ),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Iterator Helper", JS_PROP_CONFIGURABLE ),
 };
 
 static const JSCFunctionListEntry js_array_proto_funcs[] = {
@@ -50985,6 +51177,11 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     ctx->iterator_proto =
         JS_NewObjectProtoClass(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
                                JS_CLASS_ITERATOR);
+
+    ctx->class_proto[JS_CLASS_ITERATOR_HELPER] = JS_NewObjectProto(ctx, ctx->iterator_proto);
+    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ITERATOR_HELPER],
+                               js_iterator_helper_proto_funcs,
+                               countof(js_iterator_helper_proto_funcs));
 
     /* Array */
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ARRAY],
