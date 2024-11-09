@@ -236,6 +236,7 @@ DEF(Deprecated, "Dep")
 DEF(Diacritic, "Dia")
 DEF(Extender, "Ext")
 DEF(Hex_Digit, "Hex")
+DEF(IDS_Unary_Operator, "IDSU")
 DEF(IDS_Binary_Operator, "IDSB")
 DEF(IDS_Trinary_Operator, "IDST")
 DEF(Ideographic, "Ideo")
@@ -279,6 +280,8 @@ DEF(Changes_When_Uppercased, "CWU")
 DEF(Grapheme_Base, "Gr_Base")
 DEF(Grapheme_Extend, "Gr_Ext")
 DEF(ID_Continue, "IDC")
+DEF(ID_Compat_Math_Start, "")
+DEF(ID_Compat_Math_Continue, "")
 DEF(Lowercase, "Lower")
 DEF(Math, "")
 DEF(Uppercase, "Upper")
@@ -287,5 +290,8 @@ DEF(XID_Start, "XIDS")
 
 /* internal tables with index */
 DEF(Cased1, "")
+
+/* unused by us */
+DEF(InCB, "")
 
 #endif

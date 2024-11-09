@@ -31,6 +31,7 @@
 #include "libunicode.h"
 #include "libunicode-table.h"
 
+// note: stored as 4 bit tag, not much room left
 enum {
     RUN_TYPE_U,
     RUN_TYPE_L,
