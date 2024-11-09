@@ -289,14 +289,7 @@ endif()
 # Test262 runner
 #
 
-if(EMSCRIPTEN
-OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC"
-OR (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 5))
-    # Empty. run-test262 uses pthreads, sorry Windows users.
-    # tcc and gcc 4.8 don't understand _Thread_local, whereas I
-    # don't understand why people still use 4.8 in this day and age
-    # but hey, here we are.
-else()
+if(NOT EMSCRIPTEN)
     add_executable(run-test262
         run-test262.c
     )
