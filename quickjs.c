@@ -298,6 +298,7 @@ struct JSRuntime {
     JSShape **shape_hash;
     bf_context_t bf_ctx;
     void *user_opaque;
+    void *libc_opaque;
     JSRuntimeFinalizerState *finalizers;
 };
 
@@ -55422,6 +55423,30 @@ BOOL JS_DetectModule(const char *input, size_t input_len)
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
     return is_module;
+}
+
+uintptr_t js_std_cmd(int cmd, ...) {
+    JSRuntime *rt;
+    uintptr_t rv;
+    va_list ap;
+
+    rv = 0;
+    va_start(ap, cmd);
+    switch (cmd) {
+    case 0: // GetOpaque
+        rt = va_arg(ap, JSRuntime *);
+        rv = (uintptr_t)rt->libc_opaque;
+        break;
+    case 1: // SetOpaque
+        rt = va_arg(ap, JSRuntime *);
+        rt->libc_opaque = va_arg(ap, void *);
+        break;
+    default:
+        rv = -1;
+    }
+    va_end(ap);
+
+    return rv;
 }
 
 #undef malloc
