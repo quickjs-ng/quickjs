@@ -140,7 +140,7 @@ jobs:
           make cxxtest
 
       - name: test
-        if: ${{ matrix.config.configType != 'examples' && matrix.config.configType != 'tcc' }}
+        if: ${{ matrix.config.configType != 'examples' }}
         run: |
           make test
 
