@@ -1031,6 +1031,9 @@ JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 
 JS_EXTERN const char* JS_GetVersion(void);
 
+/* Integration point for quickjs-libc.c, not for public use. */
+JS_EXTERN uintptr_t js_std_cmd(int cmd, ...);
+
 #undef JS_EXTERN
 #undef js_force_inline
 #undef __js_printf_like
