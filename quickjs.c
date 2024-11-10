@@ -18692,6 +18692,7 @@ typedef struct JSFunctionDef {
     JSAtom func_name; /* JS_ATOM_NULL if no name */
 
     JSVarDef *vars;
+    uint32_t *vars_htab; // indexes into vars[]
     int var_size; /* allocated size for vars[] */
     int var_count;
     JSVarDef *args;
@@ -20514,6 +20515,86 @@ static __exception int emit_push_const(JSParseState *s, JSValue val,
     return 0;
 }
 
+// perl hash; variation of k&r hash with a different magic multiplier
+// and a final shuffle to improve distribution of the low-order bits
+static uint32_t hash_bytes(uint32_t h, const void *b, size_t n)
+{
+    const char *p;
+
+    for (p = b; p < (char *)b + n; p++)
+        h = 33*h + *p;
+    h += h >> 5;
+    return h;
+}
+
+static uint32_t hash_atom(JSAtom atom)
+{
+    return hash_bytes(0, &atom, sizeof(atom));
+}
+
+// caveat emptor: the table size must be a power of two in order for
+// masking to work, and the load factor constant must be an odd number (5)
+//
+// f(n)=n+n/t is used to estimate the load factor but changing t to an
+// even number introduces gaps in the output of f, sometimes "jumping"
+// over the next power of two; it's at powers of two when the hash table
+// must be resized
+static int update_var_htab(JSContext *ctx, JSFunctionDef *fd)
+{
+    uint32_t i, j, k, m, *p;
+
+    if (fd->var_count < 27) // 27 + 27/5 == 32
+        return 0;
+    k = fd->var_count - 1;
+    m = fd->var_count + fd->var_count/5;
+    if (m & (m - 1)) // unless power of two
+        goto insert;
+    m *= 2;
+    p = js_realloc(ctx, fd->vars_htab, m * sizeof(*fd->vars_htab));
+    if (!p)
+        return -1;
+    for (i = 0; i < m; i++)
+        p[i] = UINT32_MAX;
+    fd->vars_htab = p;
+    k = 0;
+    m--;
+insert:
+    m = UINT32_MAX >> clz32(m);
+    do {
+        i = hash_atom(fd->vars[k].var_name);
+        j = 1;
+        for (;;) {
+            p = &fd->vars_htab[i & m];
+            if (*p == UINT32_MAX)
+                break;
+            i += j;
+            j += 1; // quadratic probing
+        }
+        *p = k++;
+    } while (k < (uint32_t)fd->var_count);
+    return 0;
+}
+
+static int find_var_htab(JSFunctionDef *fd, JSAtom var_name)
+{
+    uint32_t i, j, m, *p;
+
+    i = hash_atom(var_name);
+    j = 1;
+    m = fd->var_count + fd->var_count/5;
+    m = UINT32_MAX >> clz32(m);
+    for (;;) {
+        p = &fd->vars_htab[i & m];
+        if (*p == UINT32_MAX)
+            return -1;
+        if (fd->vars[*p].var_name == var_name)
+            return *p;
+        i += j;
+        j += 1; // quadratic probing
+    }
+    return -1; // pacify compiler
+}
+
 /* return the variable index or -1 if not found,
    add ARGUMENT_VAR_OFFSET for argument variables */
 static int find_arg(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
@@ -20528,11 +20609,24 @@ static int find_arg(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
 
 static int find_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
 {
+    JSVarDef *vd;
     int i;
-    for(i = fd->var_count; i-- > 0;) {
-        if (fd->vars[i].var_name == name && fd->vars[i].scope_level == 0)
+
+    if (fd->vars_htab) {
+        i = find_var_htab(fd, name);
+        if (i == -1)
+            goto not_found;
+        vd = &fd->vars[i];
+        if (fd->vars[i].scope_level == 0)
             return i;
     }
+    for(i = fd->var_count; i-- > 0;) {
+        vd = &fd->vars[i];
+        if (vd->var_name == name)
+            if (vd->scope_level == 0)
+                return i;
+    }
+not_found:
     return find_arg(ctx, fd, name);
 }
 
@@ -20707,6 +20801,8 @@ static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
     memset(vd, 0, sizeof(*vd));
     vd->var_name = JS_DupAtom(ctx, name);
     vd->func_pool_idx = -1;
+    if (update_var_htab(ctx, fd))
+        return -1;
     return fd->var_count - 1;
 }
 
@@ -28407,6 +28503,7 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
         JS_FreeAtom(ctx, fd->vars[i].var_name);
     }
     js_free(ctx, fd->vars);
+    js_free(ctx, fd->vars_htab); // XXX can probably be freed earlier?
     for(i = 0; i < fd->arg_count; i++) {
         JS_FreeAtom(ctx, fd->args[i].var_name);
     }
@@ -32255,6 +32352,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
         b->defined_arg_count = fd->defined_arg_count;
         js_free(ctx, fd->args);
         js_free(ctx, fd->vars);
+        js_free(ctx, fd->vars_htab);
     }
     b->cpool_count = fd->cpool_count;
     if (b->cpool_count) {
