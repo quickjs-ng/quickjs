@@ -1227,7 +1227,7 @@ void load_config(const char *filename, const char *ignore)
             namelist_add(&exclude_list, base_name, p);
             break;
         case SECTION_FEATURES:
-            if (!q || str_equal(q, "yes") || !CC_IS_TCC && str_equal(q, "!tcc"))
+            if (!q || str_equal(q, "yes") || (!CC_IS_TCC && str_equal(q, "!tcc")))
                 str_append(&harness_features, " ", p);
             else
                 str_append(&harness_skip_features, " ", p);
