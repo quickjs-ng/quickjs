@@ -50,6 +50,14 @@ typedef pthread_t js_thread_t;
 
 #define CMD_NAME "run-test262"
 
+// not quite correct because in theory someone could compile quickjs.c
+// with a different compiler but in practice no one does that, right?
+#ifdef __TINYC__
+#define CC_IS_TCC 1
+#else
+#define CC_IS_TCC 0
+#endif
+
 typedef struct {
     js_mutex_t agent_mutex;
     js_cond_t agent_cond;
@@ -1219,7 +1227,7 @@ void load_config(const char *filename, const char *ignore)
             namelist_add(&exclude_list, base_name, p);
             break;
         case SECTION_FEATURES:
-            if (!q || str_equal(q, "yes"))
+            if (!q || str_equal(q, "yes") || !CC_IS_TCC && str_equal(q, "!tcc"))
                 str_append(&harness_features, " ", p);
             else
                 str_append(&harness_skip_features, " ", p);
