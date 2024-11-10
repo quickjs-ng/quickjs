@@ -29156,17 +29156,58 @@ static void var_object_test(JSContext *ctx, JSFunctionDef *s,
     s->jump_size++;
 }
 
+typedef struct VarCacheEntry {
+    JSAtom var_name;
+    int scope_level, var_idx;
+} VarCacheEntry;
+
+// sweet spot appears to be 12-16 entries
+typedef struct VarCache {
+    uint8_t lru[16]; // indexes into |entries| offset by 1; 0 means free
+    VarCacheEntry entries[16];
+} VarCache;
+
+static BOOL probe_lru_cache(VarCache *c, JSAtom var_name, int scope_level)
+{
+    uint8_t *p, *q, t;
+    VarCacheEntry *e;
+    BOOL hit;
+
+    hit = TRUE;
+    for (p = c->lru; p != endof(c->lru); p++) {
+        if (!*p) {
+            *p = 1 + (p - c->lru);
+            goto nohit;
+        }
+        e = &c->entries[*p - 1];
+        if (e->var_name == var_name)
+            if (e->scope_level == scope_level)
+                goto hit;
+    }
+    p--; // evict oldest entry
+nohit:
+    hit = FALSE;
+hit:
+    t = *p;
+    q = p;
+    while (q > c->lru)
+        *p-- = *--q;
+    *q = t;
+    return hit;
+}
+
 /* return the position of the next opcode */
 static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
                              JSAtom var_name, int scope_level, int op,
                              DynBuf *bc, uint8_t *bc_buf,
-                             LabelSlot *ls, int pos_next)
+                             LabelSlot *ls, int pos_next, VarCache *cache)
 {
     int idx, var_idx, is_put;
     int label_done;
+    VarCacheEntry *e;
     JSFunctionDef *fd;
     JSVarDef *vd;
-    BOOL is_pseudo_var, is_arg_scope;
+    BOOL is_pseudo_var, is_arg_scope, cache_hit;
 
     label_done = -1;
 
@@ -29176,6 +29217,14 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
                      var_name == JS_ATOM_this_active_func ||
                      var_name == JS_ATOM_new_target ||
                      var_name == JS_ATOM_this);
+
+    cache_hit = probe_lru_cache(cache, var_name, scope_level);
+    e = &cache->entries[*cache->lru - 1];
+    if (cache_hit) {
+        var_idx = e->var_idx;
+        goto cache_hit; // XXX(bnoordhuis) wrong in presence of with keyword?
+    }
+    e->var_name = JS_ATOM_NULL; // invalidate entry
 
     /* resolve local scoped variables */
     var_idx = -1;
@@ -29222,6 +29271,12 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
         }
     }
     if (var_idx >= 0) {
+        *e = (VarCacheEntry){
+            .var_name       = var_name,
+            .scope_level    = scope_level,
+            .var_idx        = var_idx,
+        };
+    cache_hit:
         if ((op == OP_scope_put_var || op == OP_scope_make_ref) &&
             !(var_idx & ARGUMENT_VAR_OFFSET) &&
             s->vars[var_idx].is_const) {
@@ -30375,10 +30430,12 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
     int pos, pos_next, bc_len, op, len, i, idx, line_num, col_num;
     uint8_t *bc_buf;
     JSAtom var_name;
+    VarCache cache;
     DynBuf bc_out;
     CodeContext cc;
     int scope;
 
+    memset(cache.lru, 0, sizeof(cache.lru));
     cc.bc_buf = bc_buf = s->byte_code.buf;
     cc.bc_len = bc_len = s->byte_code.size;
     js_dbuf_init(ctx, &bc_out);
@@ -30460,7 +30517,7 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
             var_name = get_u32(bc_buf + pos + 1);
             scope = get_u16(bc_buf + pos + 5);
             pos_next = resolve_scope_var(ctx, s, var_name, scope, op, &bc_out,
-                                         NULL, NULL, pos_next);
+                                         NULL, NULL, pos_next, &cache);
             JS_FreeAtom(ctx, var_name);
             break;
         case OP_scope_make_ref:
@@ -30473,7 +30530,7 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
                 ls = &s->label_slots[label];
                 ls->ref_count--;  /* always remove label reference */
                 pos_next = resolve_scope_var(ctx, s, var_name, scope, op, &bc_out,
-                                             bc_buf, ls, pos_next);
+                                             bc_buf, ls, pos_next, &cache);
                 JS_FreeAtom(ctx, var_name);
             }
             break;
