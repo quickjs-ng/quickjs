@@ -40370,7 +40370,40 @@ exception:
 static JSValue js_iterator_proto_take(JSContext *ctx, JSValue this_val,
                                       int argc, JSValue *argv)
 {
-    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.take");
+    JSValue v;
+    double dlimit;
+    int64_t limit;
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Iterator.prototype.take called on non-object");
+    v = JS_ToNumber(ctx, argv[0]);
+    if (JS_IsException(v))
+        return JS_EXCEPTION;
+    // Check for Infinity.
+    if (JS_ToFloat64(ctx, &dlimit, v)) {
+        JS_FreeValue(ctx, v);
+        return JS_EXCEPTION;
+    }
+    if (isnan(dlimit)) {
+        JS_FreeValue(ctx, v);
+        goto fail;
+    }
+    if (!isfinite(dlimit)) {
+        JS_FreeValue(ctx, v);
+        if (dlimit < 0)
+            goto fail;
+        else
+            limit = MAX_SAFE_INTEGER;
+    } else {
+        v = JS_ToIntegerFree(ctx, v);
+        if (JS_IsException(v))
+            return JS_EXCEPTION;
+        if (JS_ToInt64Free(ctx, &limit, v))
+            return JS_EXCEPTION;
+    }
+    if (limit < 0)
+    fail:
+        return JS_ThrowRangeError(ctx, "must be positive");
+    return js_create_iterator_helper(ctx, this_val, JS_ITERATOR_HELPER_KIND_TAKE, JS_UNDEFINED, limit);
 }
 
 static JSValue js_iterator_proto_toArray(JSContext *ctx, JSValue this_val,
@@ -40487,12 +40520,14 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
     JSIteratorHelperData *it;
     JSValue ret;
 
+    *pdone = FALSE;
+
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_HELPER);
     if (!it)
         goto fail;
     if (it->executing)
         return JS_ThrowTypeError(ctx, "cannot invoke a running iterator");
-    if (magic == GEN_MAGIC_RETURN && it->done)
+    if (it->done)
         return JS_UNDEFINED;
 
     it->executing = TRUE;
@@ -40533,6 +40568,34 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
             goto done;
         }
         break;
+    case JS_ITERATOR_HELPER_KIND_TAKE:
+        {
+            JSValue item, method;
+            if (magic == GEN_MAGIC_NEXT) {
+                method = js_dup(it->next);
+            } else {
+                method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
+                if (JS_IsException(method))
+                    goto fail;
+            }
+            if (it->limit > 0) {
+                it->limit--;
+                item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
+                JS_FreeValue(ctx, method);
+                if (JS_IsException(item))
+                    goto fail;
+                ret = item;
+                goto done;
+            }
+
+            *pdone = TRUE;
+            if (JS_IteratorClose(ctx, it->obj, FALSE))
+                ret = JS_EXCEPTION;
+            else
+                ret = JS_UNDEFINED;
+            goto done;
+        }
+        break;
     default:
         abort();
     }
@@ -40542,12 +40605,12 @@ done:
     it->executing = FALSE;
     return ret;
 fail:
+    it->done = magic == GEN_MAGIC_NEXT ? *pdone : TRUE;
     it->executing = FALSE;
-    if (it && JS_IsObject(it->obj)) {
+    if (it) {
         /* close the iterator object, preserving pending exception */
         JS_IteratorClose(ctx, it->obj, TRUE);
     }
-    *pdone = FALSE;
     return JS_EXCEPTION;
 }
 
