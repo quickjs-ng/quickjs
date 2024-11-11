@@ -40571,14 +40571,14 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
     case JS_ITERATOR_HELPER_KIND_TAKE:
         {
             JSValue item, method;
-            if (magic == GEN_MAGIC_NEXT) {
-                method = js_dup(it->next);
-            } else {
-                method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
-                if (JS_IsException(method))
-                    goto fail;
-            }
             if (it->limit > 0) {
+                if (magic == GEN_MAGIC_NEXT) {
+                    method = js_dup(it->next);
+                } else {
+                    method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
+                    if (JS_IsException(method))
+                        goto fail;
+                }
                 it->limit--;
                 item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
                 JS_FreeValue(ctx, method);
@@ -40605,13 +40605,12 @@ done:
     it->executing = FALSE;
     return ret;
 fail:
-    it->done = magic == GEN_MAGIC_NEXT ? *pdone : TRUE;
-    it->executing = FALSE;
     if (it) {
         /* close the iterator object, preserving pending exception */
         JS_IteratorClose(ctx, it->obj, TRUE);
     }
-    return JS_EXCEPTION;
+    ret = JS_EXCEPTION;
+    goto done;
 }
 
 static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
