@@ -40025,7 +40025,7 @@ static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
 }
 
 static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
-                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t n);
+                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t count);
 
 static JSValue js_iterator_proto_drop(JSContext *ctx, JSValue this_val,
                                       int argc, JSValue *argv)
@@ -40495,7 +40495,7 @@ typedef struct JSIteratorHelperData {
     JSValue obj;
     JSValue next;
     JSValue func; // predicate (filter) or mapper (flatMap, map)
-    int64_t n; // limit (drop, take) or counter (filter, map, flatMap)
+    int64_t count; // limit (drop, take) or counter (filter, map, flatMap)
     BOOL executing;
     BOOL done;
 } JSIteratorHelperData;
@@ -40556,8 +40556,8 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
                 if (JS_IsException(method))
                     goto fail;
             }
-            while (it->n > 0) {
-                it->n--;
+            while (it->count > 0) {
+                it->count--;
                 item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
                 if (JS_IsException(item)) {
                     JS_FreeValue(ctx, method);
@@ -40591,7 +40591,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
                 if (JS_IsException(method))
                     goto fail;
             }
-            filter_again:
+        filter_again:
             item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
             if (JS_IsException(item)) {
                 JS_FreeValue(ctx, method);
@@ -40602,7 +40602,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
                 ret = item;
                 goto done;
             }
-            index_val = JS_NewInt64(ctx, it->n++);
+            index_val = JS_NewInt64(ctx, it->count++);
             args[0] = item;
             args[1] = index_val;
             selected = JS_Call(ctx, it->func, JS_UNDEFINED, countof(args), args);
@@ -40622,7 +40622,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
     case JS_ITERATOR_HELPER_KIND_TAKE:
         {
             JSValue item, method;
-            if (it->n > 0) {
+            if (it->count > 0) {
                 if (magic == GEN_MAGIC_NEXT) {
                     method = js_dup(it->next);
                 } else {
@@ -40630,7 +40630,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
                     if (JS_IsException(method))
                         goto fail;
                 }
-                it->n--;
+                it->count--;
                 item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
                 JS_FreeValue(ctx, method);
                 if (JS_IsException(item))
@@ -40665,7 +40665,7 @@ fail:
 }
 
 static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
-                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t n)
+                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t count)
 {
     JSValue obj, method;
     JSIteratorHelperData *it;
@@ -40688,7 +40688,7 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
     it->obj = js_dup(iterator);
     it->func = js_dup(func);
     it->next = method;
-    it->n = n;
+    it->count = count;
     it->executing = FALSE;
     it->done = FALSE;
     JS_SetOpaqueInternal(obj, it);
