@@ -9658,7 +9658,7 @@ int JS_DefinePropertyValueUint32(JSContext *ctx, JSValue this_obj,
 int JS_DefinePropertyValueInt64(JSContext *ctx, JSValue this_obj,
                                 int64_t idx, JSValue val, int flags)
 {
-    return JS_DefinePropertyValueValue(ctx, this_obj, JS_NewInt64(ctx, idx),
+    return JS_DefinePropertyValueValue(ctx, this_obj, js_int64(idx),
                                        val, flags);
 }
 
@@ -9691,7 +9691,7 @@ int JS_DefinePropertyGetSet(JSContext *ctx, JSValue this_obj,
 static int JS_CreateDataPropertyUint32(JSContext *ctx, JSValue this_obj,
                                        int64_t idx, JSValue val, int flags)
 {
-    return JS_DefinePropertyValueValue(ctx, this_obj, JS_NewInt64(ctx, idx),
+    return JS_DefinePropertyValueValue(ctx, this_obj, js_int64(idx),
                                        val, flags | JS_PROP_CONFIGURABLE |
                                        JS_PROP_ENUMERABLE | JS_PROP_WRITABLE);
 }
@@ -12406,7 +12406,7 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
             default:
                 abort();
             }
-            sp[-1] = JS_NewInt64(ctx, v64);
+            sp[-1] = js_int64(v64);
         }
         break;
     case JS_TAG_BIG_INT:
@@ -12645,7 +12645,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
         default:
             abort();
         }
-        sp[-2] = JS_NewInt64(ctx, v);
+        sp[-2] = js_int64(v);
     } else if (tag1 == JS_TAG_BIG_INT || tag2 == JS_TAG_BIG_INT) {
         if (js_binary_arith_bigint(ctx, op, sp - 2, op1, op2))
             goto exception;
@@ -12748,7 +12748,7 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         v1 = JS_VALUE_GET_INT(op1);
         v2 = JS_VALUE_GET_INT(op2);
         v = (int64_t)v1 + (int64_t)v2;
-        sp[-2] = JS_NewInt64(ctx, v);
+        sp[-2] = js_int64(v);
     } else if (tag1 == JS_TAG_BIG_INT || tag2 == JS_TAG_BIG_INT) {
         if (js_binary_arith_bigint(ctx, OP_add, sp - 2, op1, op2))
             goto exception;
@@ -35417,8 +35417,8 @@ static JSValue JS_ReadTypedArray(BCReaderState *s)
         return JS_EXCEPTION;
     }
     args[0] = array_buffer;
-    args[1] = JS_NewInt64(ctx, offset);
-    args[2] = JS_NewInt64(ctx, len);
+    args[1] = js_int64(offset);
+    args[2] = js_int64(len);
     obj = js_typed_array_constructor(ctx, JS_UNDEFINED,
                                      3, args,
                                      JS_CLASS_UINT8C_ARRAY + array_tag);
@@ -35992,7 +35992,7 @@ static int JS_InstantiateFunctionListItem(JSContext *ctx, JSValue obj,
         val = js_int32(e->u.i32);
         break;
     case JS_DEF_PROP_INT64:
-        val = JS_NewInt64(ctx, e->u.i64);
+        val = js_int64(e->u.i64);
         break;
     case JS_DEF_PROP_DOUBLE:
         val = js_float64(e->u.f64);
@@ -36057,7 +36057,7 @@ int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
             val = js_int32(e->u.i32);
             break;
         case JS_DEF_PROP_INT64:
-            val = JS_NewInt64(ctx, e->u.i64);
+            val = js_int64(e->u.i64);
             break;
         case JS_DEF_PROP_DOUBLE:
             val = js_float64(e->u.f64);
@@ -36789,7 +36789,7 @@ static JSValue js_object_groupBy(JSContext *ctx, JSValue this_val,
             break; // v is JS_UNDEFINED
 
         args[0] = v;
-        args[1] = JS_NewInt64(ctx, idx);
+        args[1] = js_int64(idx);
         k = JS_Call(ctx, cb, ctx->global_obj, 2, args);
         if (JS_IsException(k))
             goto exception;
@@ -37528,11 +37528,7 @@ static __exception int js_get_length64(JSContext *ctx, int64_t *pres,
 
 static __exception int js_set_length64(JSContext *ctx, JSValue obj, int64_t len)
 {
-    JSValue len_val;
-    len_val = JS_NewInt64(ctx, len);
-    if (JS_IsException(len_val))
-        return -1;
-    return JS_SetProperty(ctx, obj, JS_ATOM_length, len_val);
+    return JS_SetProperty(ctx, obj, JS_ATOM_length, js_int64(len));
 }
 
 static void free_arg_list(JSContext *ctx, JSValue *tab, uint32_t len)
@@ -38164,7 +38160,7 @@ static JSValue js_array_from(JSContext *ctx, JSValue this_val,
             goto exception;
         if (js_get_length64(ctx, &len, arrayLike) < 0)
             goto exception;
-        v = JS_NewInt64(ctx, len);
+        v = js_int64(len);
         args[0] = v;
         if (JS_IsConstructor(ctx, this_val)) {
             r = JS_CallConstructor(ctx, this_val, 1, args);
@@ -38411,7 +38407,7 @@ static JSValue js_array_with(JSContext *ctx, JSValue this_val,
         }
     }
 
-    if (JS_SetProperty(ctx, arr, JS_ATOM_length, JS_NewInt64(ctx, len)) < 0)
+    if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(len)) < 0)
         goto exception;
 
     ret = arr;
@@ -38477,7 +38473,7 @@ static JSValue js_array_concat(JSContext *ctx, JSValue this_val,
             n++;
         }
     }
-    if (JS_SetProperty(ctx, arr, JS_ATOM_length, JS_NewInt64(ctx, n)) < 0)
+    if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(n)) < 0)
         goto exception;
 
     JS_FreeValue(ctx, obj);
@@ -38576,7 +38572,7 @@ static JSValue js_array_every(JSContext *ctx, JSValue this_val,
         break;
     case special_map:
         /* XXX: JS_ArraySpeciesCreate should take int64_t */
-        ret = JS_ArraySpeciesCreate(ctx, obj, JS_NewInt64(ctx, len));
+        ret = JS_ArraySpeciesCreate(ctx, obj, js_int64(len));
         if (JS_IsException(ret))
             goto exception;
         break;
@@ -38612,9 +38608,7 @@ static JSValue js_array_every(JSContext *ctx, JSValue this_val,
                 goto exception;
         }
         if (present) {
-            index_val = JS_NewInt64(ctx, k);
-            if (JS_IsException(index_val))
-                goto exception;
+            index_val = js_int64(k);
             args[0] = val;
             args[1] = index_val;
             args[2] = obj;
@@ -38755,9 +38749,7 @@ static JSValue js_array_reduce(JSContext *ctx, JSValue this_val,
                 goto exception;
         }
         if (present) {
-            index_val = JS_NewInt64(ctx, k1);
-            if (JS_IsException(index_val))
-                goto exception;
+            index_val = js_int64(k1);
             args[0] = acc;
             args[1] = val;
             args[2] = index_val;
@@ -38905,7 +38897,7 @@ static JSValue js_array_indexOf(JSContext *ctx, JSValue this_val,
     n = -1;
  done:
     JS_FreeValue(ctx, obj);
-    return JS_NewInt64(ctx, n);
+    return js_int64(n);
 
  exception:
     JS_FreeValue(ctx, obj);
@@ -38952,7 +38944,7 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValue this_val,
     n = -1;
  done:
     JS_FreeValue(ctx, obj);
-    return JS_NewInt64(ctx, n);
+    return js_int64(n);
 
  exception:
     JS_FreeValue(ctx, obj);
@@ -39000,9 +38992,7 @@ static JSValue js_array_find(JSContext *ctx, JSValue this_val,
 
     // TODO(bnoordhuis) add fast path for fast arrays
     for(; k != end; k += dir) {
-        index_val = JS_NewInt64(ctx, k);
-        if (JS_IsException(index_val))
-            goto exception;
+        index_val = js_int64(k);
         val = JS_GetPropertyValue(ctx, obj, index_val);
         if (JS_IsException(val))
             goto exception;
@@ -39160,7 +39150,7 @@ static JSValue js_array_pop(JSContext *ctx, JSValue this_val,
                 goto exception;
         }
     }
-    if (JS_SetProperty(ctx, obj, JS_ATOM_length, JS_NewInt64(ctx, newLen)) < 0)
+    if (JS_SetProperty(ctx, obj, JS_ATOM_length, js_int64(newLen)) < 0)
         goto exception;
 
     JS_FreeValue(ctx, obj);
@@ -39197,11 +39187,11 @@ static JSValue js_array_push(JSContext *ctx, JSValue this_val,
         if (JS_SetPropertyInt64(ctx, obj, from + i, js_dup(argv[i])) < 0)
             goto exception;
     }
-    if (JS_SetProperty(ctx, obj, JS_ATOM_length, JS_NewInt64(ctx, newLen)) < 0)
+    if (JS_SetProperty(ctx, obj, JS_ATOM_length, js_int64(newLen)) < 0)
         goto exception;
 
     JS_FreeValue(ctx, obj);
-    return JS_NewInt64(ctx, newLen);
+    return js_int64(newLen);
 
  exception:
     JS_FreeValue(ctx, obj);
@@ -39327,7 +39317,7 @@ static JSValue js_array_toReversed(JSContext *ctx, JSValue this_val,
             }
         }
 
-        if (JS_SetProperty(ctx, arr, JS_ATOM_length, JS_NewInt64(ctx, len)) < 0)
+        if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(len)) < 0)
             goto exception;
     }
 
@@ -39383,7 +39373,7 @@ static JSValue js_array_slice(JSContext *ctx, JSValue this_val,
         }
         count = max_int64(final - start, 0);
     }
-    len_val = JS_NewInt64(ctx, count);
+    len_val = js_int64(count);
     arr = JS_ArraySpeciesCreate(ctx, obj, len_val);
     JS_FreeValue(ctx, len_val);
     if (JS_IsException(arr))
@@ -39414,7 +39404,7 @@ static JSValue js_array_slice(JSContext *ctx, JSValue this_val,
                 goto exception;
         }
     }
-    if (JS_SetProperty(ctx, arr, JS_ATOM_length, JS_NewInt64(ctx, n)) < 0)
+    if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(n)) < 0)
         goto exception;
 
     if (splice) {
@@ -39434,7 +39424,7 @@ static JSValue js_array_slice(JSContext *ctx, JSValue this_val,
             if (JS_SetPropertyInt64(ctx, obj, start + i, js_dup(argv[i + 2])) < 0)
                 goto exception;
         }
-        if (JS_SetProperty(ctx, obj, JS_ATOM_length, JS_NewInt64(ctx, new_len)) < 0)
+        if (JS_SetProperty(ctx, obj, JS_ATOM_length, js_int64(new_len)) < 0)
             goto exception;
     }
     JS_FreeValue(ctx, obj);
@@ -39525,7 +39515,7 @@ static JSValue js_array_toSpliced(JSContext *ctx, JSValue this_val,
 
     assert(pval == last);
 
-    if (JS_SetProperty(ctx, arr, JS_ATOM_length, JS_NewInt64(ctx, newlen)) < 0)
+    if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(newlen)) < 0)
         goto exception;
 
 done:
@@ -39598,7 +39588,7 @@ static int64_t JS_FlattenIntoArray(JSContext *ctx, JSValue target,
         if (!present)
             continue;
         if (!JS_IsUndefined(mapperFunction)) {
-            JSValue args[3] = { element, JS_NewInt64(ctx, sourceIndex), source };
+            JSValue args[3] = { element, js_int64(sourceIndex), source };
             element = JS_Call(ctx, mapperFunction, thisArg, 3, args);
             JS_FreeValue(ctx, args[0]);
             JS_FreeValue(ctx, args[1]);
@@ -39897,7 +39887,7 @@ static JSValue js_array_toSorted(JSContext *ctx, JSValue this_val,
             }
         }
 
-        if (JS_SetProperty(ctx, arr, JS_ATOM_length, JS_NewInt64(ctx, len)) < 0)
+        if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(len)) < 0)
             goto exception;
     }
 
@@ -40188,11 +40178,7 @@ static JSValue js_iterator_proto_every(JSContext *ctx, JSValue this_val,
             goto exception;
         if (done)
             break;
-        index_val = JS_NewInt64(ctx, idx);
-        if (JS_IsException(index_val)) {
-            JS_FreeValue(ctx, item);
-            goto exception;
-        }
+        index_val = js_int64(idx);
         args[0] = item;
         args[1] = index_val;
         ret = JS_Call(ctx, func, JS_UNDEFINED, countof(args), args);
@@ -40256,11 +40242,7 @@ static JSValue js_iterator_proto_find(JSContext *ctx, JSValue this_val,
             goto exception;
         if (done)
             break;
-        index_val = JS_NewInt64(ctx, idx);
-        if (JS_IsException(index_val)) {
-            JS_FreeValue(ctx, item);
-            goto exception;
-        }
+        index_val = js_int64(idx);
         args[0] = item;
         args[1] = index_val;
         ret = JS_Call(ctx, func, JS_UNDEFINED, countof(args), args);
@@ -40320,11 +40302,7 @@ static JSValue js_iterator_proto_forEach(JSContext *ctx, JSValue this_val,
             goto exception;
         if (done)
             break;
-        index_val = JS_NewInt64(ctx, idx);
-        if (JS_IsException(index_val)) {
-            JS_FreeValue(ctx, item);
-            goto exception;
-        }
+        index_val = js_int64(idx);
         args[0] = item;
         args[1] = index_val;
         ret = JS_Call(ctx, func, JS_UNDEFINED, countof(args), args);
@@ -40389,11 +40367,7 @@ static JSValue js_iterator_proto_reduce(JSContext *ctx, JSValue this_val,
             goto exception;
         if (done)
             break;
-        index_val = JS_NewInt64(ctx, idx);
-        if (JS_IsException(index_val)) {
-            JS_FreeValue(ctx, item);
-            goto exception;
-        }
+        index_val = js_int64(idx);
         args[0] = acc;
         args[1] = item;
         args[2] = index_val;
@@ -40442,11 +40416,7 @@ static JSValue js_iterator_proto_some(JSContext *ctx, JSValue this_val,
             goto exception;
         if (done)
             break;
-        index_val = JS_NewInt64(ctx, idx);
-        if (JS_IsException(index_val)) {
-            JS_FreeValue(ctx, item);
-            goto exception;
-        }
+        index_val = js_int64(idx);
         args[0] = item;
         args[1] = index_val;
         ret = JS_Call(ctx, func, JS_UNDEFINED, countof(args), args);
@@ -40700,7 +40670,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
                 ret = item;
                 goto done;
             }
-            index_val = JS_NewInt64(ctx, it->count++);
+            index_val = js_int64(it->count++);
             args[0] = item;
             args[1] = index_val;
             selected = JS_Call(ctx, it->func, JS_UNDEFINED, countof(args), args);
@@ -44116,7 +44086,7 @@ static JSValue js_regexp_Symbol_match(JSContext *ctx, JSValue this_val,
                     goto exception;
                 p = JS_VALUE_GET_STRING(S);
                 nextIndex = string_advance_index(p, thisIndex, fullUnicode);
-                if (JS_SetProperty(ctx, rx, JS_ATOM_lastIndex, JS_NewInt64(ctx, nextIndex)) < 0)
+                if (JS_SetProperty(ctx, rx, JS_ATOM_lastIndex, js_int64(nextIndex)) < 0)
                     goto exception;
             }
         }
@@ -44205,8 +44175,7 @@ static JSValue js_regexp_string_iterator_next(JSContext *ctx,
                 goto exception;
             sp = JS_VALUE_GET_STRING(S);
             nextIndex = string_advance_index(sp, thisIndex, it->unicode);
-            if (JS_SetProperty(ctx, R, JS_ATOM_lastIndex,
-                               JS_NewInt64(ctx, nextIndex)) < 0)
+            if (JS_SetProperty(ctx, R, JS_ATOM_lastIndex, js_int64(nextIndex)) < 0)
                 goto exception;
         }
         JS_FreeValue(ctx, matchStr);
@@ -44258,8 +44227,7 @@ static JSValue js_regexp_Symbol_matchAll(JSContext *ctx, JSValue this_val,
     if (JS_ToLengthFree(ctx, &lastIndex,
                         JS_GetProperty(ctx, R, JS_ATOM_lastIndex)))
         goto exception;
-    if (JS_SetProperty(ctx, matcher, JS_ATOM_lastIndex,
-                       JS_NewInt64(ctx, lastIndex)) < 0)
+    if (JS_SetProperty(ctx, matcher, JS_ATOM_lastIndex, js_int64(lastIndex)) < 0)
         goto exception;
 
     iter = JS_NewObjectClass(ctx, JS_CLASS_REGEXP_STRING_ITERATOR);
@@ -44456,7 +44424,7 @@ static JSValue js_regexp_Symbol_replace(JSContext *ctx, JSValue this_val,
             if (JS_ToLengthFree(ctx, &thisIndex, JS_GetProperty(ctx, rx, JS_ATOM_lastIndex)) < 0)
                 goto exception;
             nextIndex = string_advance_index(sp, thisIndex, fullUnicode);
-            if (JS_SetProperty(ctx, rx, JS_ATOM_lastIndex, JS_NewInt64(ctx, nextIndex)) < 0)
+            if (JS_SetProperty(ctx, rx, JS_ATOM_lastIndex, js_int64(nextIndex)) < 0)
                 goto exception;
         }
     }
@@ -45209,7 +45177,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
                 if (JS_IsException(v))
                     goto exception;
                 /* XXX: could do this string conversion only when needed */
-                prop = JS_ToStringFree(ctx, JS_NewInt64(ctx, i));
+                prop = JS_ToStringFree(ctx, js_int64(i));
                 if (JS_IsException(prop))
                     goto exception;
                 v = js_json_check(ctx, jsc, val, v, prop);
@@ -47249,7 +47217,7 @@ static JSValue js_map_groupBy(JSContext *ctx, JSValue this_val,
             break; // v is JS_UNDEFINED
 
         args[0] = v;
-        args[1] = JS_NewInt64(ctx, idx);
+        args[1] = js_int64(idx);
         k = JS_Call(ctx, cb, ctx->global_obj, 2, args);
         if (JS_IsException(k))
             goto exception;
@@ -50860,7 +50828,7 @@ static JSValue js_Date_now(JSContext *ctx, JSValue this_val,
                            int argc, JSValue *argv)
 {
     // now()
-    return JS_NewInt64(ctx, date_now());
+    return js_int64(date_now());
 }
 
 static JSValue js_date_Symbol_toPrimitive(JSContext *ctx, JSValue this_val,
@@ -50907,7 +50875,7 @@ static JSValue js_date_getTimezoneOffset(JSContext *ctx, JSValue this_val,
         return JS_NAN;
     else
         /* assuming -8.64e15 <= v <= -8.64e15 */
-        return JS_NewInt64(ctx, getTimezoneOffset((int64_t)trunc(v)));
+        return js_int64(getTimezoneOffset((int64_t)trunc(v)));
 }
 
 static JSValue js_date_getTime(JSContext *ctx, JSValue this_val,
@@ -52067,7 +52035,7 @@ static JSValue js_array_buffer_slice(JSContext *ctx,
                                                NULL, class_id);
     } else {
         JSValue args[1];
-        args[0] = JS_NewInt64(ctx, new_len);
+        args[0] = js_int64(new_len);
         new_obj = JS_CallConstructor(ctx, ctor, 1, args);
         JS_FreeValue(ctx, ctor);
         JS_FreeValue(ctx, args[0]);
@@ -52608,7 +52576,7 @@ static JSValue js_typed_array_from(JSContext *ctx, JSValue this_val,
     }
     if (js_get_length64(ctx, &len, arr) < 0)
         goto exception;
-    v = JS_NewInt64(ctx, len);
+    v = js_int64(len);
     args[0] = v;
     r = js_typed_array_create(ctx, this_val, 1, args);
     JS_FreeValue(ctx, v);
