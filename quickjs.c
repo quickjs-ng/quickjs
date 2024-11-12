@@ -40057,9 +40057,10 @@ static JSValue js_iterator_proto_drop(JSContext *ctx, JSValue this_val,
         if (JS_ToInt64Free(ctx, &limit, v))
             return JS_EXCEPTION;
     }
-    if (limit < 0)
+    if (limit < 0) {
     fail:
         return JS_ThrowRangeError(ctx, "must be positive");
+    }
     return js_create_iterator_helper(ctx, this_val, JS_ITERATOR_HELPER_KIND_DROP, JS_UNDEFINED, limit);
 }
 
@@ -40400,9 +40401,10 @@ static JSValue js_iterator_proto_take(JSContext *ctx, JSValue this_val,
         if (JS_ToInt64Free(ctx, &limit, v))
             return JS_EXCEPTION;
     }
-    if (limit < 0)
+    if (limit < 0) {
     fail:
         return JS_ThrowRangeError(ctx, "must be positive");
+    }
     return js_create_iterator_helper(ctx, this_val, JS_ITERATOR_HELPER_KIND_TAKE, JS_UNDEFINED, limit);
 }
 
