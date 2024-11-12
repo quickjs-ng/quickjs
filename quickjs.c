@@ -40328,7 +40328,13 @@ exception:
 static JSValue js_iterator_proto_map(JSContext *ctx, JSValue this_val,
                                      int argc, JSValue *argv)
 {
-    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.map");
+    JSValue func;
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Iterator.prototype.map called on non-object");
+    func = argv[0];
+    if (check_function(ctx, func))
+        return JS_EXCEPTION;
+    return js_create_iterator_helper(ctx, this_val, JS_ITERATOR_HELPER_KIND_MAP, func, 0);
 }
 
 static JSValue js_iterator_proto_reduce(JSContext *ctx, JSValue this_val,
@@ -40685,6 +40691,34 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
                 goto done;
             }
             goto filter_again;
+        }
+        break;
+    case JS_ITERATOR_HELPER_KIND_MAP:
+        {
+            JSValue item, method, index_val, args[2];
+            if (magic == GEN_MAGIC_NEXT) {
+                method = js_dup(it->next);
+            } else {
+                method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
+                if (JS_IsException(method))
+                    goto fail;
+            }
+            item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
+            JS_FreeValue(ctx, method);
+            if (JS_IsException(item))
+                goto fail;
+            if (*pdone || magic == GEN_MAGIC_RETURN) {
+                ret = item;
+                goto done;
+            }
+            index_val = js_int64(it->count++);
+            args[0] = item;
+            args[1] = index_val;
+            ret = JS_Call(ctx, it->func, JS_UNDEFINED, countof(args), args);
+            JS_FreeValue(ctx, index_val);
+            if (JS_IsException(ret))
+                goto fail;
+            goto done;
         }
         break;
     case JS_ITERATOR_HELPER_KIND_TAKE:
