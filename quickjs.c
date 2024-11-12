@@ -40025,7 +40025,7 @@ static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
 }
 
 static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
-                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t limit);
+                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t n);
 
 static JSValue js_iterator_proto_drop(JSContext *ctx, JSValue this_val,
                                       int argc, JSValue *argv)
@@ -40126,7 +40126,13 @@ exception:
 static JSValue js_iterator_proto_filter(JSContext *ctx, JSValue this_val,
                                         int argc, JSValue *argv)
 {
-    return JS_ThrowInternalError(ctx, "TODO implement Iterator.prototype.filter");
+    JSValue func;
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Iterator.prototype.filter called on non-object");
+    func = argv[0];
+    if (check_function(ctx, func))
+        return JS_EXCEPTION;
+    return js_create_iterator_helper(ctx, this_val, JS_ITERATOR_HELPER_KIND_FILTER, func, 0);
 }
 
 static JSValue js_iterator_proto_find(JSContext *ctx, JSValue this_val,
@@ -40489,7 +40495,7 @@ typedef struct JSIteratorHelperData {
     JSValue obj;
     JSValue next;
     JSValue func; // predicate (filter) or mapper (flatMap, map)
-    int64_t limit; // (drop, take)
+    int64_t n; // limit (drop, take) or counter (filter, map, flatMap)
     BOOL executing;
     BOOL done;
 } JSIteratorHelperData;
@@ -40532,8 +40538,10 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
         goto fail;
     if (it->executing)
         return JS_ThrowTypeError(ctx, "cannot invoke a running iterator");
-    if (it->done)
+    if (it->done) {
+        *pdone = TRUE;
         return JS_UNDEFINED;
+    }
 
     it->executing = TRUE;
 
@@ -40548,8 +40556,8 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
                 if (JS_IsException(method))
                     goto fail;
             }
-            while (it->limit > 0) {
-                it->limit--;
+            while (it->n > 0) {
+                it->n--;
                 item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
                 if (JS_IsException(item)) {
                     JS_FreeValue(ctx, method);
@@ -40573,10 +40581,48 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
             goto done;
         }
         break;
+    case JS_ITERATOR_HELPER_KIND_FILTER:
+        {
+            JSValue item, method, selected, index_val, args[2];
+            if (magic == GEN_MAGIC_NEXT) {
+                method = js_dup(it->next);
+            } else {
+                method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
+                if (JS_IsException(method))
+                    goto fail;
+            }
+            filter_again:
+            item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
+            if (JS_IsException(item)) {
+                JS_FreeValue(ctx, method);
+                goto fail;
+            }
+            if (*pdone || magic == GEN_MAGIC_RETURN) {
+                JS_FreeValue(ctx, method);
+                ret = item;
+                goto done;
+            }
+            index_val = JS_NewInt64(ctx, it->n++);
+            args[0] = item;
+            args[1] = index_val;
+            selected = JS_Call(ctx, it->func, JS_UNDEFINED, countof(args), args);
+            JS_FreeValue(ctx, index_val);
+            if (JS_IsException(selected)) {
+                JS_FreeValue(ctx, method);
+                goto fail;
+            }
+            if (JS_ToBoolFree(ctx, selected)) {
+                JS_FreeValue(ctx, method);
+                ret = item;
+                goto done;
+            }
+            goto filter_again;
+        }
+        break;
     case JS_ITERATOR_HELPER_KIND_TAKE:
         {
             JSValue item, method;
-            if (it->limit > 0) {
+            if (it->n > 0) {
                 if (magic == GEN_MAGIC_NEXT) {
                     method = js_dup(it->next);
                 } else {
@@ -40584,7 +40630,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
                     if (JS_IsException(method))
                         goto fail;
                 }
-                it->limit--;
+                it->n--;
                 item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
                 JS_FreeValue(ctx, method);
                 if (JS_IsException(item))
@@ -40619,7 +40665,7 @@ fail:
 }
 
 static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
-                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t limit)
+                                         JSIteratorHelperKindEnum kind, JSValue func, int64_t n)
 {
     JSValue obj, method;
     JSIteratorHelperData *it;
@@ -40642,7 +40688,7 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
     it->obj = js_dup(iterator);
     it->func = js_dup(func);
     it->next = method;
-    it->limit = limit;
+    it->n = n;
     it->executing = FALSE;
     it->done = FALSE;
     JS_SetOpaqueInternal(obj, it);
