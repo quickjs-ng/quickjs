@@ -1,3 +1,5 @@
+test262/test/built-ins/ArrayBuffer/prototype/resize/coerced-new-length-detach.js:15: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/ArrayBuffer/prototype/resize/coerced-new-length-detach.js:15: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/iterator-result-poisoned-wrapper.js:64: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/iterator-result-poisoned-wrapper.js:64: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/next-result-poisoned-wrapper.js:69: TypeError: $DONE() not called
@@ -18,10 +20,42 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-retu
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-not-object.js:72: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/Date/prototype/setDate/date-value-read-before-tonumber-when-date-is-invalid.js:25: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setDate/date-value-read-before-tonumber-when-date-is-invalid.js:25: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setHours/date-value-read-before-tonumber-when-date-is-invalid.js:28: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setHours/date-value-read-before-tonumber-when-date-is-invalid.js:28: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setMilliseconds/date-value-read-before-tonumber-when-date-is-invalid.js:25: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setMilliseconds/date-value-read-before-tonumber-when-date-is-invalid.js:25: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setMinutes/date-value-read-before-tonumber-when-date-is-invalid.js:27: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setMinutes/date-value-read-before-tonumber-when-date-is-invalid.js:27: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setMonth/date-value-read-before-tonumber-when-date-is-invalid.js:26: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setMonth/date-value-read-before-tonumber-when-date-is-invalid.js:26: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setSeconds/date-value-read-before-tonumber-when-date-is-invalid.js:26: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setSeconds/date-value-read-before-tonumber-when-date-is-invalid.js:26: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCDate/date-value-read-before-tonumber-when-date-is-invalid.js:25: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCDate/date-value-read-before-tonumber-when-date-is-invalid.js:25: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCHours/date-value-read-before-tonumber-when-date-is-invalid.js:28: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCHours/date-value-read-before-tonumber-when-date-is-invalid.js:28: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCMilliseconds/date-value-read-before-tonumber-when-date-is-invalid.js:25: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCMilliseconds/date-value-read-before-tonumber-when-date-is-invalid.js:25: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCMinutes/date-value-read-before-tonumber-when-date-is-invalid.js:27: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCMinutes/date-value-read-before-tonumber-when-date-is-invalid.js:27: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCMonth/date-value-read-before-tonumber-when-date-is-invalid.js:26: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCMonth/date-value-read-before-tonumber-when-date-is-invalid.js:26: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCSeconds/date-value-read-before-tonumber-when-date-is-invalid.js:26: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Date/prototype/setUTCSeconds/date-value-read-before-tonumber-when-date-is-invalid.js:26: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
+test262/test/built-ins/Iterator/from/get-return-method-when-call-return.js:24: TypeError: not a function
+test262/test/built-ins/Iterator/from/get-return-method-when-call-return.js:24: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/from/return-method-calls-base-return-method.js:29: TypeError: not a function
+test262/test/built-ins/Iterator/from/return-method-calls-base-return-method.js:29: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/from/return-method-returns-iterator-result.js:18: TypeError: not a function
+test262/test/built-ins/Iterator/from/return-method-returns-iterator-result.js:18: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/from/return-method-throws-for-invalid-this.js:16: TypeError: not a function
+test262/test/built-ins/Iterator/from/return-method-throws-for-invalid-this.js:16: strict mode: TypeError: not a function
 test262/test/built-ins/Iterator/prototype/Symbol.iterator/prop-desc.js:15: Test262Error: obj should have an own property Symbol(Symbol.iterator)
 test262/test/built-ins/Iterator/prototype/Symbol.iterator/prop-desc.js:15: strict mode: Test262Error: obj should have an own property Symbol(Symbol.iterator)
-test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: Test262Error: Expected SameValue(«undefined», «function») to be true
-test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: strict mode: Test262Error: Expected SameValue(«undefined», «function») to be true
+test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
+test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: strict mode: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: TypeError: cannot read property 'call' of undefined
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: strict mode: TypeError: cannot read property 'call' of undefined
 test262/test/built-ins/Iterator/prototype/flatMap/argument-effect-order.js:21: Test262Error: Expected a TypeError but got a InternalError
@@ -98,226 +132,6 @@ test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed-in-
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.flatMap
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed.js:21: InternalError: TODO implement Iterator.prototype.flatMap
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed.js:21: strict mode: InternalError: TODO implement Iterator.prototype.flatMap
-test262/test/built-ins/RegExp/property-escapes/generated/Alphabetic.js:16: Test262Error: `\P{Alphabetic}` should match U+000363 (`ͣ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Alphabetic.js:16: strict mode: Test262Error: `\P{Alphabetic}` should match U+000363 (`ͣ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Assigned.js:16: Test262Error: `\P{Assigned}` should match U+001B7F (`᭿`)
-test262/test/built-ins/RegExp/property-escapes/generated/Assigned.js:16: strict mode: Test262Error: `\P{Assigned}` should match U+001B7F (`᭿`)
-test262/test/built-ins/RegExp/property-escapes/generated/Bidi_Mirrored.js:16: Test262Error: `\P{Bidi_Mirrored}` should match U+00226D (`≭`)
-test262/test/built-ins/RegExp/property-escapes/generated/Bidi_Mirrored.js:16: strict mode: Test262Error: `\P{Bidi_Mirrored}` should match U+00226D (`≭`)
-test262/test/built-ins/RegExp/property-escapes/generated/Case_Ignorable.js:16: Test262Error: `\p{Case_Ignorable}` should match U+01171E (`𑜞`)
-test262/test/built-ins/RegExp/property-escapes/generated/Case_Ignorable.js:16: strict mode: Test262Error: `\p{Case_Ignorable}` should match U+01171E (`𑜞`)
-test262/test/built-ins/RegExp/property-escapes/generated/Cased.js:16: Test262Error: `\P{Cased}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Cased.js:16: strict mode: Test262Error: `\P{Cased}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Casefolded.js:16: Test262Error: `\P{Changes_When_Casefolded}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Casefolded.js:16: strict mode: Test262Error: `\P{Changes_When_Casefolded}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Casemapped.js:16: Test262Error: `\P{Changes_When_Casemapped}` should match U+00019B (`ƛ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Casemapped.js:16: strict mode: Test262Error: `\P{Changes_When_Casemapped}` should match U+00019B (`ƛ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Lowercased.js:16: Test262Error: `\P{Changes_When_Lowercased}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Lowercased.js:16: strict mode: Test262Error: `\P{Changes_When_Lowercased}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_NFKC_Casefolded.js:16: Test262Error: `\P{Changes_When_NFKC_Casefolded}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_NFKC_Casefolded.js:16: strict mode: Test262Error: `\P{Changes_When_NFKC_Casefolded}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Titlecased.js:649: Test262Error: `\P{Changes_When_Titlecased}` should match U+000264 (`ɤ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Titlecased.js:649: strict mode: Test262Error: `\P{Changes_When_Titlecased}` should match U+000264 (`ɤ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Uppercased.js:16: Test262Error: `\P{Changes_When_Uppercased}` should match U+000264 (`ɤ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Changes_When_Uppercased.js:16: strict mode: Test262Error: `\P{Changes_When_Uppercased}` should match U+000264 (`ɤ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Dash.js:16: Test262Error: `\P{Dash}` should match U+010D6E (`𐵮`)
-test262/test/built-ins/RegExp/property-escapes/generated/Dash.js:16: strict mode: Test262Error: `\P{Dash}` should match U+010D6E (`𐵮`)
-test262/test/built-ins/RegExp/property-escapes/generated/Diacritic.js:16: Test262Error: `\P{Diacritic}` should match U+000E3A (`ฺ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Diacritic.js:16: strict mode: Test262Error: `\P{Diacritic}` should match U+000E3A (`ฺ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Emoji.js:16: Test262Error: `\P{Emoji}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/Emoji.js:16: strict mode: Test262Error: `\P{Emoji}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/Emoji_Presentation.js:16: Test262Error: `\P{Emoji_Presentation}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/Emoji_Presentation.js:16: strict mode: Test262Error: `\P{Emoji_Presentation}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/Extender.js:16: Test262Error: `\P{Extender}` should match U+000A71 (`ੱ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Extender.js:16: strict mode: Test262Error: `\P{Extender}` should match U+000A71 (`ੱ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js:16: Test262Error: `\P{General_Category=Cased_Letter}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js:16: strict mode: Test262Error: `\P{General_Category=Cased_Letter}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js:16: Test262Error: `\P{General_Category=Dash_Punctuation}` should match U+010D6E (`𐵮`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js:16: strict mode: Test262Error: `\P{General_Category=Dash_Punctuation}` should match U+010D6E (`𐵮`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js:16: Test262Error: `\P{General_Category=Decimal_Number}` should match U+010D40 (`𐵀`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js:16: strict mode: Test262Error: `\P{General_Category=Decimal_Number}` should match U+010D40 (`𐵀`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js:16: Test262Error: `\P{General_Category=Letter}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js:16: strict mode: Test262Error: `\P{General_Category=Letter}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Lowercase_Letter.js:16: Test262Error: `\P{General_Category=Lowercase_Letter}` should match U+001C8A (`ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Lowercase_Letter.js:16: strict mode: Test262Error: `\P{General_Category=Lowercase_Letter}` should match U+001C8A (`ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js:16: Test262Error: `\P{General_Category=Mark}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js:16: strict mode: Test262Error: `\P{General_Category=Mark}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js:16: Test262Error: `\P{General_Category=Math_Symbol}` should match U+010D8E (`𐶎`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js:16: strict mode: Test262Error: `\P{General_Category=Math_Symbol}` should match U+010D8E (`𐶎`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js:16: Test262Error: `\P{General_Category=Modifier_Letter}` should match U+010D4E (`𐵎`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js:16: strict mode: Test262Error: `\P{General_Category=Modifier_Letter}` should match U+010D4E (`𐵎`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js:16: Test262Error: `\p{General_Category=Nonspacing_Mark}` should match U+01171E (`𑜞`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js:16: strict mode: Test262Error: `\p{General_Category=Nonspacing_Mark}` should match U+01171E (`𑜞`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Number.js:16: Test262Error: `\P{General_Category=Number}` should match U+010D40 (`𐵀`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Number.js:16: strict mode: Test262Error: `\P{General_Category=Number}` should match U+010D40 (`𐵀`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js:16: Test262Error: `\p{General_Category=Other}` should match U+001B7F (`᭿`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js:16: strict mode: Test262Error: `\p{General_Category=Other}` should match U+001B7F (`᭿`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js:16: Test262Error: `\P{General_Category=Other_Letter}` should match U+0105C0 (`𐗀`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js:16: strict mode: Test262Error: `\P{General_Category=Other_Letter}` should match U+0105C0 (`𐗀`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js:16: Test262Error: `\P{General_Category=Other_Punctuation}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js:16: strict mode: Test262Error: `\P{General_Category=Other_Punctuation}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js:16: Test262Error: `\P{General_Category=Other_Symbol}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js:16: strict mode: Test262Error: `\P{General_Category=Other_Symbol}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Punctuation.js:16: Test262Error: `\P{General_Category=Punctuation}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Punctuation.js:16: strict mode: Test262Error: `\P{General_Category=Punctuation}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Spacing_Mark.js:16: Test262Error: `\P{General_Category=Spacing_Mark}` should match U+0113B8 (`𑎸`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Spacing_Mark.js:16: strict mode: Test262Error: `\P{General_Category=Spacing_Mark}` should match U+0113B8 (`𑎸`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js:16: Test262Error: `\P{General_Category=Symbol}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js:16: strict mode: Test262Error: `\P{General_Category=Symbol}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Unassigned.js:16: Test262Error: `\p{General_Category=Unassigned}` should match U+001B7F (`᭿`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Unassigned.js:16: strict mode: Test262Error: `\p{General_Category=Unassigned}` should match U+001B7F (`᭿`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js:16: Test262Error: `\P{General_Category=Uppercase_Letter}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js:16: strict mode: Test262Error: `\P{General_Category=Uppercase_Letter}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Grapheme_Base.js:16: Test262Error: `\p{Grapheme_Base}` should match U+001715 (`᜕`)
-test262/test/built-ins/RegExp/property-escapes/generated/Grapheme_Base.js:16: strict mode: Test262Error: `\p{Grapheme_Base}` should match U+001715 (`᜕`)
-test262/test/built-ins/RegExp/property-escapes/generated/Grapheme_Extend.js:16: Test262Error: `\p{Grapheme_Extend}` should match U+01171E (`𑜞`)
-test262/test/built-ins/RegExp/property-escapes/generated/Grapheme_Extend.js:16: strict mode: Test262Error: `\p{Grapheme_Extend}` should match U+01171E (`𑜞`)
-test262/test/built-ins/RegExp/property-escapes/generated/ID_Continue.js:16: Test262Error: `\P{ID_Continue}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/ID_Continue.js:16: strict mode: Test262Error: `\P{ID_Continue}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/ID_Start.js:16: Test262Error: `\P{ID_Start}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/ID_Start.js:16: strict mode: Test262Error: `\P{ID_Start}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Ideographic.js:16: Test262Error: `\P{Ideographic}` should match U+018CFF (`𘳿`)
-test262/test/built-ins/RegExp/property-escapes/generated/Ideographic.js:16: strict mode: Test262Error: `\P{Ideographic}` should match U+018CFF (`𘳿`)
-test262/test/built-ins/RegExp/property-escapes/generated/Lowercase.js:16: Test262Error: `\P{Lowercase}` should match U+001C8A (`ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Lowercase.js:16: strict mode: Test262Error: `\P{Lowercase}` should match U+001C8A (`ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Math.js:16: Test262Error: `\P{Math}` should match U+010D8E (`𐶎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Math.js:16: strict mode: Test262Error: `\P{Math}` should match U+010D8E (`𐶎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Arabic.js:16: Test262Error: `\P{Script=Arabic}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Arabic.js:16: strict mode: Test262Error: `\P{Script=Arabic}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Balinese.js:16: Test262Error: `\P{Script=Balinese}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Balinese.js:16: strict mode: Test262Error: `\P{Script=Balinese}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Common.js:16: Test262Error: `\P{Script=Common}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Common.js:16: strict mode: Test262Error: `\P{Script=Common}` should match U+01FABE (`🪾`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cyrillic.js:16: Test262Error: `\P{Script=Cyrillic}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cyrillic.js:16: strict mode: Test262Error: `\P{Script=Cyrillic}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Egyptian_Hieroglyphs.js:16: Test262Error: `\P{Script=Egyptian_Hieroglyphs}` should match U+013460 (`𓑠`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Egyptian_Hieroglyphs.js:16: strict mode: Test262Error: `\P{Script=Egyptian_Hieroglyphs}` should match U+013460 (`𓑠`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Kawi.js:16: Test262Error: `\P{Script=Kawi}` should match U+011F5A (`𑽚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Kawi.js:16: strict mode: Test262Error: `\P{Script=Kawi}` should match U+011F5A (`𑽚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khitan_Small_Script.js:16: Test262Error: `\P{Script=Khitan_Small_Script}` should match U+018CFF (`𘳿`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Khitan_Small_Script.js:16: strict mode: Test262Error: `\P{Script=Khitan_Small_Script}` should match U+018CFF (`𘳿`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Latin.js:16: Test262Error: `\P{Script=Latin}` should match U+00A7CB (`Ɤ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Latin.js:16: strict mode: Test262Error: `\P{Script=Latin}` should match U+00A7CB (`Ɤ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Myanmar.js:16: Test262Error: `\P{Script=Myanmar}` should match U+0116D0 (`𑛐`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Myanmar.js:16: strict mode: Test262Error: `\P{Script=Myanmar}` should match U+0116D0 (`𑛐`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Adlam.js:16: Test262Error: `\P{Script_Extensions=Adlam}` should match U+00204F (`⁏`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Adlam.js:16: strict mode: Test262Error: `\P{Script_Extensions=Adlam}` should match U+00204F (`⁏`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Arabic.js:16: Test262Error: `\P{Script_Extensions=Arabic}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Arabic.js:16: strict mode: Test262Error: `\P{Script_Extensions=Arabic}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Armenian.js:16: Test262Error: `\P{Script_Extensions=Armenian}` should match U+000308 (`̈`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Armenian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Armenian}` should match U+000308 (`̈`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Avestan.js:16: Test262Error: `\P{Script_Extensions=Avestan}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Avestan.js:16: strict mode: Test262Error: `\P{Script_Extensions=Avestan}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Balinese.js:16: Test262Error: `\P{Script_Extensions=Balinese}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Balinese.js:16: strict mode: Test262Error: `\P{Script_Extensions=Balinese}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bengali.js:16: Test262Error: `\P{Script_Extensions=Bengali}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bengali.js:16: strict mode: Test262Error: `\P{Script_Extensions=Bengali}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bopomofo.js:16: Test262Error: `\P{Script_Extensions=Bopomofo}` should match U+0002C7 (`ˇ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bopomofo.js:16: strict mode: Test262Error: `\P{Script_Extensions=Bopomofo}` should match U+0002C7 (`ˇ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Carian.js:16: Test262Error: `\P{Script_Extensions=Carian}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Carian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Carian}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Caucasian_Albanian.js:16: Test262Error: `\P{Script_Extensions=Caucasian_Albanian}` should match U+000304 (`̄`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Caucasian_Albanian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Caucasian_Albanian}` should match U+000304 (`̄`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cherokee.js:16: Test262Error: `\P{Script_Extensions=Cherokee}` should match U+000300 (`̀`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cherokee.js:16: strict mode: Test262Error: `\P{Script_Extensions=Cherokee}` should match U+000300 (`̀`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Common.js:16: Test262Error: `\p{Script_Extensions=Common}` should match U+000374 (`ʹ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Common.js:16: strict mode: Test262Error: `\p{Script_Extensions=Common}` should match U+000374 (`ʹ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Coptic.js:16: Test262Error: `\P{Script_Extensions=Coptic}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Coptic.js:16: strict mode: Test262Error: `\P{Script_Extensions=Coptic}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cyrillic.js:16: Test262Error: `\P{Script_Extensions=Cyrillic}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cyrillic.js:16: strict mode: Test262Error: `\P{Script_Extensions=Cyrillic}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Devanagari.js:16: Test262Error: `\P{Script_Extensions=Devanagari}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Devanagari.js:16: strict mode: Test262Error: `\P{Script_Extensions=Devanagari}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Duployan.js:16: Test262Error: `\P{Script_Extensions=Duployan}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Duployan.js:16: strict mode: Test262Error: `\P{Script_Extensions=Duployan}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Egyptian_Hieroglyphs.js:16: Test262Error: `\P{Script_Extensions=Egyptian_Hieroglyphs}` should match U+013460 (`𓑠`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Egyptian_Hieroglyphs.js:16: strict mode: Test262Error: `\P{Script_Extensions=Egyptian_Hieroglyphs}` should match U+013460 (`𓑠`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Elbasan.js:16: Test262Error: `\P{Script_Extensions=Elbasan}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Elbasan.js:16: strict mode: Test262Error: `\P{Script_Extensions=Elbasan}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Ethiopic.js:16: Test262Error: `\P{Script_Extensions=Ethiopic}` should match U+00030E (`̎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Ethiopic.js:16: strict mode: Test262Error: `\P{Script_Extensions=Ethiopic}` should match U+00030E (`̎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Georgian.js:16: Test262Error: `\P{Script_Extensions=Georgian}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Georgian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Georgian}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Glagolitic.js:16: Test262Error: `\P{Script_Extensions=Glagolitic}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Glagolitic.js:16: strict mode: Test262Error: `\P{Script_Extensions=Glagolitic}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gothic.js:16: Test262Error: `\P{Script_Extensions=Gothic}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gothic.js:16: strict mode: Test262Error: `\P{Script_Extensions=Gothic}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Greek.js:16: Test262Error: `\P{Script_Extensions=Greek}` should match U+000374 (`ʹ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Greek.js:16: strict mode: Test262Error: `\P{Script_Extensions=Greek}` should match U+000374 (`ʹ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gunjala_Gondi.js:16: Test262Error: `\P{Script_Extensions=Gunjala_Gondi}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gunjala_Gondi.js:16: strict mode: Test262Error: `\P{Script_Extensions=Gunjala_Gondi}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Han.js:16: Test262Error: `\P{Script_Extensions=Han}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Han.js:16: strict mode: Test262Error: `\P{Script_Extensions=Han}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hebrew.js:16: Test262Error: `\P{Script_Extensions=Hebrew}` should match U+000307 (`̇`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hebrew.js:16: strict mode: Test262Error: `\P{Script_Extensions=Hebrew}` should match U+000307 (`̇`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inherited.js:16: Test262Error: `\p{Script_Extensions=Inherited}` should match U+000300 (`̀`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inherited.js:16: strict mode: Test262Error: `\p{Script_Extensions=Inherited}` should match U+000300 (`̀`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kaithi.js:16: Test262Error: `\P{Script_Extensions=Kaithi}` should match U+002E31 (`⸱`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kaithi.js:16: strict mode: Test262Error: `\P{Script_Extensions=Kaithi}` should match U+002E31 (`⸱`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kannada.js:16: Test262Error: `\P{Script_Extensions=Kannada}` should match U+001CD3 (`᳓`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kannada.js:16: strict mode: Test262Error: `\P{Script_Extensions=Kannada}` should match U+001CD3 (`᳓`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Katakana.js:16: Test262Error: `\P{Script_Extensions=Katakana}` should match U+000305 (`̅`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Katakana.js:16: strict mode: Test262Error: `\P{Script_Extensions=Katakana}` should match U+000305 (`̅`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kawi.js:16: Test262Error: `\P{Script_Extensions=Kawi}` should match U+011F5A (`𑽚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Kawi.js:16: strict mode: Test262Error: `\P{Script_Extensions=Kawi}` should match U+011F5A (`𑽚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khitan_Small_Script.js:16: Test262Error: `\P{Script_Extensions=Khitan_Small_Script}` should match U+018CFF (`𘳿`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Khitan_Small_Script.js:16: strict mode: Test262Error: `\P{Script_Extensions=Khitan_Small_Script}` should match U+018CFF (`𘳿`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js:16: Test262Error: `\P{Script_Extensions=Latin}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Latin.js:16: strict mode: Test262Error: `\P{Script_Extensions=Latin}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lisu.js:16: Test262Error: `\P{Script_Extensions=Lisu}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lisu.js:16: strict mode: Test262Error: `\P{Script_Extensions=Lisu}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lycian.js:16: Test262Error: `\P{Script_Extensions=Lycian}` should match U+00205A (`⁚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lycian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Lycian}` should match U+00205A (`⁚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lydian.js:16: Test262Error: `\P{Script_Extensions=Lydian}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lydian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Lydian}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mahajani.js:16: Test262Error: `\P{Script_Extensions=Mahajani}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mahajani.js:16: strict mode: Test262Error: `\P{Script_Extensions=Mahajani}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Meroitic_Hieroglyphs.js:16: Test262Error: `\P{Script_Extensions=Meroitic_Hieroglyphs}` should match U+00205D (`⁝`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Meroitic_Hieroglyphs.js:16: strict mode: Test262Error: `\P{Script_Extensions=Meroitic_Hieroglyphs}` should match U+00205D (`⁝`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mongolian.js:16: Test262Error: `\P{Script_Extensions=Mongolian}` should match U+003001 (`、`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mongolian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Mongolian}` should match U+003001 (`、`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Myanmar.js:16: Test262Error: `\P{Script_Extensions=Myanmar}` should match U+0116D0 (`𑛐`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Myanmar.js:16: strict mode: Test262Error: `\P{Script_Extensions=Myanmar}` should match U+0116D0 (`𑛐`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Hungarian.js:16: Test262Error: `\P{Script_Extensions=Old_Hungarian}` should match U+00205A (`⁚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Hungarian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Old_Hungarian}` should match U+00205A (`⁚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Permic.js:16: Test262Error: `\P{Script_Extensions=Old_Permic}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Permic.js:16: strict mode: Test262Error: `\P{Script_Extensions=Old_Permic}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Turkic.js:23: Test262Error: `\P{Script_Extensions=Old_Turkic}` should match U+00205A (`⁚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Turkic.js:23: strict mode: Test262Error: `\P{Script_Extensions=Old_Turkic}` should match U+00205A (`⁚`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Osage.js:16: Test262Error: `\P{Script_Extensions=Osage}` should match U+000301 (`́`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Osage.js:16: strict mode: Test262Error: `\P{Script_Extensions=Osage}` should match U+000301 (`́`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Phags_Pa.js:16: Test262Error: `\P{Script_Extensions=Phags_Pa}` should match U+00202F (` `)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Phags_Pa.js:16: strict mode: Test262Error: `\P{Script_Extensions=Phags_Pa}` should match U+00202F (` `)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Runic.js:16: Test262Error: `\P{Script_Extensions=Runic}` should match U+0016EB (`᛫`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Runic.js:16: strict mode: Test262Error: `\P{Script_Extensions=Runic}` should match U+0016EB (`᛫`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Samaritan.js:16: Test262Error: `\P{Script_Extensions=Samaritan}` should match U+002E31 (`⸱`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Samaritan.js:16: strict mode: Test262Error: `\P{Script_Extensions=Samaritan}` should match U+002E31 (`⸱`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Shavian.js:16: Test262Error: `\P{Script_Extensions=Shavian}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Shavian.js:16: strict mode: Test262Error: `\P{Script_Extensions=Shavian}` should match U+0000B7 (`·`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Syriac.js:16: Test262Error: `\P{Script_Extensions=Syriac}` should match U+000303 (`̃`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Syriac.js:16: strict mode: Test262Error: `\P{Script_Extensions=Syriac}` should match U+000303 (`̃`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Le.js:25: Test262Error: `\P{Script_Extensions=Tai_Le}` should match U+000300 (`̀`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tai_Le.js:25: strict mode: Test262Error: `\P{Script_Extensions=Tai_Le}` should match U+000300 (`̀`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tangut.js:27: Test262Error: `\P{Script_Extensions=Tangut}` should match U+002FF0 (`⿰`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tangut.js:27: strict mode: Test262Error: `\P{Script_Extensions=Tangut}` should match U+002FF0 (`⿰`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Thai.js:24: Test262Error: `\P{Script_Extensions=Thai}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Thai.js:24: strict mode: Test262Error: `\P{Script_Extensions=Thai}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tibetan.js:29: Test262Error: `\P{Script_Extensions=Tibetan}` should match U+003008 (`〈`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tibetan.js:29: strict mode: Test262Error: `\P{Script_Extensions=Tibetan}` should match U+003008 (`〈`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tifinagh.js:26: Test262Error: `\P{Script_Extensions=Tifinagh}` should match U+000302 (`̂`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tifinagh.js:26: strict mode: Test262Error: `\P{Script_Extensions=Tifinagh}` should match U+000302 (`̂`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Toto.js:23: Test262Error: `\P{Script_Extensions=Toto}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Toto.js:23: strict mode: Test262Error: `\P{Script_Extensions=Toto}` should match U+0002BC (`ʼ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Sentence_Terminal.js:104: Test262Error: `\P{Sentence_Terminal}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Sentence_Terminal.js:104: strict mode: Test262Error: `\P{Sentence_Terminal}` should match U+001B4E (`᭎`)
-test262/test/built-ins/RegExp/property-escapes/generated/Terminal_Punctuation.js:131: Test262Error: `\p{Terminal_Punctuation}` should match U+000836 (`࠶`)
-test262/test/built-ins/RegExp/property-escapes/generated/Terminal_Punctuation.js:131: strict mode: Test262Error: `\p{Terminal_Punctuation}` should match U+000836 (`࠶`)
-test262/test/built-ins/RegExp/property-escapes/generated/Uppercase.js:16: Test262Error: `\P{Uppercase}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/Uppercase.js:16: strict mode: Test262Error: `\P{Uppercase}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/XID_Continue.js:16: Test262Error: `\P{XID_Continue}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/XID_Continue.js:16: strict mode: Test262Error: `\P{XID_Continue}` should match U+000897 (`ࢗ`)
-test262/test/built-ins/RegExp/property-escapes/generated/XID_Start.js:16: Test262Error: `\P{XID_Start}` should match U+001C89 (`Ᲊ`)
-test262/test/built-ins/RegExp/property-escapes/generated/XID_Start.js:16: strict mode: Test262Error: `\P{XID_Start}` should match U+001C89 (`Ᲊ`)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true
@@ -326,18 +140,33 @@ test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-inv
 test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«110», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«160», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-canonical-invalid-index-reflect-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«160», «0») to be true
-test262/test/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js:42: Test262Error: Expected [source, iterator, target, target-key, target-key-tostring, iterator-step, iterator-done, set] and [source, iterator, target, target-key, iterator-step, iterator-done, target-key-tostring, set] to have the same contents. 
-test262/test/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js:42: strict mode: Test262Error: Expected [source, iterator, target, target-key, target-key-tostring, iterator-step, iterator-done, set] and [source, iterator, target, target-key, iterator-step, iterator-done, target-key-tostring, set] to have the same contents. 
-test262/test/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js:32: Test262Error: Expected [source, source-key, source-key-tostring, target, target-key, target-key-tostring, get, set] and [source, source-key, source-key-tostring, target, target-key, get, target-key-tostring, set] to have the same contents. 
-test262/test/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js:32: strict mode: Test262Error: Expected [source, source-key, source-key-tostring, target, target-key, target-key-tostring, get, set] and [source, source-key, source-key-tostring, target, target-key, get, target-key-tostring, set] to have the same contents. 
+test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds-receiver-is-not-object.js:19: Test262Error: valueOf is not called Expected SameValue(«1», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds-receiver-is-not-object.js:19: strict mode: Test262Error: valueOf is not called Expected SameValue(«1», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds-receiver-is-not-typed-array.js:19: Test262Error: valueOf is not called Expected SameValue(«1», «0») to be true
+test262/test/built-ins/TypedArrayConstructors/internals/Set/key-is-out-of-bounds-receiver-is-not-typed-array.js:19: strict mode: Test262Error: valueOf is not called Expected SameValue(«1», «0») to be true
+test262/test/language/destructuring/binding/keyed-destructuring-property-reference-target-evaluation-order-with-bindings.js:73: Test262Error: Actual [binding::source, binding::sourceKey, sourceKey, get source, binding::defaultValue, binding::varTarget] and expected [binding::source, binding::sourceKey, sourceKey, binding::varTarget, get source, binding::defaultValue] should have the same contents. 
+test262/test/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js:42: Test262Error: Actual [source, iterator, target, target-key, target-key-tostring, iterator-step, iterator-done, set] and expected [source, iterator, target, target-key, iterator-step, iterator-done, target-key-tostring, set] should have the same contents. 
+test262/test/language/expressions/assignment/destructuring/iterator-destructuring-property-reference-target-evaluation-order.js:42: strict mode: Test262Error: Actual [source, iterator, target, target-key, target-key-tostring, iterator-step, iterator-done, set] and expected [source, iterator, target, target-key, iterator-step, iterator-done, target-key-tostring, set] should have the same contents. 
+test262/test/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order-with-bindings.js:37: Test262Error: Actual [binding::source, binding::sourceKey, sourceKey, binding::target, binding::targetKey, targetKey, get source, binding::defaultValue, set target] and expected [binding::source, binding::sourceKey, sourceKey, binding::target, binding::targetKey, get source, binding::defaultValue, targetKey, set target] should have the same contents. 
+test262/test/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js:32: Test262Error: Actual [source, source-key, source-key-tostring, target, target-key, target-key-tostring, get, set] and expected [source, source-key, source-key-tostring, target, target-key, get, target-key-tostring, set] should have the same contents. 
+test262/test/language/expressions/assignment/destructuring/keyed-destructuring-property-reference-target-evaluation-order.js:32: strict mode: Test262Error: Actual [source, source-key, source-key-tostring, target, target-key, target-key-tostring, get, set] and expected [source, source-key, source-key-tostring, target, target-key, get, target-key-tostring, set] should have the same contents. 
 test262/test/language/expressions/assignment/target-member-computed-reference.js:22: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/assignment/target-member-computed-reference.js:22: strict mode: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/assignment/target-super-computed-reference.js:20: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/assignment/target-super-computed-reference.js:20: strict mode: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
+test262/test/language/expressions/object/computed-property-name-topropertykey-before-value-evaluation.js:31: Test262Error: Expected SameValue(«"bad"», «"ok"») to be true
+test262/test/language/expressions/object/computed-property-name-topropertykey-before-value-evaluation.js:31: strict mode: Test262Error: Expected SameValue(«"bad"», «"ok"») to be true
 test262/test/language/module-code/top-level-await/async-module-does-not-block-sibling-modules.js:13: SyntaxError: Could not find export 'check' in module 'test262/test/language/module-code/top-level-await/async-module-sync_FIXTURE.js'
-test262/test/staging/ArrayBuffer/resizable/object-define-property-define-properties.js:55: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/staging/ArrayBuffer/resizable/object-define-property-parameter-conversion-grows.js:67: strict mode: TypeError: out-of-bound index in typed array
-test262/test/staging/ArrayBuffer/resizable/object-define-property-parameter-conversion-shrinks.js:59: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/staging/top-level-await/tla-hang-entry.js:10: TypeError: $DONE() not called
+test262/test/language/module-code/top-level-await/module-graphs-does-not-hang.js:10: TypeError: $DONE() not called
+test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: SyntaxError: invalid property name
+test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: strict mode: SyntaxError: invalid property name
+test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-set-followed-by-generator-asi.js:40: SyntaxError: invalid property name
+test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-set-followed-by-generator-asi.js:40: strict mode: SyntaxError: invalid property name
+test262/test/language/statements/with/get-binding-value-call-with-proxy-env.js:39: Test262Error: Actual [has:Object, get:Symbol(Symbol.unscopables), get:Object] and expected [has:Object, get:Symbol(Symbol.unscopables), has:Object, get:Object] should have the same contents. 
+test262/test/language/statements/with/get-binding-value-idref-with-proxy-env.js:39: Test262Error: Actual [has:Object, get:Symbol(Symbol.unscopables), get:Object] and expected [has:Object, get:Symbol(Symbol.unscopables), has:Object, get:Object] should have the same contents. 
+test262/test/language/statements/with/get-mutable-binding-binding-deleted-in-get-unscopables-strict-mode.js:21: Test262Error: Expected a ReferenceError to be thrown but no exception was thrown at all
+test262/test/language/statements/with/set-mutable-binding-binding-deleted-with-typed-array-in-proto-chain.js:20: Test262Error: Expected SameValue(«[object Object]», «undefined») to be true
+test262/test/language/statements/with/set-mutable-binding-idref-compound-assign-with-proxy-env.js:58: Test262Error: Actual [has:p, get:Symbol(Symbol.unscopables), get:p, set:p, getOwnPropertyDescriptor:p, defineProperty:p] and expected [has:p, get:Symbol(Symbol.unscopables), has:p, get:p, has:p, set:p, getOwnPropertyDescriptor:p, defineProperty:p] should have the same contents. 
+test262/test/language/statements/with/set-mutable-binding-idref-with-proxy-env.js:50: Test262Error: Actual [has:p, get:Symbol(Symbol.unscopables), set:p, getOwnPropertyDescriptor:p, defineProperty:p] and expected [has:p, get:Symbol(Symbol.unscopables), has:p, set:p, getOwnPropertyDescriptor:p, defineProperty:p] should have the same contents. 
