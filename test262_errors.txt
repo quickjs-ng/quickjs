@@ -132,6 +132,28 @@ test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed-in-
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed-in-parallel.js:19: strict mode: InternalError: TODO implement Iterator.prototype.flatMap
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed.js:21: InternalError: TODO implement Iterator.prototype.flatMap
 test262/test/built-ins/Iterator/prototype/flatMap/underlying-iterator-closed.js:21: strict mode: InternalError: TODO implement Iterator.prototype.flatMap
+test262/test/built-ins/Object/defineProperties/typedarray-backed-by-resizable-buffer.js:20: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/Object/defineProperties/typedarray-backed-by-resizable-buffer.js:20: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/Object/defineProperty/coerced-P-grow.js:45: TypeError: out-of-bound index in typed array
+test262/test/built-ins/Object/defineProperty/coerced-P-grow.js:45: strict mode: TypeError: out-of-bound index in typed array
+test262/test/built-ins/Object/defineProperty/coerced-P-shrink.js:16: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/Object/defineProperty/coerced-P-shrink.js:16: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/Object/defineProperty/typedarray-backed-by-resizable-buffer.js:18: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/Object/defineProperty/typedarray-backed-by-resizable-buffer.js:18: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
+test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: strict mode: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
+test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
+test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: strict mode: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
+test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
+test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: strict mode: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
+test262/test/built-ins/String/prototype/matchAll/regexp-prototype-matchAll-v-u-flag.js:73: Test262Error: Actual [] and expected [𠮷, 𠮷, 𠮷, 0, 3, 6] should have the same contents. 
+test262/test/built-ins/String/prototype/matchAll/regexp-prototype-matchAll-v-u-flag.js:73: strict mode: Test262Error: Actual [] and expected [𠮷, 𠮷, 𠮷, 0, 3, 6] should have the same contents. 
+test262/test/built-ins/String/prototype/replace/regexp-prototype-replace-v-u-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«"𠮷a𠮷b𠮷"», «"XaXbX"») to be true
+test262/test/built-ins/String/prototype/replace/regexp-prototype-replace-v-u-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«"𠮷a𠮷b𠮷"», «"XaXbX"») to be true
+test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
+test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
+test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-u-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
+test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-u-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true
