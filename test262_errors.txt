@@ -1,5 +1,3 @@
-test262/test/built-ins/ArrayBuffer/prototype/resize/coerced-new-length-detach.js:15: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/built-ins/ArrayBuffer/prototype/resize/coerced-new-length-detach.js:15: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/iterator-result-poisoned-wrapper.js:64: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/iterator-result-poisoned-wrapper.js:64: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/next-result-poisoned-wrapper.js:69: TypeError: $DONE() not called
