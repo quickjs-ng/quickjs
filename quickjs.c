@@ -37928,6 +37928,12 @@ static const JSCFunctionListEntry js_error_proto_funcs[] = {
     JS_PROP_STRING_DEF("message", "", JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE ),
 };
 
+static JSValue js_error_isError(JSContext *ctx, JSValue this_val,
+                                int argc, JSValue *argv)
+{
+    return js_bool(JS_IsError(ctx, argv[0]));
+}
+
 static JSValue js_error_get_stackTraceLimit(JSContext *ctx, JSValue this_val)
 {
     JSValue val;
@@ -37971,6 +37977,7 @@ static JSValue js_error_set_prepareStackTrace(JSContext *ctx, JSValue this_val, 
 }
 
 static const JSCFunctionListEntry js_error_funcs[] = {
+    JS_CFUNC_DEF("isError", 1, js_error_isError ),
     JS_CGETSET_DEF("stackTraceLimit", js_error_get_stackTraceLimit, js_error_set_stackTraceLimit ),
     JS_CGETSET_DEF("prepareStackTrace", js_error_get_prepareStackTrace, js_error_set_prepareStackTrace ),
 };
