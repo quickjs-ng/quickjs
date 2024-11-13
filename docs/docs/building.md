@@ -10,6 +10,13 @@ QuickJS uses [CMake] as its main build system, with an additional helper [Makefi
 Windows users will need to run the CMake commands manually.
 :::
 
+## Getting the source
+
+```bash
+git clone https://github.com/quickjs-ng/quickjs.git
+cd quickjs
+```
+
 ## Compiling everything
 
 ```bash
