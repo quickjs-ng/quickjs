@@ -75,3 +75,22 @@ options are:
 -s          strip the source code, specify twice to also strip debug info
 -S n        set the maximum stack size to 'n' bytes (default=262144)
 ```
+
+Here is an example on how to create a standalone executable that embeds QuickJS
+and the `examples/hello.js` JavaScript file:
+
+```bash
+# Make sure you are in the QuickJS source directory.
+$ cc hello.c cutils.c libbf.c libregexp.c libunicode.c quickjs.c quickjs-libc.c -I. -o hello
+```
+
+The resulting binary `hello` will be in the current directory.
+
+```bash
+$ ./hello
+Hello World
+```
+
+:::note
+We have plans to make this process easier, stay tuned!
+:::
