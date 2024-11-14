@@ -28783,8 +28783,17 @@ static void dump_byte_code(JSContext *ctx, int pass,
                 printf(",%u", get_u16(tab + pos + 8));
             break;
         case OP_FMT_none_loc:
-            idx = (op - OP_get_loc0_loc1) % 4;
-            goto has_loc;
+            if (op == OP_get_loc0_loc1) {
+                printf(" 0, 1 ; ");
+                if (var_count > 0)
+                    print_atom(ctx, vars[0].var_name);
+                if (var_count > 1)
+                    print_atom(ctx, vars[1].var_name);
+            } else {
+                idx = (op - OP_get_loc0) % 4;
+                goto has_loc;
+            }
+            break;
         case OP_FMT_loc8:
             idx = get_u8(tab + pos);
             goto has_loc;
