@@ -158,6 +158,7 @@ enum {
     JS_CLASS_WEAKSET,           /* u.map_state */
     JS_CLASS_ITERATOR,
     JS_CLASS_ITERATOR_HELPER,   /* u.iterator_helper_data */
+    JS_CLASS_ITERATOR_WRAP,     /* u.iterator_wrap_data */
     JS_CLASS_MAP_ITERATOR,      /* u.map_iterator_data */
     JS_CLASS_SET_ITERATOR,      /* u.map_iterator_data */
     JS_CLASS_ARRAY_ITERATOR,    /* u.array_iterator_data */
@@ -957,6 +958,7 @@ struct JSObject {
         struct JSRegExpStringIteratorData *regexp_string_iterator_data; /* JS_CLASS_REGEXP_STRING_ITERATOR */
         struct JSGeneratorData *generator_data; /* JS_CLASS_GENERATOR */
         struct JSIteratorHelperData *iterator_helper_data; /* JS_CLASS_ITERATOR_HELPER */
+        struct JSIteratorWrapData *iterator_wrap_data; /* JS_CLASS_ITERATOR_WRAP */
         struct JSProxyData *proxy_data; /* JS_CLASS_PROXY */
         struct JSPromiseData *promise_data; /* JS_CLASS_PROMISE */
         struct JSPromiseFunctionData *promise_function_data; /* JS_CLASS_PROMISE_RESOLVE_FUNCTION, JS_CLASS_PROMISE_REJECT_FUNCTION */
@@ -1136,6 +1138,9 @@ static void js_array_iterator_mark(JSRuntime *rt, JSValue val,
 static void js_iterator_helper_finalizer(JSRuntime *rt, JSValue val);
 static void js_iterator_helper_mark(JSRuntime *rt, JSValue val,
                                     JS_MarkFunc *mark_func);
+static void js_iterator_wrap_finalizer(JSRuntime *rt, JSValue val);
+static void js_iterator_wrap_mark(JSRuntime *rt, JSValue val,
+                                  JS_MarkFunc *mark_func);
 static void js_regexp_string_iterator_finalizer(JSRuntime *rt, JSValue val);
 static void js_regexp_string_iterator_mark(JSRuntime *rt, JSValue val,
                                 JS_MarkFunc *mark_func);
@@ -1739,6 +1744,7 @@ static JSClassShortDef const js_std_class_def[] = {
     { JS_ATOM_WeakSet, js_map_finalizer, js_map_mark },         /* JS_CLASS_WEAKSET */
     { JS_ATOM_Iterator, NULL, NULL },                           /* JS_CLASS_ITERATOR */
     { JS_ATOM_IteratorHelper, js_iterator_helper_finalizer, js_iterator_helper_mark }, /* JS_CLASS_ITERATOR_HELPER */
+    { JS_ATOM_IteratorWrap, js_iterator_wrap_finalizer, js_iterator_wrap_mark }, /* JS_CLASS_ITERATOR_WRAP */
     { JS_ATOM_Map_Iterator, js_map_iterator_finalizer, js_map_iterator_mark }, /* JS_CLASS_MAP_ITERATOR */
     { JS_ATOM_Set_Iterator, js_map_iterator_finalizer, js_map_iterator_mark }, /* JS_CLASS_SET_ITERATOR */
     { JS_ATOM_Array_Iterator, js_array_iterator_finalizer, js_array_iterator_mark }, /* JS_CLASS_ARRAY_ITERATOR */
@@ -33653,7 +33659,7 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 18
+#define BC_VERSION 19
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -40060,6 +40066,61 @@ static JSValue js_array_iterator_next(JSContext *ctx, JSValue this_val,
     }
 }
 
+typedef struct JSIteratorWrapData {
+    JSValue wrapped_iter;
+    JSValue wrapped_next;
+} JSIteratorWrapData;
+
+static void js_iterator_wrap_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSObject *p = JS_VALUE_GET_OBJ(val);
+    JSIteratorWrapData *it = p->u.iterator_wrap_data;
+    if (it) {
+        JS_FreeValueRT(rt, it->wrapped_iter);
+        JS_FreeValueRT(rt, it->wrapped_next);
+        js_free_rt(rt, it);
+    }
+}
+
+static void js_iterator_wrap_mark(JSRuntime *rt, JSValue val,
+                                  JS_MarkFunc *mark_func)
+{
+    JSObject *p = JS_VALUE_GET_OBJ(val);
+    JSIteratorWrapData *it = p->u.iterator_wrap_data;
+    if (it) {
+        JS_MarkValue(rt, it->wrapped_iter, mark_func);
+        JS_MarkValue(rt, it->wrapped_next, mark_func);
+    }
+}
+
+static JSValue js_iterator_wrap_next(JSContext *ctx, JSValue this_val,
+                                     int argc, JSValue *argv,
+                                     BOOL *pdone, int magic)
+{
+    JSIteratorWrapData *it;
+    JSValue method, ret;
+    it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_WRAP);
+    if (!it)
+        return JS_EXCEPTION;
+    if (magic == GEN_MAGIC_NEXT)
+        return JS_IteratorNext(ctx, it->wrapped_iter, it->wrapped_next, argc, argv, pdone);
+    method = JS_GetProperty(ctx, it->wrapped_iter, JS_ATOM_return);
+    if (JS_IsException(method))
+        return JS_EXCEPTION;
+    if (JS_IsNull(method) || JS_IsUndefined(method)) {
+        *pdone = TRUE;
+        return JS_UNDEFINED;
+    }
+    ret = JS_IteratorNext2(ctx, it->wrapped_iter, method, argc, argv, pdone);
+    JS_FreeValue(ctx, method);
+    return ret;
+}
+
+static const JSCFunctionListEntry js_iterator_wrap_proto_funcs[] = {
+    JS_ITERATOR_NEXT_DEF("next", 0, js_iterator_wrap_next, GEN_MAGIC_NEXT ),
+    JS_ITERATOR_NEXT_DEF("return", 0, js_iterator_wrap_next, GEN_MAGIC_RETURN ),
+};
+
 static JSValue js_iterator_constructor(JSContext *ctx, JSValue new_target,
                                        int argc, JSValue *argv)
 {
@@ -40077,7 +40138,8 @@ static JSValue js_iterator_constructor(JSContext *ctx, JSValue new_target,
 static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
                                 int argc, JSValue *argv)
 {
-    JSValue obj, method, iter, temp;
+    JSValue obj, method, iter;
+    JSIteratorWrapData *it;
     int ret;
 
     obj = argv[0];
@@ -40101,22 +40163,15 @@ static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
         method = JS_GetProperty(ctx, obj, JS_ATOM_next);
         if (JS_IsException(method))
             return JS_EXCEPTION;
-        // honestly kind of ghetto but avoids having to
-        // define a separate JS_CLASS_NON_GHETTO_ITERATOR
-        temp = method;
-        method = js_function_bind(ctx, method, 1, &obj);
-        JS_FreeValue(ctx, temp);
-        if (JS_IsException(method))
-            return JS_EXCEPTION;
-        iter = JS_NewObjectProtoClass(ctx, ctx->class_proto[JS_CLASS_ITERATOR], JS_CLASS_ITERATOR);
-        if (JS_IsException(iter)) {
-            JS_FreeValue(ctx, method);
-            return JS_EXCEPTION;
-        }
-        if (JS_SetProperty(ctx, iter, JS_ATOM_next, method) < 0) {
-            JS_FreeValue(ctx, iter);
-            return JS_EXCEPTION;
-        }
+        iter = JS_NewObjectClass(ctx, JS_CLASS_ITERATOR_WRAP);
+        if (JS_IsException(iter))
+            goto fail;
+        it = js_malloc(ctx, sizeof(*it));
+        if (!it)
+            goto fail;
+        it->wrapped_iter = js_dup(obj);
+        it->wrapped_next = method;
+        JS_SetOpaqueInternal(iter, it);
     } else {
         iter = JS_GetIterator2(ctx, obj, method);
         JS_FreeValue(ctx, method);
@@ -40124,6 +40179,10 @@ static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
             return JS_EXCEPTION;
     }
     return iter;
+fail:
+    JS_FreeValue(ctx, method);
+    JS_FreeValue(ctx, iter);
+    return JS_EXCEPTION;
 }
 
 static JSValue js_create_iterator_helper(JSContext *ctx, JSValue iterator,
@@ -51543,6 +51602,11 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ITERATOR_HELPER],
                                js_iterator_helper_proto_funcs,
                                countof(js_iterator_helper_proto_funcs));
+
+    ctx->class_proto[JS_CLASS_ITERATOR_WRAP] = JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
+    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ITERATOR_WRAP],
+                               js_iterator_wrap_proto_funcs,
+                               countof(js_iterator_wrap_proto_funcs));
 
     /* Array */
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ARRAY],

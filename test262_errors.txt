@@ -42,16 +42,6 @@ test262/test/built-ins/Date/prototype/setUTCMonth/date-value-read-before-tonumbe
 test262/test/built-ins/Date/prototype/setUTCMonth/date-value-read-before-tonumber-when-date-is-invalid.js:26: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
 test262/test/built-ins/Date/prototype/setUTCSeconds/date-value-read-before-tonumber-when-date-is-invalid.js:26: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
 test262/test/built-ins/Date/prototype/setUTCSeconds/date-value-read-before-tonumber-when-date-is-invalid.js:26: strict mode: Test262Error: time updated in valueOf Expected SameValue(«NaN», «0») to be true
-test262/test/built-ins/Iterator/from/get-return-method-when-call-return.js:24: TypeError: not a function
-test262/test/built-ins/Iterator/from/get-return-method-when-call-return.js:24: strict mode: TypeError: not a function
-test262/test/built-ins/Iterator/from/result-proto.js:10: unexpected error: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Iterator/from/result-proto.js:10: strict mode: unexpected error: Test262Error: Expected SameValue(«[object Object]», «[object Iterator]») to be true
-test262/test/built-ins/Iterator/from/return-method-calls-base-return-method.js:29: TypeError: not a function
-test262/test/built-ins/Iterator/from/return-method-calls-base-return-method.js:29: strict mode: TypeError: not a function
-test262/test/built-ins/Iterator/from/return-method-returns-iterator-result.js:18: TypeError: not a function
-test262/test/built-ins/Iterator/from/return-method-returns-iterator-result.js:18: strict mode: TypeError: not a function
-test262/test/built-ins/Iterator/from/return-method-throws-for-invalid-this.js:16: TypeError: not a function
-test262/test/built-ins/Iterator/from/return-method-throws-for-invalid-this.js:16: strict mode: TypeError: not a function
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: strict mode: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: TypeError: cannot read property 'call' of undefined
