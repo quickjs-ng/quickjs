@@ -17,7 +17,6 @@ jobs:
       - name: build
         shell: alpine.sh {0}
         run: |
-          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
@@ -46,7 +45,6 @@ jobs:
       - name: build
         shell: alpine.sh {0}
         run: |
-          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
@@ -75,7 +73,6 @@ jobs:
       - name: build
         shell: alpine.sh {0}
         run: |
-          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
@@ -105,7 +102,6 @@ jobs:
       - name: build
         shell: alpine.sh {0}
         run: |
-          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DBUILD_STATIC_QJS_EXE=ON ..
@@ -130,7 +126,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: build
         run: |
-          git submodule update --init --checkout --depth 1
           mkdir build
           cd build
           cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ..
@@ -166,7 +161,6 @@ jobs:
             toolchain:p
       - name: build
         run: |
-          git submodule update --init --checkout --depth 1
           make
           mv build/qjs.exe build/qjs-windows-x86.exe
           mv build/qjsc.exe build/qjsc-windows-x86.exe
@@ -199,7 +193,6 @@ jobs:
             toolchain:p
       - name: build
         run: |
-          git submodule update --init --checkout --depth 1
           make
           mv build/qjs.exe build/qjs-windows-x86_64.exe
           mv build/qjsc.exe build/qjsc-windows-x86_64.exe
@@ -222,7 +215,6 @@ jobs:
           sudo apt install /tmp/wasi-sdk*.deb
       - name: build
         run: |
-          git submodule update --init --checkout --depth 1
           cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
           make -C build qjs_exe
           mv build/qjs build/qjs-wasi.wasm
