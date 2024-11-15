@@ -2417,7 +2417,6 @@ static void JS_MarkContext(JSRuntime *rt, JSContext *ctx,
         JS_MarkValue(rt, ctx->class_proto[i], mark_func);
     }
     JS_MarkValue(rt, ctx->iterator_ctor, mark_func);
-    JS_MarkValue(rt, ctx->iterator_proto, mark_func);
     JS_MarkValue(rt, ctx->async_iterator_proto, mark_func);
     JS_MarkValue(rt, ctx->promise_ctor, mark_func);
     JS_MarkValue(rt, ctx->array_ctor, mark_func);
@@ -2486,7 +2485,6 @@ void JS_FreeContext(JSContext *ctx)
     }
     js_free_rt(rt, ctx->class_proto);
     JS_FreeValue(ctx, ctx->iterator_ctor);
-    JS_FreeValue(ctx, ctx->iterator_proto);
     JS_FreeValue(ctx, ctx->async_iterator_proto);
     JS_FreeValue(ctx, ctx->promise_ctor);
     JS_FreeValue(ctx, ctx->array_ctor);
@@ -40110,7 +40108,7 @@ static JSValue js_iterator_from(JSContext *ctx, JSValue this_val,
         JS_FreeValue(ctx, temp);
         if (JS_IsException(method))
             return JS_EXCEPTION;
-        iter = JS_NewObjectProtoClass(ctx, ctx->iterator_proto, JS_CLASS_ITERATOR);
+        iter = JS_NewObjectProtoClass(ctx, ctx->class_proto[JS_CLASS_ITERATOR], JS_CLASS_ITERATOR);
         if (JS_IsException(iter)) {
             JS_FreeValue(ctx, method);
             return JS_EXCEPTION;
@@ -40562,17 +40560,13 @@ static JSValue js_iterator_proto_get_toStringTag(JSContext *ctx, JSValue this_va
 
 static JSValue js_iterator_proto_set_toStringTag(JSContext *ctx, JSValue this_val, JSValue val)
 {
-    JSObject *p;
     int res;
 
     if (JS_VALUE_GET_TAG(this_val) != JS_TAG_OBJECT)
         return JS_ThrowTypeError(ctx,
                                  "set Iterator.prototype[Symbol.toStringTag] called on non-object");
-    p = JS_VALUE_GET_OBJ(this_val);
-    if (p->class_id == JS_CLASS_ITERATOR) {
-        // This is home.
+    if (js_same_value(ctx, this_val, ctx->class_proto[JS_CLASS_ITERATOR]))
         return JS_ThrowTypeError(ctx, "Cannot assign to read only property");
-    }
     res = JS_GetOwnProperty(ctx, NULL, this_val, JS_ATOM_Symbol_toStringTag);
     if (res < 0)
         return JS_EXCEPTION;
@@ -44914,7 +44908,7 @@ void JS_AddIntrinsicRegExp(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, obj, js_regexp_funcs, countof(js_regexp_funcs));
 
     ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR] =
-        JS_NewObjectProto(ctx, ctx->iterator_proto);
+        JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR],
                                js_regexp_string_iterator_proto_funcs,
                                countof(js_regexp_string_iterator_proto_funcs));
@@ -48367,7 +48361,7 @@ void JS_AddIntrinsicMapSet(JSContext *ctx)
 
     for(i = 0; i < 2; i++) {
         ctx->class_proto[JS_CLASS_MAP_ITERATOR + i] =
-            JS_NewObjectProto(ctx, ctx->iterator_proto);
+            JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
         JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_MAP_ITERATOR + i],
                                    js_map_proto_funcs_ptr[i + 4],
                                    js_map_proto_funcs_count[i + 4]);
@@ -51496,11 +51490,8 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, obj,
                                js_iterator_funcs,
                                countof(js_iterator_funcs));
-    ctx->iterator_proto =
-        JS_NewObjectProtoClass(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
-                               JS_CLASS_ITERATOR);
 
-    ctx->class_proto[JS_CLASS_ITERATOR_HELPER] = JS_NewObjectProto(ctx, ctx->iterator_proto);
+    ctx->class_proto[JS_CLASS_ITERATOR_HELPER] = JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ITERATOR_HELPER],
                                js_iterator_helper_proto_funcs,
                                countof(js_iterator_helper_proto_funcs));
@@ -51549,7 +51540,7 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     ctx->array_proto_values =
         JS_GetProperty(ctx, ctx->class_proto[JS_CLASS_ARRAY], JS_ATOM_values);
 
-    ctx->class_proto[JS_CLASS_ARRAY_ITERATOR] = JS_NewObjectProto(ctx, ctx->iterator_proto);
+    ctx->class_proto[JS_CLASS_ARRAY_ITERATOR] = JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ARRAY_ITERATOR],
                                js_array_iterator_proto_funcs,
                                countof(js_array_iterator_proto_funcs));
@@ -51591,7 +51582,7 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_STRING], js_string_proto_funcs,
                                countof(js_string_proto_funcs));
 
-    ctx->class_proto[JS_CLASS_STRING_ITERATOR] = JS_NewObjectProto(ctx, ctx->iterator_proto);
+    ctx->class_proto[JS_CLASS_STRING_ITERATOR] = JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_STRING_ITERATOR],
                                js_string_iterator_proto_funcs,
                                countof(js_string_iterator_proto_funcs));
@@ -51623,7 +51614,7 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     }
 
     /* ES6 Generator */
-    ctx->class_proto[JS_CLASS_GENERATOR] = JS_NewObjectProto(ctx, ctx->iterator_proto);
+    ctx->class_proto[JS_CLASS_GENERATOR] = JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_GENERATOR],
                                js_generator_proto_funcs,
                                countof(js_generator_proto_funcs));
