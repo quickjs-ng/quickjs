@@ -1,7 +1,6 @@
 name: release
 
 on:
-  pull_request:
   push:
     tags:
       - "v*.*.*"
@@ -236,9 +235,8 @@ jobs:
           path: build
           merge-multiple: true
       - run: ls -R build
-#      - name: release
-#        uses: softprops/action-gh-release@v1
-#        with:
-#          files: |
-#            build/qjs/qjs-*
-#            build/qjs/qjsc-*
+      - name: release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/*
