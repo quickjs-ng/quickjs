@@ -545,6 +545,13 @@ BOOL lre_is_id_continue(uint32_t c)
                         sizeof(unicode_prop_ID_Continue1_index) / 3);
 }
 
+BOOL lre_is_white_space(uint32_t c)
+{
+    return lre_is_in_table(c, unicode_prop_White_Space_table,
+                           unicode_prop_White_Space_index,
+                           sizeof(unicode_prop_White_Space_index) / 3);
+}
+
 #define UNICODE_DECOMP_LEN_MAX 18
 
 typedef enum {
