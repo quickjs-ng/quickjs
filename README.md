@@ -16,6 +16,7 @@ documentation.
 
 [@bnoordhuis], [@saghul], and many more [contributors].
 
+[ECMAScript]: https://tc39.es/ecma262/
 [original QuickJS project]: https://bellard.org/quickjs
 [@bnoordhuis]: https://github.com/bnoordhuis
 [@saghul]: https://github.com/saghul
