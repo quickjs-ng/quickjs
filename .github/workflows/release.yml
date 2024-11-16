@@ -30,9 +30,9 @@ jobs:
         run: |
           file build/*-linux-aarch64
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-linux-aarch64
           path: build/*-linux-aarch64
   linux-riscv64:
     runs-on: ubuntu-20.04
@@ -58,9 +58,9 @@ jobs:
         run: |
           file build/*-linux-riscv64
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-linux-riscv64
           path: build/*-linux-riscv64
   linux-x86:
     runs-on: ubuntu-20.04
@@ -86,9 +86,9 @@ jobs:
         run: |
           file build/*-linux-x86
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-linux-x86
           path: build/*-linux-x86
 
   linux-x86_64:
@@ -115,9 +115,9 @@ jobs:
         run: |
           file build/*-linux-x86_64
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-linux-x86_64
           path: build/*-linux-x86_64
 
   macos:
@@ -136,9 +136,9 @@ jobs:
         run: |
           lipo -info build/qjs-darwin build/qjsc-darwin
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-darwin
           path: build/*-darwin
 
   windows-x86:
@@ -168,9 +168,9 @@ jobs:
         run: |
           ldd build/qjs-windows-x86.exe build/qjsc-windows-x86.exe
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-windows-x86
           path: build/*-windows-x86.exe
 
   windows-x86_64:
@@ -200,9 +200,9 @@ jobs:
         run: |
           ldd build/qjs-windows-x86_64.exe build/qjsc-windows-x86_64.exe
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-windows-x86_64
           path: build/*-windows-x86_64.exe
 
   wasi:
@@ -219,9 +219,9 @@ jobs:
           make -C build qjs_exe
           mv build/qjs build/qjs-wasi.wasm
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-wasi
           path: build/qjs-wasi.wasm
 
   upload-to-release:
@@ -229,12 +229,14 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: get assets
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
+          pattern: qjs-*
           path: build
+          merge-multiple: true
+      - run: ls -R build
       - name: release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            build/qjs/qjs-*
-            build/qjs/qjsc-*
+            build/*
