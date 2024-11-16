@@ -10096,7 +10096,7 @@ void JS_ResetUncatchableError(JSContext *ctx)
     JS_SetUncatchableError(ctx, ctx->rt->current_exception, FALSE);
 }
 
-JS_BOOL JS_SetOpaque(JSValue obj, void *opaque)
+int JS_SetOpaque(JSValue obj, void *opaque)
 {
     JSObject *p;
     if (JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
@@ -10108,7 +10108,7 @@ JS_BOOL JS_SetOpaque(JSValue obj, void *opaque)
         }
     }
 
-    return 1;
+    return -1;
 }
 
 /* |obj| must be a JSObject of an internal class. */
