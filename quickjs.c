@@ -43275,6 +43275,64 @@ static JSValue js_math_clz32(JSContext *ctx, JSValue this_val,
     return js_int32(r);
 }
 
+static JSValue js_math_sumPrecise(JSContext *ctx, JSValue this_val,
+                                  int argc, JSValue *argv)
+{
+    JSValue iter, next, item, ret;
+    bf_t a, b;
+    BOOL done;
+    double d;
+    int r;
+
+    iter = JS_GetIterator(ctx, argv[0], /*async*/FALSE);
+    if (JS_IsException(iter))
+        return JS_EXCEPTION;
+    bf_init(ctx->bf_ctx, &a);
+    bf_init(ctx->bf_ctx, &b);
+    ret = JS_EXCEPTION;
+    next = JS_GetProperty(ctx, iter, JS_ATOM_next);
+    if (JS_IsException(next))
+        goto fail;
+    bf_set_zero(&a, /*is_neg*/TRUE);
+    for (;;) {
+        item = JS_IteratorNext(ctx, iter, next, 0, NULL, &done);
+        if (JS_IsException(item))
+            goto fail;
+        if (done)
+            break; // item == JS_UNDEFINED
+        switch (JS_VALUE_GET_TAG(item)) {
+        default:
+            JS_FreeValue(ctx, item);
+            JS_ThrowTypeError(ctx, "not a number");
+            goto fail;
+        case JS_TAG_INT:
+            d = JS_VALUE_GET_INT(item);
+            break;
+        case JS_TAG_FLOAT64:
+            d = JS_VALUE_GET_FLOAT64(item);
+            break;
+        }
+        if (bf_set_float64(&b, d))
+            goto oom;
+        // Infinity + -Infinity results in BF_ST_INVALID_OP, sets |a| to nan
+        if ((r = bf_add(&a, &a, &b, BF_PREC_INF, BF_RNDN)))
+            if (r != BF_ST_INVALID_OP)
+                goto oom;
+    }
+    bf_get_float64(&a, &d, BF_RNDN); // return value deliberately ignored
+    ret = js_float64(d);
+fail:
+    JS_IteratorClose(ctx, iter, JS_IsException(ret));
+    JS_FreeValue(ctx, iter);
+    JS_FreeValue(ctx, next);
+    bf_delete(&a);
+    bf_delete(&b);
+    return ret;
+oom:
+    JS_ThrowOutOfMemory(ctx);
+    goto fail;
+}
+
 /* xorshift* random number generator by Marsaglia */
 static uint64_t xorshift64star(uint64_t *pstate)
 {
@@ -43376,6 +43434,7 @@ static const JSCFunctionListEntry js_math_funcs[] = {
     JS_CFUNC_SPECIAL_DEF("fround", 1, f_f, js_math_fround ),
     JS_CFUNC_DEF("imul", 2, js_math_imul ),
     JS_CFUNC_DEF("clz32", 1, js_math_clz32 ),
+    JS_CFUNC_DEF("sumPrecise", 1, js_math_sumPrecise ),
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Math", JS_PROP_CONFIGURABLE ),
     JS_PROP_DOUBLE_DEF("E", 2.718281828459045, 0 ),
     JS_PROP_DOUBLE_DEF("LN10", 2.302585092994046, 0 ),
