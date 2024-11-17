@@ -118,7 +118,7 @@ static void *__builtin_frame_address(unsigned int level) {
 #define container_of(ptr, type, member) ((type *)((uint8_t *)(ptr) - offsetof(type, member)))
 #endif
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) || defined(__cplusplus)
 #define minimum_length(n) n
 #else
 #define minimum_length(n) static n
