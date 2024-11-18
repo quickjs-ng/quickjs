@@ -41116,9 +41116,9 @@ static const JSCFunctionListEntry js_number_funcs[] = {
     JS_CFUNC_DEF("isSafeInteger", 1, js_number_isSafeInteger ),
     JS_PROP_DOUBLE_DEF("MAX_VALUE", 1.7976931348623157e+308, 0 ),
     JS_PROP_DOUBLE_DEF("MIN_VALUE", 5e-324, 0 ),
-    JS_PROP_U2D_DEF("NaN", 0x7FF8ull<<48, 0 ), // workaround for msvc
-    JS_PROP_DOUBLE_DEF("NEGATIVE_INFINITY", -INFINITY, 0 ),
-    JS_PROP_DOUBLE_DEF("POSITIVE_INFINITY", INFINITY, 0 ),
+    JS_PROP_DOUBLE_DEF("NaN", 0.0/0.0, 0 ),
+    JS_PROP_DOUBLE_DEF("NEGATIVE_INFINITY", -1.0/0.0, 0 ),
+    JS_PROP_DOUBLE_DEF("POSITIVE_INFINITY", 1.0/0.0, 0 ),
     JS_PROP_DOUBLE_DEF("EPSILON", 2.220446049250313e-16, 0 ), /* ES6 */
     JS_PROP_DOUBLE_DEF("MAX_SAFE_INTEGER", 9007199254740991.0, 0 ), /* ES6 */
     JS_PROP_DOUBLE_DEF("MIN_SAFE_INTEGER", -9007199254740991.0, 0 ), /* ES6 */
@@ -50196,8 +50196,8 @@ static const JSCFunctionListEntry js_global_funcs[] = {
     JS_CFUNC_MAGIC_DEF("encodeURIComponent", 1, js_global_encodeURI, 1 ),
     JS_CFUNC_DEF("escape", 1, js_global_escape ),
     JS_CFUNC_DEF("unescape", 1, js_global_unescape ),
-    JS_PROP_DOUBLE_DEF("Infinity", 1.0 / 0.0, 0 ),
-    JS_PROP_U2D_DEF("NaN", 0x7FF8ull<<48, 0 ), // workaround for msvc
+    JS_PROP_DOUBLE_DEF("Infinity", 1.0/0.0, 0 ),
+    JS_PROP_DOUBLE_DEF("NaN", 0.0/0.0, 0 ),
     JS_PROP_UNDEFINED_DEF("undefined", 0 ),
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "global", JS_PROP_CONFIGURABLE ),
 };
@@ -50337,7 +50337,7 @@ static double time_clip(double t) {
     if (t >= -8.64e15 && t <= 8.64e15)
         return trunc(t) + 0.0;  /* convert -0 to +0 */
     else
-        return NAN;
+        return JS_FLOAT64_NAN;
 }
 
 /* The spec mandates the use of 'double' and it specifies the order
@@ -50357,7 +50357,7 @@ static double set_date_fields(double fields[minimum_length(7)], int is_local) {
     if (mn < 0)
         mn += 12;
     if (ym < -271821 || ym > 275760)
-        return NAN;
+        return JS_FLOAT64_NAN;
 
     yi = ym;
     mi = mn;
@@ -50389,7 +50389,7 @@ static double set_date_fields(double fields[minimum_length(7)], int is_local) {
     /* emulate 21.4.1.16 MakeDate ( day, time ) */
     tv = (temp = day * 86400000) + time;   /* prevent generation of FMA */
     if (!isfinite(tv))
-        return NAN;
+        return JS_FLOAT64_NAN;
 
     /* adjust for local time and clip */
     if (is_local) {
@@ -50428,7 +50428,7 @@ static JSValue set_date_field(JSContext *ctx, JSValue this_val,
     int res, first_field, end_field, is_local, i, n;
     double d, a;
 
-    d = NAN;
+    d = JS_FLOAT64_NAN;
     first_field = (magic >> 8) & 0x0F;
     end_field = (magic >> 4) & 0x0F;
     is_local = magic & 0x0F;
@@ -50628,7 +50628,7 @@ static JSValue js_date_constructor(JSContext *ctx, JSValue new_target,
             if (i == 0 && fields[0] >= 0 && fields[0] < 100)
                 fields[0] += 1900;
         }
-        val = (i == n) ? set_date_fields(fields, 1) : NAN;
+        val = (i == n) ? set_date_fields(fields, 1) : JS_FLOAT64_NAN;
     }
 has_val:
     rv = js_create_from_ctor(ctx, new_target, JS_CLASS_DATE);
