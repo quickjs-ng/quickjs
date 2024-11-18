@@ -27,6 +27,12 @@
 #ifndef QUICKJS_H
 #define QUICKJS_H
 
+/* In Windows SDK >= 26100 NAN is not a constant expression.
+ * See: https://github.com/quickjs-ng/quickjs/issues/622 */
+#if defined(_MSC_VER)
+#define _UCRT_NOISY_NAN
+#endif
+
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
