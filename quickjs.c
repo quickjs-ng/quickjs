@@ -40204,7 +40204,7 @@ typedef struct JSIteratorHelperData {
     JSValue func; // predicate (filter) or mapper (flatMap, map)
     JSValue inner; // innerValue (flatMap)
     int64_t count; // limit (drop, take) or counter (filter, map, flatMap)
-    JSIteratorHelperKindEnum kind; 
+    JSIteratorHelperKindEnum kind : 8; 
     uint8_t executing : 1;
     uint8_t done : 1;
 } JSIteratorHelperData;
