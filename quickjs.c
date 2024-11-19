@@ -40615,7 +40615,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValue this_val,
 
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_HELPER);
     if (!it)
-        goto fail;
+        return JS_EXCEPTION;
     if (it->executing)
         return JS_ThrowTypeError(ctx, "cannot invoke a running iterator");
     if (it->done) {
@@ -40847,10 +40847,8 @@ done:
     it->executing = 0;
     return ret;
 fail:
-    if (it) {
-        /* close the iterator object, preserving pending exception */
-        JS_IteratorClose(ctx, it->obj, TRUE);
-    }
+    /* close the iterator object, preserving pending exception */
+    JS_IteratorClose(ctx, it->obj, TRUE);
     ret = JS_EXCEPTION;
     goto done;
 }
