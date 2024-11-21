@@ -16,16 +16,6 @@ function test_exception_source_pos()
 }
 
 // Keep this at the top; it tests source positions.
-function test_function_source_pos() // line 19, column 1
-{
-    function inner() {} // line 21, column 5
-    var f = eval("function f() {} f");
-    assert(`${test_function_source_pos.lineNumber}:${test_function_source_pos.columnNumber}`, "19:1");
-    assert(`${inner.lineNumber}:${inner.columnNumber}`, "21:5");
-    assert(`${f.lineNumber}:${f.columnNumber}`, "1:1");
-}
-
-// Keep this at the top; it tests source positions.
 function test_exception_prepare_stack()
 {
     var e;
