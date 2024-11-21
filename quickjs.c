@@ -48318,6 +48318,10 @@ static const JSCFunctionListEntry js_map_funcs[] = {
     JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
 };
 
+static const JSCFunctionListEntry js_set_funcs[] = {
+    JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
+};
+
 static const JSCFunctionListEntry js_map_proto_funcs[] = {
     JS_CFUNC_MAGIC_DEF("set", 2, js_map_set, 0 ),
     JS_CFUNC_MAGIC_DEF("get", 1, js_map_get, 0 ),
@@ -48412,10 +48416,11 @@ void JS_AddIntrinsicMapSet(JSContext *ctx)
                                    js_map_proto_funcs_count[i]);
         obj1 = JS_NewCFunctionMagic(ctx, js_map_constructor, name, 0,
                                     JS_CFUNC_constructor_magic, i);
-        if (i < 2) {
-            JS_SetPropertyFunctionList(ctx, obj1, js_map_funcs,
-                                       countof(js_map_funcs));
-        }
+        if (i == 0)
+            JS_SetPropertyFunctionList(ctx, obj1, js_map_funcs, countof(js_map_funcs));
+        else if (i == 1)
+            JS_SetPropertyFunctionList(ctx, obj1, js_set_funcs, countof(js_set_funcs));
+
         JS_NewGlobalCConstructor2(ctx, obj1, name, ctx->class_proto[JS_CLASS_MAP + i]);
     }
 
