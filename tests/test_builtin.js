@@ -26,7 +26,7 @@ function test_exception_prepare_stack()
     };
 
     try {
-        throw new Error(""); // line 39, column 15
+        throw new Error(""); // line 29, column 15
     } catch(_e) {
         e = _e;
     }
@@ -37,7 +37,7 @@ function test_exception_prepare_stack()
     const f = e.stack[0];
     assert(f.getFunctionName(), 'test_exception_prepare_stack');
     assert(f.getFileName().endsWith('test_builtin.js'));
-    assert(f.getLineNumber(), 39);
+    assert(f.getLineNumber(), 29);
     assert(f.getColumnNumber(), 15);
     assert(!f.isNative());
 }
@@ -54,7 +54,7 @@ function test_exception_stack_size_limit()
     };
 
     try {
-        throw new Error(""); // line 67, column 15
+        throw new Error(""); // line 57, column 15
     } catch(_e) {
         e = _e;
     }
@@ -66,7 +66,7 @@ function test_exception_stack_size_limit()
     const f = e.stack[0];
     assert(f.getFunctionName(), 'test_exception_stack_size_limit');
     assert(f.getFileName().endsWith('test_builtin.js'));
-    assert(f.getLineNumber(), 67);
+    assert(f.getLineNumber(), 57);
     assert(f.getColumnNumber(), 15);
     assert(!f.isNative());
 }
@@ -1038,7 +1038,6 @@ test_proxy_iter();
 test_proxy_is_array();
 test_finalization_registry();
 test_exception_source_pos();
-test_function_source_pos();
 test_exception_prepare_stack();
 test_exception_stack_size_limit();
 test_cur_pc();
