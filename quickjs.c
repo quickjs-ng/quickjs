@@ -13509,28 +13509,6 @@ static JSValue js_function_proto_caller(JSContext *ctx, JSValue this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue js_function_proto_fileName(JSContext *ctx,
-                                          JSValue this_val)
-{
-    JSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
-    if (b) {
-        return JS_AtomToString(ctx, b->filename);
-    }
-    return JS_UNDEFINED;
-}
-
-static JSValue js_function_proto_int32(JSContext *ctx,
-                                       JSValue this_val,
-                                       int magic)
-{
-    JSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
-    if (b) {
-        int *field = (int *) ((char *)b + magic);
-        return js_int32(*field);
-    }
-    return JS_UNDEFINED;
-}
-
 static int js_arguments_define_own_property(JSContext *ctx,
                                             JSValue this_obj,
                                             JSAtom prop, JSValue val,
