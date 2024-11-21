@@ -37786,11 +37786,6 @@ static const JSCFunctionListEntry js_function_proto_funcs[] = {
     JS_CFUNC_DEF("bind", 1, js_function_bind ),
     JS_CFUNC_DEF("toString", 0, js_function_toString ),
     JS_CFUNC_DEF("[Symbol.hasInstance]", 1, js_function_hasInstance ),
-    JS_CGETSET_DEF("fileName", js_function_proto_fileName, NULL ),
-    JS_CGETSET_MAGIC_DEF("lineNumber", js_function_proto_int32, NULL,
-                         offsetof(JSFunctionBytecode, line_num)),
-    JS_CGETSET_MAGIC_DEF("columnNumber", js_function_proto_int32, NULL,
-                         offsetof(JSFunctionBytecode, col_num)),
 };
 
 /* Error class */
