@@ -15,10 +15,6 @@ Reverse engineering framework.
 
 High level Rust bindings.
 
-## [quickjs-rusty](https://github.com/Icemic/quickjs-rusty)
-
-Rust wrapper focus on embedding-ready and no-pain type conversion and interoperability. 
-
 ## [llrt](https://github.com/awslabs/llrt)
 
 Lightweight JS runtime for serverless applications.
@@ -26,3 +22,7 @@ Lightweight JS runtime for serverless applications.
 ## [nx.js](https://github.com/TooTallNate/nx.js)
 
 JavaScript runtime for Nintendo Switch homebrew applications.
+
+## [quickjs-rusty](https://github.com/Icemic/quickjs-rusty)
+
+Rust wrapper focus on embedding-ready and no-pain type conversion and interoperability. 
