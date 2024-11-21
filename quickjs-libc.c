@@ -2997,6 +2997,15 @@ static int my_execvpe(const char *filename, char **argv, char **envp)
     return -1;
 }
 
+static js_once_t js_os_exec_once = JS_ONCE_INIT;
+
+static void (*js_os_exec_closefrom)(int);
+
+static void js_os_exec_once_init(void)
+{
+    js_os_exec_closefrom = dlsym(RTLD_DEFAULT, "closefrom");
+}
+
 /* exec(args[, options]) -> exitcode */
 static JSValue js_os_exec(JSContext *ctx, JSValue this_val,
                           int argc, JSValue *argv)
@@ -3116,6 +3125,10 @@ static JSValue js_os_exec(JSContext *ctx, JSValue this_val,
         }
     }
 
+    // should happen pre-fork because it calls dlsym()
+    // and that's not an async-signal-safe function
+    js_once(&js_os_exec_once, js_os_exec_once_init);
+
     pid = fork();
     if (pid < 0) {
         JS_ThrowTypeError(ctx, "fork error");
@@ -3123,8 +3136,6 @@ static JSValue js_os_exec(JSContext *ctx, JSValue this_val,
     }
     if (pid == 0) {
         /* child */
-        int fd_max = sysconf(_SC_OPEN_MAX);
-
         /* remap the stdin/stdout/stderr handles if necessary */
         for(i = 0; i < 3; i++) {
             if (std_fds[i] != i) {
@@ -3133,8 +3144,14 @@ static JSValue js_os_exec(JSContext *ctx, JSValue this_val,
             }
         }
 
-        for(i = 3; i < fd_max; i++)
-            close(i);
+        if (js_os_exec_closefrom) {
+            js_os_exec_closefrom(3);
+        } else {
+            int fd_max = sysconf(_SC_OPEN_MAX);
+            for(i = 3; i < fd_max; i++)
+                close(i);
+        }
+
         if (cwd) {
             if (chdir(cwd) < 0)
                 _exit(127);
