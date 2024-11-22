@@ -31,7 +31,7 @@ jobs:
       - name: install clang-format-18
         run: |
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 18
-          sudo apt install clang-format-18
+          sudo apt install clang-format-18 -y
       - name: check-format
         run: |
           make check-format
