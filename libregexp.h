@@ -32,7 +32,7 @@
 extern "C" {
 #endif
 
-#define LRE_BOOL  int       /* for documentation purposes */
+#define LRE_BOOL  int /* for documentation purposes */
 
 #define LRE_FLAG_GLOBAL     (1 << 0)
 #define LRE_FLAG_IGNORECASE (1 << 1)
@@ -41,7 +41,7 @@ extern "C" {
 #define LRE_FLAG_UNICODE    (1 << 4)
 #define LRE_FLAG_STICKY     (1 << 5)
 #define LRE_FLAG_INDICES    (1 << 6) /* Unused by libregexp, just recorded. */
-#define LRE_FLAG_NAMED_GROUPS (1 << 7) /* named groups are present in the regexp */
+#define LRE_FLAG_NAMED_GROUPS (1 << 7)                      /* named groups are present in the regexp */
 #define LRE_FLAG_UNICODE_SETS (1 << 8)
 
 uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
@@ -50,9 +50,8 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
 int lre_get_capture_count(const uint8_t *bc_buf);
 int lre_get_flags(const uint8_t *bc_buf);
 const char *lre_get_groupnames(const uint8_t *bc_buf);
-int lre_exec(uint8_t **capture,
-             const uint8_t *bc_buf, const uint8_t *cbuf, int cindex, int clen,
-             int cbuf_type, void *opaque);
+int lre_exec(uint8_t **capture, const uint8_t *bc_buf, const uint8_t *cbuf,
+             int cindex, int clen, int cbuf_type, void *opaque);
 
 int lre_parse_escape(const uint8_t **pp, int allow_utf16);
 LRE_BOOL lre_is_space(int c);

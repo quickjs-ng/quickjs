@@ -57,14 +57,15 @@ static int lre_case_conv1(uint32_t c, int conv_type)
 }
 
 /* case conversion using the table entry 'idx' with value 'v' */
-static int lre_case_conv_entry(uint32_t *res, uint32_t c, int conv_type, uint32_t idx, uint32_t v)
+static int lre_case_conv_entry(uint32_t *res, uint32_t c, int conv_type,
+                               uint32_t idx, uint32_t v)
 {
     uint32_t code, data, type, a, is_lower;
     is_lower = (conv_type != 0);
     type = (v >> (32 - 17 - 7 - 4)) & 0xf;
     data = ((v & 0xf) << 8) | case_conv_table2[idx];
     code = v >> (32 - 17);
-    switch(type) {
+    switch (type) {
     case RUN_TYPE_U:
     case RUN_TYPE_L:
     case RUN_TYPE_UF:
@@ -190,7 +191,8 @@ int lre_case_conv(uint32_t *res, uint32_t c, int conv_type)
     return 1;
 }
 
-static int lre_case_folding_entry(uint32_t c, uint32_t idx, uint32_t v, BOOL is_unicode)
+static int lre_case_folding_entry(uint32_t c, uint32_t idx, uint32_t v,
+                                  BOOL is_unicode)
 {
     uint32_t res[LRE_CC_RES_LEN_MAX];
     int len;
@@ -241,7 +243,7 @@ int lre_canonicalize(uint32_t c, BOOL is_unicode)
     } else {
         uint32_t v, code, len;
         int idx, idx_min, idx_max;
-        
+
         idx_min = 0;
         idx_max = countof(case_conv_table1) - 1;
         while (idx_min <= idx_max) {
@@ -314,7 +316,7 @@ static BOOL lre_is_in_table(uint32_t c, const uint8_t *table,
         return FALSE; /* outside the table */
     p = table + pos;
     bit = 0;
-    for(;;) {
+    for (;;) {
         b = *p++;
         if (b < 64) {
             code += (b >> 3) + 1;
@@ -374,7 +376,7 @@ BOOL lre_is_case_ignorable(uint32_t c)
 static __maybe_unused void cr_dump(CharRange *cr)
 {
     int i;
-    for(i = 0; i < cr->len; i++)
+    for (i = 0; i < cr->len; i++)
         printf("%d: 0x%04x\n", i, cr->points[i]);
 }
 
@@ -452,15 +454,15 @@ static void cr_compress(CharRange *cr)
 }
 
 /* union or intersection */
-int cr_op(CharRange *cr, const uint32_t *a_pt, int a_len,
-          const uint32_t *b_pt, int b_len, int op)
+int cr_op(CharRange *cr, const uint32_t *a_pt, int a_len, const uint32_t *b_pt,
+          int b_len, int op)
 {
     int a_idx, b_idx, is_in;
     uint32_t v;
 
     a_idx = 0;
     b_idx = 0;
-    for(;;) {
+    for (;;) {
         /* get one more point from a or b in increasing order */
         if (a_idx < a_len && b_idx < b_len) {
             if (a_pt[a_idx] < b_pt[b_idx]) {
@@ -482,7 +484,7 @@ int cr_op(CharRange *cr, const uint32_t *a_pt, int a_len,
             break;
         }
         /* add the point if the in/out status changes */
-        switch(op) {
+        switch (op) {
         case CR_OP_UNION:
             is_in = (a_idx & 1) | (b_idx & 1);
             break;
@@ -540,9 +542,9 @@ BOOL lre_is_id_start(uint32_t c)
 BOOL lre_is_id_continue(uint32_t c)
 {
     return lre_is_id_start(c) ||
-        lre_is_in_table(c, unicode_prop_ID_Continue1_table,
-                        unicode_prop_ID_Continue1_index,
-                        sizeof(unicode_prop_ID_Continue1_index) / 3);
+           lre_is_in_table(c, unicode_prop_ID_Continue1_table,
+                           unicode_prop_ID_Continue1_index,
+                           sizeof(unicode_prop_ID_Continue1_index) / 3);
 }
 
 BOOL lre_is_white_space(uint32_t c)
@@ -560,9 +562,9 @@ typedef enum {
     DECOMP_TYPE_L2,
     DECOMP_TYPE_L3,
     DECOMP_TYPE_L4,
-    DECOMP_TYPE_L5, /* XXX: not used */
-    DECOMP_TYPE_L6, /* XXX: could remove */
-    DECOMP_TYPE_L7, /* XXX: could remove */
+    DECOMP_TYPE_L5,  /* XXX: not used */
+    DECOMP_TYPE_L6,  /* XXX: could remove */
+    DECOMP_TYPE_L7,  /* XXX: could remove */
     DECOMP_TYPE_LL1, /* 18 bit char table */
     DECOMP_TYPE_LL2,
     DECOMP_TYPE_S1, /* 8 bit char table */
@@ -594,7 +596,7 @@ typedef enum {
 
 static uint32_t unicode_get_short_code(uint32_t c)
 {
-    static const uint16_t unicode_short_table[2] = { 0x2044, 0x2215 };
+    static const uint16_t unicode_short_table[2] = {0x2044, 0x2215};
 
     if (c < 0x80)
         return c;
@@ -618,9 +620,8 @@ static uint16_t unicode_get16(const uint8_t *p)
     return p[0] | (p[1] << 8);
 }
 
-static int unicode_decomp_entry(uint32_t *res, uint32_t c,
-                                int idx, uint32_t code, uint32_t len,
-                                uint32_t type)
+static int unicode_decomp_entry(uint32_t *res, uint32_t c, int idx,
+                                uint32_t code, uint32_t len, uint32_t type)
 {
     uint32_t c1;
     int l, i, p;
@@ -631,7 +632,7 @@ static int unicode_decomp_entry(uint32_t *res, uint32_t c,
         return 1;
     } else {
         d = unicode_decomp_data + unicode_decomp_table2[idx];
-        switch(type) {
+        switch (type) {
         case DECOMP_TYPE_L1:
         case DECOMP_TYPE_L2:
         case DECOMP_TYPE_L3:
@@ -641,27 +642,26 @@ static int unicode_decomp_entry(uint32_t *res, uint32_t c,
         case DECOMP_TYPE_L7:
             l = type - DECOMP_TYPE_L1 + 1;
             d += (c - code) * l * 2;
-            for(i = 0; i < l; i++) {
+            for (i = 0; i < l; i++) {
                 if ((res[i] = unicode_get16(d + 2 * i)) == 0)
                     return 0;
             }
             return l;
         case DECOMP_TYPE_LL1:
-        case DECOMP_TYPE_LL2:
-            {
-                uint32_t k, p;
-                l = type - DECOMP_TYPE_LL1 + 1;
-                k = (c - code) * l;
-                p = len * l * 2;
-                for(i = 0; i < l; i++) {
-                    c1 = unicode_get16(d + 2 * k) |
-                        (((d[p + (k / 4)] >> ((k % 4) * 2)) & 3) << 16);
-                    if (!c1)
-                        return 0;
-                    res[i] = c1;
-                    k++;
-                }
+        case DECOMP_TYPE_LL2: {
+            uint32_t k, p;
+            l = type - DECOMP_TYPE_LL1 + 1;
+            k = (c - code) * l;
+            p = len * l * 2;
+            for (i = 0; i < l; i++) {
+                c1 = unicode_get16(d + 2 * k) |
+                     (((d[p + (k / 4)] >> ((k % 4) * 2)) & 3) << 16);
+                if (!c1)
+                    return 0;
+                res[i] = c1;
+                k++;
             }
+        }
             return l;
         case DECOMP_TYPE_S1:
         case DECOMP_TYPE_S2:
@@ -670,7 +670,7 @@ static int unicode_decomp_entry(uint32_t *res, uint32_t c,
         case DECOMP_TYPE_S5:
             l = type - DECOMP_TYPE_S1 + 1;
             d += (c - code) * l;
-            for(i = 0; i < l; i++) {
+            for (i = 0; i < l; i++) {
                 if ((res[i] = unicode_get_short_code(d[i])) == 0)
                     return 0;
             }
@@ -688,7 +688,7 @@ static int unicode_decomp_entry(uint32_t *res, uint32_t c,
             l = 2 + ((type - DECOMP_TYPE_I2_0) >> 1);
             p = ((type - DECOMP_TYPE_I2_0) & 1) + (l > 2);
         decomp_type_i:
-            for(i = 0; i < l; i++) {
+            for (i = 0; i < l; i++) {
                 c1 = unicode_get16(d + 2 * i);
                 if (i == p)
                     c1 += c - code;
@@ -707,20 +707,19 @@ static int unicode_decomp_entry(uint32_t *res, uint32_t c,
         case DECOMP_TYPE_B7:
         case DECOMP_TYPE_B8:
             l = type - DECOMP_TYPE_B1 + 1;
-        decomp_type_b:
-            {
-                uint32_t c_min;
-                c_min = unicode_get16(d);
-                d += 2 + (c - code) * l;
-                for(i = 0; i < l; i++) {
-                    c1 = d[i];
-                    if (c1 == 0xff)
-                        c1 = 0x20;
-                    else
-                        c1 += c_min;
-                    res[i] = c1;
-                }
+        decomp_type_b: {
+            uint32_t c_min;
+            c_min = unicode_get16(d);
+            d += 2 + (c - code) * l;
+            for (i = 0; i < l; i++) {
+                c1 = d[i];
+                if (c1 == 0xff)
+                    c1 = 0x20;
+                else
+                    c1 += c_min;
+                res[i] = c1;
             }
+        }
             return l;
         case DECOMP_TYPE_LS2:
             d += (c - code) * 3;
@@ -755,7 +754,6 @@ static int unicode_decomp_entry(uint32_t *res, uint32_t c,
     }
     return 0;
 }
-
 
 /* return the length of the decomposition (length <=
    UNICODE_DECOMP_LEN_MAX) or 0 if no decomposition */
@@ -830,12 +828,12 @@ static int unicode_get_cc(uint32_t c)
     int pos;
     const uint8_t *p;
 
-    pos = get_index_pos(&code, c,
-                        unicode_cc_index, sizeof(unicode_cc_index) / 3);
+    pos =
+        get_index_pos(&code, c, unicode_cc_index, sizeof(unicode_cc_index) / 3);
     if (pos < 0)
         return 0;
     p = unicode_cc_table + pos;
-    for(;;) {
+    for (;;) {
         b = *p++;
         type = b >> 6;
         n = b & 0x3f;
@@ -854,7 +852,7 @@ static int unicode_get_cc(uint32_t c)
             p++;
         c1 = code + n + 1;
         if (c < c1) {
-            switch(type) {
+            switch (type) {
             case 0:
                 cc = p[-1];
                 break;
@@ -879,7 +877,7 @@ static void sort_cc(int *buf, int len)
 {
     int i, j, k, cc, cc1, start, ch1;
 
-    for(i = 0; i < len; i++) {
+    for (i = 0; i < len; i++) {
         cc = unicode_get_cc(buf[i]);
         if (cc != 0) {
             start = i;
@@ -904,14 +902,13 @@ static void sort_cc(int *buf, int len)
     }
 }
 
-static void to_nfd_rec(DynBuf *dbuf,
-                       const int *src, int src_len, int is_compat)
+static void to_nfd_rec(DynBuf *dbuf, const int *src, int src_len, int is_compat)
 {
     uint32_t c, v;
     int i, l;
     uint32_t res[UNICODE_DECOMP_LEN_MAX];
 
-    for(i = 0; i < src_len; i++) {
+    for (i = 0; i < src_len; i++) {
         c = src[i];
         if (c >= 0xac00 && c < 0xd7a4) {
             /* Hangul decomposition */
@@ -936,11 +933,9 @@ static void to_nfd_rec(DynBuf *dbuf,
 static int compose_pair(uint32_t c0, uint32_t c1)
 {
     /* Hangul composition */
-    if (c0 >= 0x1100 && c0 < 0x1100 + 19 &&
-        c1 >= 0x1161 && c1 < 0x1161 + 21) {
+    if (c0 >= 0x1100 && c0 < 0x1100 + 19 && c1 >= 0x1161 && c1 < 0x1161 + 21) {
         return 0xac00 + (c0 - 0x1100) * 588 + (c1 - 0x1161) * 28;
-    } else if (c0 >= 0xac00 && c0 < 0xac00 + 11172 &&
-               (c0 - 0xac00) % 28 == 0 &&
+    } else if (c0 >= 0xac00 && c0 < 0xac00 + 11172 && (c0 - 0xac00) % 28 == 0 &&
                c1 >= 0x11a7 && c1 < 0x11a7 + 28) {
         return c0 + c1 - 0x11a7;
     } else {
@@ -949,8 +944,8 @@ static int compose_pair(uint32_t c0, uint32_t c1)
 }
 
 int unicode_normalize(uint32_t **pdst, const uint32_t *src, int src_len,
-                      UnicodeNormalizationEnum n_type,
-                      void *opaque, DynBufReallocFunc *realloc_func)
+                      UnicodeNormalizationEnum n_type, void *opaque,
+                      DynBufReallocFunc *realloc_func)
 {
     int *buf, buf_len, i, p, starter_pos, cc, last_cc, out_len;
     BOOL is_compat;
@@ -964,7 +959,7 @@ int unicode_normalize(uint32_t **pdst, const uint32_t *src, int src_len,
 
     /* common case: latin1 is unaffected by NFC */
     if (n_type == UNICODE_NFC) {
-        for(i = 0; i < src_len; i++) {
+        for (i = 0; i < src_len; i++) {
             if (src[i] >= 0x100)
                 goto not_latin1;
         }
@@ -972,7 +967,7 @@ int unicode_normalize(uint32_t **pdst, const uint32_t *src, int src_len,
         memcpy(buf, src, src_len * sizeof(int));
         *pdst = (uint32_t *)buf;
         return src_len;
-    not_latin1: ;
+    not_latin1:;
     }
 
     to_nfd_rec(dbuf, (const int *)src, src_len, is_compat);
@@ -1033,7 +1028,7 @@ static int unicode_find_name(const char *name_table, const char *name)
     pos = 0;
     name_len = strlen(name);
     while (*p) {
-        for(;;) {
+        for (;;) {
             r = strchr(p, ',');
             if (!r)
                 len = strlen(p);
@@ -1052,14 +1047,13 @@ static int unicode_find_name(const char *name_table, const char *name)
 
 /* 'cr' must be initialized and empty. Return 0 if OK, -1 if error, -2
    if not found */
-int unicode_script(CharRange *cr,
-                   const char *script_name, BOOL is_ext)
+int unicode_script(CharRange *cr, const char *script_name, BOOL is_ext)
 {
     int script_idx;
     const uint8_t *p, *p_end;
     uint32_t c, c1, b, n, v, v_len, i, type;
-    CharRange cr1_s = { 0 }, *cr1 = NULL;
-    CharRange cr2_s = { 0 }, *cr2 = &cr2_s;
+    CharRange cr1_s = {0}, *cr1 = NULL;
+    CharRange cr2_s = {0}, *cr2 = &cr2_s;
     BOOL is_common;
 
     script_idx = unicode_find_name(unicode_script_name_table, script_name);
@@ -1135,7 +1129,7 @@ int unicode_script(CharRange *cr,
                         goto fail;
                 }
             } else {
-                for(i = 0; i < v_len; i++) {
+                for (i = 0; i < v_len; i++) {
                     if (p[i] == script_idx) {
                         if (cr_add_interval(cr2, c, c1))
                             goto fail;
@@ -1162,7 +1156,7 @@ int unicode_script(CharRange *cr,
         cr_free(cr2);
     }
     return 0;
- fail:
+fail:
     if (is_ext) {
         cr_free(cr1);
         cr_free(cr2);
@@ -1209,7 +1203,7 @@ static int unicode_general_category1(CharRange *cr, uint32_t gc_mask)
                     goto add_range;
                 } else {
                     c0 += ((gc_mask & M(Ll)) != 0);
-                    for(; c0 < c; c0 += 2) {
+                    for (; c0 < c; c0 += 2) {
                         if (cr_add_interval(cr, c0, c0 + 1))
                             return -1;
                     }
@@ -1238,7 +1232,7 @@ static int unicode_prop1(CharRange *cr, int prop_idx)
         b = *p++;
         if (b < 64) {
             c += (b >> 3) + 1;
-            if (bit)  {
+            if (bit) {
                 if (cr_add_interval(cr, c0, c))
                     return -1;
             }
@@ -1254,7 +1248,7 @@ static int unicode_prop1(CharRange *cr, int prop_idx)
             c += (((b - 0x60) << 16) | (p[0] << 8) | p[1]) + 1;
             p += 2;
         }
-        if (bit)  {
+        if (bit) {
             if (cr_add_interval(cr, c0, c))
                 return -1;
         }
@@ -1277,11 +1271,14 @@ static int unicode_case1(CharRange *cr, int case_mask)
 #define MR(x) (1 << RUN_TYPE_ ## x)
     const uint32_t tab_run_mask[3] = {
         MR(U) | MR(UF) | MR(UL) | MR(LSU) | MR(U2L_399_EXT2) | MR(UF_D20) |
-        MR(UF_D1_EXT) | MR(U_EXT) | MR(UF_EXT2) | MR(UF_EXT3),
+            MR(UF_D1_EXT) | MR(U_EXT) | MR(UF_EXT2) | MR(UF_EXT3),
 
-        MR(L) | MR(LF) | MR(UL) | MR(LSU) | MR(U2L_399_EXT2) | MR(LF_EXT) | MR(LF_EXT2),
+        MR(L) | MR(LF) | MR(UL) | MR(LSU) | MR(U2L_399_EXT2) | MR(LF_EXT) |
+            MR(LF_EXT2),
 
-        MR(UF) | MR(LF) | MR(UL) | MR(LSU) | MR(U2L_399_EXT2) | MR(LF_EXT) | MR(LF_EXT2) | MR(UF_D20) | MR(UF_D1_EXT) | MR(LF_EXT) | MR(UF_EXT2) | MR(UF_EXT3),
+        MR(UF) | MR(LF) | MR(UL) | MR(LSU) | MR(U2L_399_EXT2) | MR(LF_EXT) |
+            MR(LF_EXT2) | MR(UF_D20) | MR(UF_D1_EXT) | MR(LF_EXT) |
+            MR(UF_EXT2) | MR(UF_EXT3),
     };
 #undef MR
     uint32_t mask, v, code, type, len, i, idx;
@@ -1289,23 +1286,23 @@ static int unicode_case1(CharRange *cr, int case_mask)
     if (case_mask == 0)
         return 0;
     mask = 0;
-    for(i = 0; i < 3; i++) {
+    for (i = 0; i < 3; i++) {
         if ((case_mask >> i) & 1)
             mask |= tab_run_mask[i];
     }
-    for(idx = 0; idx < countof(case_conv_table1); idx++) {
+    for (idx = 0; idx < countof(case_conv_table1); idx++) {
         v = case_conv_table1[idx];
         type = (v >> (32 - 17 - 7 - 4)) & 0xf;
         code = v >> (32 - 17);
         len = (v >> (32 - 17 - 7)) & 0x7f;
         if ((mask >> type) & 1) {
             //            printf("%d: type=%d %04x %04x\n", idx, type, code, code + len - 1);
-            switch(type) {
+            switch (type) {
             case RUN_TYPE_UL:
                 if ((case_mask & CASE_U) && (case_mask & (CASE_L | CASE_F)))
                     goto def_case;
                 code += ((case_mask & CASE_U) != 0);
-                for(i = 0; i < len; i += 2) {
+                for (i = 0; i < len; i += 2) {
                     if (cr_add_interval(cr, code + i, code + i + 1))
                         return -1;
                 }
@@ -1349,7 +1346,7 @@ static void cr_sort_and_remove_overlap(CharRange *cr)
     /* the resulting ranges are not necessarily sorted and may overlap */
     rqsort(cr->points, cr->len / 2, sizeof(cr->points[0]) * 2, point_cmp, NULL);
     j = 0;
-    for(i = 0; i < cr->len; ) {
+    for (i = 0; i < cr->len;) {
         start = cr->points[i];
         end = cr->points[i + 1];
         i += 2;
@@ -1392,12 +1389,14 @@ int cr_regexp_canonicalize(CharRange *cr, BOOL is_unicode)
 
     if (unicode_case1(&cr_mask, is_unicode ? CASE_F : CASE_U))
         goto fail;
-    if (cr_op(&cr_inter, cr_mask.points, cr_mask.len, cr->points, cr->len, CR_OP_INTER))
+    if (cr_op(&cr_inter, cr_mask.points, cr_mask.len, cr->points, cr->len,
+              CR_OP_INTER))
         goto fail;
 
     if (cr_invert(&cr_mask))
         goto fail;
-    if (cr_op(&cr_sub, cr_mask.points, cr_mask.len, cr->points, cr->len, CR_OP_INTER))
+    if (cr_op(&cr_sub, cr_mask.points, cr_mask.len, cr->points, cr->len,
+              CR_OP_INTER))
         goto fail;
 
     /* cr_inter = cr & cr_mask */
@@ -1410,12 +1409,12 @@ int cr_regexp_canonicalize(CharRange *cr, BOOL is_unicode)
     v = case_conv_table1[idx];
     code = v >> (32 - 17);
     len = (v >> (32 - 17 - 7)) & 0x7f;
-    for(i = 0; i < cr_inter.len; i += 2) {
+    for (i = 0; i < cr_inter.len; i += 2) {
         start = cr_inter.points[i];
         end = cr_inter.points[i + 1];
 
-        for(c = start; c < end; c++) {
-            for(;;) {
+        for (c = start; c < end; c++) {
+            for (;;) {
                 if (c >= code && c < code + len)
                     break;
                 idx++;
@@ -1448,7 +1447,8 @@ int cr_regexp_canonicalize(CharRange *cr, BOOL is_unicode)
 
     /* or with the character not affected by the case folding */
     cr->len = 0;
-    if (cr_op(cr, cr_result.points, cr_result.len, cr_sub.points, cr_sub.len, CR_OP_UNION))
+    if (cr_op(cr, cr_result.points, cr_result.len, cr_sub.points, cr_sub.len,
+              CR_OP_UNION))
         goto fail;
 
     cr_free(&cr_inter);
@@ -1456,7 +1456,7 @@ int cr_regexp_canonicalize(CharRange *cr, BOOL is_unicode)
     cr_free(&cr_result);
     cr_free(&cr_sub);
     return 0;
- fail:
+fail:
     cr_free(&cr_inter);
     cr_free(&cr_mask);
     cr_free(&cr_result);
@@ -1486,9 +1486,9 @@ static int unicode_prop_ops(CharRange *cr, ...)
 
     va_start(ap, cr);
     stack_len = 0;
-    for(;;) {
+    for (;;) {
         op = va_arg(ap, int);
-        switch(op) {
+        switch (op) {
         case POP_GC:
             assert(stack_len < POP_STACK_LEN_MAX);
             a = va_arg(ap, int);
@@ -1512,24 +1512,22 @@ static int unicode_prop_ops(CharRange *cr, ...)
             break;
         case POP_UNION:
         case POP_INTER:
-        case POP_XOR:
-            {
-                CharRange *cr1, *cr2, *cr3;
-                assert(stack_len >= 2);
-                assert(stack_len < POP_STACK_LEN_MAX);
-                cr1 = &stack[stack_len - 2];
-                cr2 = &stack[stack_len - 1];
-                cr3 = &stack[stack_len++];
-                cr_init(cr3, cr->mem_opaque, cr->realloc_func);
-                if (cr_op(cr3, cr1->points, cr1->len,
-                          cr2->points, cr2->len, op - POP_UNION + CR_OP_UNION))
-                    goto fail;
-                cr_free(cr1);
-                cr_free(cr2);
-                *cr1 = *cr3;
-                stack_len -= 2;
-            }
-            break;
+        case POP_XOR: {
+            CharRange *cr1, *cr2, *cr3;
+            assert(stack_len >= 2);
+            assert(stack_len < POP_STACK_LEN_MAX);
+            cr1 = &stack[stack_len - 2];
+            cr2 = &stack[stack_len - 1];
+            cr3 = &stack[stack_len++];
+            cr_init(cr3, cr->mem_opaque, cr->realloc_func);
+            if (cr_op(cr3, cr1->points, cr1->len, cr2->points, cr2->len,
+                      op - POP_UNION + CR_OP_UNION))
+                goto fail;
+            cr_free(cr1);
+            cr_free(cr2);
+            *cr1 = *cr3;
+            stack_len -= 2;
+        } break;
         case POP_INVERT:
             assert(stack_len >= 1);
             if (cr_invert(&stack[stack_len - 1]))
@@ -1541,26 +1539,26 @@ static int unicode_prop_ops(CharRange *cr, ...)
             abort();
         }
     }
- done:
+done:
     assert(stack_len == 1);
     ret = cr_copy(cr, &stack[0]);
     cr_free(&stack[0]);
     return ret;
- fail:
-    for(i = 0; i < stack_len; i++)
+fail:
+    for (i = 0; i < stack_len; i++)
         cr_free(&stack[i]);
     return -1;
 }
 
 static const uint32_t unicode_gc_mask_table[] = {
-    M(Lu) | M(Ll) | M(Lt), /* LC */
-    M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo), /* L */
-    M(Mn) | M(Mc) | M(Me), /* M */
-    M(Nd) | M(Nl) | M(No), /* N */
-    M(Sm) | M(Sc) | M(Sk) | M(So), /* S */
+    M(Lu) | M(Ll) | M(Lt),                                 /* LC */
+    M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo),                 /* L */
+    M(Mn) | M(Mc) | M(Me),                                 /* M */
+    M(Nd) | M(Nl) | M(No),                                 /* N */
+    M(Sm) | M(Sc) | M(Sk) | M(So),                         /* S */
     M(Pc) | M(Pd) | M(Ps) | M(Pe) | M(Pi) | M(Pf) | M(Po), /* P */
-    M(Zs) | M(Zl) | M(Zp), /* Z */
-    M(Cc) | M(Cf) | M(Cs) | M(Co) | M(Cn), /* C */
+    M(Zs) | M(Zl) | M(Zp),                                 /* Z */
+    M(Cc) | M(Cf) | M(Cs) | M(Co) | M(Cn),                 /* C */
 };
 
 /* 'cr' must be initialized and empty. Return 0 if OK, -1 if error, -2
@@ -1581,7 +1579,6 @@ int unicode_general_category(CharRange *cr, const char *gc_name)
     return unicode_general_category1(cr, gc_mask);
 }
 
-
 /* 'cr' must be initialized and empty. Return 0 if OK, -1 if error, -2
    if not found */
 int unicode_prop(CharRange *cr, const char *prop_name)
@@ -1594,7 +1591,7 @@ int unicode_prop(CharRange *cr, const char *prop_name)
     prop_idx += UNICODE_PROP_ASCII_Hex_Digit;
 
     ret = 0;
-    switch(prop_idx) {
+    switch (prop_idx) {
     case UNICODE_PROP_ASCII:
         if (cr_add_interval(cr, 0x00, 0x7f + 1))
             return -1;
@@ -1604,97 +1601,65 @@ int unicode_prop(CharRange *cr, const char *prop_name)
             return -1;
         break;
     case UNICODE_PROP_Assigned:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Cn),
-                               POP_INVERT,
-                               POP_END);
+        ret = unicode_prop_ops(cr, POP_GC, M(Cn), POP_INVERT, POP_END);
         break;
     case UNICODE_PROP_Math:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Sm),
-                               POP_PROP, UNICODE_PROP_Other_Math,
-                               POP_UNION,
-                               POP_END);
+        ret = unicode_prop_ops(cr, POP_GC, M(Sm), POP_PROP,
+                               UNICODE_PROP_Other_Math, POP_UNION, POP_END);
         break;
     case UNICODE_PROP_Lowercase:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Ll),
-                               POP_PROP, UNICODE_PROP_Other_Lowercase,
-                               POP_UNION,
-                               POP_END);
+        ret =
+            unicode_prop_ops(cr, POP_GC, M(Ll), POP_PROP,
+                             UNICODE_PROP_Other_Lowercase, POP_UNION, POP_END);
         break;
     case UNICODE_PROP_Uppercase:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Lu),
-                               POP_PROP, UNICODE_PROP_Other_Uppercase,
-                               POP_UNION,
-                               POP_END);
+        ret =
+            unicode_prop_ops(cr, POP_GC, M(Lu), POP_PROP,
+                             UNICODE_PROP_Other_Uppercase, POP_UNION, POP_END);
         break;
     case UNICODE_PROP_Cased:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Lu) | M(Ll) | M(Lt),
-                               POP_PROP, UNICODE_PROP_Other_Uppercase,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_Other_Lowercase,
-                               POP_UNION,
-                               POP_END);
+        ret =
+            unicode_prop_ops(cr, POP_GC, M(Lu) | M(Ll) | M(Lt), POP_PROP,
+                             UNICODE_PROP_Other_Uppercase, POP_UNION, POP_PROP,
+                             UNICODE_PROP_Other_Lowercase, POP_UNION, POP_END);
         break;
     case UNICODE_PROP_Alphabetic:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo) | M(Nl),
-                               POP_PROP, UNICODE_PROP_Other_Uppercase,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_Other_Lowercase,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_Other_Alphabetic,
-                               POP_UNION,
-                               POP_END);
+        ret = unicode_prop_ops(
+            cr, POP_GC, M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo) | M(Nl), POP_PROP,
+            UNICODE_PROP_Other_Uppercase, POP_UNION, POP_PROP,
+            UNICODE_PROP_Other_Lowercase, POP_UNION, POP_PROP,
+            UNICODE_PROP_Other_Alphabetic, POP_UNION, POP_END);
         break;
     case UNICODE_PROP_Grapheme_Base:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Cc) | M(Cf) | M(Cs) | M(Co) | M(Cn) | M(Zl) | M(Zp) | M(Me) | M(Mn),
+        ret = unicode_prop_ops(cr, POP_GC,
+                               M(Cc) | M(Cf) | M(Cs) | M(Co) | M(Cn) | M(Zl) |
+                                   M(Zp) | M(Me) | M(Mn),
                                POP_PROP, UNICODE_PROP_Other_Grapheme_Extend,
-                               POP_UNION,
-                               POP_INVERT,
-                               POP_END);
+                               POP_UNION, POP_INVERT, POP_END);
         break;
     case UNICODE_PROP_Grapheme_Extend:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Me) | M(Mn),
-                               POP_PROP, UNICODE_PROP_Other_Grapheme_Extend,
-                               POP_UNION,
+        ret = unicode_prop_ops(cr, POP_GC, M(Me) | M(Mn), POP_PROP,
+                               UNICODE_PROP_Other_Grapheme_Extend, POP_UNION,
                                POP_END);
         break;
     case UNICODE_PROP_XID_Start:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo) | M(Nl),
-                               POP_PROP, UNICODE_PROP_Other_ID_Start,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_Pattern_Syntax,
-                               POP_PROP, UNICODE_PROP_Pattern_White_Space,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_XID_Start1,
-                               POP_UNION,
-                               POP_INVERT,
-                               POP_INTER,
-                               POP_END);
+        ret = unicode_prop_ops(
+            cr, POP_GC, M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo) | M(Nl), POP_PROP,
+            UNICODE_PROP_Other_ID_Start, POP_UNION, POP_PROP,
+            UNICODE_PROP_Pattern_Syntax, POP_PROP,
+            UNICODE_PROP_Pattern_White_Space, POP_UNION, POP_PROP,
+            UNICODE_PROP_XID_Start1, POP_UNION, POP_INVERT, POP_INTER, POP_END);
         break;
     case UNICODE_PROP_XID_Continue:
-        ret = unicode_prop_ops(cr,
-                               POP_GC, M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo) | M(Nl) |
-                               M(Mn) | M(Mc) | M(Nd) | M(Pc),
-                               POP_PROP, UNICODE_PROP_Other_ID_Start,
-                               POP_UNION,
+        ret = unicode_prop_ops(cr, POP_GC,
+                               M(Lu) | M(Ll) | M(Lt) | M(Lm) | M(Lo) | M(Nl) |
+                                   M(Mn) | M(Mc) | M(Nd) | M(Pc),
+                               POP_PROP, UNICODE_PROP_Other_ID_Start, POP_UNION,
                                POP_PROP, UNICODE_PROP_Other_ID_Continue,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_Pattern_Syntax,
+                               POP_UNION, POP_PROP, UNICODE_PROP_Pattern_Syntax,
                                POP_PROP, UNICODE_PROP_Pattern_White_Space,
-                               POP_UNION,
-                               POP_PROP, UNICODE_PROP_XID_Continue1,
-                               POP_UNION,
-                               POP_INVERT,
-                               POP_INTER,
-                               POP_END);
+                               POP_UNION, POP_PROP, UNICODE_PROP_XID_Continue1,
+                               POP_UNION, POP_INVERT, POP_INTER, POP_END);
         break;
     case UNICODE_PROP_Changes_When_Uppercased:
         ret = unicode_case1(cr, CASE_U);
@@ -1706,33 +1671,24 @@ int unicode_prop(CharRange *cr, const char *prop_name)
         ret = unicode_case1(cr, CASE_U | CASE_L | CASE_F);
         break;
     case UNICODE_PROP_Changes_When_Titlecased:
-        ret = unicode_prop_ops(cr,
-                               POP_CASE, CASE_U,
-                               POP_PROP, UNICODE_PROP_Changes_When_Titlecased1,
-                               POP_XOR,
+        ret = unicode_prop_ops(cr, POP_CASE, CASE_U, POP_PROP,
+                               UNICODE_PROP_Changes_When_Titlecased1, POP_XOR,
                                POP_END);
         break;
     case UNICODE_PROP_Changes_When_Casefolded:
-        ret = unicode_prop_ops(cr,
-                               POP_CASE, CASE_F,
-                               POP_PROP, UNICODE_PROP_Changes_When_Casefolded1,
-                               POP_XOR,
+        ret = unicode_prop_ops(cr, POP_CASE, CASE_F, POP_PROP,
+                               UNICODE_PROP_Changes_When_Casefolded1, POP_XOR,
                                POP_END);
         break;
     case UNICODE_PROP_Changes_When_NFKC_Casefolded:
-        ret = unicode_prop_ops(cr,
-                               POP_CASE, CASE_F,
-                               POP_PROP, UNICODE_PROP_Changes_When_NFKC_Casefolded1,
-                               POP_XOR,
-                               POP_END);
+        ret = unicode_prop_ops(cr, POP_CASE, CASE_F, POP_PROP,
+                               UNICODE_PROP_Changes_When_NFKC_Casefolded1,
+                               POP_XOR, POP_END);
         break;
         /* we use the existing tables */
     case UNICODE_PROP_ID_Continue:
-        ret = unicode_prop_ops(cr,
-                               POP_PROP, UNICODE_PROP_ID_Start,
-                               POP_PROP, UNICODE_PROP_ID_Continue1,
-                               POP_XOR,
-                               POP_END);
+        ret = unicode_prop_ops(cr, POP_PROP, UNICODE_PROP_ID_Start, POP_PROP,
+                               UNICODE_PROP_ID_Continue1, POP_XOR, POP_END);
         break;
     default:
         if (prop_idx >= countof(unicode_prop_table))

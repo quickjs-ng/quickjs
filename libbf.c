@@ -80,15 +80,14 @@ typedef int bf_op2_func_t(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
 #define FFT_MUL_R_OVERLAP_B (1 << 1)
 #define FFT_MUL_R_NORESIZE  (1 << 2)
 
-static no_inline int fft_mul(bf_context_t *s,
-                             bf_t *res, limb_t *a_tab, limb_t a_len,
-                             limb_t *b_tab, limb_t b_len, int mul_flags);
+static no_inline int fft_mul(bf_context_t *s, bf_t *res, limb_t *a_tab,
+                             limb_t a_len, limb_t *b_tab, limb_t b_len,
+                             int mul_flags);
 static void fft_clear_cache(bf_context_t *s);
 #endif
 #ifdef USE_BF_DEC
 static limb_t get_digit(const limb_t *tab, limb_t len, slimb_t pos);
 #endif
-
 
 /* could leading zeros */
 static inline int clz(limb_t a)
@@ -256,7 +255,7 @@ int bf_set_ui(bf_t *r, uint64_t a)
     }
 #endif
     return 0;
- fail:
+fail:
     bf_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
@@ -378,7 +377,7 @@ static inline limb_t limb_mask(int start, int last)
 static limb_t mp_scan_nz(const limb_t *tab, mp_size_t n)
 {
     mp_size_t i;
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         if (tab[i] != 0)
             return 1;
     }
@@ -408,8 +407,8 @@ static inline limb_t scan_bit_nz(const bf_t *r, slimb_t bit_pos)
 
 /* return the addend for rounding. Note that prec can be <= 0 (for
    BF_FLAG_RADPNT_PREC) */
-static int bf_get_rnd_add(int *pret, const bf_t *r, limb_t l,
-                          slimb_t prec, int rnd_mode)
+static int bf_get_rnd_add(int *pret, const bf_t *r, limb_t l, slimb_t prec,
+                          int rnd_mode)
 {
     int add_one, inexact;
     limb_t bit1, bit0;
@@ -426,7 +425,7 @@ static int bf_get_rnd_add(int *pret, const bf_t *r, limb_t l,
     inexact = (bit1 | bit0) != 0;
 
     add_one = 0;
-    switch(rnd_mode) {
+    switch (rnd_mode) {
     case BF_RNDZ:
         break;
     case BF_RNDN:
@@ -435,8 +434,7 @@ static int bf_get_rnd_add(int *pret, const bf_t *r, limb_t l,
                 add_one = 1;
             } else {
                 /* round to even */
-                add_one =
-                    get_bit(r->tab, l, l * LIMB_BITS - 1 - (prec - 1));
+                add_one = get_bit(r->tab, l, l * LIMB_BITS - 1 - (prec - 1));
             }
         }
         break;
@@ -467,11 +465,8 @@ static int bf_set_overflow(bf_t *r, int sign, limb_t prec, bf_flags_t flags)
     int rnd_mode;
 
     rnd_mode = flags & BF_RND_MASK;
-    if (prec == BF_PREC_INF ||
-        rnd_mode == BF_RNDN ||
-        rnd_mode == BF_RNDNA ||
-        rnd_mode == BF_RNDA ||
-        (rnd_mode == BF_RNDD && sign == 1) ||
+    if (prec == BF_PREC_INF || rnd_mode == BF_RNDN || rnd_mode == BF_RNDNA ||
+        rnd_mode == BF_RNDA || (rnd_mode == BF_RNDD && sign == 1) ||
         (rnd_mode == BF_RNDU && sign == 0)) {
         bf_set_inf(r, sign);
     } else {
@@ -481,9 +476,8 @@ static int bf_set_overflow(bf_t *r, int sign, limb_t prec, bf_flags_t flags)
             bf_set_nan(r);
             return BF_ST_MEM_ERROR;
         }
-        r->tab[0] = limb_mask((-prec) & (LIMB_BITS - 1),
-                              LIMB_BITS - 1);
-        for(i = 1; i < l; i++)
+        r->tab[0] = limb_mask((-prec) & (LIMB_BITS - 1), LIMB_BITS - 1);
+        for (i = 1; i < l; i++)
             r->tab[i] = (limb_t)-1;
         e_max = (limb_t)1 << (bf_get_exp_bits(flags) - 1);
         r->expn = e_max;
@@ -546,7 +540,7 @@ static int __bf_round(bf_t *r, limb_t prec1, bf_flags_t flags, limb_t l,
         pos = bit_pos >> LIMB_LOG2_BITS;
         carry = (limb_t)1 << (bit_pos & (LIMB_BITS - 1));
 
-        for(i = pos; i < l; i++) {
+        for (i = pos; i < l; i++) {
             v = r->tab[i] + carry;
             carry = (v < carry);
             r->tab[i] = v;
@@ -556,7 +550,7 @@ static int __bf_round(bf_t *r, limb_t prec1, bf_flags_t flags, limb_t l,
         if (carry) {
             /* shift right by one digit */
             v = 1;
-            for(i = l - 1; i >= pos; i--) {
+            for (i = l - 1; i >= pos; i--) {
                 a = r->tab[i];
                 r->tab[i] = (a >> 1) | (v << (LIMB_BITS - 1));
                 v = a;
@@ -627,7 +621,7 @@ int bf_normalize_and_round(bf_t *r, limb_t prec1, bf_flags_t flags)
         shift = clz(v);
         if (shift != 0) {
             v = 0;
-            for(i = 0; i < l; i++) {
+            for (i = 0; i < l; i++) {
                 a = r->tab[i];
                 r->tab[i] = (a << shift) | (v >> (LIMB_BITS - shift));
                 v = a;
@@ -688,13 +682,13 @@ int bf_round(bf_t *r, limb_t prec, bf_flags_t flags)
 }
 
 /* for debugging */
-static __maybe_unused void dump_limbs(const char *str, const limb_t *tab, limb_t n)
+static __maybe_unused void dump_limbs(const char *str, const limb_t *tab,
+                                      limb_t n)
 {
     limb_t i;
     printf("%s: len=%" PRId_LIMB "\n", str, n);
-    for(i = 0; i < n; i++) {
-        printf("%" PRId_LIMB ": " FMT_LIMB "\n",
-               i, tab[i]);
+    for (i = 0; i < n; i++) {
+        printf("%" PRId_LIMB ": " FMT_LIMB "\n", i, tab[i]);
     }
 }
 
@@ -702,7 +696,7 @@ void mp_print_str(const char *str, const limb_t *tab, limb_t n)
 {
     slimb_t i;
     printf("%s= 0x", str);
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         if (i != (n - 1))
             printf("_");
         printf(FMT_LIMB, tab[i]);
@@ -710,14 +704,13 @@ void mp_print_str(const char *str, const limb_t *tab, limb_t n)
     printf("\n");
 }
 
-static __maybe_unused void mp_print_str_h(const char *str,
-                                          const limb_t *tab, limb_t n,
-                                          limb_t high)
+static __maybe_unused void mp_print_str_h(const char *str, const limb_t *tab,
+                                          limb_t n, limb_t high)
 {
     slimb_t i;
     printf("%s= 0x", str);
     printf(FMT_LIMB, high);
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         printf("_");
         printf(FMT_LIMB, tab[i]);
     }
@@ -741,7 +734,7 @@ void bf_print_str(const char *str, const bf_t *a)
             printf("Inf");
         } else {
             printf("0x0.");
-            for(i = a->len - 1; i >= 0; i--)
+            for (i = a->len - 1; i >= 0; i--)
                 printf(FMT_LIMB, a->tab[i]);
             printf("p%" PRId_LIMB, a->expn);
         }
@@ -763,7 +756,7 @@ int bf_cmpu(const bf_t *a, const bf_t *b)
             return 1;
     }
     len = bf_max(a->len, b->len);
-    for(i = len - 1; i >= 0; i--) {
+    for (i = len - 1; i >= 0; i--) {
         v1 = get_limbz(a, a->len - len + i);
         v2 = get_limbz(b, b->len - len + i);
         if (v1 != v2) {
@@ -836,12 +829,12 @@ static limb_t count_cancelled_bits(const bf_t *a, const bf_t *b)
     limb_t v1, v2, mask;
 
     bit_offset = a->len * LIMB_BITS - 1;
-    b_offset = (b->len - a->len) * LIMB_BITS - (LIMB_BITS - 1) +
-        a->expn - b->expn;
+    b_offset =
+        (b->len - a->len) * LIMB_BITS - (LIMB_BITS - 1) + a->expn - b->expn;
     n = 0;
 
     /* first search the equals bits */
-    for(;;) {
+    for (;;) {
         v1 = get_limbz(a, bit_offset >> LIMB_LOG2_BITS);
         v2 = get_bits(b->tab, b->len, bit_offset + b_offset);
         //        printf("v1=" FMT_LIMB " v2=" FMT_LIMB "\n", v1, v2);
@@ -864,7 +857,7 @@ static limb_t count_cancelled_bits(const bf_t *a, const bf_t *b)
             goto done;
     }
     bit_offset -= LIMB_BITS;
-    for(;;) {
+    for (;;) {
         v1 = get_limbz(a, bit_offset >> LIMB_LOG2_BITS);
         v2 = get_bits(b->tab, b->len, bit_offset + b_offset);
         //        printf("v1=" FMT_LIMB " v2=" FMT_LIMB "\n", v1, v2);
@@ -877,7 +870,7 @@ static limb_t count_cancelled_bits(const bf_t *a, const bf_t *b)
         n += LIMB_BITS;
         bit_offset -= LIMB_BITS;
     }
- done:
+done:
     return n;
 }
 
@@ -996,7 +989,7 @@ static int bf_add_internal(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
             z |= u;
         }
         /* and the result */
-        for(i = 0; i < r_len; i++) {
+        for (i = 0; i < r_len; i++) {
             v1 = get_limbz(a, a_offset + i);
             v2 = get_bits(b->tab, b->len, b_bit_offset + i * LIMB_BITS);
             v2 ^= sub_mask;
@@ -1020,31 +1013,31 @@ static int bf_add_internal(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
         ret = bf_normalize_and_round(r, prec, flags);
     }
     return ret;
- fail:
+fail:
     bf_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
 
 static int __bf_add(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
-                     bf_flags_t flags)
+                    bf_flags_t flags)
 {
     return bf_add_internal(r, a, b, prec, flags, 0);
 }
 
 static int __bf_sub(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
-                     bf_flags_t flags)
+                    bf_flags_t flags)
 {
     return bf_add_internal(r, a, b, prec, flags, 1);
 }
 
-limb_t mp_add(limb_t *res, const limb_t *op1, const limb_t *op2,
-              limb_t n, limb_t carry)
+limb_t mp_add(limb_t *res, const limb_t *op1, const limb_t *op2, limb_t n,
+              limb_t carry)
 {
     slimb_t i;
     limb_t k, a, v, k1;
 
     k = carry;
-    for(i=0;i<n;i++) {
+    for (i = 0; i < n; i++) {
         v = op1[i];
         a = v + op2[i];
         k1 = a < v;
@@ -1060,8 +1053,8 @@ limb_t mp_add_ui(limb_t *tab, limb_t b, size_t n)
     size_t i;
     limb_t k, a;
 
-    k=b;
-    for(i=0;i<n;i++) {
+    k = b;
+    for (i = 0; i < n; i++) {
         if (k == 0)
             break;
         a = tab[i] + k;
@@ -1071,14 +1064,14 @@ limb_t mp_add_ui(limb_t *tab, limb_t b, size_t n)
     return k;
 }
 
-limb_t mp_sub(limb_t *res, const limb_t *op1, const limb_t *op2,
-              mp_size_t n, limb_t carry)
+limb_t mp_sub(limb_t *res, const limb_t *op1, const limb_t *op2, mp_size_t n,
+              limb_t carry)
 {
     int i;
     limb_t k, a, v, k1;
 
     k = carry;
-    for(i=0;i<n;i++) {
+    for (i = 0; i < n; i++) {
         v = op1[i];
         a = v - op2[i];
         k1 = a > v;
@@ -1096,7 +1089,7 @@ static limb_t mp_neg(limb_t *res, const limb_t *op2, mp_size_t n, limb_t carry)
     limb_t k, a, v, k1;
 
     k = carry;
-    for(i=0;i<n;i++) {
+    for (i = 0; i < n; i++) {
         v = 0;
         a = v - op2[i];
         k1 = a > v;
@@ -1112,8 +1105,8 @@ limb_t mp_sub_ui(limb_t *tab, limb_t b, mp_size_t n)
     mp_size_t i;
     limb_t k, a, v;
 
-    k=b;
-    for(i=0;i<n;i++) {
+    k = b;
+    for (i = 0; i < n; i++) {
         v = tab[i];
         a = v - k;
         k = a > v;
@@ -1126,15 +1119,15 @@ limb_t mp_sub_ui(limb_t *tab, limb_t b, mp_size_t n)
 
 /* r = (a + high*B^n) >> shift. Return the remainder r (0 <= r < 2^shift).
    1 <= shift <= LIMB_BITS - 1 */
-static limb_t mp_shr(limb_t *tab_r, const limb_t *tab, mp_size_t n,
-                     int shift, limb_t high)
+static limb_t mp_shr(limb_t *tab_r, const limb_t *tab, mp_size_t n, int shift,
+                     limb_t high)
 {
     mp_size_t i;
     limb_t l, a;
 
     assert(shift >= 1 && shift < LIMB_BITS);
     l = high;
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         a = tab[i];
         tab_r[i] = (a >> shift) | (l << (LIMB_BITS - shift));
         l = a;
@@ -1143,13 +1136,13 @@ static limb_t mp_shr(limb_t *tab_r, const limb_t *tab, mp_size_t n,
 }
 
 /* tabr[] = taba[] * b + l. Return the high carry */
-static limb_t mp_mul1(limb_t *tabr, const limb_t *taba, limb_t n,
-                      limb_t b, limb_t l)
+static limb_t mp_mul1(limb_t *tabr, const limb_t *taba, limb_t n, limb_t b,
+                      limb_t l)
 {
     limb_t i;
     dlimb_t t;
 
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         t = (dlimb_t)taba[i] * (dlimb_t)b + l;
         tabr[i] = t;
         l = t >> LIMB_BITS;
@@ -1158,14 +1151,13 @@ static limb_t mp_mul1(limb_t *tabr, const limb_t *taba, limb_t n,
 }
 
 /* tabr[] += taba[] * b, return the high word. */
-static limb_t mp_add_mul1(limb_t *tabr, const limb_t *taba, limb_t n,
-                          limb_t b)
+static limb_t mp_add_mul1(limb_t *tabr, const limb_t *taba, limb_t n, limb_t b)
 {
     limb_t i, l;
     dlimb_t t;
 
     l = 0;
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         t = (dlimb_t)taba[i] * (dlimb_t)b + l + tabr[i];
         tabr[i] = t;
         l = t >> LIMB_BITS;
@@ -1174,14 +1166,13 @@ static limb_t mp_add_mul1(limb_t *tabr, const limb_t *taba, limb_t n,
 }
 
 /* size of the result : op1_size + op2_size. */
-static void mp_mul_basecase(limb_t *result,
-                            const limb_t *op1, limb_t op1_size,
+static void mp_mul_basecase(limb_t *result, const limb_t *op1, limb_t op1_size,
                             const limb_t *op2, limb_t op2_size)
 {
     limb_t i, r;
 
     result[op1_size] = mp_mul1(result, op1, op1_size, op2[0], 0);
-    for(i=1;i<op2_size;i++) {
+    for (i = 1; i < op2_size; i++) {
         r = mp_add_mul1(result + i, op1, op1_size, op2[i]);
         result[i + op1_size] = r;
     }
@@ -1189,8 +1180,7 @@ static void mp_mul_basecase(limb_t *result,
 
 /* return 0 if OK, -1 if memory error */
 /* XXX: change API so that result can be allocated */
-int mp_mul(bf_context_t *s, limb_t *result,
-           const limb_t *op1, limb_t op1_size,
+int mp_mul(bf_context_t *s, limb_t *result, const limb_t *op1, limb_t op1_size,
            const limb_t *op2, limb_t op2_size)
 {
 #ifdef USE_FFT_MUL
@@ -1198,8 +1188,8 @@ int mp_mul(bf_context_t *s, limb_t *result,
         bf_t r_s, *r = &r_s;
         r->tab = result;
         /* XXX: optimize memory usage in API */
-        if (fft_mul(s, r, (limb_t *)op1, op1_size,
-                    (limb_t *)op2, op2_size, FFT_MUL_R_NORESIZE))
+        if (fft_mul(s, r, (limb_t *)op1, op1_size, (limb_t *)op2, op2_size,
+                    FFT_MUL_R_NORESIZE))
             return -1;
     } else
 #endif
@@ -1211,14 +1201,13 @@ int mp_mul(bf_context_t *s, limb_t *result,
 
 /* tabr[] -= taba[] * b. Return the value to substract to the high
    word. */
-static limb_t mp_sub_mul1(limb_t *tabr, const limb_t *taba, limb_t n,
-                          limb_t b)
+static limb_t mp_sub_mul1(limb_t *tabr, const limb_t *taba, limb_t n, limb_t b)
 {
     limb_t i, l;
     dlimb_t t;
 
     l = 0;
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         t = tabr[i] - (dlimb_t)taba[i] * (dlimb_t)b - l;
         tabr[i] = t;
         l = -(t >> LIMB_BITS);
@@ -1237,8 +1226,8 @@ static inline limb_t udiv1norm_init(limb_t d)
 
 /* return the quotient and the remainder in '*pr'of 'a1*2^LIMB_BITS+a0
    / d' with 0 <= a1 < d. */
-static inline limb_t udiv1norm(limb_t *pr, limb_t a1, limb_t a0,
-                                limb_t d, limb_t d_inv)
+static inline limb_t udiv1norm(limb_t *pr, limb_t a1, limb_t a0, limb_t d,
+                               limb_t d_inv)
 {
     limb_t n1m, n_adj, q, r, ah;
     dlimb_t a;
@@ -1258,20 +1247,20 @@ static inline limb_t udiv1norm(limb_t *pr, limb_t a1, limb_t a0,
 }
 
 /* b must be >= 1 << (LIMB_BITS - 1) */
-static limb_t mp_div1norm(limb_t *tabr, const limb_t *taba, limb_t n,
-                          limb_t b, limb_t r)
+static limb_t mp_div1norm(limb_t *tabr, const limb_t *taba, limb_t n, limb_t b,
+                          limb_t r)
 {
     slimb_t i;
 
     if (n >= UDIV1NORM_THRESHOLD) {
         limb_t b_inv;
         b_inv = udiv1norm_init(b);
-        for(i = n - 1; i >= 0; i--) {
+        for (i = n - 1; i >= 0; i--) {
             tabr[i] = udiv1norm(&r, r, taba[i], b, b_inv);
         }
     } else {
         dlimb_t a1;
-        for(i = n - 1; i >= 0; i--) {
+        for (i = n - 1; i >= 0; i--) {
             a1 = ((dlimb_t)r << LIMB_BITS) | taba[i];
             tabr[i] = a1 / b;
             r = a1 % b;
@@ -1280,9 +1269,8 @@ static limb_t mp_div1norm(limb_t *tabr, const limb_t *taba, limb_t n,
     return r;
 }
 
-static int mp_divnorm_large(bf_context_t *s,
-                            limb_t *tabq, limb_t *taba, limb_t na,
-                            const limb_t *tabb, limb_t nb);
+static int mp_divnorm_large(bf_context_t *s, limb_t *tabq, limb_t *taba,
+                            limb_t na, const limb_t *tabb, limb_t nb);
 
 /* base case division: divides taba[0..na-1] by tabb[0..nb-1]. tabb[nb
    - 1] must be >= 1 << (LIMB_BITS - 1). na - nb must be >= 0. 'taba'
@@ -1311,7 +1299,7 @@ static int mp_divnorm(bf_context_t *s, limb_t *tabq, limb_t *taba, limb_t na,
 
     /* first iteration: the quotient is only 0 or 1 */
     q = 1;
-    for(j = nb - 1; j >= 0; j--) {
+    for (j = nb - 1; j >= 0; j--) {
         if (taba[n + j] != tabb[j]) {
             if (taba[n + j] < tabb[j])
                 q = 0;
@@ -1323,7 +1311,7 @@ static int mp_divnorm(bf_context_t *s, limb_t *tabq, limb_t *taba, limb_t na,
         mp_sub(taba + n, taba + n, tabb, nb, 0);
     }
 
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         if (unlikely(taba[i + nb] >= b1)) {
             q = -1;
         } else if (b1_inv) {
@@ -1343,7 +1331,7 @@ static int mp_divnorm(bf_context_t *s, limb_t *tabq, limb_t *taba, limb_t na,
 
         if (c != 0) {
             /* negative result */
-            for(;;) {
+            for (;;) {
                 q--;
                 c = mp_add(taba + i, taba + i, tabb, nb, 0);
                 /* propagate carry and test if positive result */
@@ -1376,12 +1364,12 @@ int mp_recip(bf_context_t *s, limb_t *tabr, const limb_t *taba, limb_t n)
         tabt = bf_malloc(s, sizeof(limb_t) * (n + 2));
         if (!tabt || !tabu)
             goto fail;
-        for(i = 0; i < 2 * n; i++)
+        for (i = 0; i < 2 * n; i++)
             tabu[i] = 0;
         tabu[2 * n] = 1;
         if (mp_divnorm(s, tabt, tabu, 2 * n + 1, taba, n))
             goto fail;
-        for(i = 0; i < n + 1; i++)
+        for (i = 0; i < n + 1; i++)
             tabr[i] = tabt[i];
         if (mp_scan_nz(tabu, n) == 0) {
             /* only happens for a=B^n/2 */
@@ -1414,14 +1402,14 @@ int mp_recip(bf_context_t *s, limb_t *tabr, const limb_t *taba, limb_t n)
             goto fail;
         /* n + 2*h - l + 2 limbs */
         k = 2 * h - l;
-        for(i = 0; i < l; i++)
+        for (i = 0; i < l; i++)
             tabr[i] = tabu[i + k];
         mp_add(tabr + l, tabr + l, tabu + 2 * h, h, 0);
     }
     bf_free(s, tabt);
     bf_free(s, tabu);
     return 0;
- fail:
+fail:
     bf_free(s, tabt);
     bf_free(s, tabu);
     return -1;
@@ -1431,7 +1419,7 @@ int mp_recip(bf_context_t *s, limb_t *tabr, const limb_t *taba, limb_t n)
 static int mp_cmp(const limb_t *taba, const limb_t *tabb, mp_size_t n)
 {
     mp_size_t i;
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         if (taba[i] != tabb[i]) {
             if (taba[i] < tabb[i])
                 return -1;
@@ -1446,9 +1434,8 @@ static int mp_cmp(const limb_t *taba, const limb_t *tabb, mp_size_t n)
 //#define DEBUG_DIVNORM_LARGE2
 
 /* subquadratic divnorm */
-static int mp_divnorm_large(bf_context_t *s,
-                            limb_t *tabq, limb_t *taba, limb_t na,
-                            const limb_t *tabb, limb_t nb)
+static int mp_divnorm_large(bf_context_t *s, limb_t *tabq, limb_t *taba,
+                            limb_t na, const limb_t *tabb, limb_t nb)
 {
     limb_t *tabb_inv, nq, *tabt, i, n;
     nq = na - nb;
@@ -1467,14 +1454,14 @@ static int mp_divnorm_large(bf_context_t *s,
         goto fail;
 
     if (n >= nb) {
-        for(i = 0; i < n - nb; i++)
+        for (i = 0; i < n - nb; i++)
             tabt[i] = 0;
-        for(i = 0; i < nb; i++)
+        for (i = 0; i < nb; i++)
             tabt[i + n - nb] = tabb[i];
     } else {
         /* truncate B: need to increment it so that the approximate
            inverse is smaller that the exact inverse */
-        for(i = 0; i < n; i++)
+        for (i = 0; i < n; i++)
             tabt[i] = tabb[i + nb - n];
         if (mp_add_ui(tabt, 1, n)) {
             /* tabt = B^n : tabb_inv = B^n */
@@ -1485,12 +1472,12 @@ static int mp_divnorm_large(bf_context_t *s,
     }
     if (mp_recip(s, tabb_inv, tabt, n))
         goto fail;
- recip_done:
+recip_done:
     /* Q=A*B^-1 */
     if (mp_mul(s, tabt, tabb_inv, n + 1, taba + na - (n + 1), n + 1))
         goto fail;
 
-    for(i = 0; i < nq + 1; i++)
+    for (i = 0; i < nq + 1; i++)
         tabq[i] = tabt[i + 2 * (n + 1) - (nq + 1)];
 #ifdef DEBUG_DIVNORM_LARGE
     mp_print_str("q", tabq, nq + 1);
@@ -1515,7 +1502,7 @@ static int mp_divnorm_large(bf_context_t *s,
     int cnt = 0;
     static int cnt_max;
 #endif
-    for(;;) {
+    for (;;) {
         if (taba[nb] == 0 && mp_cmp(taba, tabb, nb) < 0)
             break;
         taba[nb] -= mp_sub(taba, taba, tabb, nb, 0);
@@ -1531,14 +1518,13 @@ static int mp_divnorm_large(bf_context_t *s,
     }
 #endif
     return 0;
- fail:
+fail:
     bf_free(s, tabb_inv);
     bf_free(s, tabt);
     return -1;
 }
 
-int bf_mul(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
-           bf_flags_t flags)
+int bf_mul(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags)
 {
     int ret, r_sign;
 
@@ -1639,7 +1625,7 @@ slimb_t bf_get_exp_min(const bf_t *a)
     limb_t v;
     int k;
 
-    for(i = 0; i < a->len; i++) {
+    for (i = 0; i < a->len; i++) {
         v = a->tab[i];
         if (v != 0) {
             k = ctz(v);
@@ -1651,8 +1637,7 @@ slimb_t bf_get_exp_min(const bf_t *a)
 
 /* a and b must be finite numbers with a >= 0 and b > 0. 'q' is the
    integer defined as floor(a/b) and r = a - q * b. */
-static void bf_tdivremu(bf_t *q, bf_t *r,
-                        const bf_t *a, const bf_t *b)
+static void bf_tdivremu(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b)
 {
     if (bf_cmpu(a, b) < 0) {
         bf_set_ui(q, 0);
@@ -1713,7 +1698,7 @@ static int __bf_div(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
 
 #if LIMB_LOG2_BITS == 6
         if (na >= (SIZE_MAX / sizeof(limb_t)) - 1) {
-            return BF_ST_MEM_ERROR;  /* Return memory error status */
+            return BF_ST_MEM_ERROR; /* Return memory error status */
         }
 #endif
 
@@ -1739,7 +1724,7 @@ static int __bf_div(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
         ret = bf_normalize_and_round(r, prec, flags);
     }
     return ret;
- fail:
+fail:
     bf_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
@@ -1752,8 +1737,8 @@ static int __bf_div(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
    'q' is an integer. 'r' is rounded with prec and flags (prec can be
    BF_PREC_INF).
 */
-int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b,
-              limb_t prec, bf_flags_t flags, int rnd_mode)
+int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
+              bf_flags_t flags, int rnd_mode)
 {
     bf_t a1_s, *a1 = &a1_s;
     bf_t b1_s, *b1 = &b1_s;
@@ -1780,7 +1765,7 @@ int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b,
 
     q_sign = a->sign ^ b->sign;
     is_rndn = (rnd_mode == BF_RNDN || rnd_mode == BF_RNDNA);
-    switch(rnd_mode) {
+    switch (rnd_mode) {
     default:
     case BF_RNDZ:
     case BF_RNDN:
@@ -1840,14 +1825,14 @@ int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b,
     r->sign ^= a->sign;
     q->sign = q_sign;
     return bf_round(r, prec, flags);
- fail:
+fail:
     bf_set_nan(q);
     bf_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
 
-int bf_rem(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
-           bf_flags_t flags, int rnd_mode)
+int bf_rem(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags,
+           int rnd_mode)
 {
     bf_t q_s, *q = &q_s;
     int ret;
@@ -1893,7 +1878,7 @@ static limb_t mp_mod1(const limb_t *tab, limb_t n, limb_t m, limb_t r)
     slimb_t i;
     dlimb_t t;
 
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         t = ((dlimb_t)r << LIMB_BITS) | tab[i];
         r = t % m;
     }
@@ -1902,7 +1887,19 @@ static limb_t mp_mod1(const limb_t *tab, limb_t n, limb_t m, limb_t r)
 #endif
 
 static const uint16_t sqrt_table[192] = {
-128,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,144,145,146,147,148,149,150,150,151,152,153,154,155,155,156,157,158,159,160,160,161,162,163,163,164,165,166,167,167,168,169,170,170,171,172,173,173,174,175,176,176,177,178,178,179,180,181,181,182,183,183,184,185,185,186,187,187,188,189,189,190,191,192,192,193,193,194,195,195,196,197,197,198,199,199,200,201,201,202,203,203,204,204,205,206,206,207,208,208,209,209,210,211,211,212,212,213,214,214,215,215,216,217,217,218,218,219,219,220,221,221,222,222,223,224,224,225,225,226,226,227,227,228,229,229,230,230,231,231,232,232,233,234,234,235,235,236,236,237,237,238,238,239,240,240,241,241,242,242,243,243,244,244,245,245,246,246,247,247,248,248,249,249,250,250,251,251,252,252,253,253,254,254,255,
+    128, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141,
+    142, 143, 144, 144, 145, 146, 147, 148, 149, 150, 150, 151, 152, 153, 154,
+    155, 155, 156, 157, 158, 159, 160, 160, 161, 162, 163, 163, 164, 165, 166,
+    167, 167, 168, 169, 170, 170, 171, 172, 173, 173, 174, 175, 176, 176, 177,
+    178, 178, 179, 180, 181, 181, 182, 183, 183, 184, 185, 185, 186, 187, 187,
+    188, 189, 189, 190, 191, 192, 192, 193, 193, 194, 195, 195, 196, 197, 197,
+    198, 199, 199, 200, 201, 201, 202, 203, 203, 204, 204, 205, 206, 206, 207,
+    208, 208, 209, 209, 210, 211, 211, 212, 212, 213, 214, 214, 215, 215, 216,
+    217, 217, 218, 218, 219, 219, 220, 221, 221, 222, 222, 223, 224, 224, 225,
+    225, 226, 226, 227, 227, 228, 229, 229, 230, 230, 231, 231, 232, 232, 233,
+    234, 234, 235, 235, 236, 236, 237, 237, 238, 238, 239, 240, 240, 241, 241,
+    242, 242, 243, 243, 244, 244, 245, 245, 246, 246, 247, 247, 248, 248, 249,
+    249, 250, 250, 251, 251, 252, 252, 253, 253, 254, 254, 255,
 };
 
 /* a >= 2^(LIMB_BITS - 2).  Return (s, r) with s=floor(sqrt(a)) and
@@ -2027,7 +2024,7 @@ static int mp_sqrtrem_rec(bf_context_t *s, limb_t *tabs, limb_t *taba, limb_t n,
     if (mp_divnorm(s, tmp_buf, taba + l, n, tabs + l, h))
         return -1;
     qh += tmp_buf[l];
-    for(i = 0; i < l; i++)
+    for (i = 0; i < l; i++)
         tabs[i] = tmp_buf[i];
     ql = mp_shr(tabs, tabs, l, 1, qh & 1);
     qh = qh >> 1; /* 0 or 1 */
@@ -2109,7 +2106,7 @@ int bf_sqrtrem(bf_t *r, bf_t *rem1, const bf_t *a)
             bf_set_ui(rem1, 0);
         ret = 0;
     } else if (a->sign) {
- invalid_op:
+    invalid_op:
         bf_set_nan(r);
         if (rem1)
             bf_set_ui(rem1, 0);
@@ -2163,7 +2160,7 @@ int bf_sqrt(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags)
         }
         ret = 0;
     } else if (a->sign) {
- invalid_op:
+    invalid_op:
         bf_set_nan(r);
         ret = BF_ST_INVALID_OP;
     } else {
@@ -2205,7 +2202,7 @@ int bf_sqrt(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags)
         ret = bf_round(r, prec, flags);
     }
     return ret;
- fail:
+fail:
     bf_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
@@ -2226,26 +2223,23 @@ static no_inline int bf_op2(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
     return ret;
 }
 
-int bf_add(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
-            bf_flags_t flags)
+int bf_add(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags)
 {
     return bf_op2(r, a, b, prec, flags, __bf_add);
 }
 
-int bf_sub(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
-            bf_flags_t flags)
+int bf_sub(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags)
 {
     return bf_op2(r, a, b, prec, flags, __bf_sub);
 }
 
-int bf_div(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
-           bf_flags_t flags)
+int bf_div(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags)
 {
     return bf_op2(r, a, b, prec, flags, __bf_div);
 }
 
 int bf_mul_ui(bf_t *r, const bf_t *a, uint64_t b1, limb_t prec,
-               bf_flags_t flags)
+              bf_flags_t flags)
 {
     bf_t b;
     int ret;
@@ -2256,8 +2250,7 @@ int bf_mul_ui(bf_t *r, const bf_t *a, uint64_t b1, limb_t prec,
     return ret;
 }
 
-int bf_mul_si(bf_t *r, const bf_t *a, int64_t b1, limb_t prec,
-               bf_flags_t flags)
+int bf_mul_si(bf_t *r, const bf_t *a, int64_t b1, limb_t prec, bf_flags_t flags)
 {
     bf_t b;
     int ret;
@@ -2268,8 +2261,7 @@ int bf_mul_si(bf_t *r, const bf_t *a, int64_t b1, limb_t prec,
     return ret;
 }
 
-int bf_add_si(bf_t *r, const bf_t *a, int64_t b1, limb_t prec,
-              bf_flags_t flags)
+int bf_add_si(bf_t *r, const bf_t *a, int64_t b1, limb_t prec, bf_flags_t flags)
 {
     bf_t b;
     int ret;
@@ -2291,7 +2283,7 @@ static int bf_pow_ui(bf_t *r, const bf_t *a, limb_t b, limb_t prec,
         return bf_set_ui(r, 1);
     ret = bf_set(r, a);
     n_bits = LIMB_BITS - clz(b);
-    for(i = n_bits - 2; i >= 0; i--) {
+    for (i = n_bits - 2; i >= 0; i--) {
         ret |= bf_mul(r, r, r, prec, flags);
         if ((b >> i) & 1)
             ret |= bf_mul(r, r, a, prec, flags);
@@ -2299,8 +2291,8 @@ static int bf_pow_ui(bf_t *r, const bf_t *a, limb_t b, limb_t prec,
     return ret;
 }
 
-static int bf_pow_ui_ui(bf_t *r, limb_t a1, limb_t b,
-                        limb_t prec, bf_flags_t flags)
+static int bf_pow_ui_ui(bf_t *r, limb_t a1, limb_t b, limb_t prec,
+                        bf_flags_t flags)
 {
     bf_t a;
     int ret;
@@ -2331,7 +2323,7 @@ int bf_rint(bf_t *r, int rnd_mode)
 
 static inline limb_t bf_logic_op1(limb_t a, limb_t b, int op)
 {
-    switch(op) {
+    switch (op) {
     case BF_LOGIC_OR:
         return a | b;
     case BF_LOGIC_XOR:
@@ -2403,7 +2395,7 @@ static int bf_logic_op(bf_t *r, const bf_t *a1, const bf_t *b1, int op)
     v1_mask = -a_sign;
     v2_mask = -b_sign;
     r_mask = -r_sign;
-    for(i = 0; i < l; i++) {
+    for (i = 0; i < l; i++) {
         v1 = get_bits(a->tab, a->len, a_bit_offset + i * LIMB_BITS) ^ v1_mask;
         v2 = get_bits(b->tab, b->len, b_bit_offset + i * LIMB_BITS) ^ v2_mask;
         r->tab[i] = bf_logic_op1(v1, v2, op) ^ r_mask;
@@ -2416,13 +2408,13 @@ static int bf_logic_op(bf_t *r, const bf_t *a1, const bf_t *b1, int op)
             goto fail;
     }
     ret = 0;
- done:
+done:
     if (a == &a1_s)
         bf_delete(a);
     if (b == &b1_s)
         bf_delete(b);
     return ret;
- fail:
+fail:
     bf_set_nan(r);
     ret = BF_ST_MEM_ERROR;
     goto done;
@@ -2468,7 +2460,8 @@ int bf_get_float64(const bf_t *a, double *pres, bf_rnd_t rnd_mode)
         bf_init(a->ctx, b);
         bf_set(b, a);
         if (bf_is_finite(b)) {
-            ret = bf_round(b, 53, rnd_mode | BF_FLAG_SUBNORMAL | bf_set_exp_bits(11));
+            ret = bf_round(b, 53,
+                           rnd_mode | BF_FLAG_SUBNORMAL | bf_set_exp_bits(11));
         }
         if (b->expn == BF_EXP_INF) {
             e = (1 << 11) - 1;
@@ -2619,7 +2612,8 @@ int bf_get_int64(int64_t *pres, const bf_t *a, int flags)
             v = a->tab[a->len - 1] >> (LIMB_BITS - a->expn);
         else
             v = (((uint64_t)a->tab[a->len - 1] << 32) |
-                 get_limbz(a, a->len - 2)) >> (64 - a->expn);
+                 get_limbz(a, a->len - 2)) >>
+                (64 - a->expn);
 #else
         v = a->tab[a->len - 1] >> (LIMB_BITS - a->expn);
 #endif
@@ -2676,7 +2670,8 @@ int bf_get_uint64(uint64_t *pres, const bf_t *a)
             v = a->tab[a->len - 1] >> (LIMB_BITS - a->expn);
         else
             v = (((uint64_t)a->tab[a->len - 1] << 32) |
-                 get_limbz(a, a->len - 2)) >> (64 - a->expn);
+                 get_limbz(a, a->len - 2)) >>
+                (64 - a->expn);
 #else
         v = a->tab[a->len - 1] >> (LIMB_BITS - a->expn);
 #endif
@@ -2694,9 +2689,11 @@ int bf_get_uint64(uint64_t *pres, const bf_t *a)
 
 static const uint8_t digits_per_limb_table[BF_RADIX_MAX - 1] = {
 #if LIMB_BITS == 32
-32,20,16,13,12,11,10,10, 9, 9, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+    32, 20, 16, 13, 12, 11, 10, 10, 9, 9, 8, 8, 8, 8, 8, 7, 7, 7,
+    7,  7,  7,  7,  6,  6,  6,  6,  6, 6, 6, 6, 6, 6, 6, 6, 6,
 #else
-64,40,32,27,24,22,21,20,19,18,17,17,16,16,16,15,15,15,14,14,14,14,13,13,13,13,13,13,13,12,12,12,12,12,12,
+    64, 40, 32, 27, 24, 22, 21, 20, 19, 18, 17, 17, 16, 16, 16, 15, 15, 15,
+    14, 14, 14, 14, 13, 13, 13, 13, 13, 13, 13, 12, 12, 12, 12, 12, 12,
 #endif
 };
 
@@ -2707,15 +2704,15 @@ static limb_t get_limb_radix(int radix)
 
     k = digits_per_limb_table[radix - 2];
     radixl = radix;
-    for(i = 1; i < k; i++)
+    for (i = 1; i < k; i++)
         radixl *= radix;
     return radixl;
 }
 
 /* return != 0 if error */
-static int bf_integer_from_radix_rec(bf_t *r, const limb_t *tab,
-                                     limb_t n, int level, limb_t n0,
-                                     limb_t radix, bf_t *pow_tab)
+static int bf_integer_from_radix_rec(bf_t *r, const limb_t *tab, limb_t n,
+                                     int level, limb_t n0, limb_t radix,
+                                     bf_t *pow_tab)
 {
     int ret;
     if (n == 1) {
@@ -2733,16 +2730,16 @@ static int bf_integer_from_radix_rec(bf_t *r, const limb_t *tab,
             if (ret)
                 return ret;
         }
-        ret = bf_integer_from_radix_rec(r, tab + n2, n1, level + 1, n0,
-                                        radix, pow_tab);
+        ret = bf_integer_from_radix_rec(r, tab + n2, n1, level + 1, n0, radix,
+                                        pow_tab);
         if (ret)
             return ret;
         ret = bf_mul(r, r, B, BF_PREC_INF, BF_RNDZ);
         if (ret)
             return ret;
         bf_init(r->ctx, T);
-        ret = bf_integer_from_radix_rec(T, tab, n2, level + 1, n0,
-                                        radix, pow_tab);
+        ret = bf_integer_from_radix_rec(T, tab, n2, level + 1, n0, radix,
+                                        pow_tab);
         if (!ret)
             ret = bf_add(r, r, T, BF_PREC_INF, BF_RNDZ);
         bf_delete(T);
@@ -2752,8 +2749,8 @@ static int bf_integer_from_radix_rec(bf_t *r, const limb_t *tab,
 }
 
 /* return 0 if OK != 0 if memory error */
-static int bf_integer_from_radix(bf_t *r, const limb_t *tab,
-                                 limb_t n, limb_t radix)
+static int bf_integer_from_radix(bf_t *r, const limb_t *tab, limb_t n,
+                                 limb_t radix)
 {
     bf_context_t *s = r->ctx;
     int pow_tab_len, i, ret;
@@ -2765,10 +2762,10 @@ static int bf_integer_from_radix(bf_t *r, const limb_t *tab,
     pow_tab = bf_malloc(s, sizeof(pow_tab[0]) * pow_tab_len);
     if (!pow_tab)
         return -1;
-    for(i = 0; i < pow_tab_len; i++)
+    for (i = 0; i < pow_tab_len; i++)
         bf_init(r->ctx, &pow_tab[i]);
     ret = bf_integer_from_radix_rec(r, tab, n, 0, n, radixl, pow_tab);
-    for(i = 0; i < pow_tab_len; i++) {
+    for (i = 0; i < pow_tab_len; i++) {
         bf_delete(&pow_tab[i]);
     }
     bf_free(s, pow_tab);
@@ -2776,8 +2773,8 @@ static int bf_integer_from_radix(bf_t *r, const limb_t *tab,
 }
 
 /* compute and round T * radix^expn. */
-int bf_mul_pow_radix(bf_t *r, const bf_t *T, limb_t radix,
-                     slimb_t expn, limb_t prec, bf_flags_t flags)
+int bf_mul_pow_radix(bf_t *r, const bf_t *T, limb_t radix, slimb_t expn,
+                     limb_t prec, bf_flags_t flags)
 {
     int ret, expn_sign, overflow;
     slimb_t e, extra_bits, prec1, ziv_extra_bits;
@@ -2808,26 +2805,29 @@ int bf_mul_pow_radix(bf_t *r, const bf_t *T, limb_t radix,
         }
     } else {
         ziv_extra_bits = 16;
-        for(;;) {
+        for (;;) {
             prec1 = prec + ziv_extra_bits;
             /* XXX: correct overflow/underflow handling */
             /* XXX: rigorous error analysis needed */
             extra_bits = ceil_log2(e) * 2 + 1;
-            ret = bf_pow_ui_ui(B, radix, e, prec1 + extra_bits, BF_RNDN | BF_FLAG_EXT_EXP);
+            ret = bf_pow_ui_ui(B, radix, e, prec1 + extra_bits,
+                               BF_RNDN | BF_FLAG_EXT_EXP);
             overflow = !bf_is_finite(B);
             /* XXX: if bf_pow_ui_ui returns an exact result, can stop
                after the next operation */
             if (expn_sign)
-                ret |= bf_div(r, T, B, prec1 + extra_bits, BF_RNDN | BF_FLAG_EXT_EXP);
+                ret |= bf_div(r, T, B, prec1 + extra_bits,
+                              BF_RNDN | BF_FLAG_EXT_EXP);
             else
-                ret |= bf_mul(r, T, B, prec1 + extra_bits, BF_RNDN | BF_FLAG_EXT_EXP);
+                ret |= bf_mul(r, T, B, prec1 + extra_bits,
+                              BF_RNDN | BF_FLAG_EXT_EXP);
             if (ret & BF_ST_MEM_ERROR)
                 break;
             if ((ret & BF_ST_INEXACT) &&
                 !bf_can_round(r, prec, flags & BF_RND_MASK, prec1) &&
                 !overflow) {
                 /* and more precision and retry */
-                ziv_extra_bits = ziv_extra_bits  + (ziv_extra_bits / 2);
+                ziv_extra_bits = ziv_extra_bits + (ziv_extra_bits / 2);
             } else {
                 /* XXX: need to use __bf_round() to pass the inexact
                    flag for the subnormal case */
@@ -2898,9 +2898,9 @@ static int strcasestart(const char *str, const char *val, const char **ptr)
     return 1;
 }
 
-static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
-                            const char *str, const char **pnext, int radix,
-                            limb_t prec, bf_flags_t flags, BOOL is_dec)
+static int bf_atof_internal(bf_t *r, slimb_t *pexponent, const char *str,
+                            const char **pnext, int radix, limb_t prec,
+                            bf_flags_t flags, BOOL is_dec)
 {
     const char *p, *p_start;
     int is_neg, radix_bits, exp_is_neg, ret, digits_per_limb, shift;
@@ -2930,17 +2930,16 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
         p_start = p;
     }
     if (p[0] == '0') {
-        if ((p[1] == 'x' || p[1] == 'X') &&
-            (radix == 0 || radix == 16) &&
+        if ((p[1] == 'x' || p[1] == 'X') && (radix == 0 || radix == 16) &&
             !(flags & BF_ATOF_NO_HEX)) {
             radix = 16;
             p += 2;
-        } else if ((p[1] == 'o' || p[1] == 'O') &&
-                   radix == 0 && (flags & BF_ATOF_BIN_OCT)) {
+        } else if ((p[1] == 'o' || p[1] == 'O') && radix == 0 &&
+                   (flags & BF_ATOF_BIN_OCT)) {
             p += 2;
             radix = 8;
-        } else if ((p[1] == 'b' || p[1] == 'B') &&
-                   radix == 0 && (flags & BF_ATOF_BIN_OCT)) {
+        } else if ((p[1] == 'b' || p[1] == 'B') && radix == 0 &&
+                   (flags & BF_ATOF_BIN_OCT)) {
             p += 2;
             radix = 2;
         } else {
@@ -2952,7 +2951,7 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
             ret = 0;
             goto done;
         }
-    no_prefix: ;
+    no_prefix:;
     } else {
         if (!(flags & BF_ATOF_NO_NAN_INF) && radix <= 16 &&
             strcasestart(p, "inf", &p)) {
@@ -2993,7 +2992,7 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
     pos = 0;
     has_decpt = FALSE;
     int_len = digit_count = 0;
-    for(;;) {
+    for (;;) {
         limb_t c;
         if (*p == '.' && (p > p_start || bf_to_digit(p[1]) < radix)) {
             if (has_decpt)
@@ -3069,8 +3068,8 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
     expn = 0;
     is_bin_exp = FALSE;
     if (((radix == 10 && (*p == 'e' || *p == 'E')) ||
-         (radix != 10 && (*p == '@' ||
-                          (radix_bits && (*p == 'p' || *p == 'P'))))) &&
+         (radix != 10 &&
+          (*p == '@' || (radix_bits && (*p == 'p' || *p == 'P'))))) &&
         p > p_start) {
         is_bin_exp = (*p == 'p' || *p == 'P');
         p++;
@@ -3081,7 +3080,7 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
             exp_is_neg = 1;
             p++;
         }
-        for(;;) {
+        for (;;) {
             int c;
             c = bf_to_digit(*p);
             if (c >= 10)
@@ -3143,7 +3142,7 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
         }
         bf_delete(a);
     }
- done:
+done:
     if (pnext)
         *pnext = p;
     return ret;
@@ -3157,9 +3156,8 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
    two, the parsed number is equal to r *
    (*pexponent)^radix. Otherwise *pexponent = 0.
 */
-int bf_atof2(bf_t *r, slimb_t *pexponent,
-             const char *str, const char **pnext, int radix,
-             limb_t prec, bf_flags_t flags)
+int bf_atof2(bf_t *r, slimb_t *pexponent, const char *str, const char **pnext,
+             int radix, limb_t prec, bf_flags_t flags)
 {
     return bf_atof_internal(r, pexponent, str, pnext, radix, prec, flags,
                             FALSE);
@@ -3169,7 +3167,8 @@ int bf_atof(bf_t *r, const char *str, const char **pnext, int radix,
             limb_t prec, bf_flags_t flags)
 {
     slimb_t dummy_exp;
-    return bf_atof_internal(r, &dummy_exp, str, pnext, radix, prec, flags, FALSE);
+    return bf_atof_internal(r, &dummy_exp, str, pnext, radix, prec, flags,
+                            FALSE);
 }
 
 /* base conversion to radix */
@@ -3182,153 +3181,346 @@ int bf_atof(bf_t *r, const char *str, const char **pnext, int radix,
 
 static const uint32_t inv_log2_radix[BF_RADIX_MAX - 1][LIMB_BITS / 32 + 1] = {
 #if LIMB_BITS == 32
-{ 0x80000000, 0x00000000,},
-{ 0x50c24e60, 0xd4d4f4a7,},
-{ 0x40000000, 0x00000000,},
-{ 0x372068d2, 0x0a1ee5ca,},
-{ 0x3184648d, 0xb8153e7a,},
-{ 0x2d983275, 0x9d5369c4,},
-{ 0x2aaaaaaa, 0xaaaaaaab,},
-{ 0x28612730, 0x6a6a7a54,},
-{ 0x268826a1, 0x3ef3fde6,},
-{ 0x25001383, 0xbac8a744,},
-{ 0x23b46706, 0x82c0c709,},
-{ 0x229729f1, 0xb2c83ded,},
-{ 0x219e7ffd, 0xa5ad572b,},
-{ 0x20c33b88, 0xda7c29ab,},
-{ 0x20000000, 0x00000000,},
-{ 0x1f50b57e, 0xac5884b3,},
-{ 0x1eb22cc6, 0x8aa6e26f,},
-{ 0x1e21e118, 0x0c5daab2,},
-{ 0x1d9dcd21, 0x439834e4,},
-{ 0x1d244c78, 0x367a0d65,},
-{ 0x1cb40589, 0xac173e0c,},
-{ 0x1c4bd95b, 0xa8d72b0d,},
-{ 0x1bead768, 0x98f8ce4c,},
-{ 0x1b903469, 0x050f72e5,},
-{ 0x1b3b433f, 0x2eb06f15,},
-{ 0x1aeb6f75, 0x9c46fc38,},
-{ 0x1aa038eb, 0x0e3bfd17,},
-{ 0x1a593062, 0xb38d8c56,},
-{ 0x1a15f4c3, 0x2b95a2e6,},
-{ 0x19d630dc, 0xcc7ddef9,},
-{ 0x19999999, 0x9999999a,},
-{ 0x195fec80, 0x8a609431,},
-{ 0x1928ee7b, 0x0b4f22f9,},
-{ 0x18f46acf, 0x8c06e318,},
-{ 0x18c23246, 0xdc0a9f3d,},
+    {
+        0x80000000,
+        0x00000000,
+    },
+    {
+        0x50c24e60,
+        0xd4d4f4a7,
+    },
+    {
+        0x40000000,
+        0x00000000,
+    },
+    {
+        0x372068d2,
+        0x0a1ee5ca,
+    },
+    {
+        0x3184648d,
+        0xb8153e7a,
+    },
+    {
+        0x2d983275,
+        0x9d5369c4,
+    },
+    {
+        0x2aaaaaaa,
+        0xaaaaaaab,
+    },
+    {
+        0x28612730,
+        0x6a6a7a54,
+    },
+    {
+        0x268826a1,
+        0x3ef3fde6,
+    },
+    {
+        0x25001383,
+        0xbac8a744,
+    },
+    {
+        0x23b46706,
+        0x82c0c709,
+    },
+    {
+        0x229729f1,
+        0xb2c83ded,
+    },
+    {
+        0x219e7ffd,
+        0xa5ad572b,
+    },
+    {
+        0x20c33b88,
+        0xda7c29ab,
+    },
+    {
+        0x20000000,
+        0x00000000,
+    },
+    {
+        0x1f50b57e,
+        0xac5884b3,
+    },
+    {
+        0x1eb22cc6,
+        0x8aa6e26f,
+    },
+    {
+        0x1e21e118,
+        0x0c5daab2,
+    },
+    {
+        0x1d9dcd21,
+        0x439834e4,
+    },
+    {
+        0x1d244c78,
+        0x367a0d65,
+    },
+    {
+        0x1cb40589,
+        0xac173e0c,
+    },
+    {
+        0x1c4bd95b,
+        0xa8d72b0d,
+    },
+    {
+        0x1bead768,
+        0x98f8ce4c,
+    },
+    {
+        0x1b903469,
+        0x050f72e5,
+    },
+    {
+        0x1b3b433f,
+        0x2eb06f15,
+    },
+    {
+        0x1aeb6f75,
+        0x9c46fc38,
+    },
+    {
+        0x1aa038eb,
+        0x0e3bfd17,
+    },
+    {
+        0x1a593062,
+        0xb38d8c56,
+    },
+    {
+        0x1a15f4c3,
+        0x2b95a2e6,
+    },
+    {
+        0x19d630dc,
+        0xcc7ddef9,
+    },
+    {
+        0x19999999,
+        0x9999999a,
+    },
+    {
+        0x195fec80,
+        0x8a609431,
+    },
+    {
+        0x1928ee7b,
+        0x0b4f22f9,
+    },
+    {
+        0x18f46acf,
+        0x8c06e318,
+    },
+    {
+        0x18c23246,
+        0xdc0a9f3d,
+    },
 #else
-{ 0x80000000, 0x00000000, 0x00000000,},
-{ 0x50c24e60, 0xd4d4f4a7, 0x021f57bc,},
-{ 0x40000000, 0x00000000, 0x00000000,},
-{ 0x372068d2, 0x0a1ee5ca, 0x19ea911b,},
-{ 0x3184648d, 0xb8153e7a, 0x7fc2d2e1,},
-{ 0x2d983275, 0x9d5369c4, 0x4dec1661,},
-{ 0x2aaaaaaa, 0xaaaaaaaa, 0xaaaaaaab,},
-{ 0x28612730, 0x6a6a7a53, 0x810fabde,},
-{ 0x268826a1, 0x3ef3fde6, 0x23e2566b,},
-{ 0x25001383, 0xbac8a744, 0x385a3349,},
-{ 0x23b46706, 0x82c0c709, 0x3f891718,},
-{ 0x229729f1, 0xb2c83ded, 0x15fba800,},
-{ 0x219e7ffd, 0xa5ad572a, 0xe169744b,},
-{ 0x20c33b88, 0xda7c29aa, 0x9bddee52,},
-{ 0x20000000, 0x00000000, 0x00000000,},
-{ 0x1f50b57e, 0xac5884b3, 0x70e28eee,},
-{ 0x1eb22cc6, 0x8aa6e26f, 0x06d1a2a2,},
-{ 0x1e21e118, 0x0c5daab1, 0x81b4f4bf,},
-{ 0x1d9dcd21, 0x439834e3, 0x81667575,},
-{ 0x1d244c78, 0x367a0d64, 0xc8204d6d,},
-{ 0x1cb40589, 0xac173e0c, 0x3b7b16ba,},
-{ 0x1c4bd95b, 0xa8d72b0d, 0x5879f25a,},
-{ 0x1bead768, 0x98f8ce4c, 0x66cc2858,},
-{ 0x1b903469, 0x050f72e5, 0x0cf5488e,},
-{ 0x1b3b433f, 0x2eb06f14, 0x8c89719c,},
-{ 0x1aeb6f75, 0x9c46fc37, 0xab5fc7e9,},
-{ 0x1aa038eb, 0x0e3bfd17, 0x1bd62080,},
-{ 0x1a593062, 0xb38d8c56, 0x7998ab45,},
-{ 0x1a15f4c3, 0x2b95a2e6, 0x46aed6a0,},
-{ 0x19d630dc, 0xcc7ddef9, 0x5aadd61b,},
-{ 0x19999999, 0x99999999, 0x9999999a,},
-{ 0x195fec80, 0x8a609430, 0xe1106014,},
-{ 0x1928ee7b, 0x0b4f22f9, 0x5f69791d,},
-{ 0x18f46acf, 0x8c06e318, 0x4d2aeb2c,},
-{ 0x18c23246, 0xdc0a9f3d, 0x3fe16970,},
+    {
+        0x80000000,
+        0x00000000,
+        0x00000000,
+    },
+    {
+        0x50c24e60,
+        0xd4d4f4a7,
+        0x021f57bc,
+    },
+    {
+        0x40000000,
+        0x00000000,
+        0x00000000,
+    },
+    {
+        0x372068d2,
+        0x0a1ee5ca,
+        0x19ea911b,
+    },
+    {
+        0x3184648d,
+        0xb8153e7a,
+        0x7fc2d2e1,
+    },
+    {
+        0x2d983275,
+        0x9d5369c4,
+        0x4dec1661,
+    },
+    {
+        0x2aaaaaaa,
+        0xaaaaaaaa,
+        0xaaaaaaab,
+    },
+    {
+        0x28612730,
+        0x6a6a7a53,
+        0x810fabde,
+    },
+    {
+        0x268826a1,
+        0x3ef3fde6,
+        0x23e2566b,
+    },
+    {
+        0x25001383,
+        0xbac8a744,
+        0x385a3349,
+    },
+    {
+        0x23b46706,
+        0x82c0c709,
+        0x3f891718,
+    },
+    {
+        0x229729f1,
+        0xb2c83ded,
+        0x15fba800,
+    },
+    {
+        0x219e7ffd,
+        0xa5ad572a,
+        0xe169744b,
+    },
+    {
+        0x20c33b88,
+        0xda7c29aa,
+        0x9bddee52,
+    },
+    {
+        0x20000000,
+        0x00000000,
+        0x00000000,
+    },
+    {
+        0x1f50b57e,
+        0xac5884b3,
+        0x70e28eee,
+    },
+    {
+        0x1eb22cc6,
+        0x8aa6e26f,
+        0x06d1a2a2,
+    },
+    {
+        0x1e21e118,
+        0x0c5daab1,
+        0x81b4f4bf,
+    },
+    {
+        0x1d9dcd21,
+        0x439834e3,
+        0x81667575,
+    },
+    {
+        0x1d244c78,
+        0x367a0d64,
+        0xc8204d6d,
+    },
+    {
+        0x1cb40589,
+        0xac173e0c,
+        0x3b7b16ba,
+    },
+    {
+        0x1c4bd95b,
+        0xa8d72b0d,
+        0x5879f25a,
+    },
+    {
+        0x1bead768,
+        0x98f8ce4c,
+        0x66cc2858,
+    },
+    {
+        0x1b903469,
+        0x050f72e5,
+        0x0cf5488e,
+    },
+    {
+        0x1b3b433f,
+        0x2eb06f14,
+        0x8c89719c,
+    },
+    {
+        0x1aeb6f75,
+        0x9c46fc37,
+        0xab5fc7e9,
+    },
+    {
+        0x1aa038eb,
+        0x0e3bfd17,
+        0x1bd62080,
+    },
+    {
+        0x1a593062,
+        0xb38d8c56,
+        0x7998ab45,
+    },
+    {
+        0x1a15f4c3,
+        0x2b95a2e6,
+        0x46aed6a0,
+    },
+    {
+        0x19d630dc,
+        0xcc7ddef9,
+        0x5aadd61b,
+    },
+    {
+        0x19999999,
+        0x99999999,
+        0x9999999a,
+    },
+    {
+        0x195fec80,
+        0x8a609430,
+        0xe1106014,
+    },
+    {
+        0x1928ee7b,
+        0x0b4f22f9,
+        0x5f69791d,
+    },
+    {
+        0x18f46acf,
+        0x8c06e318,
+        0x4d2aeb2c,
+    },
+    {
+        0x18c23246,
+        0xdc0a9f3d,
+        0x3fe16970,
+    },
 #endif
 };
 
 static const limb_t log2_radix[BF_RADIX_MAX - 1] = {
 #if LIMB_BITS == 32
-0x20000000,
-0x32b80347,
-0x40000000,
-0x4a4d3c26,
-0x52b80347,
-0x59d5d9fd,
-0x60000000,
-0x6570068e,
-0x6a4d3c26,
-0x6eb3a9f0,
-0x72b80347,
-0x766a008e,
-0x79d5d9fd,
-0x7d053f6d,
-0x80000000,
-0x82cc7edf,
-0x8570068e,
-0x87ef05ae,
-0x8a4d3c26,
-0x8c8ddd45,
-0x8eb3a9f0,
-0x90c10501,
-0x92b80347,
-0x949a784c,
-0x966a008e,
-0x982809d6,
-0x99d5d9fd,
-0x9b74948f,
-0x9d053f6d,
-0x9e88c6b3,
-0xa0000000,
-0xa16bad37,
-0xa2cc7edf,
-0xa4231623,
-0xa570068e,
+    0x20000000, 0x32b80347, 0x40000000, 0x4a4d3c26, 0x52b80347, 0x59d5d9fd,
+    0x60000000, 0x6570068e, 0x6a4d3c26, 0x6eb3a9f0, 0x72b80347, 0x766a008e,
+    0x79d5d9fd, 0x7d053f6d, 0x80000000, 0x82cc7edf, 0x8570068e, 0x87ef05ae,
+    0x8a4d3c26, 0x8c8ddd45, 0x8eb3a9f0, 0x90c10501, 0x92b80347, 0x949a784c,
+    0x966a008e, 0x982809d6, 0x99d5d9fd, 0x9b74948f, 0x9d053f6d, 0x9e88c6b3,
+    0xa0000000, 0xa16bad37, 0xa2cc7edf, 0xa4231623, 0xa570068e,
 #else
-0x2000000000000000,
-0x32b803473f7ad0f4,
-0x4000000000000000,
-0x4a4d3c25e68dc57f,
-0x52b803473f7ad0f4,
-0x59d5d9fd5010b366,
-0x6000000000000000,
-0x6570068e7ef5a1e8,
-0x6a4d3c25e68dc57f,
-0x6eb3a9f01975077f,
-0x72b803473f7ad0f4,
-0x766a008e4788cbcd,
-0x79d5d9fd5010b366,
-0x7d053f6d26089673,
-0x8000000000000000,
-0x82cc7edf592262d0,
-0x8570068e7ef5a1e8,
-0x87ef05ae409a0289,
-0x8a4d3c25e68dc57f,
-0x8c8ddd448f8b845a,
-0x8eb3a9f01975077f,
-0x90c10500d63aa659,
-0x92b803473f7ad0f4,
-0x949a784bcd1b8afe,
-0x966a008e4788cbcd,
-0x982809d5be7072dc,
-0x99d5d9fd5010b366,
-0x9b74948f5532da4b,
-0x9d053f6d26089673,
-0x9e88c6b3626a72aa,
-0xa000000000000000,
-0xa16bad3758efd873,
-0xa2cc7edf592262d0,
-0xa4231623369e78e6,
-0xa570068e7ef5a1e8,
+    0x2000000000000000, 0x32b803473f7ad0f4, 0x4000000000000000,
+    0x4a4d3c25e68dc57f, 0x52b803473f7ad0f4, 0x59d5d9fd5010b366,
+    0x6000000000000000, 0x6570068e7ef5a1e8, 0x6a4d3c25e68dc57f,
+    0x6eb3a9f01975077f, 0x72b803473f7ad0f4, 0x766a008e4788cbcd,
+    0x79d5d9fd5010b366, 0x7d053f6d26089673, 0x8000000000000000,
+    0x82cc7edf592262d0, 0x8570068e7ef5a1e8, 0x87ef05ae409a0289,
+    0x8a4d3c25e68dc57f, 0x8c8ddd448f8b845a, 0x8eb3a9f01975077f,
+    0x90c10500d63aa659, 0x92b803473f7ad0f4, 0x949a784bcd1b8afe,
+    0x966a008e4788cbcd, 0x982809d5be7072dc, 0x99d5d9fd5010b366,
+    0x9b74948f5532da4b, 0x9d053f6d26089673, 0x9e88c6b3626a72aa,
+    0xa000000000000000, 0xa16bad3758efd873, 0xa2cc7edf592262d0,
+    0xa4231623369e78e6, 0xa570068e7ef5a1e8,
 #endif
 };
 
@@ -3393,10 +3585,9 @@ slimb_t bf_mul_log2_radix(slimb_t a1, unsigned int radix, int is_inv,
 }
 
 /* 'n' is the number of output limbs */
-static int bf_integer_to_radix_rec(bf_t *pow_tab,
-                                   limb_t *out, const bf_t *a, limb_t n,
-                                   int level, limb_t n0, limb_t radixl,
-                                   unsigned int radixl_bits)
+static int bf_integer_to_radix_rec(bf_t *pow_tab, limb_t *out, const bf_t *a,
+                                   limb_t n, int level, limb_t n0,
+                                   limb_t radixl, unsigned int radixl_bits)
 {
     limb_t n1, n2, q_prec;
     int ret;
@@ -3465,8 +3656,8 @@ static int bf_integer_to_radix_rec(bf_t *pow_tab,
         if (bf_integer_to_radix_rec(pow_tab, out + n2, &Q, n1, level + 1, n0,
                                     radixl, radixl_bits))
             goto fail;
-        if (bf_integer_to_radix_rec(pow_tab, out, &R, n2, level + 1, n0,
-                                    radixl, radixl_bits)) {
+        if (bf_integer_to_radix_rec(pow_tab, out, &R, n2, level + 1, n0, radixl,
+                                    radixl_bits)) {
         fail:
             bf_delete(&Q);
             bf_delete(&R);
@@ -3491,13 +3682,13 @@ static int bf_integer_to_radix(bf_t *r, const bf_t *a, limb_t radixl)
     pow_tab = bf_malloc(s, sizeof(pow_tab[0]) * pow_tab_len);
     if (!pow_tab)
         return -1;
-    for(i = 0; i < pow_tab_len; i++)
+    for (i = 0; i < pow_tab_len; i++)
         bf_init(r->ctx, &pow_tab[i]);
 
     ret = bf_integer_to_radix_rec(pow_tab, r->tab, a, r_len, 0, r_len, radixl,
                                   ceil_log2(radixl));
 
-    for(i = 0; i < pow_tab_len; i++) {
+    for (i = 0; i < pow_tab_len; i++) {
         bf_delete(&pow_tab[i]);
     }
     bf_free(s, pow_tab);
@@ -3507,8 +3698,7 @@ static int bf_integer_to_radix(bf_t *r, const bf_t *a, limb_t radixl)
 /* a must be >= 0. 'P' is the wanted number of digits in radix
    'radix'. 'r' is the mantissa represented as an integer. *pE
    contains the exponent. Return != 0 if memory error. */
-static int bf_convert_to_radix(bf_t *r, slimb_t *pE,
-                               const bf_t *a, int radix,
+static int bf_convert_to_radix(bf_t *r, slimb_t *pE, const bf_t *a, int radix,
                                limb_t P, bf_rnd_t rnd_mode,
                                BOOL is_fixed_exponent)
 {
@@ -3531,7 +3721,7 @@ static int bf_convert_to_radix(bf_t *r, slimb_t *pE,
     //    bf_print_str("a", a);
     //    printf("E=%ld P=%ld radix=%d\n", E, P, radix);
 
-    for(;;) {
+    for (;;) {
         e = P - E;
         e_sign = 0;
         if (e < 0) {
@@ -3541,7 +3731,7 @@ static int bf_convert_to_radix(bf_t *r, slimb_t *pE,
         /* Note: precision for log2(radix) is not critical here */
         prec0 = bf_mul_log2_radix(P, radix, FALSE, TRUE);
         ziv_extra_bits = 16;
-        for(;;) {
+        for (;;) {
             prec = prec0 + ziv_extra_bits;
             /* XXX: rigorous error analysis needed */
             extra_bits = ceil_log2(e) * 2 + 1;
@@ -3560,7 +3750,7 @@ static int bf_convert_to_radix(bf_t *r, slimb_t *pE,
             if ((ret & BF_ST_INEXACT) &&
                 !bf_can_round(r, r->expn, rnd_mode, prec)) {
                 /* and more precision and retry */
-                ziv_extra_bits = ziv_extra_bits  + (ziv_extra_bits / 2);
+                ziv_extra_bits = ziv_extra_bits + (ziv_extra_bits / 2);
                 continue;
             } else {
                 ret = bf_rint(r, rnd_mode);
@@ -3596,13 +3786,13 @@ static void limb_to_a(char *buf, limb_t n, unsigned int radix, int len)
 
     if (radix == 10) {
         /* specific case with constant divisor */
-        for(i = len - 1; i >= 0; i--) {
+        for (i = len - 1; i >= 0; i--) {
             digit = (limb_t)n % 10;
             n = (limb_t)n / 10;
             buf[i] = digit + '0';
         }
     } else {
-        for(i = len - 1; i >= 0; i--) {
+        for (i = len - 1; i >= 0; i--) {
             digit = (limb_t)n % radix;
             n = (limb_t)n / radix;
             if (digit < 10)
@@ -3621,7 +3811,7 @@ static void limb_to_a2(char *buf, limb_t n, unsigned int radix_bits, int len)
     unsigned int mask;
 
     mask = (1 << radix_bits) - 1;
-    for(i = len - 1; i >= 0; i--) {
+    for (i = len - 1; i >= 0; i--) {
         digit = n & mask;
         n >>= radix_bits;
         if (digit < 10)
@@ -3708,7 +3898,7 @@ static void output_digits(DynBuf *s, const bf_t *a1, int radix, limb_t n_digits,
         buf_pos += l;
         i += l;
     }
- done:
+done:
     if (a != a1)
         bf_delete(a);
 }
@@ -3758,13 +3948,19 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         goto fail1;
 #ifdef USE_BF_DEC
                     if (is_dec) {
-                        if (bfdec_round((bfdec_t *)a1, prec, (flags & BF_RND_MASK) | BF_FLAG_RADPNT_PREC) & BF_ST_MEM_ERROR)
+                        if (bfdec_round((bfdec_t *)a1, prec,
+                                        (flags & BF_RND_MASK) |
+                                            BF_FLAG_RADPNT_PREC) &
+                            BF_ST_MEM_ERROR)
                             goto fail1;
                         n = a1->expn;
                     } else
 #endif
                     {
-                        if (bf_round(a1, prec * radix_bits, (flags & BF_RND_MASK) | BF_FLAG_RADPNT_PREC) & BF_ST_MEM_ERROR)
+                        if (bf_round(a1, prec * radix_bits,
+                                     (flags & BF_RND_MASK) |
+                                         BF_FLAG_RADPNT_PREC) &
+                            BF_ST_MEM_ERROR)
                             goto fail1;
                         n = ceil_div(a1->expn, radix_bits);
                     }
@@ -3780,7 +3976,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         dbuf_putstr(s, "0");
                         if (prec > 0) {
                             dbuf_putstr(s, ".");
-                            for(i = 0; i < prec; i++) {
+                            for (i = 0; i < prec; i++) {
                                 dbuf_putc(s, '0');
                             }
                         }
@@ -3789,11 +3985,12 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         if (n <= 0) {
                             /* 0.x */
                             dbuf_putstr(s, "0.");
-                            for(i = 0; i < -n; i++) {
+                            for (i = 0; i < -n; i++) {
                                 dbuf_putc(s, '0');
                             }
                             if (n_digits > 0) {
-                                output_digits(s, a1, radix, n_digits, n_digits, is_dec);
+                                output_digits(s, a1, radix, n_digits, n_digits,
+                                              is_dec);
                             }
                         } else {
                             output_digits(s, a1, radix, n_digits, n, is_dec);
@@ -3810,7 +4007,8 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                     a->sign = 0;
 
                     /* one more digit for the rounding */
-                    n = 1 + bf_mul_log2_radix(bf_max(a->expn, 0), radix, TRUE, TRUE);
+                    n = 1 + bf_mul_log2_radix(bf_max(a->expn, 0), radix, TRUE,
+                                              TRUE);
                     n_digits = n + prec;
                     n1 = n;
                     if (bf_convert_to_radix(a1, &n1, a, radix, n_digits,
@@ -3836,14 +4034,17 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                     if (fmt == BF_FTOA_FORMAT_FIXED) {
                         n_digits = prec;
                         n_max = n_digits;
-                        if (bfdec_round((bfdec_t *)a1, prec, (flags & BF_RND_MASK)) & BF_ST_MEM_ERROR)
+                        if (bfdec_round((bfdec_t *)a1, prec,
+                                        (flags & BF_RND_MASK)) &
+                            BF_ST_MEM_ERROR)
                             goto fail1;
                     } else {
                         /* prec is ignored */
                         prec = n_digits = a1->len * LIMB_DIGITS;
                         /* remove the trailing zero digits */
                         while (n_digits > 1 &&
-                               get_digit(a1->tab, a1->len, prec - n_digits) == 0) {
+                               get_digit(a1->tab, a1->len, prec - n_digits) ==
+                                   0) {
                             n_digits--;
                         }
                         n_max = n_digits + 4;
@@ -3851,7 +4052,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                     n = a1->expn;
                 } else
 #endif
-                if (radix_bits != 0) {
+                    if (radix_bits != 0) {
                     if (bf_set(a1, a2))
                         goto fail1;
                     if (fmt == BF_FTOA_FORMAT_FIXED) {
@@ -3859,23 +4060,24 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         n_digits = prec;
                         n_max = n_digits;
                         /* align to the radix point */
-                        prec_bits = prec * radix_bits -
-                            smod(-a1->expn, radix_bits);
-                        if (bf_round(a1, prec_bits,
-                                     (flags & BF_RND_MASK)) & BF_ST_MEM_ERROR)
+                        prec_bits =
+                            prec * radix_bits - smod(-a1->expn, radix_bits);
+                        if (bf_round(a1, prec_bits, (flags & BF_RND_MASK)) &
+                            BF_ST_MEM_ERROR)
                             goto fail1;
                     } else {
                         limb_t digit_mask;
                         slimb_t pos;
                         /* position of the digit before the most
                            significant digit in bits */
-                        pos = a1->len * LIMB_BITS +
-                            smod(-a1->expn, radix_bits);
+                        pos = a1->len * LIMB_BITS + smod(-a1->expn, radix_bits);
                         n_digits = ceil_div(pos, radix_bits);
                         /* remove the trailing zero digits */
                         digit_mask = ((limb_t)1 << radix_bits) - 1;
                         while (n_digits > 1 &&
-                               (get_bits(a1->tab, a1->len, pos - n_digits * radix_bits) & digit_mask) == 0) {
+                               (get_bits(a1->tab, a1->len,
+                                         pos - n_digits * radix_bits) &
+                                digit_mask) == 0) {
                             n_digits--;
                         }
                         n_max = n_digits + 4;
@@ -3897,7 +4099,8 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         slimb_t n_digits_max, n_digits_min;
 
                         assert(prec != BF_PREC_INF);
-                        n_digits = 1 + bf_mul_log2_radix(prec, radix, TRUE, TRUE);
+                        n_digits =
+                            1 + bf_mul_log2_radix(prec, radix, TRUE, TRUE);
                         /* max number of digits for non exponential
                            notation. The rational is to have the same rule
                            as JS i.e. n_max = 21 for 64 bit float in base 10. */
@@ -3913,16 +4116,16 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                             bf_init(ctx, b);
                             while (n_digits_min < n_digits_max) {
                                 n_digits = (n_digits_min + n_digits_max) / 2;
-                                if (bf_convert_to_radix(a1, &n, a, radix, n_digits,
-                                                        flags & BF_RND_MASK, FALSE)) {
+                                if (bf_convert_to_radix(
+                                        a1, &n, a, radix, n_digits,
+                                        flags & BF_RND_MASK, FALSE)) {
                                     bf_delete(b);
                                     goto fail1;
                                 }
                                 /* convert back to a number and compare */
-                                ret = bf_mul_pow_radix(b, a1, radix, n - n_digits,
-                                                       prec,
-                                                       (flags & ~BF_RND_MASK) |
-                                                       BF_RNDN);
+                                ret = bf_mul_pow_radix(
+                                    b, a1, radix, n - n_digits, prec,
+                                    (flags & ~BF_RND_MASK) | BF_RNDN);
                                 if (ret & BF_ST_MEM_ERROR) {
                                     bf_delete(b);
                                     goto fail1;
@@ -3944,8 +4147,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         goto fail;
                     }
                 }
-                if (a1->expn == BF_EXP_ZERO &&
-                    fmt != BF_FTOA_FORMAT_FIXED &&
+                if (a1->expn == BF_EXP_ZERO && fmt != BF_FTOA_FORMAT_FIXED &&
                     !(flags & BF_FTOA_FORCE_EXP)) {
                     /* just output zero */
                     dbuf_putstr(s, "0");
@@ -3960,8 +4162,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                     }
                     if (a1->expn == BF_EXP_ZERO)
                         n = 1;
-                    if ((flags & BF_FTOA_FORCE_EXP) ||
-                        n <= -6 || n > n_max) {
+                    if ((flags & BF_FTOA_FORCE_EXP) || n <= -6 || n > n_max) {
                         const char *fmt;
                         /* exponential notation */
                         output_digits(s, a1, radix, n_digits, 1, is_dec);
@@ -3976,21 +4177,21 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                                 fmt = "%c%+" PRId_LIMB;
                             else
                                 fmt = "%c%" PRId_LIMB;
-                            dbuf_printf(s, fmt,
-                                        radix <= 10 ? 'e' : '@', n - 1);
+                            dbuf_printf(s, fmt, radix <= 10 ? 'e' : '@', n - 1);
                         }
                     } else if (n <= 0) {
                         /* 0.x */
                         dbuf_putstr(s, "0.");
-                        for(i = 0; i < -n; i++) {
+                        for (i = 0; i < -n; i++) {
                             dbuf_putc(s, '0');
                         }
                         output_digits(s, a1, radix, n_digits, n_digits, is_dec);
                     } else {
                         if (n_digits <= n) {
                             /* no dot */
-                            output_digits(s, a1, radix, n_digits, n_digits, is_dec);
-                            for(i = 0; i < (n - n_digits); i++)
+                            output_digits(s, a1, radix, n_digits, n_digits,
+                                          is_dec);
+                            for (i = 0; i < (n - n_digits); i++)
                                 dbuf_putc(s, '0');
                         } else {
                             output_digits(s, a1, radix, n_digits, n, is_dec);
@@ -4007,7 +4208,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
     if (plen)
         *plen = s->size - 1;
     return (char *)s->buf;
- fail:
+fail:
     bf_free(ctx, s->buf);
     if (plen)
         *plen = 0;
@@ -4024,8 +4225,8 @@ char *bf_ftoa(size_t *plen, const bf_t *a, int radix, limb_t prec,
 /* transcendental functions */
 
 /* Note: the algorithm is from MPFR */
-static void bf_const_log2_rec(bf_t *T, bf_t *P, bf_t *Q, limb_t n1,
-                              limb_t n2, BOOL need_P)
+static void bf_const_log2_rec(bf_t *T, bf_t *P, bf_t *Q, limb_t n1, limb_t n2,
+                              BOOL need_P)
 {
     bf_context_t *s = T->ctx;
     if ((n2 - n1) == 1) {
@@ -4172,14 +4373,13 @@ static void bf_const_pi_internal(bf_t *Q, limb_t prec)
     bf_delete(&G);
 }
 
-static int bf_const_get(bf_t *T, limb_t prec, bf_flags_t flags,
-                        BFConstCache *c,
+static int bf_const_get(bf_t *T, limb_t prec, bf_flags_t flags, BFConstCache *c,
                         void (*func)(bf_t *res, limb_t prec), int sign)
 {
     limb_t ziv_extra_bits, prec1;
 
     ziv_extra_bits = 32;
-    for(;;) {
+    for (;;) {
         prec1 = prec + ziv_extra_bits;
         if (c->prec < prec1) {
             if (c->val.len == 0)
@@ -4193,7 +4393,7 @@ static int bf_const_get(bf_t *T, limb_t prec, bf_flags_t flags,
         T->sign = sign;
         if (!bf_can_round(T, prec, flags & BF_RND_MASK, prec1)) {
             /* and more precision and retry */
-            ziv_extra_bits = ziv_extra_bits  + (ziv_extra_bits / 2);
+            ziv_extra_bits = ziv_extra_bits + (ziv_extra_bits / 2);
         } else {
             break;
         }
@@ -4210,7 +4410,8 @@ static void bf_const_free(BFConstCache *c)
 int bf_const_log2(bf_t *T, limb_t prec, bf_flags_t flags)
 {
     bf_context_t *s = T->ctx;
-    return bf_const_get(T, prec, flags, &s->log2_cache, bf_const_log2_internal, 0);
+    return bf_const_get(T, prec, flags, &s->log2_cache, bf_const_log2_internal,
+                        0);
 }
 
 /* return rounded pi * (1 - 2 * sign) */
@@ -4240,9 +4441,8 @@ void bf_clear_cache(bf_context_t *s)
    does not need to be done in the function. */
 typedef int ZivFunc(bf_t *r, const bf_t *a, limb_t prec, void *opaque);
 
-static int bf_ziv_rounding(bf_t *r, const bf_t *a,
-                           limb_t prec, bf_flags_t flags,
-                           ZivFunc *f, void *opaque)
+static int bf_ziv_rounding(bf_t *r, const bf_t *a, limb_t prec,
+                           bf_flags_t flags, ZivFunc *f, void *opaque)
 {
     int rnd_mode, ret;
     slimb_t prec1, ziv_extra_bits;
@@ -4254,7 +4454,7 @@ static int bf_ziv_rounding(bf_t *r, const bf_t *a,
         ret = 0;
     } else {
         ziv_extra_bits = 32;
-        for(;;) {
+        for (;;) {
             prec1 = prec + ziv_extra_bits;
             ret = f(r, a, prec1, opaque);
             if (ret & (BF_ST_OVERFLOW | BF_ST_UNDERFLOW | BF_ST_MEM_ERROR)) {
@@ -4348,7 +4548,7 @@ static int bf_exp_internal(bf_t *r, const bf_t *a, limb_t prec, void *opaque)
 
         bf_init(s, U);
         bf_set_ui(r, 1);
-        for(i = l ; i >= 1; i--) {
+        for (i = l; i >= 1; i--) {
             bf_set_ui(U, i);
             bf_div(U, T, U, prec1, BF_RNDN);
             bf_mul(r, r, U, prec1, BF_RNDN);
@@ -4359,7 +4559,7 @@ static int bf_exp_internal(bf_t *r, const bf_t *a, limb_t prec, void *opaque)
     bf_delete(T);
 
     /* undo the range reduction */
-    for(i = 0; i < K; i++) {
+    for (i = 0; i < K; i++) {
         bf_mul(r, r, r, prec1, BF_RNDN | BF_FLAG_EXT_EXP);
     }
 
@@ -4498,7 +4698,7 @@ static int bf_log_internal(bf_t *r, const bf_t *a, limb_t prec, void *opaque)
     bf_add_si(T, T, -1, BF_PREC_INF, BF_RNDN);
 
     /* argument reduction 2 */
-    for(i = 0; i < K; i++) {
+    for (i = 0; i < K; i++) {
         /* T = T / (1 + sqrt(1 + T)) */
         bf_add_si(U, T, 1, prec1, BF_RNDN);
         bf_sqrt(V, U, prec1, BF_RNDF);
@@ -4522,7 +4722,7 @@ static int bf_log_internal(bf_t *r, const bf_t *a, limb_t prec, void *opaque)
 
         bf_mul(Y2, Y, Y, prec1, BF_RNDN);
         bf_set_ui(r, 0);
-        for(i = l; i >= 1; i--) {
+        for (i = l; i >= 1; i--) {
             bf_set_ui(U, 1);
             bf_set_ui(V, 2 * i + 1);
             bf_div(U, U, V, prec1, BF_RNDN);
@@ -4605,7 +4805,8 @@ static int bf_pow_generic(bf_t *r, const bf_t *x, limb_t prec, void *opaque)
     if (bf_is_nan(T))
         bf_set_nan(r);
     else
-        bf_exp_internal(r, T, prec1, NULL); /* no overflow/underlow test needed */
+        bf_exp_internal(r, T, prec1,
+                        NULL); /* no overflow/underlow test needed */
     bf_delete(T);
     return BF_ST_INEXACT;
 }
@@ -4665,7 +4866,7 @@ static BOOL check_exact_power2n(bf_t *r, const bf_t *x, slimb_t n)
     bf_init(s, T);
     bf_set(T, x);
     T->expn -= e;
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         if (i != 0)
             bf_set(T, r);
         if (bf_sqrtrem(r, NULL, T) != 0)
@@ -4835,7 +5036,7 @@ int bf_pow(bf_t *r, const bf_t *x, const bf_t *y, limb_t prec, bf_flags_t flags)
             ret = bf_ziv_rounding(r, T, prec, flags, bf_pow_generic, (void *)y);
         }
     }
- done:
+done:
     bf_delete(T);
     r->sign = r_sign;
     return ret;
@@ -4884,14 +5085,14 @@ static int bf_sincos(bf_t *s, bf_t *c, const bf_t *a, limb_t prec)
     } else {
         slimb_t cancel;
         cancel = 0;
-        for(;;) {
+        for (;;) {
             prec2 = prec1 + a->expn + cancel;
             bf_const_pi(U, prec2, BF_RNDF);
             bf_mul_2exp(U, -1, BF_PREC_INF, BF_RNDZ);
             bf_remquo(&mod, T, a, U, prec2, BF_RNDN, BF_RNDN);
             //            printf("T.expn=%ld prec2=%ld\n", T->expn, prec2);
-            if (mod == 0 || (T->expn != BF_EXP_ZERO &&
-                             (T->expn + prec2) >= (prec1 - 1)))
+            if (mod == 0 ||
+                (T->expn != BF_EXP_ZERO && (T->expn + prec2) >= (prec1 - 1)))
                 break;
             /* increase the number of bits until the precision is good enough */
             cancel = bf_max(-T->expn, (cancel + 1) * 3 / 2);
@@ -4909,7 +5110,7 @@ static int bf_sincos(bf_t *s, bf_t *c, const bf_t *a, limb_t prec)
        -x^2/2 + x^4/4! - x^6/6! + ...
     */
     bf_set_ui(r, 1);
-    for(i = l ; i >= 1; i--) {
+    for (i = l; i >= 1; i--) {
         bf_set_ui(U, 2 * i - 1);
         bf_mul_ui(U, U, 2 * i, BF_PREC_INF, BF_RNDZ);
         bf_div(U, T, U, prec1, BF_RNDN);
@@ -4923,7 +5124,7 @@ static int bf_sincos(bf_t *s, bf_t *c, const bf_t *a, limb_t prec)
     /* undo argument reduction:
        cosm1(2*x)= 2*(2*cosm1(x)+cosm1(x)^2)
     */
-    for(i = 0; i < K; i++) {
+    for (i = 0; i < K; i++) {
         bf_mul(T, r, r, prec1, BF_RNDN);
         bf_mul_2exp(r, 1, BF_PREC_INF, BF_RNDZ);
         bf_add(r, r, T, prec1, BF_RNDN);
@@ -5068,8 +5269,7 @@ int bf_tan(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags)
 
 /* if add_pi2 is true, add pi/2 to the result (used for acos(x) to
    avoid cancellation) */
-static int bf_atan_internal(bf_t *r, const bf_t *a, limb_t prec,
-                            void *opaque)
+static int bf_atan_internal(bf_t *r, const bf_t *a, limb_t prec, void *opaque)
 {
     bf_context_t *s = r->ctx;
     BOOL add_pi2 = (BOOL)(intptr_t)opaque;
@@ -5102,7 +5302,7 @@ static int bf_atan_internal(bf_t *r, const bf_t *a, limb_t prec,
     bf_init(s, U);
     bf_init(s, V);
     bf_init(s, X2);
-    for(i = 0; i < K; i++) {
+    for (i = 0; i < K; i++) {
         /* T = T / (1 + sqrt(1 + T^2)) */
         bf_mul(U, T, T, prec1, BF_RNDN);
         bf_add_si(U, U, 1, prec1, BF_RNDN);
@@ -5116,7 +5316,7 @@ static int bf_atan_internal(bf_t *r, const bf_t *a, limb_t prec,
     */
     bf_mul(X2, T, T, prec1, BF_RNDN);
     bf_set_ui(r, 0);
-    for(i = l; i >= 1; i--) {
+    for (i = l; i >= 1; i--) {
         bf_set_si(U, 1);
         bf_set_ui(V, 2 * i + 1);
         bf_div(U, U, V, prec1, BF_RNDN);
@@ -5164,7 +5364,7 @@ int bf_atan(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags)
         if (a->expn == BF_EXP_NAN) {
             bf_set_nan(r);
             return 0;
-        } else if (a->expn == BF_EXP_INF)  {
+        } else if (a->expn == BF_EXP_INF) {
             /* -PI/2 or PI/2 */
             bf_const_pi_signed(r, a->sign, prec, flags);
             bf_mul_2exp(r, -1, BF_PREC_INF, BF_RNDZ);
@@ -5238,8 +5438,8 @@ static int bf_atan2_internal(bf_t *r, const bf_t *y, limb_t prec, void *opaque)
     return ret;
 }
 
-int bf_atan2(bf_t *r, const bf_t *y, const bf_t *x,
-             limb_t prec, bf_flags_t flags)
+int bf_atan2(bf_t *r, const bf_t *y, const bf_t *x, limb_t prec,
+             bf_flags_t flags)
 {
     return bf_ziv_rounding(r, y, prec, flags, bf_atan2_internal, (void *)x);
 }
@@ -5523,37 +5723,21 @@ const limb_t mp_pow_dec[LIMB_DIGITS + 1] = {
 /* precomputed from fast_udiv_init(10^i) */
 static const FastDivData mp_pow_div[LIMB_DIGITS + 1] = {
 #if LIMB_BITS == 32
-    { 0x00000001, 0, 0 },
-    { 0x9999999a, 1, 3 },
-    { 0x47ae147b, 1, 6 },
-    { 0x0624dd30, 1, 9 },
-    { 0xa36e2eb2, 1, 13 },
-    { 0x4f8b588f, 1, 16 },
-    { 0x0c6f7a0c, 1, 19 },
-    { 0xad7f29ac, 1, 23 },
-    { 0x5798ee24, 1, 26 },
-    { 0x12e0be83, 1, 29 },
+    {0x00000001, 0, 0},  {0x9999999a, 1, 3},  {0x47ae147b, 1, 6},
+    {0x0624dd30, 1, 9},  {0xa36e2eb2, 1, 13}, {0x4f8b588f, 1, 16},
+    {0x0c6f7a0c, 1, 19}, {0xad7f29ac, 1, 23}, {0x5798ee24, 1, 26},
+    {0x12e0be83, 1, 29},
 #else
-    { 0x0000000000000001, 0, 0 },
-    { 0x999999999999999a, 1, 3 },
-    { 0x47ae147ae147ae15, 1, 6 },
-    { 0x0624dd2f1a9fbe77, 1, 9 },
-    { 0xa36e2eb1c432ca58, 1, 13 },
-    { 0x4f8b588e368f0847, 1, 16 },
-    { 0x0c6f7a0b5ed8d36c, 1, 19 },
-    { 0xad7f29abcaf48579, 1, 23 },
-    { 0x5798ee2308c39dfa, 1, 26 },
-    { 0x12e0be826d694b2f, 1, 29 },
-    { 0xb7cdfd9d7bdbab7e, 1, 33 },
-    { 0x5fd7fe17964955fe, 1, 36 },
-    { 0x19799812dea11198, 1, 39 },
-    { 0xc25c268497681c27, 1, 43 },
-    { 0x6849b86a12b9b01f, 1, 46 },
-    { 0x203af9ee756159b3, 1, 49 },
-    { 0xcd2b297d889bc2b7, 1, 53 },
-    { 0x70ef54646d496893, 1, 56 },
-    { 0x2725dd1d243aba0f, 1, 59 },
-    { 0xd83c94fb6d2ac34d, 1, 63 },
+    {0x0000000000000001, 0, 0},  {0x999999999999999a, 1, 3},
+    {0x47ae147ae147ae15, 1, 6},  {0x0624dd2f1a9fbe77, 1, 9},
+    {0xa36e2eb1c432ca58, 1, 13}, {0x4f8b588e368f0847, 1, 16},
+    {0x0c6f7a0b5ed8d36c, 1, 19}, {0xad7f29abcaf48579, 1, 23},
+    {0x5798ee2308c39dfa, 1, 26}, {0x12e0be826d694b2f, 1, 29},
+    {0xb7cdfd9d7bdbab7e, 1, 33}, {0x5fd7fe17964955fe, 1, 36},
+    {0x19799812dea11198, 1, 39}, {0xc25c268497681c27, 1, 43},
+    {0x6849b86a12b9b01f, 1, 46}, {0x203af9ee756159b3, 1, 49},
+    {0xcd2b297d889bc2b7, 1, 53}, {0x70ef54646d496893, 1, 56},
+    {0x2725dd1d243aba0f, 1, 59}, {0xd83c94fb6d2ac34d, 1, 63},
 #endif
 };
 
@@ -5573,15 +5757,15 @@ limb_t mp_add_dec(limb_t *res, const limb_t *op1, const limb_t *op2,
     mp_size_t i;
     limb_t k, a, v;
 
-    k=carry;
-    for(i=0;i<n;i++) {
+    k = carry;
+    for (i = 0; i < n; i++) {
         /* XXX: reuse the trick in add_mod */
         v = op1[i];
         a = v + op2[i] + k - base;
         k = a <= v;
         if (!k)
             a += base;
-        res[i]=a;
+        res[i] = a;
     }
     return k;
 }
@@ -5592,8 +5776,8 @@ limb_t mp_add_ui_dec(limb_t *tab, limb_t b, mp_size_t n)
     mp_size_t i;
     limb_t k, a, v;
 
-    k=b;
-    for(i=0;i<n;i++) {
+    k = b;
+    for (i = 0; i < n; i++) {
         v = tab[i];
         a = v + k - base;
         k = a <= v;
@@ -5613,8 +5797,8 @@ limb_t mp_sub_dec(limb_t *res, const limb_t *op1, const limb_t *op2,
     mp_size_t i;
     limb_t k, v, a;
 
-    k=carry;
-    for(i=0;i<n;i++) {
+    k = carry;
+    for (i = 0; i < n; i++) {
         v = op1[i];
         a = v - op2[i] - k;
         k = a > v;
@@ -5631,14 +5815,14 @@ limb_t mp_sub_ui_dec(limb_t *tab, limb_t b, mp_size_t n)
     mp_size_t i;
     limb_t k, v, a;
 
-    k=b;
-    for(i=0;i<n;i++) {
+    k = b;
+    for (i = 0; i < n; i++) {
         v = tab[i];
         a = v - k;
         k = a > v;
         if (k)
             a += base;
-        tab[i]=a;
+        tab[i] = a;
         if (k == 0)
             break;
     }
@@ -5646,13 +5830,13 @@ limb_t mp_sub_ui_dec(limb_t *tab, limb_t b, mp_size_t n)
 }
 
 /* taba[] = taba[] * b + l. 0 <= b, l <= base - 1. Return the high carry */
-limb_t mp_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n,
-                   limb_t b, limb_t l)
+limb_t mp_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n, limb_t b,
+                   limb_t l)
 {
     mp_size_t i;
     limb_t t0, t1, r;
 
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         muldq(t1, t0, taba[i], b);
         adddq(t1, t0, 0, l);
         divdq_base(l, r, t1, t0);
@@ -5663,14 +5847,13 @@ limb_t mp_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n,
 
 /* tabr[] += taba[] * b. 0 <= b <= base - 1. Return the value to add
    to the high word */
-limb_t mp_add_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n,
-                       limb_t b)
+limb_t mp_add_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n, limb_t b)
 {
     mp_size_t i;
     limb_t l, t0, t1, r;
 
     l = 0;
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         muldq(t1, t0, taba[i], b);
         adddq(t1, t0, 0, l);
         adddq(t1, t0, 0, tabr[i]);
@@ -5682,8 +5865,7 @@ limb_t mp_add_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n,
 
 /* tabr[] -= taba[] * b. 0 <= b <= base - 1. Return the value to
    substract to the high word. */
-limb_t mp_sub_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n,
-                       limb_t b)
+limb_t mp_sub_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n, limb_t b)
 {
     limb_t base = BF_DEC_BASE;
     mp_size_t i;
@@ -5691,7 +5873,7 @@ limb_t mp_sub_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n,
 
     /* XXX: optimize */
     l = 0;
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         muldq(t1, t0, taba[i], b);
         adddq(t1, t0, 0, l);
         divdq_base(l, r, t1, t0);
@@ -5708,8 +5890,7 @@ limb_t mp_sub_mul1_dec(limb_t *tabr, const limb_t *taba, mp_size_t n,
 }
 
 /* size of the result : op1_size + op2_size. */
-void mp_mul_basecase_dec(limb_t *result,
-                         const limb_t *op1, mp_size_t op1_size,
+void mp_mul_basecase_dec(limb_t *result, const limb_t *op1, mp_size_t op1_size,
                          const limb_t *op2, mp_size_t op2_size)
 {
     mp_size_t i;
@@ -5717,7 +5898,7 @@ void mp_mul_basecase_dec(limb_t *result,
 
     result[op1_size] = mp_mul1_dec(result, op1, op1_size, op2[0], 0);
 
-    for(i=1;i<op2_size;i++) {
+    for (i = 1; i < op2_size; i++) {
         r = mp_add_mul1_dec(result + i, op1, op1_size, op2[i]);
         result[i + op1_size] = r;
     }
@@ -5725,8 +5906,8 @@ void mp_mul_basecase_dec(limb_t *result,
 
 /* taba[] = (taba[] + r*base^na) / b. 0 <= b < base. 0 <= r <
    b. Return the remainder. */
-limb_t mp_div1_dec(limb_t *tabr, const limb_t *taba, mp_size_t na,
-                   limb_t b, limb_t r)
+limb_t mp_div1_dec(limb_t *tabr, const limb_t *taba, mp_size_t na, limb_t b,
+                   limb_t r)
 {
     limb_t base = BF_DEC_BASE;
     mp_size_t i;
@@ -5740,7 +5921,7 @@ limb_t mp_div1_dec(limb_t *tabr, const limb_t *taba, mp_size_t na,
         base_div2 = base >> 1;
         if (r)
             r = base_div2;
-        for(i = na - 1; i >= 0; i--) {
+        for (i = na - 1; i >= 0; i--) {
             t0 = taba[i];
             tabr[i] = (t0 >> 1) + r;
             r = 0;
@@ -5751,13 +5932,13 @@ limb_t mp_div1_dec(limb_t *tabr, const limb_t *taba, mp_size_t na,
             r = 1;
     } else
 #endif
-    if (na >= UDIV1NORM_THRESHOLD) {
+        if (na >= UDIV1NORM_THRESHOLD) {
         shift = clz(b);
         if (shift == 0) {
             /* normalized case: b >= 2^(LIMB_BITS-1) */
             limb_t b_inv;
             b_inv = udiv1norm_init(b);
-            for(i = na - 1; i >= 0; i--) {
+            for (i = na - 1; i >= 0; i--) {
                 muldq(t1, t0, r, base);
                 adddq(t1, t0, 0, taba[i]);
                 q = udiv1norm(&r, t1, t0, b, b_inv);
@@ -5767,7 +5948,7 @@ limb_t mp_div1_dec(limb_t *tabr, const limb_t *taba, mp_size_t na,
             limb_t b_inv;
             b <<= shift;
             b_inv = udiv1norm_init(b);
-            for(i = na - 1; i >= 0; i--) {
+            for (i = na - 1; i >= 0; i--) {
                 muldq(t1, t0, r, base);
                 adddq(t1, t0, 0, taba[i]);
                 t1 = (t1 << shift) | (t0 >> (LIMB_BITS - shift));
@@ -5778,7 +5959,7 @@ limb_t mp_div1_dec(limb_t *tabr, const limb_t *taba, mp_size_t na,
             }
         }
     } else {
-        for(i = na - 1; i >= 0; i--) {
+        for (i = na - 1; i >= 0; i--) {
             muldq(t1, t0, r, base);
             adddq(t1, t0, 0, taba[i]);
             divdq(q, r, t1, t0, b);
@@ -5788,12 +5969,12 @@ limb_t mp_div1_dec(limb_t *tabr, const limb_t *taba, mp_size_t na,
     return r;
 }
 
-static __maybe_unused void mp_print_str_dec(const char *str,
-                                       const limb_t *tab, slimb_t n)
+static __maybe_unused void mp_print_str_dec(const char *str, const limb_t *tab,
+                                            slimb_t n)
 {
     slimb_t i;
     printf("%s=", str);
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         if (i != n - 1)
             printf("_");
         printf("%0*" PRIu_LIMB, LIMB_DIGITS, tab[i]);
@@ -5801,14 +5982,13 @@ static __maybe_unused void mp_print_str_dec(const char *str,
     printf("\n");
 }
 
-static __maybe_unused void mp_print_str_h_dec(const char *str,
-                                              const limb_t *tab, slimb_t n,
-                                              limb_t high)
+static __maybe_unused void
+mp_print_str_h_dec(const char *str, const limb_t *tab, slimb_t n, limb_t high)
 {
     slimb_t i;
     printf("%s=", str);
     printf("%0*" PRIu_LIMB, LIMB_DIGITS, high);
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         printf("_");
         printf("%0*" PRIu_LIMB, LIMB_DIGITS, tab[i]);
     }
@@ -5832,8 +6012,7 @@ static __maybe_unused void mp_print_str_h_dec(const char *str,
    Return 0 if OK, -1 if memory alloc error
 */
 /* XXX: optimize */
-static int mp_div_dec(bf_context_t *s, limb_t *tabq,
-                      limb_t *taba, mp_size_t na,
+static int mp_div_dec(bf_context_t *s, limb_t *tabq, limb_t *taba, mp_size_t na,
                       const limb_t *tabb1, mp_size_t nb)
 {
     limb_t base = BF_DEC_BASE;
@@ -5854,7 +6033,7 @@ static int mp_div_dec(bf_context_t *s, limb_t *tabq,
         mult = 1;
         tabb = (limb_t *)tabb1;
         q = 1;
-        for(j = nb - 1; j >= 0; j--) {
+        for (j = nb - 1; j >= 0; j--) {
             if (taba[i + j] != tabb[j]) {
                 if (taba[i + j] < tabb[j])
                     q = 0;
@@ -5885,7 +6064,7 @@ static int mp_div_dec(bf_context_t *s, limb_t *tabq,
     mp_print_str_dec("b_norm", tabb, nb);
 #endif
 
-    for(; i >= 0; i--) {
+    for (; i >= 0; i--) {
         if (unlikely(taba[i + nb] >= tabb[nb - 1])) {
             /* XXX: check if it is really possible */
             q = base - 1;
@@ -5909,7 +6088,7 @@ static int mp_div_dec(bf_context_t *s, limb_t *tabq,
 
         if (c != 0) {
             /* negative result */
-            for(;;) {
+            for (;;) {
                 q--;
                 c = mp_add_dec(taba + i, taba + i, tabb, nb, 0);
                 /* propagate carry and test if positive result */
@@ -5946,7 +6125,7 @@ static limb_t mp_shr_dec(limb_t *tab_r, const limb_t *tab, mp_size_t n,
 
     assert(shift >= 1 && shift < LIMB_DIGITS);
     l = high;
-    for(i = n - 1; i >= 0; i--) {
+    for (i = n - 1; i >= 0; i--) {
         a = tab[i];
         fast_shr_rem_dec(q, r, a, shift);
         tab_r[i] = q + l * mp_pow_dec[LIMB_DIGITS - shift];
@@ -5964,7 +6143,7 @@ static limb_t mp_shl_dec(limb_t *tab_r, const limb_t *tab, mp_size_t n,
 
     assert(shift >= 1 && shift < LIMB_DIGITS);
     l = low;
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         a = tab[i];
         fast_shr_rem_dec(q, r, a, LIMB_DIGITS - shift);
         tab_r[i] = r * mp_pow_dec[shift] + l;
@@ -6025,7 +6204,7 @@ static limb_t mp_sqrtrem_rec_dec(limb_t *tabs, limb_t *taba, limb_t n,
        and update q and r */
     mp_div_dec(NULL, tmp_buf, taba + l, n, tabs + l, h);
     qh += tmp_buf[l];
-    for(i = 0; i < l; i++)
+    for (i = 0; i < l; i++)
         tabs[i] = tmp_buf[i];
     ql = mp_div1_dec(tabs, tabs, l, 2, qh & 1);
     qh = qh >> 1; /* 0 or 1 */
@@ -6088,7 +6267,7 @@ static int clz_dec(limb_t a)
 {
     if (a == 0)
         return LIMB_DIGITS;
-    switch(LIMB_BITS - 1 - clz(a)) {
+    switch (LIMB_BITS - 1 - clz(a)) {
     case 0: /* 1-1 */
         return LIMB_DIGITS - 1;
     case 1: /* 2-3 */
@@ -6287,7 +6466,7 @@ void bfdec_print_str(const char *str, const bfdec_t *a)
             printf("Inf");
         } else {
             printf("0.");
-            for(i = a->len - 1; i >= 0; i--)
+            for (i = a->len - 1; i >= 0; i--)
                 printf("%0*" PRIu_LIMB, LIMB_DIGITS, a->tab[i]);
             printf("e%" PRId_LIMB, a->expn);
         }
@@ -6350,7 +6529,7 @@ static int bfdec_get_rnd_add(int *pret, const bfdec_t *r, limb_t l,
     inexact = (digit1 | digit0) != 0;
 
     add_one = 0;
-    switch(rnd_mode) {
+    switch (rnd_mode) {
     case BF_RNDZ:
         break;
     case BF_RNDN:
@@ -6474,8 +6653,7 @@ static int __bfdec_round(bfdec_t *r, limb_t prec1, bf_flags_t flags, limb_t l)
     if (i >= 0) {
         shift = smod(bit_pos, LIMB_DIGITS);
         if (shift != 0) {
-            r->tab[i] = fast_shr_dec(r->tab[i], shift) *
-                mp_pow_dec[shift];
+            r->tab[i] = fast_shr_dec(r->tab[i], shift) * mp_pow_dec[shift];
         }
     } else {
         i = 0;
@@ -6542,7 +6720,7 @@ int bfdec_set_ui(bfdec_t *r, uint64_t v)
         r->expn = 3 * LIMB_DIGITS;
     } else
 #endif
-    if (v >= BF_DEC_BASE) {
+        if (v >= BF_DEC_BASE) {
         if (bfdec_resize(r, 2))
             goto fail;
         r->tab[0] = v % BF_DEC_BASE;
@@ -6556,7 +6734,7 @@ int bfdec_set_ui(bfdec_t *r, uint64_t v)
     }
     r->sign = 0;
     return bfdec_normalize_and_round(r, BF_PREC_INF, 0);
- fail:
+fail:
     bfdec_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
@@ -6573,7 +6751,8 @@ int bfdec_set_si(bfdec_t *r, int64_t v)
     return ret;
 }
 
-static int bfdec_add_internal(bfdec_t *r, const bfdec_t *a, const bfdec_t *b, limb_t prec, bf_flags_t flags, int b_neg)
+static int bfdec_add_internal(bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
+                              limb_t prec, bf_flags_t flags, int b_neg)
 {
     bf_context_t *s = r->ctx;
     int is_sub, cmp_res, a_sign, b_sign, ret;
@@ -6633,9 +6812,9 @@ static int bfdec_add_internal(bfdec_t *r, const bfdec_t *a, const bfdec_t *b, li
         r->expn = a->expn;
 
         a_offset = r_len - a->len;
-        for(i = 0; i < a_offset; i++)
+        for (i = 0; i < a_offset; i++)
             r->tab[i] = 0;
-        for(i = 0; i < a->len; i++)
+        for (i = 0; i < a->len; i++)
             r->tab[a_offset + i] = a->tab[i];
 
         b_shift = d % LIMB_DIGITS;
@@ -6648,21 +6827,21 @@ static int bfdec_add_internal(bfdec_t *r, const bfdec_t *a, const bfdec_t *b, li
             if (!b1_tab)
                 goto fail;
             b1_tab[0] = mp_shr_dec(b1_tab + 1, b->tab, b->len, b_shift, 0) *
-                mp_pow_dec[LIMB_DIGITS - b_shift];
+                        mp_pow_dec[LIMB_DIGITS - b_shift];
         }
         b_offset = r_len - (b->len + (d + LIMB_DIGITS - 1) / LIMB_DIGITS);
 
         if (is_sub) {
-            carry = mp_sub_dec(r->tab + b_offset, r->tab + b_offset,
-                               b1_tab, b1_len, 0);
+            carry = mp_sub_dec(r->tab + b_offset, r->tab + b_offset, b1_tab,
+                               b1_len, 0);
             if (carry != 0) {
                 carry = mp_sub_ui_dec(r->tab + b_offset + b1_len, carry,
                                       r_len - (b_offset + b1_len));
                 assert(carry == 0);
             }
         } else {
-            carry = mp_add_dec(r->tab + b_offset, r->tab + b_offset,
-                               b1_tab, b1_len, 0);
+            carry = mp_add_dec(r->tab + b_offset, r->tab + b_offset, b1_tab,
+                               b1_len, 0);
             if (carry != 0) {
                 carry = mp_add_ui_dec(r->tab + b_offset + b1_len, carry,
                                       r_len - (b_offset + b1_len));
@@ -6683,19 +6862,19 @@ static int bfdec_add_internal(bfdec_t *r, const bfdec_t *a, const bfdec_t *b, li
         ret = bfdec_normalize_and_round(r, prec, flags);
     }
     return ret;
- fail:
+fail:
     bfdec_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
 
-static int __bfdec_add(bfdec_t *r, const bfdec_t *a, const bfdec_t *b, limb_t prec,
-                     bf_flags_t flags)
+static int __bfdec_add(bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
+                       limb_t prec, bf_flags_t flags)
 {
     return bfdec_add_internal(r, a, b, prec, flags, 0);
 }
 
-static int __bfdec_sub(bfdec_t *r, const bfdec_t *a, const bfdec_t *b, limb_t prec,
-                     bf_flags_t flags)
+static int __bfdec_sub(bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
+                       limb_t prec, bf_flags_t flags)
 {
     return bfdec_add_internal(r, a, b, prec, flags, 1);
 }
@@ -6842,8 +7021,9 @@ static int __bfdec_div(bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
     } else if (flags & BF_FLAG_RADPNT_PREC) {
         /* number of digits after the decimal point */
         /* XXX: check (2 extra digits for rounding + 2 digits) */
-        precl = (bf_max(a->expn - b->expn, 0) + 2 +
-                 prec + 2 + LIMB_DIGITS - 1) / LIMB_DIGITS;
+        precl =
+            (bf_max(a->expn - b->expn, 0) + 2 + prec + 2 + LIMB_DIGITS - 1) /
+            LIMB_DIGITS;
     } else {
         /* number of limbs of the quotient (2 extra digits for rounding) */
         precl = (prec + 2 + LIMB_DIGITS - 1) / LIMB_DIGITS;
@@ -6869,7 +7049,7 @@ static int __bfdec_div(bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
             goto fail;
         }
         /* see if non zero remainder */
-        for(i = 0; i < nb; i++) {
+        for (i = 0; i < nb; i++) {
             if (taba[i] != 0)
                 break;
         }
@@ -6887,7 +7067,7 @@ static int __bfdec_div(bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
         ret = bfdec_normalize_and_round(r, prec, flags);
     }
     return ret;
- fail:
+fail:
     bfdec_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
@@ -6952,7 +7132,7 @@ int bfdec_divrem(bfdec_t *q, bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
 
     q_sign = a->sign ^ b->sign;
     is_rndn = (rnd_mode == BF_RNDN || rnd_mode == BF_RNDNA);
-    switch(rnd_mode) {
+    switch (rnd_mode) {
     default:
     case BF_RNDZ:
     case BF_RNDN:
@@ -7006,7 +7186,8 @@ int bfdec_divrem(bfdec_t *q, bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
             if (res > 0 ||
                 (res == 0 &&
                  (rnd_mode == BF_RNDNA ||
-                  (get_digit(q->tab, q->len, q->len * LIMB_DIGITS - q->expn) & 1) != 0))) {
+                  (get_digit(q->tab, q->len, q->len * LIMB_DIGITS - q->expn) &
+                   1) != 0))) {
                 goto do_sub_r;
             }
         } else if (is_ceil) {
@@ -7021,7 +7202,7 @@ int bfdec_divrem(bfdec_t *q, bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
     r->sign ^= a->sign;
     q->sign = q_sign;
     return bfdec_round(r, prec, flags);
- fail:
+fail:
     bfdec_set_nan(q);
     bfdec_set_nan(r);
     return BF_ST_MEM_ERROR;
@@ -7065,7 +7246,7 @@ int bfdec_sqrt(bfdec_t *r, const bfdec_t *a, limb_t prec, bf_flags_t flags)
         }
         ret = 0;
     } else if (a->sign || prec == BF_PREC_INF) {
- invalid_op:
+    invalid_op:
         bfdec_set_nan(r);
         ret = BF_ST_INVALID_OP;
     } else {
@@ -7122,7 +7303,7 @@ int bfdec_sqrt(bfdec_t *r, const bfdec_t *a, limb_t prec, bf_flags_t flags)
         ret = bfdec_round(r, prec, flags);
     }
     return ret;
- fail:
+fail:
     bfdec_set_nan(r);
     return BF_ST_MEM_ERROR;
 }
@@ -7137,7 +7318,7 @@ int bfdec_get_int32(int *pres, const bfdec_t *a)
         ret = 0;
         if (a->expn == BF_EXP_INF) {
             v = (uint32_t)INT32_MAX + a->sign;
-             /* XXX: return overflow ? */
+            /* XXX: return overflow ? */
         } else {
             v = INT32_MAX;
         }
@@ -7156,7 +7337,7 @@ int bfdec_get_int32(int *pres, const bfdec_t *a)
         v1 = fast_shr_dec(a->tab[a->len - 1], LIMB_DIGITS - a->expn);
 #else
         v1 = (uint64_t)a->tab[a->len - 1] * 10 +
-            get_digit(a->tab, a->len, (a->len - 1) * LIMB_DIGITS - 1);
+             get_digit(a->tab, a->len, (a->len - 1) * LIMB_DIGITS - 1);
 #endif
         v_max = (uint32_t)INT32_MAX + a->sign;
         if (v1 > v_max) {
@@ -7186,7 +7367,7 @@ int bfdec_pow_ui(bfdec_t *r, const bfdec_t *a, limb_t b)
         return bfdec_set_ui(r, 1);
     ret = bfdec_set(r, a);
     n_bits = LIMB_BITS - clz(b);
-    for(i = n_bits - 2; i >= 0; i--) {
+    for (i = n_bits - 2; i >= 0; i--) {
         ret |= bfdec_mul(r, r, r, BF_PREC_INF, BF_RNDZ);
         if ((b >> i) & 1)
             ret |= bfdec_mul(r, r, a, BF_PREC_INF, BF_RNDZ);
@@ -7199,12 +7380,12 @@ char *bfdec_ftoa(size_t *plen, const bfdec_t *a, limb_t prec, bf_flags_t flags)
     return bf_ftoa_internal(plen, (const bf_t *)a, 10, prec, flags, TRUE);
 }
 
-int bfdec_atof(bfdec_t *r, const char *str, const char **pnext,
-               limb_t prec, bf_flags_t flags)
+int bfdec_atof(bfdec_t *r, const char *str, const char **pnext, limb_t prec,
+               bf_flags_t flags)
 {
     slimb_t dummy_exp;
-    return bf_atof_internal((bf_t *)r, &dummy_exp, str, pnext, 10, prec,
-                            flags, TRUE);
+    return bf_atof_internal((bf_t *)r, &dummy_exp, str, pnext, 10, prec, flags,
+                            TRUE);
 }
 
 #endif /* USE_BF_DEC */
@@ -7240,21 +7421,37 @@ typedef double NTTLimb;
 #define NTT_MOD_LOG2_MAX 51
 #define NB_MODS 5
 #define NTT_PROOT_2EXP 39
-static const int ntt_int_bits[NB_MODS] = { 254, 203, 152, 101, 50, };
+static const int ntt_int_bits[NB_MODS] = {
+    254, 203, 152, 101, 50,
+};
 
-static const limb_t ntt_mods[NB_MODS] = { 0x00073a8000000001, 0x0007858000000001, 0x0007a38000000001, 0x0007a68000000001, 0x0007fd8000000001,
+static const limb_t ntt_mods[NB_MODS] = {
+    0x00073a8000000001, 0x0007858000000001, 0x0007a38000000001,
+    0x0007a68000000001, 0x0007fd8000000001,
 };
 
 static const limb_t ntt_proot[2][NB_MODS] = {
-    { 0x00056198d44332c8, 0x0002eb5d640aad39, 0x00047e31eaa35fd0, 0x0005271ac118a150, 0x00075e0ce8442bd5, },
-    { 0x000461169761bcc5, 0x0002dac3cb2da688, 0x0004abc97751e3bf, 0x000656778fc8c485, 0x0000dc6469c269fa, },
+    {
+        0x00056198d44332c8,
+        0x0002eb5d640aad39,
+        0x00047e31eaa35fd0,
+        0x0005271ac118a150,
+        0x00075e0ce8442bd5,
+    },
+    {
+        0x000461169761bcc5,
+        0x0002dac3cb2da688,
+        0x0004abc97751e3bf,
+        0x000656778fc8c485,
+        0x0000dc6469c269fa,
+    },
 };
 
 static const limb_t ntt_mods_cr[NB_MODS * (NB_MODS - 1) / 2] = {
- 0x00020e4da740da8e, 0x0004c3dc09c09c1d, 0x000063bd097b4271, 0x000799d8f18f18fd,
- 0x0005384222222264, 0x000572b07c1f07fe, 0x00035cd08888889a,
- 0x00066015555557e3, 0x000725960b60b623,
- 0x0002fc1fa1d6ce12,
+    0x00020e4da740da8e, 0x0004c3dc09c09c1d, 0x000063bd097b4271,
+    0x000799d8f18f18fd, 0x0005384222222264, 0x000572b07c1f07fe,
+    0x00035cd08888889a, 0x00066015555557e3, 0x000725960b60b623,
+    0x0002fc1fa1d6ce12,
 };
 
 #else
@@ -7267,21 +7464,37 @@ typedef limb_t NTTLimb;
 #define NTT_MOD_LOG2_MAX 62
 #define NB_MODS 5
 #define NTT_PROOT_2EXP 51
-static const int ntt_int_bits[NB_MODS] = { 307, 246, 185, 123, 61, };
+static const int ntt_int_bits[NB_MODS] = {
+    307, 246, 185, 123, 61,
+};
 
-static const limb_t ntt_mods[NB_MODS] = { 0x28d8000000000001, 0x2a88000000000001, 0x2ed8000000000001, 0x3508000000000001, 0x3aa8000000000001,
+static const limb_t ntt_mods[NB_MODS] = {
+    0x28d8000000000001, 0x2a88000000000001, 0x2ed8000000000001,
+    0x3508000000000001, 0x3aa8000000000001,
 };
 
 static const limb_t ntt_proot[2][NB_MODS] = {
-    { 0x1b8ea61034a2bea7, 0x21a9762de58206fb, 0x02ca782f0756a8ea, 0x278384537a3e50a1, 0x106e13fee74ce0ab, },
-    { 0x233513af133e13b8, 0x1d13140d1c6f75f1, 0x12cde57f97e3eeda, 0x0d6149e23cbe654f, 0x36cd204f522a1379, },
+    {
+        0x1b8ea61034a2bea7,
+        0x21a9762de58206fb,
+        0x02ca782f0756a8ea,
+        0x278384537a3e50a1,
+        0x106e13fee74ce0ab,
+    },
+    {
+        0x233513af133e13b8,
+        0x1d13140d1c6f75f1,
+        0x12cde57f97e3eeda,
+        0x0d6149e23cbe654f,
+        0x36cd204f522a1379,
+    },
 };
 
 static const limb_t ntt_mods_cr[NB_MODS * (NB_MODS - 1) / 2] = {
- 0x08a9ed097b425eea, 0x18a44aaaaaaaaab3, 0x2493f57f57f57f5d, 0x126b8d0649a7f8d4,
- 0x09d80ed7303b5ccc, 0x25b8bcf3cf3cf3d5, 0x2ce6ce63398ce638,
- 0x0e31fad40a57eb59, 0x02a3529fd4a7f52f,
- 0x3a5493e93e93e94a,
+    0x08a9ed097b425eea, 0x18a44aaaaaaaaab3, 0x2493f57f57f57f5d,
+    0x126b8d0649a7f8d4, 0x09d80ed7303b5ccc, 0x25b8bcf3cf3cf3d5,
+    0x2ce6ce63398ce638, 0x0e31fad40a57eb59, 0x02a3529fd4a7f52f,
+    0x3a5493e93e93e94a,
 };
 
 #elif LIMB_BITS == 32
@@ -7291,21 +7504,37 @@ static const limb_t ntt_mods_cr[NB_MODS * (NB_MODS - 1) / 2] = {
 #define NTT_MOD_LOG2_MAX 30
 #define NB_MODS 5
 #define NTT_PROOT_2EXP 20
-static const int ntt_int_bits[NB_MODS] = { 148, 119, 89, 59, 29, };
+static const int ntt_int_bits[NB_MODS] = {
+    148, 119, 89, 59, 29,
+};
 
-static const limb_t ntt_mods[NB_MODS] = { 0x0000000032b00001, 0x0000000033700001, 0x0000000036d00001, 0x0000000037300001, 0x000000003e500001,
+static const limb_t ntt_mods[NB_MODS] = {
+    0x0000000032b00001, 0x0000000033700001, 0x0000000036d00001,
+    0x0000000037300001, 0x000000003e500001,
 };
 
 static const limb_t ntt_proot[2][NB_MODS] = {
-    { 0x0000000032525f31, 0x0000000005eb3b37, 0x00000000246eda9f, 0x0000000035f25901, 0x00000000022f5768, },
-    { 0x00000000051eba1a, 0x00000000107be10e, 0x000000001cd574e0, 0x00000000053806e6, 0x000000002cd6bf98, },
+    {
+        0x0000000032525f31,
+        0x0000000005eb3b37,
+        0x00000000246eda9f,
+        0x0000000035f25901,
+        0x00000000022f5768,
+    },
+    {
+        0x00000000051eba1a,
+        0x00000000107be10e,
+        0x000000001cd574e0,
+        0x00000000053806e6,
+        0x000000002cd6bf98,
+    },
 };
 
 static const limb_t ntt_mods_cr[NB_MODS * (NB_MODS - 1) / 2] = {
- 0x000000000449559a, 0x000000001eba6ca9, 0x000000002ec18e46, 0x000000000860160b,
- 0x000000000d321307, 0x000000000bf51120, 0x000000000f662938,
- 0x000000000932ab3e, 0x000000002f40eef8,
- 0x000000002e760905,
+    0x000000000449559a, 0x000000001eba6ca9, 0x000000002ec18e46,
+    0x000000000860160b, 0x000000000d321307, 0x000000000bf51120,
+    0x000000000f662938, 0x000000000932ab3e, 0x000000002f40eef8,
+    0x000000002e760905,
 };
 
 #endif /* LIMB_BITS */
@@ -7363,8 +7592,7 @@ static inline limb_t sub_mod(limb_t a, limb_t b, limb_t m)
 /* return (r0+r1*B) mod m
    precondition: 0 <= r0+r1*B < 2^(64+NTT_MOD_LOG2_MIN)
 */
-static inline limb_t mod_fast(dlimb_t r,
-                                limb_t m, limb_t m_inv)
+static inline limb_t mod_fast(dlimb_t r, limb_t m, limb_t m_inv)
 {
     limb_t a1, q, t0, r1, r0;
 
@@ -7383,8 +7611,7 @@ static inline limb_t mod_fast(dlimb_t r,
 
 /* faster version using precomputed modulo inverse.
    precondition: 0 <= a * b < 2^(64+NTT_MOD_LOG2_MIN) */
-static inline limb_t mul_mod_fast(limb_t a, limb_t b,
-                                    limb_t m, limb_t m_inv)
+static inline limb_t mul_mod_fast(limb_t a, limb_t b, limb_t m, limb_t m_inv)
 {
     dlimb_t r;
     r = (dlimb_t)a * (dlimb_t)b;
@@ -7402,8 +7629,7 @@ static inline limb_t init_mul_mod_fast(limb_t m)
 
 /* Faster version used when the multiplier is constant. 0 <= a < 2^64,
    0 <= b < m. */
-static inline limb_t mul_mod_fast2(limb_t a, limb_t b,
-                                     limb_t m, limb_t b_inv)
+static inline limb_t mul_mod_fast2(limb_t a, limb_t b, limb_t m, limb_t b_inv)
 {
     limb_t r, q;
 
@@ -7417,8 +7643,7 @@ static inline limb_t mul_mod_fast2(limb_t a, limb_t b,
 /* Faster version used when the multiplier is constant. 0 <= a < 2^64,
    0 <= b < m. Let r = a * b mod m. The return value is 'r' or 'r +
    m'. */
-static inline limb_t mul_mod_fast3(limb_t a, limb_t b,
-                                     limb_t m, limb_t b_inv)
+static inline limb_t mul_mod_fast3(limb_t a, limb_t b, limb_t m, limb_t b_inv)
 {
     limb_t r, q;
 
@@ -7478,7 +7703,7 @@ static inline __m256d ntt_mul_mod(__m256d a, __m256d b, __m256d mf,
     q = _mm256_round_pd(ab1 * m_inv, 0); /* round to nearest */
     qm1 = q * mf;
     qm0 = _mm256_fmsub_pd(q, mf, qm1); /* low part */
-    ab0 = _mm256_fmsub_pd(a, b, ab1); /* low part */
+    ab0 = _mm256_fmsub_pd(a, b, ab1);  /* low part */
     r = (ab1 - qm1) + (ab0 - qm0);
     return r;
 }
@@ -7490,8 +7715,8 @@ static void *bf_aligned_malloc(bf_context_t *s, size_t size, size_t align)
     ptr = bf_malloc(s, size + sizeof(void *) + align - 1);
     if (!ptr)
         return NULL;
-    ptr1 = (void **)(((uintptr_t)ptr + sizeof(void *) + align - 1) &
-                     ~(align - 1));
+    ptr1 =
+        (void **)(((uintptr_t)ptr + sizeof(void *) + align - 1) & ~(align - 1));
     ptr1[-1] = ptr;
     return ptr1;
 }
@@ -7513,10 +7738,9 @@ static void ntt_free(BFNTTState *s, void *ptr)
     bf_aligned_free(s->ctx, ptr);
 }
 
-static no_inline int ntt_fft(BFNTTState *s,
-                             NTTLimb *out_buf, NTTLimb *in_buf,
-                             NTTLimb *tmp_buf, int fft_len_log2,
-                             int inverse, int m_idx)
+static no_inline int ntt_fft(BFNTTState *s, NTTLimb *out_buf, NTTLimb *in_buf,
+                             NTTLimb *tmp_buf, int fft_len_log2, int inverse,
+                             int m_idx)
 {
     limb_t nb_blocks, fft_per_block, p, k, n, stride_in, i, j;
     NTTLimb *tab_in, *tab_out, *tmp, *trig;
@@ -7540,7 +7764,7 @@ static no_inline int ntt_fft(BFNTTState *s,
     if (!trig)
         return -1;
     p = 0;
-    for(k = 0; k < stride_in; k += 4) {
+    for (k = 0; k < stride_in; k += 4) {
         a0 = _mm256_load_pd(&tab_in[k]);
         a1 = _mm256_load_pd(&tab_in[k + stride_in]);
         c = _mm256_load_pd(trig);
@@ -7563,7 +7787,7 @@ static no_inline int ntt_fft(BFNTTState *s,
     if (!trig)
         return -1;
     p = 0;
-    for(k = 0; k < stride_in; k += 4) {
+    for (k = 0; k < stride_in; k += 4) {
         a0 = _mm256_load_pd(&tab_in[k]);
         a1 = _mm256_load_pd(&tab_in[k + stride_in]);
         c = _mm256_setr_pd(trig[0], trig[0], trig[1], trig[1]);
@@ -7591,10 +7815,10 @@ static no_inline int ntt_fft(BFNTTState *s,
         trig = get_trig(s, l, inverse, m_idx);
         if (!trig)
             return -1;
-        for(i = 0; i < nb_blocks; i++) {
+        for (i = 0; i < nb_blocks; i++) {
             c = _mm256_set1_pd(trig[0]);
             trig++;
-            for(j = 0; j < fft_per_block; j += 4) {
+            for (j = 0; j < fft_per_block; j += 4) {
                 a0 = _mm256_load_pd(&tab_in[k + j]);
                 a1 = _mm256_load_pd(&tab_in[k + j + stride_in]);
                 b0 = ntt_mod(a0 + a1, mf, m2f);
@@ -7613,7 +7837,7 @@ static no_inline int ntt_fft(BFNTTState *s,
     }
 
     tab_out = out_buf;
-    for(k = 0; k < stride_in; k += 4) {
+    for (k = 0; k < stride_in; k += 4) {
         a0 = _mm256_load_pd(&tab_in[k]);
         a1 = _mm256_load_pd(&tab_in[k + stride_in]);
         b0 = ntt_mod(a0 + a1, mf, m2f);
@@ -7624,9 +7848,8 @@ static no_inline int ntt_fft(BFNTTState *s,
     return 0;
 }
 
-static void ntt_vec_mul(BFNTTState *s,
-                        NTTLimb *tab1, NTTLimb *tab2, limb_t fft_len_log2,
-                        int k_tot, int m_idx)
+static void ntt_vec_mul(BFNTTState *s, NTTLimb *tab1, NTTLimb *tab2,
+                        limb_t fft_len_log2, int k_tot, int m_idx)
 {
     limb_t i, c_inv, n, m;
     __m256d m_inv, mf, a, b, c;
@@ -7637,7 +7860,7 @@ static void ntt_vec_mul(BFNTTState *s,
     mf = _mm256_set1_pd(m);
     c = _mm256_set1_pd(int_to_ntt_limb(c_inv, m));
     n = (limb_t)1 << fft_len_log2;
-    for(i = 0; i < n; i += 4) {
+    for (i = 0; i < n; i += 4) {
         a = _mm256_load_pd(&tab1[i]);
         b = _mm256_load_pd(&tab2[i]);
         a = ntt_mul_mod(a, b, mf, m_inv);
@@ -7646,8 +7869,8 @@ static void ntt_vec_mul(BFNTTState *s,
     }
 }
 
-static no_inline void mul_trig(NTTLimb *buf,
-                               limb_t n, limb_t c1, limb_t m, limb_t m_inv1)
+static no_inline void mul_trig(NTTLimb *buf, limb_t n, limb_t c1, limb_t m,
+                               limb_t m_inv1)
 {
     limb_t i, c2, c3, c4;
     __m256d c, c_mul, a0, mf, m_inv;
@@ -7659,10 +7882,10 @@ static no_inline void mul_trig(NTTLimb *buf,
     c2 = mul_mod_fast(c1, c1, m, m_inv1);
     c3 = mul_mod_fast(c2, c1, m, m_inv1);
     c4 = mul_mod_fast(c2, c2, m, m_inv1);
-    c = _mm256_setr_pd(1, int_to_ntt_limb(c1, m),
-                       int_to_ntt_limb(c2, m), int_to_ntt_limb(c3, m));
+    c = _mm256_setr_pd(1, int_to_ntt_limb(c1, m), int_to_ntt_limb(c2, m),
+                       int_to_ntt_limb(c3, m));
     c_mul = _mm256_set1_pd(int_to_ntt_limb(c4, m));
-    for(i = 0; i < n; i += 4) {
+    for (i = 0; i < n; i += 4) {
         a0 = _mm256_load_pd(&buf[i]);
         a0 = ntt_mul_mod(a0, c, mf, m_inv);
         _mm256_store_pd(&buf[i], a0);
@@ -7695,8 +7918,8 @@ static inline NTTLimb int_to_ntt_limb(slimb_t a, limb_t m)
 }
 
 static no_inline int ntt_fft(BFNTTState *s, NTTLimb *out_buf, NTTLimb *in_buf,
-                             NTTLimb *tmp_buf, int fft_len_log2,
-                             int inverse, int m_idx)
+                             NTTLimb *tmp_buf, int fft_len_log2, int inverse,
+                             int m_idx)
 {
     limb_t nb_blocks, fft_per_block, p, k, n, stride_in, i, j, m, m2;
     NTTLimb *tab_in, *tab_out, *tmp, a0, a1, b0, b1, c, *trig, c_inv;
@@ -7718,11 +7941,11 @@ static no_inline int ntt_fft(BFNTTState *s, NTTLimb *out_buf, NTTLimb *in_buf,
         trig = get_trig(s, l, inverse, m_idx);
         if (!trig)
             return -1;
-        for(i = 0; i < nb_blocks; i++) {
+        for (i = 0; i < nb_blocks; i++) {
             c = trig[0];
             c_inv = trig[1];
             trig += 2;
-            for(j = 0; j < fft_per_block; j++) {
+            for (j = 0; j < fft_per_block; j++) {
                 a0 = tab_in[k + j];
                 a1 = tab_in[k + j + stride_in];
                 b0 = add_mod(a0, a1, m2);
@@ -7742,7 +7965,7 @@ static no_inline int ntt_fft(BFNTTState *s, NTTLimb *out_buf, NTTLimb *in_buf,
     }
     /* no twiddle in last step */
     tab_out = out_buf;
-    for(k = 0; k < stride_in; k++) {
+    for (k = 0; k < stride_in; k++) {
         a0 = tab_in[k];
         a1 = tab_in[k + stride_in];
         b0 = add_mod(a0, a1, m2);
@@ -7753,9 +7976,8 @@ static no_inline int ntt_fft(BFNTTState *s, NTTLimb *out_buf, NTTLimb *in_buf,
     return 0;
 }
 
-static void ntt_vec_mul(BFNTTState *s,
-                        NTTLimb *tab1, NTTLimb *tab2, int fft_len_log2,
-                        int k_tot, int m_idx)
+static void ntt_vec_mul(BFNTTState *s, NTTLimb *tab1, NTTLimb *tab2,
+                        int fft_len_log2, int k_tot, int m_idx)
 {
     limb_t i, norm, norm_inv, a, n, m, m_inv;
 
@@ -7764,7 +7986,7 @@ static void ntt_vec_mul(BFNTTState *s,
     norm = s->ntt_len_inv[m_idx][k_tot][0];
     norm_inv = s->ntt_len_inv[m_idx][k_tot][1];
     n = (limb_t)1 << fft_len_log2;
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         a = tab1[i];
         /* need to reduce the range so that the product is <
            2^(LIMB_BITS+NTT_MOD_LOG2_MIN) */
@@ -7776,14 +7998,14 @@ static void ntt_vec_mul(BFNTTState *s,
     }
 }
 
-static no_inline void mul_trig(NTTLimb *buf,
-                               limb_t n, limb_t c_mul, limb_t m, limb_t m_inv)
+static no_inline void mul_trig(NTTLimb *buf, limb_t n, limb_t c_mul, limb_t m,
+                               limb_t m_inv)
 {
     limb_t i, c0, c_mul_inv;
 
     c0 = 1;
     c_mul_inv = init_mul_mod_fast2(c_mul, m);
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         buf[i] = mul_mod_fast(buf[i], c0, m, m_inv);
         c0 = mul_mod_fast2(c0, c_mul, m, c_mul_inv);
     }
@@ -7791,8 +8013,7 @@ static no_inline void mul_trig(NTTLimb *buf,
 
 #endif /* !AVX2 */
 
-static no_inline NTTLimb *get_trig(BFNTTState *s,
-                                   int k, int inverse, int m_idx)
+static no_inline NTTLimb *get_trig(BFNTTState *s, int k, int inverse, int m_idx)
 {
     NTTLimb *tab;
     limb_t i, n2, c, c_mul, m, c_mul_inv;
@@ -7815,7 +8036,7 @@ static no_inline NTTLimb *get_trig(BFNTTState *s,
     c = 1;
     c_mul = s->ntt_proot_pow[m_idx][inverse][k];
     c_mul_inv = s->ntt_proot_pow_inv[m_idx][inverse][k];
-    for(i = 0; i < n2; i++) {
+    for (i = 0; i < n2; i++) {
 #ifdef __AVX2__
         tab[i] = int_to_ntt_limb2(c, m);
 #else
@@ -7833,9 +8054,9 @@ void fft_clear_cache(bf_context_t *s1)
     int m_idx, inverse, k;
     BFNTTState *s = s1->ntt_state;
     if (s) {
-        for(m_idx = 0; m_idx < NB_MODS; m_idx++) {
-            for(inverse = 0; inverse < 2; inverse++) {
-                for(k = 0; k < NTT_TRIG_K_MAX + 1; k++) {
+        for (m_idx = 0; m_idx < NB_MODS; m_idx++) {
+            for (inverse = 0; inverse < 2; inverse++) {
+                for (k = 0; k < NTT_TRIG_K_MAX + 1; k++) {
                     if (s->ntt_trig[m_idx][inverse][k]) {
                         ntt_free(s, s->ntt_trig[m_idx][inverse][k]);
                         s->ntt_trig[m_idx][inverse][k] = NULL;
@@ -7855,9 +8076,8 @@ void fft_clear_cache(bf_context_t *s1)
 #define STRIP_LEN 16
 
 /* dst = buf1, src = buf2 */
-static int ntt_fft_partial(BFNTTState *s, NTTLimb *buf1,
-                           int k1, int k2, limb_t n1, limb_t n2, int inverse,
-                           limb_t m_idx)
+static int ntt_fft_partial(BFNTTState *s, NTTLimb *buf1, int k1, int k2,
+                           limb_t n1, limb_t n2, int inverse, limb_t m_idx)
 {
     limb_t i, j, c_mul, c0, m, m_inv, strip_len, l;
     NTTLimb *buf2, *buf3;
@@ -7879,25 +8099,26 @@ static int ntt_fft_partial(BFNTTState *s, NTTLimb *buf1,
         c0 = s->ntt_proot_pow[m_idx][inverse][k1 + k2];
         c_mul = 1;
         assert((n2 % strip_len) == 0);
-        for(j = 0; j < n2; j += strip_len) {
-            for(i = 0; i < n1; i++) {
-                for(l = 0; l < strip_len; l++) {
+        for (j = 0; j < n2; j += strip_len) {
+            for (i = 0; i < n1; i++) {
+                for (l = 0; l < strip_len; l++) {
                     buf2[i + l * n1] = buf1[i * n2 + (j + l)];
                 }
             }
-            for(l = 0; l < strip_len; l++) {
+            for (l = 0; l < strip_len; l++) {
                 if (inverse)
                     mul_trig(buf2 + l * n1, n1, c_mul, m, m_inv);
-                if (ntt_fft(s, buf2 + l * n1, buf2 + l * n1, buf3, k1, inverse, m_idx))
+                if (ntt_fft(s, buf2 + l * n1, buf2 + l * n1, buf3, k1, inverse,
+                            m_idx))
                     goto fail;
                 if (!inverse)
                     mul_trig(buf2 + l * n1, n1, c_mul, m, m_inv);
                 c_mul = mul_mod_fast(c_mul, c0, m, m_inv);
             }
 
-            for(i = 0; i < n1; i++) {
-                for(l = 0; l < strip_len; l++) {
-                    buf1[i * n2 + (j + l)] = buf2[i + l *n1];
+            for (i = 0; i < n1; i++) {
+                for (l = 0; l < strip_len; l++) {
+                    buf1[i * n2 + (j + l)] = buf2[i + l * n1];
                 }
             }
         }
@@ -7905,16 +8126,15 @@ static int ntt_fft_partial(BFNTTState *s, NTTLimb *buf1,
     }
     ntt_free(s, buf3);
     return 0;
- fail:
+fail:
     ntt_free(s, buf2);
     ntt_free(s, buf3);
     return -1;
 }
 
-
 /* dst = buf1, src = buf2, tmp = buf3 */
-static int ntt_conv(BFNTTState *s, NTTLimb *buf1, NTTLimb *buf2,
-                    int k, int k_tot, limb_t m_idx)
+static int ntt_conv(BFNTTState *s, NTTLimb *buf1, NTTLimb *buf2, int k,
+                    int k_tot, limb_t m_idx)
 {
     limb_t n1, n2, i;
     int k1, k2;
@@ -7936,7 +8156,7 @@ static int ntt_conv(BFNTTState *s, NTTLimb *buf1, NTTLimb *buf2,
     if (k2 == 0) {
         ntt_vec_mul(s, buf1, buf2, k, k_tot, m_idx);
     } else {
-        for(i = 0; i < n1; i++) {
+        for (i = 0; i < n1; i++) {
             ntt_conv(s, buf1 + i * n2, buf2 + i * n2, k2, k_tot, m_idx);
         }
     }
@@ -7945,9 +8165,7 @@ static int ntt_conv(BFNTTState *s, NTTLimb *buf1, NTTLimb *buf2,
     return 0;
 }
 
-
-static no_inline void limb_to_ntt(BFNTTState *s,
-                                  NTTLimb *tabr, limb_t fft_len,
+static no_inline void limb_to_ntt(BFNTTState *s, NTTLimb *tabr, limb_t fft_len,
                                   const limb_t *taba, limb_t a_len, int dpl,
                                   int first_m_idx, int nb_mods)
 {
@@ -7963,7 +8181,7 @@ static no_inline void limb_to_ntt(BFNTTState *s,
     else
         base_mask1 = ((limb_t)1 << shift) - 1;
     n = bf_min(fft_len, (a_len * LIMB_BITS + dpl - 1) / dpl);
-    for(i = 0; i < n; i++) {
+    for (i = 0; i < n; i++) {
         a0 = get_bits(taba, a_len, i * dpl);
         if (dpl <= LIMB_BITS) {
             a0 &= base_mask1;
@@ -7975,7 +8193,7 @@ static no_inline void limb_to_ntt(BFNTTState *s,
             } else {
                 if (dpl > 2 * LIMB_BITS) {
                     a2 = get_bits(taba, a_len, i * dpl + LIMB_BITS * 2) &
-                        base_mask1;
+                         base_mask1;
                 } else {
                     a1 &= base_mask1;
                     a2 = 0;
@@ -7983,16 +8201,21 @@ static no_inline void limb_to_ntt(BFNTTState *s,
                 //            printf("a=0x%016lx%016lx%016lx\n", a2, a1, a0);
                 a = (a0 >> (LIMB_BITS - NTT_MOD_LOG2_MAX + NTT_MOD_LOG2_MIN)) |
                     ((dlimb_t)a1 << (NTT_MOD_LOG2_MAX - NTT_MOD_LOG2_MIN)) |
-                    ((dlimb_t)a2 << (LIMB_BITS + NTT_MOD_LOG2_MAX - NTT_MOD_LOG2_MIN));
-                a0 &= ((limb_t)1 << (LIMB_BITS - NTT_MOD_LOG2_MAX + NTT_MOD_LOG2_MIN)) - 1;
+                    ((dlimb_t)a2
+                     << (LIMB_BITS + NTT_MOD_LOG2_MAX - NTT_MOD_LOG2_MIN));
+                a0 &= ((limb_t)1
+                       << (LIMB_BITS - NTT_MOD_LOG2_MAX + NTT_MOD_LOG2_MIN)) -
+                      1;
             }
         }
-        for(j = 0; j < nb_mods; j++) {
+        for (j = 0; j < nb_mods; j++) {
             m = ntt_mods[first_m_idx + j];
             m_inv = s->ntt_mods_div[first_m_idx + j];
             r = mod_fast(a, m, m_inv);
             if (dpl > (LIMB_BITS + NTT_MOD_LOG2_MIN)) {
-                b = ((dlimb_t)r << (LIMB_BITS - NTT_MOD_LOG2_MAX + NTT_MOD_LOG2_MIN)) | a0;
+                b = ((dlimb_t)r
+                     << (LIMB_BITS - NTT_MOD_LOG2_MAX + NTT_MOD_LOG2_MIN)) |
+                    a0;
                 r = mod_fast(b, m, m_inv);
             }
             tabr[i + j * fft_len] = int_to_ntt_limb(r, m);
@@ -8032,9 +8255,9 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
     else
         base_mask1 = ((limb_t)1 << shift) - 1;
     n_limb1 = ((unsigned)dpl - 1) / LIMB_BITS;
-    for(j = 0; j < NB_MODS; j++)
+    for (j = 0; j < NB_MODS; j++)
         carry[j] = 0;
-    for(j = 0; j < NB_MODS; j++)
+    for (j = 0; j < NB_MODS; j++)
         u[j] = 0; /* avoid warnings */
     memset(tabr, 0, sizeof(limb_t) * r_len);
     fft_len = (limb_t)1 << fft_len_log2;
@@ -8042,28 +8265,28 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
     len = (len + VEC_LEN - 1) & ~(VEC_LEN - 1);
     i = 0;
     while (i < len) {
-        for(j = 0; j < nb_mods; j++)
+        for (j = 0; j < nb_mods; j++)
             y[j].v = *(__m256d *)&buf[i + fft_len * j];
 
         /* Chinese remainder to get mixed radix representation */
         l = 0;
-        for(j = 0; j < nb_mods - 1; j++) {
+        for (j = 0; j < nb_mods - 1; j++) {
             y[j].v = ntt_mod1(y[j].v, mf[j]);
-            for(k = j + 1; k < nb_mods; k++) {
-                y[k].v = ntt_mul_mod(y[k].v - y[j].v,
-                                     mods_cr_vec[l], mf[k], m_inv[k]);
+            for (k = j + 1; k < nb_mods; k++) {
+                y[k].v = ntt_mul_mod(y[k].v - y[j].v, mods_cr_vec[l], mf[k],
+                                     m_inv[k]);
                 l++;
             }
         }
         y[j].v = ntt_mod1(y[j].v, mf[j]);
 
-        for(p = 0; p < VEC_LEN; p++) {
+        for (p = 0; p < VEC_LEN; p++) {
             /* back to normal representation */
             u[0] = (int64_t)y[nb_mods - 1].d[p];
             l = 1;
-            for(j = nb_mods - 2; j >= 1; j--) {
+            for (j = nb_mods - 2; j >= 1; j--) {
                 r = (int64_t)y[j].d[p];
-                for(k = 0; k < l; k++) {
+                for (k = 0; k < l; k++) {
                     t = (dlimb_t)u[k] * mods[j] + r;
                     r = t >> LIMB_BITS;
                     u[k] = t;
@@ -8075,7 +8298,7 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
 
             /* last step adds the carry */
             r = (int64_t)y[0].d[p];
-            for(k = 0; k < l; k++) {
+            for (k = 0; k < l; k++) {
                 t = (dlimb_t)u[k] * mods[j] + r + carry[k];
                 r = t >> LIMB_BITS;
                 u[k] = t;
@@ -8084,19 +8307,19 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
 
             /* write the digits */
             pos = i * dpl;
-            for(j = 0; j < n_limb1; j++) {
+            for (j = 0; j < n_limb1; j++) {
                 put_bits(tabr, r_len, pos, u[j]);
                 pos += LIMB_BITS;
             }
             put_bits(tabr, r_len, pos, u[n_limb1] & base_mask1);
             /* shift by dpl digits and set the carry */
             if (shift == 0) {
-                for(j = n_limb1 + 1; j < nb_mods; j++)
+                for (j = n_limb1 + 1; j < nb_mods; j++)
                     carry[j - (n_limb1 + 1)] = u[j];
             } else {
-                for(j = n_limb1; j < nb_mods - 1; j++) {
-                    carry[j - n_limb1] = (u[j] >> shift) |
-                        (u[j + 1] << (LIMB_BITS - shift));
+                for (j = n_limb1; j < nb_mods - 1; j++) {
+                    carry[j - n_limb1] =
+                        (u[j] >> shift) | (u[j + 1] << (LIMB_BITS - shift));
                 }
                 carry[nb_mods - 1 - n_limb1] = u[nb_mods - 1] >> shift;
             }
@@ -8126,28 +8349,28 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
     else
         base_mask1 = ((limb_t)1 << shift) - 1;
     n_limb1 = ((unsigned)dpl - 1) / LIMB_BITS;
-    for(j = 0; j < NB_MODS; j++)
+    for (j = 0; j < NB_MODS; j++)
         carry[j] = 0;
-    for(j = 0; j < NB_MODS; j++)
+    for (j = 0; j < NB_MODS; j++)
         u[j] = 0; /* avoid warnings */
     memset(tabr, 0, sizeof(limb_t) * r_len);
     fft_len = (limb_t)1 << fft_len_log2;
     len = bf_min(fft_len, (r_len * LIMB_BITS + dpl - 1) / dpl);
-    for(i = 0; i < len; i++) {
-        for(j = 0; j < nb_mods; j++)  {
+    for (i = 0; i < len; i++) {
+        for (j = 0; j < nb_mods; j++) {
             y[j] = ntt_limb_to_int(buf[i + fft_len * j], mods[j]);
         }
 
         /* Chinese remainder to get mixed radix representation */
         l = 0;
-        for(j = 0; j < nb_mods - 1; j++) {
-            for(k = j + 1; k < nb_mods; k++) {
+        for (j = 0; j < nb_mods - 1; j++) {
+            for (k = j + 1; k < nb_mods; k++) {
                 limb_t m;
                 m = mods[k];
                 /* Note: there is no overflow in the sub_mod() because
                    the modulos are sorted by increasing order */
-                y[k] = mul_mod_fast2(y[k] - y[j] + m,
-                                     mods_cr[l], m, mods_cr_inv[l]);
+                y[k] = mul_mod_fast2(y[k] - y[j] + m, mods_cr[l], m,
+                                     mods_cr_inv[l]);
                 l++;
             }
         }
@@ -8155,9 +8378,9 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
         /* back to normal representation */
         u[0] = y[nb_mods - 1];
         l = 1;
-        for(j = nb_mods - 2; j >= 1; j--) {
+        for (j = nb_mods - 2; j >= 1; j--) {
             r = y[j];
-            for(k = 0; k < l; k++) {
+            for (k = 0; k < l; k++) {
                 t = (dlimb_t)u[k] * mods[j] + r;
                 r = t >> LIMB_BITS;
                 u[k] = t;
@@ -8168,7 +8391,7 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
 
         /* last step adds the carry */
         r = y[0];
-        for(k = 0; k < l; k++) {
+        for (k = 0; k < l; k++) {
             t = (dlimb_t)u[k] * mods[j] + r + carry[k];
             r = t >> LIMB_BITS;
             u[k] = t;
@@ -8177,19 +8400,19 @@ static no_inline void ntt_to_limb(BFNTTState *s, limb_t *tabr, limb_t r_len,
 
         /* write the digits */
         pos = i * dpl;
-        for(j = 0; j < n_limb1; j++) {
+        for (j = 0; j < n_limb1; j++) {
             put_bits(tabr, r_len, pos, u[j]);
             pos += LIMB_BITS;
         }
         put_bits(tabr, r_len, pos, u[n_limb1] & base_mask1);
         /* shift by dpl digits and set the carry */
         if (shift == 0) {
-            for(j = n_limb1 + 1; j < nb_mods; j++)
+            for (j = n_limb1 + 1; j < nb_mods; j++)
                 carry[j - (n_limb1 + 1)] = u[j];
         } else {
-            for(j = n_limb1; j < nb_mods - 1; j++) {
-                carry[j - n_limb1] = (u[j] >> shift) |
-                    (u[j + 1] << (LIMB_BITS - shift));
+            for (j = n_limb1; j < nb_mods - 1; j++) {
+                carry[j - n_limb1] =
+                    (u[j] >> shift) | (u[j + 1] << (LIMB_BITS - shift));
             }
             carry[nb_mods - 1 - n_limb1] = u[nb_mods - 1] >> shift;
         }
@@ -8216,7 +8439,7 @@ static int ntt_static_init(bf_context_t *s1)
     s1->ntt_state = s;
     s->ctx = s1;
 
-    for(j = 0; j < NB_MODS; j++) {
+    for (j = 0; j < NB_MODS; j++) {
         m = ntt_mods[j];
         m_inv = init_mul_mod_fast(m);
         s->ntt_mods_div[j] = m_inv;
@@ -8226,15 +8449,15 @@ static int ntt_static_init(bf_context_t *s1)
 #endif
         c_inv2 = (m + 1) / 2; /* 1/2 */
         c_inv = 1;
-        for(i = 0; i <= NTT_PROOT_2EXP; i++) {
+        for (i = 0; i <= NTT_PROOT_2EXP; i++) {
             s->ntt_len_inv[j][i][0] = c_inv;
             s->ntt_len_inv[j][i][1] = init_mul_mod_fast2(c_inv, m);
             c_inv = mul_mod_fast(c_inv, c_inv2, m, m_inv);
         }
 
-        for(inverse = 0; inverse < 2; inverse++) {
+        for (inverse = 0; inverse < 2; inverse++) {
             c = ntt_proot[inverse][j];
-            for(i = 0; i < NTT_PROOT_2EXP; i++) {
+            for (i = 0; i < NTT_PROOT_2EXP; i++) {
                 s->ntt_proot_pow[j][inverse][NTT_PROOT_2EXP - i] = c;
                 s->ntt_proot_pow_inv[j][inverse][NTT_PROOT_2EXP - i] =
                     init_mul_mod_fast2(c, m);
@@ -8244,14 +8467,14 @@ static int ntt_static_init(bf_context_t *s1)
     }
 
     l = 0;
-    for(j = 0; j < NB_MODS - 1; j++) {
-        for(k = j + 1; k < NB_MODS; k++) {
+    for (j = 0; j < NB_MODS - 1; j++) {
+        for (k = j + 1; k < NB_MODS; k++) {
 #if defined(__AVX2__)
-            s->ntt_mods_cr_vec[l] = _mm256_set1_pd(int_to_ntt_limb2(ntt_mods_cr[l],
-                                                                    ntt_mods[k]));
+            s->ntt_mods_cr_vec[l] =
+                _mm256_set1_pd(int_to_ntt_limb2(ntt_mods_cr[l], ntt_mods[k]));
 #else
-            s->ntt_mods_cr_inv[l] = init_mul_mod_fast2(ntt_mods_cr[l],
-                                                       ntt_mods[k]);
+            s->ntt_mods_cr_inv[l] =
+                init_mul_mod_fast2(ntt_mods_cr[l], ntt_mods[k]);
 #endif
             l++;
         }
@@ -8269,11 +8492,11 @@ int bf_get_fft_size(int *pdpl, int *pnb_mods, limb_t len)
     dpl_found = 0;
     nb_mods_found = 4;
     fft_len_log2_found = 0;
-    for(nb_mods = 3; nb_mods <= NB_MODS; nb_mods++) {
+    for (nb_mods = 3; nb_mods <= NB_MODS; nb_mods++) {
         int_bits = ntt_int_bits[NB_MODS - nb_mods];
         dpl = bf_min((int_bits - 4) / 2,
                      2 * LIMB_BITS + 2 * NTT_MOD_LOG2_MIN - NTT_MOD_LOG2_MAX);
-        for(;;) {
+        for (;;) {
             fft_len_log2 = ceil_log2((len * LIMB_BITS + dpl - 1) / dpl);
             if (fft_len_log2 > NTT_PROOT_2EXP)
                 goto next;
@@ -8293,14 +8516,14 @@ int bf_get_fft_size(int *pdpl, int *pnb_mods, limb_t len)
             if (dpl == 0)
                 break;
         }
-    next: ;
+    next:;
     }
     if (!dpl_found)
         abort();
     /* limit dpl if possible to reduce fixed cost of limb/NTT conversion */
     if (dpl_found > (LIMB_BITS + NTT_MOD_LOG2_MIN) &&
         ((limb_t)(LIMB_BITS + NTT_MOD_LOG2_MIN) << fft_len_log2_found) >=
-        len * LIMB_BITS) {
+            len * LIMB_BITS) {
         dpl_found = LIMB_BITS + NTT_MOD_LOG2_MIN;
     }
     *pnb_mods = nb_mods_found;
@@ -8309,9 +8532,9 @@ int bf_get_fft_size(int *pdpl, int *pnb_mods, limb_t len)
 }
 
 /* return 0 if OK, -1 if memory error */
-static no_inline int fft_mul(bf_context_t *s1,
-                             bf_t *res, limb_t *a_tab, limb_t a_len,
-                             limb_t *b_tab, limb_t b_len, int mul_flags)
+static no_inline int fft_mul(bf_context_t *s1, bf_t *res, limb_t *a_tab,
+                             limb_t a_len, limb_t *b_tab, limb_t b_len,
+                             int mul_flags)
 {
     BFNTTState *s;
     int dpl, fft_len_log2, j, nb_mods, reduced_mem;
@@ -8350,8 +8573,8 @@ static no_inline int fft_mul(bf_context_t *s1,
     buf1 = ntt_malloc(s, sizeof(NTTLimb) * fft_len * nb_mods);
     if (!buf1)
         return -1;
-    limb_to_ntt(s, buf1, fft_len, a_tab, a_len, dpl,
-                NB_MODS - nb_mods, nb_mods);
+    limb_to_ntt(s, buf1, fft_len, a_tab, a_len, dpl, NB_MODS - nb_mods,
+                nb_mods);
     if ((mul_flags & (FFT_MUL_R_OVERLAP_A | FFT_MUL_R_OVERLAP_B)) ==
         FFT_MUL_R_OVERLAP_A) {
         if (!(mul_flags & FFT_MUL_R_NORESIZE))
@@ -8362,8 +8585,8 @@ static no_inline int fft_mul(bf_context_t *s1,
         buf2 = ntt_malloc(s, sizeof(NTTLimb) * fft_len * nb_mods);
         if (!buf2)
             goto fail;
-        limb_to_ntt(s, buf2, fft_len, b_tab, b_len, dpl,
-                    NB_MODS - nb_mods, nb_mods);
+        limb_to_ntt(s, buf2, fft_len, b_tab, b_len, dpl, NB_MODS - nb_mods,
+                    nb_mods);
         if (!(mul_flags & FFT_MUL_R_NORESIZE))
             bf_resize(res, 0); /* in case res == b */
     } else {
@@ -8371,7 +8594,7 @@ static no_inline int fft_mul(bf_context_t *s1,
         if (!buf2)
             goto fail;
     }
-    for(j = 0; j < nb_mods; j++) {
+    for (j = 0; j < nb_mods; j++) {
         if (reduced_mem) {
             limb_to_ntt(s, buf2, fft_len, b_tab, b_len, dpl,
                         NB_MODS - nb_mods + j, 1);
@@ -8379,8 +8602,8 @@ static no_inline int fft_mul(bf_context_t *s1,
         } else {
             ptr = buf2 + fft_len * j;
         }
-        if (ntt_conv(s, buf1 + fft_len * j, ptr,
-                     fft_len_log2, fft_len_log2, j + NB_MODS - nb_mods))
+        if (ntt_conv(s, buf1 + fft_len * j, ptr, fft_len_log2, fft_len_log2,
+                     j + NB_MODS - nb_mods))
             goto fail;
     }
     if (!(mul_flags & FFT_MUL_R_NORESIZE))
@@ -8397,14 +8620,15 @@ static no_inline int fft_mul(bf_context_t *s1,
     hr = mp_mod1(res->tab, len, BF_CHKSUM_MOD, 0);
     h_ref = mul_mod(ha, hb, BF_CHKSUM_MOD);
     if (hr != h_ref) {
-        printf("ntt_mul_error: len=%" PRId_LIMB " fft_len_log2=%d dpl=%d nb_mods=%d\n",
+        printf("ntt_mul_error: len=%" PRId_LIMB
+               " fft_len_log2=%d dpl=%d nb_mods=%d\n",
                len, fft_len_log2, dpl, nb_mods);
         //        printf("ha=0x" FMT_LIMB" hb=0x" FMT_LIMB " hr=0x" FMT_LIMB " expected=0x" FMT_LIMB "\n", ha, hb, hr, h_ref);
         exit(1);
     }
 #endif
     return 0;
- fail:
+fail:
     ntt_free(s, buf1);
     ntt_free(s, buf2);
     return -1;

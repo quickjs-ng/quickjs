@@ -112,13 +112,13 @@ typedef struct {
 } bfdec_t;
 
 typedef enum {
-    BF_RNDN, /* round to nearest, ties to even */
-    BF_RNDZ, /* round to zero */
-    BF_RNDD, /* round to -inf (the code relies on (BF_RNDD xor BF_RNDU) = 1) */
-    BF_RNDU, /* round to +inf */
+    BF_RNDN,  /* round to nearest, ties to even */
+    BF_RNDZ,  /* round to zero */
+    BF_RNDD,  /* round to -inf (the code relies on (BF_RNDD xor BF_RNDU) = 1) */
+    BF_RNDU,  /* round to +inf */
     BF_RNDNA, /* round to nearest, ties away from zero */
-    BF_RNDA, /* round away from zero */
-    BF_RNDF, /* faithful rounding (nondeterministic, either RNDD or RNDU,
+    BF_RNDA,  /* round away from zero */
+    BF_RNDF,  /* faithful rounding (nondeterministic, either RNDD or RNDU,
                 inexact flag is always set)  */
 } bf_rnd_t;
 
@@ -285,20 +285,26 @@ static inline int bf_cmp_lt(const bf_t *a, const bf_t *b)
     return bf_cmp(a, b) < 0;
 }
 
-int bf_add(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags);
-int bf_sub(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags);
-int bf_add_si(bf_t *r, const bf_t *a, int64_t b1, limb_t prec, bf_flags_t flags);
-int bf_mul(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags);
-int bf_mul_ui(bf_t *r, const bf_t *a, uint64_t b1, limb_t prec, bf_flags_t flags);
+int bf_add(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
+           bf_flags_t flags);
+int bf_sub(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
+           bf_flags_t flags);
+int bf_add_si(bf_t *r, const bf_t *a, int64_t b1, limb_t prec,
+              bf_flags_t flags);
+int bf_mul(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
+           bf_flags_t flags);
+int bf_mul_ui(bf_t *r, const bf_t *a, uint64_t b1, limb_t prec,
+              bf_flags_t flags);
 int bf_mul_si(bf_t *r, const bf_t *a, int64_t b1, limb_t prec,
               bf_flags_t flags);
 int bf_mul_2exp(bf_t *r, slimb_t e, limb_t prec, bf_flags_t flags);
-int bf_div(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags);
+int bf_div(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
+           bf_flags_t flags);
 #define BF_DIVREM_EUCLIDIAN BF_RNDF
-int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b,
-              limb_t prec, bf_flags_t flags, int rnd_mode);
-int bf_rem(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
-           bf_flags_t flags, int rnd_mode);
+int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
+              bf_flags_t flags, int rnd_mode);
+int bf_rem(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec, bf_flags_t flags,
+           int rnd_mode);
 int bf_remquo(slimb_t *pq, bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
               bf_flags_t flags, int rnd_mode);
 /* round to integer with infinite precision */
@@ -325,12 +331,10 @@ int bf_atof(bf_t *a, const char *str, const char **pnext, int radix,
             limb_t prec, bf_flags_t flags);
 /* this version accepts prec = BF_PREC_INF and returns the radix
    exponent */
-int bf_atof2(bf_t *r, slimb_t *pexponent,
-             const char *str, const char **pnext, int radix,
-             limb_t prec, bf_flags_t flags);
-int bf_mul_pow_radix(bf_t *r, const bf_t *T, limb_t radix,
-                     slimb_t expn, limb_t prec, bf_flags_t flags);
-
+int bf_atof2(bf_t *r, slimb_t *pexponent, const char *str, const char **pnext,
+             int radix, limb_t prec, bf_flags_t flags);
+int bf_mul_pow_radix(bf_t *r, const bf_t *T, limb_t radix, slimb_t expn,
+                     limb_t prec, bf_flags_t flags);
 
 /* Conversion of floating point number to string. Return a null
    terminated string or NULL if memory error. *plen contains its
@@ -393,11 +397,10 @@ int bf_normalize_and_round(bf_t *r, limb_t prec1, bf_flags_t flags);
 int bf_can_round(const bf_t *a, slimb_t prec, bf_rnd_t rnd_mode, slimb_t k);
 slimb_t bf_mul_log2_radix(slimb_t a1, unsigned int radix, int is_inv,
                           int is_ceil1);
-int mp_mul(bf_context_t *s, limb_t *result,
-           const limb_t *op1, limb_t op1_size,
+int mp_mul(bf_context_t *s, limb_t *result, const limb_t *op1, limb_t op1_size,
            const limb_t *op2, limb_t op2_size);
-limb_t mp_add(limb_t *res, const limb_t *op1, const limb_t *op2,
-              limb_t n, limb_t carry);
+limb_t mp_add(limb_t *res, const limb_t *op1, const limb_t *op2, limb_t n,
+              limb_t carry);
 limb_t mp_add_ui(limb_t *tab, limb_t b, size_t n);
 int mp_sqrtrem(bf_context_t *s, limb_t *tabs, limb_t *taba, limb_t n);
 int mp_recip(bf_context_t *s, limb_t *tabr, const limb_t *taba, limb_t n);
@@ -409,13 +412,14 @@ int bf_const_pi(bf_t *T, limb_t prec, bf_flags_t flags);
 int bf_exp(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags);
 int bf_log(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags);
 #define BF_POW_JS_QUIRKS (1 << 16) /* (+/-1)^(+/-Inf) = NaN, 1^NaN = NaN */
-int bf_pow(bf_t *r, const bf_t *x, const bf_t *y, limb_t prec, bf_flags_t flags);
+int bf_pow(bf_t *r, const bf_t *x, const bf_t *y, limb_t prec,
+           bf_flags_t flags);
 int bf_cos(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags);
 int bf_sin(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags);
 int bf_tan(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags);
 int bf_atan(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags);
-int bf_atan2(bf_t *r, const bf_t *y, const bf_t *x,
-             limb_t prec, bf_flags_t flags);
+int bf_atan2(bf_t *r, const bf_t *y, const bf_t *x, limb_t prec,
+             bf_flags_t flags);
 int bf_asin(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags);
 int bf_acos(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags);
 
@@ -526,8 +530,8 @@ int bfdec_get_int32(int *pres, const bfdec_t *a);
 int bfdec_pow_ui(bfdec_t *r, const bfdec_t *a, limb_t b);
 
 char *bfdec_ftoa(size_t *plen, const bfdec_t *a, limb_t prec, bf_flags_t flags);
-int bfdec_atof(bfdec_t *r, const char *str, const char **pnext,
-               limb_t prec, bf_flags_t flags);
+int bfdec_atof(bfdec_t *r, const char *str, const char **pnext, limb_t prec,
+               bf_flags_t flags);
 
 /* the following functions are exported for testing only. */
 extern const limb_t mp_pow_dec[LIMB_DIGITS + 1];

@@ -148,7 +148,8 @@ DEF(new_target, "new.target")
 DEF(this_active_func, "this.active_func")
 DEF(home_object, "<home_object>")
 DEF(computed_field, "<computed_field>")
-DEF(static_computed_field, "<static_computed_field>") /* must come after computed_fields */
+DEF(static_computed_field,
+    "<static_computed_field>") /* must come after computed_fields */
 DEF(class_fields_init, "<class_fields_init>")
 DEF(brand, "<brand>")
 DEF(hash_constructor, "#constructor")
@@ -213,7 +214,7 @@ DEF(BigInt, "BigInt")
 DEF(WeakRef, "WeakRef")
 DEF(FinalizationRegistry, "FinalizationRegistry")
 DEF(Map, "Map")
-DEF(Set, "Set") /* Map + 1 */
+DEF(Set, "Set")         /* Map + 1 */
 DEF(WeakMap, "WeakMap") /* Map + 2 */
 DEF(WeakSet, "WeakSet") /* Map + 3 */
 DEF(Iterator, "Iterator")
