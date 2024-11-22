@@ -1,0 +1,69 @@
+Language: Cpp
+ColumnLimit: 80
+IndentWidth: 4
+MaxEmptyLinesToKeep: 1
+PointerAlignment: Right
+SortIncludes: Never
+SkipMacroDefinitionBody: true
+
+ReflowComments: false
+PenaltyBreakComment: 120
+
+AlignAfterOpenBracket: Align
+AlignTrailingComments: true
+
+AlignConsecutiveAssignments: false
+
+AlignConsecutiveBitFields:
+  Enabled:          true
+  AcrossEmptyLines: true
+  AcrossComments:   true
+  AlignCompound:    true
+  PadOperators:     true
+
+AlignConsecutiveDeclarations: false
+
+AlignConsecutiveMacros:
+  Enabled:          true
+  AcrossEmptyLines: true
+  AcrossComments:   true
+  AlignCompound:    true
+  PadOperators:     true
+
+AllowShortFunctionsOnASingleLine: false
+
+AttributeMacros:
+  - __exception
+  - __js_printf_like
+  - __maybe_unused
+
+BinPackArguments: true
+BinPackParameters: true
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel:        false
+  AfterClass:            false
+  AfterControlStatement: Never
+  AfterEnum:             false
+  AfterFunction:         true
+  AfterNamespace:        false
+  AfterObjCDeclaration:  false
+  AfterStruct:           false
+  AfterUnion:            false
+  AfterExternBlock:      false
+  BeforeCatch:           false
+  BeforeElse:            false
+  BeforeLambdaBody:      false
+  BeforeWhile:           false
+  IndentBraces:          false
+  SplitEmptyFunction:    true
+  SplitEmptyRecord:      true
+  SplitEmptyNamespace:   true
+
+SpaceBeforeParensOptions:
+  AfterControlStatements:       true
+  AfterForeachMacros:           true
+  AfterFunctionDefinitionName:  true
+  AfterFunctionDeclarationName: true
+  AfterIfMacros:                true
