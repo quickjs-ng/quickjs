@@ -1,0 +1,2 @@
+# run clang-format -i quickjs*.[ch] lib*.[ch]
+55e54c4158c3ebdc64f4ab5526b224670e975670
