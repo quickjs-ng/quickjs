@@ -30,8 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: install clang-format-18
         run: |
-          sudo apt update
-          sudo apt install -y clang-format-18
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 18
       - name: check-format
         run: |
           make check-format
