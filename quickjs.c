@@ -11351,6 +11351,7 @@ static int js_ecvt(double d, int n_digits,
         }
     } else {
 #if defined(FE_DOWNWARD) && defined(FE_TONEAREST)
+	int i;
         /* generate 2 extra digits: 99% chances to avoid 2 calls */
         js_ecvt1(d, n_digits + 2, dest, size, decpt);
         if (dest[n_digits + 1] < '5')
@@ -11364,7 +11365,7 @@ static int js_ecvt(double d, int n_digits,
                 return n_digits;    /* truncate the 2 extra digits */
         }
         /* round up in the string */
-        for(int i = n_digits;; i--) {
+        for(i = n_digits;; i--) {
             /* ignore the locale specific decimal point */
             if (is_digit(dest[i])) {
                 if (dest[i]++ < '9')
