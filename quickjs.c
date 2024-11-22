@@ -369,8 +369,7 @@ typedef struct JSVarRef {
             */
             uint8_t is_detached : 1;
             uint8_t is_arg      : 1;
-            uint16_t
-                var_idx; /* index of the corresponding function variable on
+            uint16_t var_idx; /* index of the corresponding function variable on
                                  the stack */
         };
     };
@@ -18747,13 +18746,13 @@ typedef struct JSFunctionDef {
     BOOL has_eval_call; /* true if the function contains a call to eval() */
     BOOL has_arguments_binding; /* true if the 'arguments' binding is
                                    available in the function */
-    BOOL has_this_binding;   /* true if the 'this' and new.target binding are
+    BOOL has_this_binding;      /* true if the 'this' and new.target binding are
                               available in the function */
-    BOOL new_target_allowed; /* true if the 'new.target' does not
+    BOOL new_target_allowed;    /* true if the 'new.target' does not
                                 throw a syntax error */
-    BOOL super_call_allowed; /* true if super() is allowed */
-    BOOL super_allowed;      /* true if super. or super[] is allowed */
-    BOOL arguments_allowed;  /* true if the 'arguments' identifier is allowed */
+    BOOL super_call_allowed;    /* true if super() is allowed */
+    BOOL super_allowed;         /* true if super. or super[] is allowed */
+    BOOL arguments_allowed; /* true if the 'arguments' identifier is allowed */
     BOOL is_derived_class_constructor;
     BOOL in_function_body;
     BOOL backtrace_barrier;

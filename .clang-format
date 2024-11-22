@@ -1,6 +1,8 @@
 Language: Cpp
 ColumnLimit: 80
 IndentWidth: 4
+LineEnding: LF
+
 MaxEmptyLinesToKeep: 1
 PointerAlignment: Right
 SortIncludes: Never
