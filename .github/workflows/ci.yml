@@ -24,7 +24,6 @@ on:
 
 jobs:
   check-format:
-    uses:
     runs-on: ubuntu-latest
     continue-on-error: false
     steps:
