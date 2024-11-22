@@ -25,6 +25,7 @@ on:
 jobs:
   check-format:
     runs-on: ubuntu-latest
+    continue-on-error: false
     steps:
       - uses: actions/checkout@v4
       - name: check-format
