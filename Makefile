@@ -122,4 +122,7 @@ unicode_gen: $(BUILD_DIR)
 libunicode-table.h: unicode_gen
 	$(BUILD_DIR)/unicode_gen unicode $@
 
-.PHONY: all ctest cxxtest debug fuzz install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)
+check-format:
+	clang-format -i quickjs*.[ch] lib*.[ch] -n --ferror-limit=0
+
+.PHONY: all ctest cxxtest debug fuzz install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen check-format $(QJS) $(QJSC)
