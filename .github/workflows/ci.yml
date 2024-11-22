@@ -24,10 +24,15 @@ on:
 
 jobs:
   check-format:
+    uses:
     runs-on: ubuntu-latest
     continue-on-error: false
     steps:
       - uses: actions/checkout@v4
+      - name: install clang-format-18
+        run: |
+          sudo apt update
+          sudo apt install -y clang-format-18
       - name: check-format
         run: |
           make check-format

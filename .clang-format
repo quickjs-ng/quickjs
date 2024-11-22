@@ -23,7 +23,12 @@ AlignConsecutiveBitFields:
 
 AlignConsecutiveDeclarations: false
 
-AlignConsecutiveMacros: true
+AlignConsecutiveMacros:
+  Enabled:          true
+  AcrossEmptyLines: true
+  AcrossComments:   true
+  AlignCompound:    true
+  PadOperators:     true
 
 AllowShortFunctionsOnASingleLine: false
 
