@@ -40204,7 +40204,7 @@ typedef struct JSIteratorHelperData {
     JSValue func; // predicate (filter) or mapper (flatMap, map)
     JSValue inner; // innerValue (flatMap)
     int64_t count; // limit (drop, take) or counter (filter, map, flatMap)
-    JSIteratorHelperKindEnum kind : 8; 
+    JSIteratorHelperKindEnum kind : 8;
     uint8_t executing : 1;
     uint8_t done : 1;
 } JSIteratorHelperData;
@@ -48318,6 +48318,10 @@ static const JSCFunctionListEntry js_map_funcs[] = {
     JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
 };
 
+static const JSCFunctionListEntry js_set_funcs[] = {
+    JS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL ),
+};
+
 static const JSCFunctionListEntry js_map_proto_funcs[] = {
     JS_CFUNC_MAGIC_DEF("set", 2, js_map_set, 0 ),
     JS_CFUNC_MAGIC_DEF("get", 1, js_map_get, 0 ),
@@ -48406,17 +48410,19 @@ void JS_AddIntrinsicMapSet(JSContext *ctx)
     for(i = 0; i < 4; i++) {
         const char *name = JS_AtomGetStr(ctx, buf, sizeof(buf),
                                          JS_ATOM_Map + i);
-        ctx->class_proto[JS_CLASS_MAP + i] = JS_NewObject(ctx);
-        JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_MAP + i],
+        int class_id = JS_CLASS_MAP + i;
+        ctx->class_proto[class_id] = JS_NewObject(ctx);
+        JS_SetPropertyFunctionList(ctx, ctx->class_proto[class_id],
                                    js_map_proto_funcs_ptr[i],
                                    js_map_proto_funcs_count[i]);
         obj1 = JS_NewCFunctionMagic(ctx, js_map_constructor, name, 0,
                                     JS_CFUNC_constructor_magic, i);
-        if (i < 2) {
-            JS_SetPropertyFunctionList(ctx, obj1, js_map_funcs,
-                                       countof(js_map_funcs));
-        }
-        JS_NewGlobalCConstructor2(ctx, obj1, name, ctx->class_proto[JS_CLASS_MAP + i]);
+        if (class_id == JS_CLASS_MAP)
+            JS_SetPropertyFunctionList(ctx, obj1, js_map_funcs, countof(js_map_funcs));
+        else if (class_id == JS_CLASS_SET)
+            JS_SetPropertyFunctionList(ctx, obj1, js_set_funcs, countof(js_set_funcs));
+
+        JS_NewGlobalCConstructor2(ctx, obj1, name, ctx->class_proto[class_id]);
     }
 
     for(i = 0; i < 2; i++) {
