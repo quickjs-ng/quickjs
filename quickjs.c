@@ -11351,7 +11351,7 @@ static int js_ecvt(double d, int n_digits,
         }
     } else {
 #if defined(FE_DOWNWARD) && defined(FE_TONEAREST)
-	int i;
+        int i;
         /* generate 2 extra digits: 99% chances to avoid 2 calls */
         js_ecvt1(d, n_digits + 2, dest, size, decpt);
         if (dest[n_digits + 1] < '5')
