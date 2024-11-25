@@ -57,8 +57,11 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
 
 int main(int argc, char **argv)
 {
+  int r;
+  JSValue ret;
   JSRuntime *rt;
   JSContext *ctx;
+  r = 0;
   rt = JS_NewRuntime();
   js_std_set_worker_new_context_func(JS_NewCustomContext);
   js_std_init_handlers(rt);
@@ -66,9 +69,14 @@ int main(int argc, char **argv)
   ctx = JS_NewCustomContext(rt);
   js_std_add_helpers(ctx, argc, argv);
   js_std_eval_binary(ctx, qjsc_function_source, qjsc_function_source_size, 0);
-  js_std_loop(ctx);
+  ret = js_std_loop(ctx);
+  if (JS_IsException(ret)) {
+    js_std_dump_error1(ctx, ret);
+    r = 1;
+  }
+  JS_FreeValue(ctx, ret);
   JS_FreeContext(ctx);
   js_std_free_handlers(rt);
   JS_FreeRuntime(rt);
-  return 0;
+  return r;
 }

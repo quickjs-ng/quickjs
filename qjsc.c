@@ -314,19 +314,27 @@ static void compile_file(JSContext *ctx, FILE *fo,
 static const char main_c_template1[] =
     "int main(int argc, char **argv)\n"
     "{\n"
+    "  int r;\n"
+    "  JSValue ret;\n"
     "  JSRuntime *rt;\n"
     "  JSContext *ctx;\n"
+    "  r = 0;\n"
     "  rt = JS_NewRuntime();\n"
     "  js_std_set_worker_new_context_func(JS_NewCustomContext);\n"
     "  js_std_init_handlers(rt);\n"
     ;
 
 static const char main_c_template2[] =
-    "  js_std_loop(ctx);\n"
+    "  ret = js_std_loop(ctx);\n"
+    "  if (JS_IsException(ret)) {\n"
+    "    js_std_dump_error1(ctx, ret);\n"
+    "    r = 1;\n"
+    "  }\n"
+    "  JS_FreeValue(ctx, ret);\n"
     "  JS_FreeContext(ctx);\n"
     "  js_std_free_handlers(rt);\n"
     "  JS_FreeRuntime(rt);\n"
-    "  return 0;\n"
+    "  return r;\n"
     "}\n";
 
 #define PROG_NAME "qjsc"
@@ -375,7 +383,7 @@ int main(int argc, char **argv)
     stack_size = 0;
     memset(&dynamic_module_list, 0, sizeof(dynamic_module_list));
 
-    
+
     /* add system modules */
     namelist_add(&cmodule_list, "qjs:std", "std", 0);
     namelist_add(&cmodule_list, "qjs:os", "os", 0);
