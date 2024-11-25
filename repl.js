@@ -1,6 +1,6 @@
 /*
  * QuickJS Read Eval Print Loop
- * 
+ *
  * Copyright (c) 2017-2020 Fabrice Bellard
  * Copyright (c) 2017-2020 Charlie Gordon
  *
@@ -31,7 +31,7 @@ import * as bjson from "qjs:bjson";
     g.bjson = bjson;
     g.os = os;
     g.std = std;
-    
+
     /* close global objects */
     var Object = g.Object;
     var String = g.String;
@@ -149,12 +149,12 @@ import * as bjson from "qjs:bjson";
     var term_read_buf;
     var term_width;
     /* current X position of the cursor in the terminal */
-    var term_cursor_x = 0; 
-    
+    var term_cursor_x = 0;
+
     function termInit() {
         var tab;
         term_fd = std.in.fileno();
-        
+
         /* get the terminal size */
         term_width = 80;
         if (os.isatty(term_fd)) {
@@ -181,14 +181,14 @@ import * as bjson from "qjs:bjson";
         /* send Ctrl-C to readline */
         handle_byte(3);
     }
-    
+
     function term_read_handler() {
         var l, i;
         l = os.read(term_fd, term_read_buf.buffer, 0, term_read_buf.length);
         for(i = 0; i < l; i++)
             handle_byte(term_read_buf[i]);
     }
-    
+
     function handle_byte(c) {
         if (!utf8) {
             handle_char(c);
@@ -206,12 +206,12 @@ import * as bjson from "qjs:bjson";
             handle_char(c);
         }
     }
-    
+
     function is_alpha(c) {
         return typeof c === "string" &&
             ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
     }
-    
+
     function is_digit(c) {
         return typeof c === "string" && (c >= '0' && c <= '9');
     }
@@ -243,7 +243,7 @@ import * as bjson from "qjs:bjson";
         d = c.codePointAt(0); /* can be NaN if empty string */
         return d >= 0xdc00 && d < 0xe000;
     }
-    
+
     function is_balanced(a, b) {
         switch (a + b) {
         case "()":
@@ -282,7 +282,7 @@ import * as bjson from "qjs:bjson";
                 } else {
                     l = Math.min(term_width - 1 - term_cursor_x, delta);
                     print_csi(l, "C"); /* right */
-                    delta -= l; 
+                    delta -= l;
                     term_cursor_x += l;
                 }
             }
@@ -410,7 +410,7 @@ import * as bjson from "qjs:bjson";
 
     function backward_word() {
         cursor_pos = skip_word_backward(cursor_pos);
-    }        
+    }
 
     function clear_screen() {
         directives["clear"]();
@@ -596,7 +596,7 @@ import * as bjson from "qjs:bjson";
             readline_print_prompt();
         }
     }
-    
+
     function reset() {
         cmd = "";
         cursor_pos = 0;
@@ -762,7 +762,7 @@ import * as bjson from "qjs:bjson";
             readline_print_prompt();
         }
     }
-    
+
     var commands = {        /* command table */
         "\x01":     beginning_of_line,      /* ^A - bol */
         "\x02":     backward_char,          /* ^B - backward-char */
@@ -840,9 +840,9 @@ import * as bjson from "qjs:bjson";
         cursor_pos = cmd.length;
         history_index = history.length;
         readline_cb = cb;
-        
+
         prompt = pstate;
-    
+
         if (mexpr) {
             prompt += dupstr(" ", plen - prompt.length);
             prompt += ps2;
@@ -928,7 +928,7 @@ import * as bjson from "qjs:bjson";
         } else {
             alert(); /* beep! */
         }
-        
+
         cursor_pos = (cursor_pos < 0) ? 0 :
             (cursor_pos > cmd.length) ? cmd.length : cursor_pos;
         update();
@@ -1523,7 +1523,7 @@ import * as bjson from "qjs:bjson";
     function cmd_readline_start() {
         readline_start(dupstr("    ", level), readline_handle_cmd);
     }
-    
+
     function readline_handle_cmd(expr) {
         if (!handle_cmd(expr)) {
             cmd_readline_start();
@@ -1548,7 +1548,7 @@ import * as bjson from "qjs:bjson";
             return false;
         }
         mexpr = "";
-        
+
         eval_and_print(expr);
 
         return true;
@@ -1561,8 +1561,7 @@ import * as bjson from "qjs:bjson";
             expr = '"use strict"; void 0;' + expr;
         eval_start_time = os.now();
         /* eval as a script */
-        result = std.evalScript(expr, { backtrace_barrier: true, async: true });
-        /* result is a promise */
+        result = Promise.try(std.evalScript, expr, { backtrace_barrier: true, async: true });
         result.then(print_eval_result, print_eval_error);
     }
 
@@ -1601,7 +1600,7 @@ import * as bjson from "qjs:bjson";
 
     function handle_cmd_end() {
         level = 0;
-        
+
         /* run the garbage collector after each command */
         std.gc();
 
