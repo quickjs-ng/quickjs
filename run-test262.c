@@ -45,6 +45,7 @@ typedef pthread_t js_thread_t;
 
 #include "cutils.h"
 #include "list.h"
+#include "quickjs.h"
 #include "quickjs-c-atomics.h"
 #include "quickjs-libc.h"
 
@@ -1554,7 +1555,12 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
     }
 
     if (local) {
-        js_std_loop(ctx);
+        JSValue val = js_std_loop(ctx);
+        if (JS_IsException(val)) {
+            js_std_dump_error1(ctx, val);
+            ret = -1;
+        }
+        JS_FreeValue(ctx, val);
     }
 
     JS_FreeCString(ctx, error_name);

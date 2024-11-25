@@ -3499,7 +3499,7 @@ static void *worker_func(void *opaque)
         js_std_dump_error(ctx);
     JS_FreeValue(ctx, val);
 
-    js_std_loop(ctx);
+    JS_FreeValue(ctx, js_std_loop(ctx));
 
     JS_FreeContext(ctx);
     js_std_free_handlers(rt);
@@ -4137,6 +4137,7 @@ JSValue js_std_loop(JSContext *ctx)
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
     JSContext *ctx1;
+    JSValue ret;
     int err;
 
     for(;;) {
@@ -4156,7 +4157,9 @@ JSValue js_std_loop(JSContext *ctx)
             break;
     }
 done:
-    return ts->exc;
+    ret = ts->exc;
+    ts->exc = JS_UNDEFINED;
+    return ret;
 }
 
 /* Wait for a promise and execute pending jobs while waiting for

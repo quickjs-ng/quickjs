@@ -36,6 +36,7 @@
 #include <time.h>
 
 #include "cutils.h"
+#include "quickjs.h"
 #include "quickjs-libc.h"
 
 #ifdef QJS_USE_MIMALLOC
@@ -556,6 +557,7 @@ int main(int argc, char **argv)
         ret = js_std_loop(ctx);
         if (!JS_IsUndefined(ret)) {
             js_std_dump_error1(ctx, ret);
+            JS_FreeValue(ctx, ret);
             goto fail;
         }
     }
