@@ -7447,8 +7447,7 @@ static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
                     continue;
                 }
             } else {
-                if (p1->shape->is_hashed && p->shape->is_hashed)
-                    add_ic_slot(ctx, icu, prop, p, offset, proto_depth > 0 ? p : NULL);
+                add_ic_slot(ctx, icu, prop, p1, offset, proto_depth > 0 ? p : NULL);
                 return js_dup(pr->u.value);
             }
         }
@@ -8744,8 +8743,7 @@ retry:
         if (likely((prs->flags & (JS_PROP_TMASK | JS_PROP_WRITABLE |
                                   JS_PROP_LENGTH)) == JS_PROP_WRITABLE)) {
             /* fast case */
-            if (p->shape->is_hashed)
-                add_ic_slot(ctx, icu, prop, p, offset, NULL);
+            add_ic_slot(ctx, icu, prop, p, offset, NULL);
             set_value(ctx, &pr->u.value, val);
             return TRUE;
         } else if (prs->flags & JS_PROP_LENGTH) {
@@ -8913,8 +8911,7 @@ retry:
                 goto fail;
             pr->u.value = val;
             /* fast case */
-            if (p->shape->is_hashed)
-                add_ic_slot(ctx, icu, prop, p, p->shape->prop_count - 1, NULL);
+            add_ic_slot(ctx, icu, prop, p, p->shape->prop_count - 1, NULL);
             return TRUE;
         }
     }
@@ -55948,7 +55945,7 @@ static void add_ic_slot(JSContext *ctx, JSInlineCacheUpdate *icu,
     JSInlineCacheHashSlot *ch;
     JSInlineCacheRingSlot *cr;
     JSInlineCache *ic;
-    JSShape *sh;
+    JSShape *sh, *psh;
 
     if (!icu)
         return;
@@ -55958,6 +55955,10 @@ static void add_ic_slot(JSContext *ctx, JSInlineCacheUpdate *icu,
     sh = object->shape;
     if (!sh->is_hashed)
         return;
+    psh = prototype ? prototype->shape : NULL;
+    if (psh && !psh->is_hashed) {
+        return;
+    }
     cr = NULL;
     h = get_index_hash(atom, ic->hash_bits);
     for (ch = ic->hash[h]; ch != NULL; ch = ch->next) {
@@ -55981,7 +55982,7 @@ static void add_ic_slot(JSContext *ctx, JSInlineCacheUpdate *icu,
     } while (i != cr->index);
     sh = cr->shape[i];
     if (cr->watchpoint_ref[i])
-        js_shape_delete_watchpoints(ctx->rt, sh, cr);
+        js_shape_delete_watchpoints(ctx->rt, cr->shape[i], cr);
     cr->prop_offset[i] = prop_offset;
     cr->shape[i] = js_dup_shape(object->shape);
     js_free_shape_null(ctx->rt, sh);
