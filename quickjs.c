@@ -50378,7 +50378,10 @@ static JSValue set_date_field(JSContext *ctx, JSValue this_val,
         fields[first_field + i] = trunc(a);
     }
 
-    if (res && argc > 0)
+    if (!res)
+        return JS_NAN;
+
+    if (argc > 0)
         d = set_date_fields(fields, is_local);
 
     return JS_SetThisTimeValue(ctx, this_val, d);
@@ -51144,6 +51147,8 @@ static JSValue js_date_setYear(JSContext *ctx, JSValue this_val,
     if (JS_ThisTimeValue(ctx, &y, this_val) || JS_ToFloat64(ctx, &y, argv[0]))
         return JS_EXCEPTION;
     y = +y;
+    if (isnan(y))
+        return JS_SetThisTimeValue(ctx, this_val, y);
     if (isfinite(y)) {
         y = trunc(y);
         if (y >= 0 && y < 100)
