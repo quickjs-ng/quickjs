@@ -606,7 +606,8 @@ void parse_derived_core_properties(const char *filename)
             p++;
             p += strspn(p, " \t");
             q = buf;
-            while (*p != '\0' && *p != ' ' && *p != '#' && *p != '\t') {
+            static const char ignore[] = "\t #;"; // includes \0
+            while (!memchr(ignore, *p, sizeof(ignore))) {
                 if ((q - buf) < sizeof(buf) - 1)
                     *q++ = *p;
                 p++;
@@ -1098,6 +1099,24 @@ void find_run_type(TableEntry *te, CCInfo *tab, int code)
             te->ext_data[1] = ci->u_data[1];
             te->ext_data[2] = ci->u_data[2];
             te->ext_len = 3;
+        } else if (ci->u_len == 2 && ci->l_len == 0 && ci->f_len == 1) {
+            // U+FB05 LATIN SMALL LIGATURE LONG S T
+            assert(code == 0xFB05);
+            te->len = 1;
+            te->type = RUN_TYPE_UF_EXT2;
+            te->ext_data[0] = ci->u_data[0];
+            te->ext_data[1] = ci->u_data[1];
+            te->ext_len = 2;
+        } else if (ci->u_len == 3 && ci->l_len == 0 && ci->f_len == 1) {
+            // U+1FD3 GREEK SMALL LETTER IOTA WITH DIALYTIKA AND OXIA or
+            // U+1FE3 GREEK SMALL LETTER UPSILON WITH DIALYTIKA AND OXIA
+            assert(code == 0x1FD3 || code == 0x1FE3);
+            te->len = 1;
+            te->type = RUN_TYPE_UF_EXT3;
+            te->ext_data[0] = ci->u_data[0];
+            te->ext_data[1] = ci->u_data[1];
+            te->ext_data[2] = ci->u_data[2];
+            te->ext_len = 3;
         } else {
             printf("unsupported encoding case:\n");
             dump_cc_info(ci, code);
@@ -1555,6 +1574,7 @@ void build_flags_tables(FILE *f)
     build_prop_table(f, PROP_Case_Ignorable, TRUE);
     build_prop_table(f, PROP_ID_Start, TRUE);
     build_prop_table(f, PROP_ID_Continue1, TRUE);
+    build_prop_table(f, PROP_White_Space, TRUE);
 }
 
 void dump_name_table(FILE *f, const char *cname, const char **tab_name, int len,
@@ -1794,7 +1814,8 @@ void build_prop_list_table(FILE *f)
     for(i = 0; i < PROP_TABLE_COUNT; i++) {
         if (i == PROP_ID_Start ||
             i == PROP_Case_Ignorable ||
-            i == PROP_ID_Continue1) {
+            i == PROP_ID_Continue1 ||
+            i == PROP_White_Space) {
             /* already generated */
         } else {
             build_prop_table(f, i, FALSE);

@@ -22,8 +22,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-import * as std from "std";
-import * as os from "os";
+import * as std from "qjs:std";
+import * as os from "qjs:os";
 
 function pad(str, n) {
     str += "";

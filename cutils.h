@@ -54,6 +54,14 @@ extern "C" {
 #include <pthread.h>
 #endif
 
+#if defined(__SANITIZE_ADDRESS__)
+# define __ASAN__ 1
+#elif defined(__has_feature)
+# if __has_feature(address_sanitizer)
+#  define __ASAN__ 1
+# endif
+#endif
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #  define likely(x)       (x)
 #  define unlikely(x)     (x)
@@ -96,11 +104,6 @@ static void *__builtin_frame_address(unsigned int level) {
 #define NEG_INF (-1.0/0.0)
 #endif
 
-#define xglue(x, y) x ## y
-#define glue(x, y) xglue(x, y)
-#define stringify(s)    tostring(s)
-#define tostring(s)     #s
-
 #ifndef offsetof
 #define offsetof(type, field) ((size_t) &((type *)0)->field)
 #endif
@@ -115,10 +118,10 @@ static void *__builtin_frame_address(unsigned int level) {
 #define container_of(ptr, type, member) ((type *)((uint8_t *)(ptr) - offsetof(type, member)))
 #endif
 
-#if !defined(_MSC_VER) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-#define minimum_length(n)  static n
+#if defined(_MSC_VER)
+#define minimum_length(n) n
 #else
-#define minimum_length(n)  n
+#define minimum_length(n) static n
 #endif
 
 typedef int BOOL;
@@ -486,7 +489,7 @@ enum {
 };
 int utf8_scan(const char *buf, size_t len, size_t *plen);
 size_t utf8_encode_len(uint32_t c);
-size_t utf8_encode(uint8_t *buf, uint32_t c);
+size_t utf8_encode(uint8_t buf[minimum_length(UTF8_CHAR_LEN_MAX)], uint32_t c);
 uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp);
 uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp);
 size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len);

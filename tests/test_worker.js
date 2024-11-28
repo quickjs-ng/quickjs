@@ -1,23 +1,5 @@
-/* os.Worker API test */
-import * as std from "std";
-import * as os from "os";
-
-function assert(actual, expected, message) {
-    if (arguments.length == 1)
-        expected = true;
-
-    if (actual === expected)
-        return;
-
-    if (actual !== null && expected !== null
-    &&  typeof actual == 'object' && typeof expected == 'object'
-    &&  actual.toString() === expected.toString())
-        return;
-
-    throw Error("assertion failed: got |" + actual + "|" +
-                ", expected |" + expected + "|" +
-                (message ? " (" + message + ")" : ""));
-}
+import * as os from "qjs:os";
+import { assert } from "./assert.js";
 
 var worker;
 

@@ -1,3 +1,5 @@
+// This test cannot use imports because it needs to run in non-strict mode.
+
 function assert(actual, expected, message) {
     if (arguments.length == 1)
         expected = true;
@@ -14,9 +16,6 @@ function assert(actual, expected, message) {
                 ", expected |" + expected + "|" +
                 (message ? " (" + message + ")" : ""));
 }
-
-// load more elaborate version of assert if available
-try { __loadScript("test_assert.js"); } catch(e) {}
 
 /*----------------*/
 
@@ -135,9 +134,9 @@ function test_arrow_function()
     assert(a.length, 2);
     assert(a[0] === 1 && a[1] === 2);
 
-    assert(f2.call("this_val") === "this_val");
-    assert(f3.call("this_val") === "this_val");
-    assert(new f4() === f4);
+    assert(f2.call("this_val"), "this_val");
+    assert(f3.call("this_val"), "this_val");
+    assert(new f4(), f4);
 
     var o1 = { f() { return this; } };
     var o2 = { f() {
@@ -145,7 +144,7 @@ function test_arrow_function()
     } };
     o2.__proto__ = o1;
 
-    assert(o2.f() === o2);
+    assert(o2.f(), o2);
 }
 
 function test_with()
@@ -153,20 +152,20 @@ function test_with()
     var o1 = { x: "o1", y: "o1" };
     var x = "local";
     eval('var z="var_obj";');
-    assert(z === "var_obj");
+    assert(z, "var_obj");
     with (o1) {
-        assert(x === "o1");
-        assert(eval("x") === "o1");
+        assert(x, "o1");
+        assert(eval("x"), "o1");
         var f = function () {
             o2 = { x: "o2" };
             with (o2) {
-                assert(x === "o2");
-                assert(y === "o1");
-                assert(z === "var_obj");
-                assert(eval("x") === "o2");
-                assert(eval("y") === "o1");
-                assert(eval("z") === "var_obj");
-                assert(eval('eval("x")') === "o2");
+                assert(x, "o2");
+                assert(y, "o1");
+                assert(z, "var_obj");
+                assert(eval("x"), "o2");
+                assert(eval("y"), "o1");
+                assert(eval("z"), "var_obj");
+                assert(eval('eval("x")'), "o2");
             }
         };
         f();
@@ -182,7 +181,7 @@ function test_eval_closure()
         eval("tab.push(function g1() { return i; })");
     }
     for(let i = 0; i < 3; i++) {
-        assert(tab[i]() === i);
+        assert(tab[i](), i);
     }
 
     tab = [];
@@ -193,7 +192,7 @@ function test_eval_closure()
         f();
     }
     for(let i = 0; i < 3; i++) {
-        assert(tab[i]() === i);
+        assert(tab[i](), i);
     }
 }
 

@@ -36,6 +36,7 @@
 #include <time.h>
 
 #include "cutils.h"
+#include "quickjs.h"
 #include "quickjs-libc.h"
 
 #ifdef QJS_USE_MIMALLOC
@@ -164,9 +165,9 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     if (!ctx)
         return NULL;
     /* system modules */
-    js_init_module_std(ctx, "std");
-    js_init_module_os(ctx, "os");
-    js_init_module_bjson(ctx, "bjson");
+    js_init_module_std(ctx, "qjs:std");
+    js_init_module_os(ctx, "qjs:os");
+    js_init_module_bjson(ctx, "qjs:bjson");
 
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyFunctionList(ctx, global, global_obj, countof(global_obj));
@@ -320,7 +321,7 @@ void help(void)
            "-m  --module       load as ES6 module (default=autodetect)\n"
            "    --script       load as ES6 script (default=autodetect)\n"
            "-I  --include file include an additional file\n"
-           "    --std          make 'std' and 'os' available to the loaded script\n"
+           "    --std          make 'std', 'os' and 'bjson' available to script\n"
            "-T  --trace        trace memory allocation\n"
            "-d  --dump         dump the memory usage stats\n"
            "-D  --dump-flags   flags for dumping debug data (see DUMP_* defines)\n"
@@ -522,15 +523,18 @@ int main(int argc, char **argv)
 
         /* make 'std' and 'os' visible to non module code */
         if (load_std) {
-            const char *str = "import * as std from 'std';\n"
-                "import * as os from 'os';\n"
+            const char *str =
+                "import * as bjson from 'qjs:bjson';\n"
+                "import * as std from 'qjs:std';\n"
+                "import * as os from 'qjs:os';\n"
+                "globalThis.bjson = bjson;\n"
                 "globalThis.std = std;\n"
                 "globalThis.os = os;\n";
             eval_buf(ctx, str, strlen(str), "<input>", JS_EVAL_TYPE_MODULE);
         }
 
         for(i = 0; i < include_count; i++) {
-            if (eval_file(ctx, include_list[i], module))
+            if (eval_file(ctx, include_list[i], 0))
                 goto fail;
         }
 
@@ -553,6 +557,7 @@ int main(int argc, char **argv)
         ret = js_std_loop(ctx);
         if (!JS_IsUndefined(ret)) {
             js_std_dump_error1(ctx, ret);
+            JS_FreeValue(ctx, ret);
             goto fail;
         }
     }

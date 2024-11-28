@@ -49,11 +49,10 @@ jobs:
       matrix:
         config:
           - { os: ubuntu-latest, configType: Debug }
-          - { os: ubuntu-latest, configType: Release, runTest262: true, runV8: true }
+          - { os: ubuntu-latest, configType: Release, runTest262: true }
           - { os: ubuntu-latest, configType: examples }
           - { os: ubuntu-latest, configType: shared }
-          - { os: ubuntu-latest, configType: asan, runTest262: true }
-          - { os: ubuntu-latest, configType: ubsan, runTest262: true }
+          - { os: ubuntu-latest, configType: asan+ubsan, runTest262: true }
           - { os: ubuntu-latest, configType: msan }
           - { os: ubuntu-latest, configType: tcc }
           - { os: ubuntu-latest, arch: x86 }
@@ -64,15 +63,7 @@ jobs:
           - { os: macos-14, configType: Release }
           - { os: macos-14, configType: examples }
           - { os: macos-14, configType: shared }
-          - { os: macos-14, configType: asan }
-          - { os: macos-14, configType: ubsan }
-
-          - { os: macos-12, configType: Debug }
-          - { os: macos-12, configType: Release }
-          - { os: macos-12, configType: examples }
-          - { os: macos-12, configType: shared }
-          - { os: macos-12, configType: asan }
-          - { os: macos-12, configType: ubsan }
+          - { os: macos-14, configType: asan+ubsan }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,7 +71,7 @@ jobs:
 
       # ASLR with big PIE slides does not work well with [AM]San
       - name: disable ASLR
-        if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan' || matrix.config.configType == 'ubsan' || matrix.config.configType == 'msan')}}
+        if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan+ubsan' || matrix.config.configType == 'msan')}}
         run: |
           sudo sysctl -w kernel.randomize_va_space=0
 
@@ -98,6 +89,12 @@ jobs:
           popd
           echo "CC=tcc" >> $GITHUB_ENV;
 
+      - name: Install extra dependencies
+        if: ${{ matrix.config.arch != '' }}
+        shell: 'sh'
+        run: |
+          sudo apt update && sudo apt install -y binfmt-support
+
       - name: Setup Alpine
         if: ${{ matrix.config.arch != '' }}
         uses: jirutka/setup-alpine@v1
@@ -113,11 +110,9 @@ jobs:
             echo "BUILD_EXAMPLES=ON" >> $GITHUB_ENV;
           elif [ "${{ matrix.config.configType }}" = "shared" ]; then
             echo "BUILD_SHARED_LIBS=ON" >> $GITHUB_ENV;
-          elif [ "${{ matrix.config.configType }}" = "asan" ]; then
+          elif [ "${{ matrix.config.configType }}" = "asan+ubsan" ]; then
             echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
             echo "CONFIG_ASAN=ON" >> $GITHUB_ENV;
-          elif [ "${{ matrix.config.configType }}" = "ubsan" ]; then
-            echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
             echo "CONFIG_UBSAN=ON" >> $GITHUB_ENV;
           elif [ "${{ matrix.config.configType }}" = "msan" ]; then
             echo "BUILD_TYPE=RelWithDebInfo" >> $GITHUB_ENV;
@@ -140,6 +135,10 @@ jobs:
         run: |
           make stats
 
+      - name: cxxtest
+        run: |
+          make cxxtest
+
       - name: test
         if: ${{ matrix.config.configType != 'examples' }}
         run: |
@@ -158,39 +157,8 @@ jobs:
       - name: test 262
         if: ${{ matrix.config.runTest262 }}
         run: |
+          git submodule update --init --checkout --depth 1
           time make test262
-
-  linux-gcc48:
-    runs-on: ubuntu-latest
-    container:
-      image: ubuntu:18.04
-    # Work around an issue where the node from actions/checkout is too new
-    # to run inside the old container image.
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-    steps:
-      - name: install dependencies
-        run: |
-          apt update && apt -y install make gcc-4.8 cmake software-properties-common
-          # git in default ppa repository is too old to run submodule checkout
-          add-apt-repository -y ppa:git-core/ppa
-          apt update && apt install -y git
-      - name: checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: true
-      - name: build
-        env:
-          CC: gcc-4.8
-        run: |
-          mkdir build
-          cd build
-          cmake ..
-          cd ..
-          make -C build -j$(getconf _NPROCESSORS_ONLN)
-      - name: stats
-        run: |
-          ./build/qjs -qd
 
   windows-msvc:
     runs-on: windows-latest
@@ -204,10 +172,7 @@ jobs:
       - name: build
         run: |
           cmake -B build -DBUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -A ${{matrix.arch}}
-          cmake --build build --config ${{matrix.buildType}} --target qjs_exe
-          cmake --build build --config ${{matrix.buildType}} --target function_source
-          cmake --build build --config ${{matrix.buildType}} --target fib
-          cmake --build build --config ${{matrix.buildType}} --target point
+          cmake --build build --config ${{matrix.buildType}}
       - name: stats
         run: |
           build\${{matrix.buildType}}\qjs.exe -qd
@@ -217,17 +182,41 @@ jobs:
           cp build\${{matrix.buildType}}\point.dll examples\
           build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_bigint.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_bjson.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_closure.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_language.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_builtin.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_loop.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_std.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_worker.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_queue_microtask.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_module_detect.js
+          build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
+      - name: Set up Visual Studio shell
+        uses: egor-tensin/vs-shell@v2
+        with:
+          arch: ${{ matrix.arch == 'x64' && 'x64' || 'x86' }}
+      - name: cxxtest
+        run: |
+          cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
+          cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
+
+  windows-msvc-vs2019:
+    runs-on: windows-2019
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, Win32]
+        buildType: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: |
+          cmake -B build -DBUILD_EXAMPLES=ON -G "Visual Studio 16 2019" -A ${{matrix.arch}}
+          cmake --build build --config ${{matrix.buildType}} --target qjs_exe
+      - name: stats
+        run: |
+          build\${{matrix.buildType}}\qjs.exe -qd
+      - name: Set up Visual Studio shell
+        uses: egor-tensin/vs-shell@v2
+        with:
+          arch: ${{ matrix.arch == 'x64' && 'x64' || 'x86' }}
+      - name: cxxtest
+        run: |
+          cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
+          cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
 
   windows-clang:
     runs-on: windows-latest
@@ -239,30 +228,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: build
         run: |
+          git submodule update --init --checkout --depth 1
           cmake -B build -DBUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -T ClangCL
-          cmake --build build --config ${{matrix.buildType}} --target qjs_exe
-          cmake --build build --config ${{matrix.buildType}} --target function_source
-          cmake --build build --config ${{matrix.buildType}} --target fib
-          cmake --build build --config ${{matrix.buildType}} --target point
+          cmake --build build --config ${{matrix.buildType}}
       - name: stats
         run: |
           build\${{matrix.buildType}}\qjs.exe -qd
+      - name: cxxtest
+        run: |
+          clang-cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
+          clang-cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
       - name: test
         run: |
           cp build\${{matrix.buildType}}\fib.dll examples\
           cp build\${{matrix.buildType}}\point.dll examples\
           build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_bigint.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_bjson.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_closure.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_language.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_builtin.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_loop.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_std.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_worker.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_queue_microtask.js
-          build\${{matrix.buildType}}\qjs.exe tests\test_module_detect.js
+          build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
 
   windows-ninja:
@@ -279,11 +261,9 @@ jobs:
           ninja.exe --version
       - name: build
         run: |
+          git submodule update --init --checkout --depth 1
           cmake -B build -DBUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Ninja"
-          cmake --build build --target qjs_exe
-          cmake --build build --target function_source
-          cmake --build build --target fib
-          cmake --build build --target point
+          cmake --build build
       - name: stats
         run: |
           build\qjs.exe -qd
@@ -293,17 +273,38 @@ jobs:
           cp build\point.dll examples\
           build\qjs.exe examples\test_fib.js
           build\qjs.exe examples\test_point.js
-          build\qjs.exe tests\test_bigint.js
-          build\qjs.exe tests\test_bjson.js
-          build\qjs.exe tests\test_closure.js
-          build\qjs.exe tests\test_language.js
-          build\qjs.exe tests\test_builtin.js
-          build\qjs.exe tests\test_loop.js
-          build\qjs.exe tests\test_std.js
-          build\qjs.exe tests\test_worker.js
-          build\qjs.exe tests\test_queue_microtask.js
-          build\qjs.exe tests\test_module_detect.js
+          build\run-test262.exe -c tests.conf
           build\function_source.exe
+
+  windows-sdk:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, Win32]
+        buildType: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install windows sdk
+        uses: ChristopheLav/windows-sdk-install@v1
+        with:
+          version-sdk: 26100
+          features: 'OptionId.DesktopCPPx86,OptionId.DesktopCPPx64'
+      - name: build
+        run: |
+          cmake -B build -DBUILD_EXAMPLES=ON -DCMAKE_SYSTEM_VERSION="10.0.26100.0" -A ${{matrix.arch}}
+          cmake --build build --config ${{matrix.buildType}}
+      - name: stats
+        run: |
+          build\${{matrix.buildType}}\qjs.exe -qd
+      - name: test
+        run: |
+          cp build\${{matrix.buildType}}\fib.dll examples\
+          cp build\${{matrix.buildType}}\point.dll examples\
+          build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
+          build\${{matrix.buildType}}\qjs.exe examples\test_point.js
+          build\${{matrix.buildType}}\run-test262.exe -c tests.conf
+          build\${{matrix.buildType}}\function_source.exe
 
   windows-mingw:
     runs-on: windows-latest
@@ -339,6 +340,14 @@ jobs:
       run: |
         make stats
         ldd build/qjs
+    - name: cxxtest
+      if: ${{ matrix.sys != 'clang64' }}
+      run: |
+        make cxxtest
+    - name: cxxtest
+      if: ${{ matrix.sys == 'clang64' }}
+      run: |
+        make cxxtest CXX=clang++
     - name: test
       run: |
         make test
@@ -419,6 +428,10 @@ jobs:
       - name: stats
         run: make stats
 
+      - name: cxxtest
+        run: |
+          make cxxtest
+
       - name: test
         run: make test
 
@@ -449,21 +462,6 @@ jobs:
           run: |
             gmake
             gmake stats
-
-  netbsd:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: build + test
-        uses: vmactions/netbsd-vm@v1
-        with:
-          usesh: true
-          prepare: |
-            /usr/sbin/pkg_add cmake gmake
-          run: |
-            gmake
-            gmake stats
-            gmake test
 
   android:
     runs-on: ubuntu-latest
@@ -506,6 +504,9 @@ jobs:
       - name: build
         run: |
           make
+      - name: cxxtest
+        run: |
+          make cxxtest
       - name: test
         run: |
           make test
@@ -523,6 +524,9 @@ jobs:
       - name: build
         run: |
           make
+      - name: cxxtest
+        run: |
+          make cxxtest
       - name: test
         run: |
           make test

@@ -1,18 +1,23 @@
 name: release
 
 on:
+  pull_request:
   push:
     tags:
       - "v*.*.*"
 
 jobs:
-  linux-aarch64:
+  linux:
     runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, riscv64, x86, x86_64]
     steps:
       - uses: actions/checkout@v4
       - uses: jirutka/setup-alpine@v1
         with:
-          arch: aarch64
+          arch: ${{matrix.arch}}
           packages: "build-base make cmake"
       - name: build
         shell: alpine.sh {0}
@@ -23,102 +28,17 @@ jobs:
           cd ..
           cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
           cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
-          mv build/qjs build/qjs-linux-aarch64
-          mv build/qjsc build/qjsc-linux-aarch64
+          mv build/qjs build/qjs-linux-${{matrix.arch}}
+          mv build/qjsc build/qjsc-linux-${{matrix.arch}}
       - name: check
         shell: alpine.sh {0}
         run: |
-          file build/*-linux-aarch64
+          file build/*-linux-${{matrix.arch}}
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
-          path: build/*-linux-aarch64
-  linux-riscv64:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jirutka/setup-alpine@v1
-        with:
-          arch: riscv64
-          packages: "build-base make cmake"
-      - name: build
-        shell: alpine.sh {0}
-        run: |
-          mkdir build
-          cd build
-          cmake -DBUILD_STATIC_QJS_EXE=ON ..
-          cd ..
-          cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
-          cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
-          mv build/qjs build/qjs-linux-riscv64
-          mv build/qjsc build/qjsc-linux-riscv64
-      - name: check
-        shell: alpine.sh {0}
-        run: |
-          file build/*-linux-riscv64
-      - name: upload
-        uses: actions/upload-artifact@v3
-        with:
-          name: qjs
-          path: build/*-linux-riscv64
-  linux-x86:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jirutka/setup-alpine@v1
-        with:
-          arch: x86
-          packages: "build-base make cmake"
-      - name: build
-        shell: alpine.sh {0}
-        run: |
-          mkdir build
-          cd build
-          cmake -DBUILD_STATIC_QJS_EXE=ON ..
-          cd ..
-          cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
-          cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
-          mv build/qjs build/qjs-linux-x86
-          mv build/qjsc build/qjsc-linux-x86
-      - name: check
-        shell: alpine.sh {0}
-        run: |
-          file build/*-linux-x86
-      - name: upload
-        uses: actions/upload-artifact@v3
-        with:
-          name: qjs
-          path: build/*-linux-x86
-
-  linux-x86_64:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: jirutka/setup-alpine@v1
-        with:
-          arch: x86_64
-          packages: "build-base make cmake"
-      - name: build
-        shell: alpine.sh {0}
-        run: |
-          mkdir build
-          cd build
-          cmake -DBUILD_STATIC_QJS_EXE=ON ..
-          cd ..
-          cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
-          cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
-          mv build/qjs build/qjs-linux-x86_64
-          mv build/qjsc build/qjsc-linux-x86_64
-      - name: check
-        shell: alpine.sh {0}
-        run: |
-          file build/*-linux-x86_64
-      - name: upload
-        uses: actions/upload-artifact@v3
-        with:
-          name: qjs
-          path: build/*-linux-x86_64
+          name: qjs-linux-${{matrix.arch}}
+          path: build/*-linux-${{matrix.arch}}
 
   macos:
     runs-on: macos-latest
@@ -136,13 +56,17 @@ jobs:
         run: |
           lipo -info build/qjs-darwin build/qjsc-darwin
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-darwin
           path: build/*-darwin
 
-  windows-x86:
+  windows:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x86_64]
     defaults:
       run:
         shell: msys2 {0}
@@ -151,7 +75,7 @@ jobs:
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: mingw32
+          msystem: ${{ matrix.arch == 'x86' && 'mingw32' || 'mingw64' }}
           install: >-
             git
             make
@@ -162,48 +86,16 @@ jobs:
       - name: build
         run: |
           make
-          mv build/qjs.exe build/qjs-windows-x86.exe
-          mv build/qjsc.exe build/qjsc-windows-x86.exe
+          mv build/qjs.exe build/qjs-windows-${{matrix.arch}}.exe
+          mv build/qjsc.exe build/qjsc-windows-${{matrix.arch}}.exe
       - name: check
         run: |
-          ldd build/qjs-windows-x86.exe build/qjsc-windows-x86.exe
+          ldd build/qjs-windows-${{matrix.arch}}.exe build/qjsc-windows-${{matrix.arch}}.exe
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
-          path: build/*-windows-x86.exe
-
-  windows-x86_64:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: mingw64
-          install: >-
-            git
-            make
-          pacboy: >-
-            cmake:p
-            ninja:p
-            toolchain:p
-      - name: build
-        run: |
-          make
-          mv build/qjs.exe build/qjs-windows-x86_64.exe
-          mv build/qjsc.exe build/qjsc-windows-x86_64.exe
-      - name: check
-        run: |
-          ldd build/qjs-windows-x86_64.exe build/qjsc-windows-x86_64.exe
-      - name: upload
-        uses: actions/upload-artifact@v3
-        with:
-          name: qjs
-          path: build/*-windows-x86_64.exe
+          name: qjs-windows-${{matrix.arch}}
+          path: build/*-windows-${{matrix.arch}}.exe
 
   wasi:
     runs-on: ubuntu-20.04
@@ -219,22 +111,25 @@ jobs:
           make -C build qjs_exe
           mv build/qjs build/qjs-wasi.wasm
       - name: upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: qjs
+          name: qjs-wasi
           path: build/qjs-wasi.wasm
 
   upload-to-release:
-    needs: [linux-aarch64, linux-riscv64, linux-x86, linux-x86_64, macos, windows-x86, windows-x86_64, wasi]
+    needs: [linux, macos, windows, wasi]
     runs-on: ubuntu-20.04
     steps:
       - name: get assets
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
+          pattern: qjs-*
           path: build
+          merge-multiple: true
+      - run: ls -R build
       - name: release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            build/qjs/qjs-*
-            build/qjs/qjsc-*
+            build/*

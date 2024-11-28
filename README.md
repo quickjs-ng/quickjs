@@ -1,22 +1,24 @@
 # ⚡️ QuickJS - A mighty JavaScript engine
 
-Friendly [QuickJS] fork focused on reigniting the project.
-
 ## Overview
 
-In October 2023 [@bnoordhuis] and [@saghul] decided to fork the [QuickJS] project with
-the aim of reigniting it. They reached out to the original authors ([@bellard] and [@chqrlie])
-about their intentions.
+QuickJS is a small and embeddable JavaScript engine. It aims to support the latest
+[ECMAScript] specification.
 
-As of December 2023 the initial goal was somewhat accomplished. [@bellard] resumed working on
-the project and both parties have been pulling patches from each other since.
+This project is a _fork_ of the [original QuickJS project] by Fabrice Bellard and Charlie Gordon, after it went dormant, with the intent of reigniting its development.
 
-As of early 2024 both projects agree the proper path forward involves merging both projects
-and combining the efforts. While that may take a while, since both projects diverged in certain
-areas, there is willingness to go in this direction from both sides.
+## Getting started
 
-[QuickJS]: https://bellard.org/quickjs
-[@bellard]: https://github.com/bellard
+Head over to the [project website] for instructions on how to get started and more
+documentation.
+
+## Authors
+
+[@bnoordhuis], [@saghul], and many more [contributors].
+
+[ECMAScript]: https://tc39.es/ecma262/
+[original QuickJS project]: https://bellard.org/quickjs
 [@bnoordhuis]: https://github.com/bnoordhuis
-[@chqrlie]: https://github.com/chqrlie
 [@saghul]: https://github.com/saghul
+[contributors]: https://github.com/quickjs-ng/quickjs/graphs/contributors
+[project website]: https://quickjs-ng.github.io/quickjs/

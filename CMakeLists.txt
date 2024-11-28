@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.10)
 
 project(quickjs LANGUAGES C)
 
@@ -108,6 +108,10 @@ if(BUILD_SHARED_LIBS)
     message(STATUS "Building a shared library")
 endif()
 
+# note: CONFIG_TSAN is currently incompatible with the other sanitizers but we
+# don't explicitly check for that because who knows what the future will bring?
+# CONFIG_MSAN only works with clang at the time of writing; also not checked
+# for the same reason
 xoption(BUILD_EXAMPLES "Build examples" OFF)
 xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
 xoption(BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
@@ -119,9 +123,6 @@ xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 
 if(CONFIG_ASAN)
 message(STATUS "Building with ASan")
-add_compile_definitions(
-    __ASAN__=1
-)
 add_compile_options(
     -fsanitize=address
     -fno-sanitize-recover=all
@@ -132,7 +133,9 @@ add_link_options(
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer
 )
-elseif(CONFIG_MSAN)
+endif()
+
+if(CONFIG_MSAN)
 message(STATUS "Building with MSan")
 add_compile_options(
     -fsanitize=memory
@@ -144,7 +147,9 @@ add_link_options(
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer
 )
-elseif(CONFIG_TSAN)
+endif()
+
+if(CONFIG_TSAN)
 message(STATUS "Building with TSan")
 add_compile_options(
     -fsanitize=thread
@@ -156,8 +161,11 @@ add_link_options(
     -fno-sanitize-recover=all
     -fno-omit-frame-pointer
 )
-elseif(CONFIG_UBSAN)
+endif()
+
+if(CONFIG_UBSAN)
 message(STATUS "Building with UBSan")
+# __has_feature(undefined_sanitizer) or __SANITIZE_UNDEFINED__ don't exist
 add_compile_definitions(
     __UBSAN__=1
 )
@@ -281,15 +289,7 @@ endif()
 # Test262 runner
 #
 
-if(WIN32
-OR EMSCRIPTEN
-OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC"
-OR CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 5)
-    # Empty. run-test262 uses pthreads, sorry Windows users.
-    # tcc and gcc 4.8 don't understand _Thread_local, whereas I
-    # don't understand why people still use 4.8 in this day and age
-    # but hey, here we are.
-else()
+if(NOT EMSCRIPTEN)
     add_executable(run-test262
         run-test262.c
     )
