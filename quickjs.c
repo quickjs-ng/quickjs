@@ -633,7 +633,7 @@ static JSInlineCache *init_ic(JSContext *ctx);
 static int rebuild_ic(JSContext *ctx, JSInlineCache *ic);
 static int resize_ic_hash(JSContext *ctx, JSInlineCache *ic);
 static int free_ic(JSRuntime *rt, JSInlineCache *ic);
-static int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom, bool force);
+static int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom, BOOL force);
 static int ic_watchpoint_delete_handler(JSRuntime* rt, JSInlineCacheRingSlot *ref, uint8_t offset, JSAtom atom, JSInlineCacheRingSlot *target);
 static int js_shape_delete_watchpoints(JSRuntime *rt, JSShape *shape, JSInlineCacheRingSlot *target);
 static JSInlineCacheWatchpoint *js_shape_create_watchpoint(JSRuntime *rt, JSShape *shape, JSInlineCacheRingSlot *ptr, uint8_t offset, JSAtom atom);
@@ -55989,7 +55989,7 @@ int ic_watchpoint_delete_handler(JSRuntime* rt, JSInlineCacheRingSlot *ref, uint
     return 0;
 }
 
-int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom, bool force) {
+int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom, BOOL force) {
     struct list_head *el, *el1;
     JSObject *p;
     JSInlineCacheRingSlot *cr;
