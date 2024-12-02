@@ -848,7 +848,9 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
     JSValue options_obj;
     BOOL backtrace_barrier = FALSE;
     BOOL eval_function = FALSE;
+    BOOL eval_module = FALSE;
     BOOL compile_only = FALSE;
+    BOOL compile_module = FALSE;
     BOOL is_async = FALSE;
     int flags;
 
@@ -860,12 +862,31 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
         if (get_bool_option(ctx, &eval_function, options_obj,
                             "eval_function"))
             return JS_EXCEPTION;
+        if (get_bool_option(ctx, &eval_module, options_obj,
+                            "eval_module"))
+            return JS_EXCEPTION;
         if (get_bool_option(ctx, &compile_only, options_obj,
                             "compile_only"))
+            return JS_EXCEPTION;
+        if (get_bool_option(ctx, &compile_module, options_obj,
+                            "compile_module"))
             return JS_EXCEPTION;
         if (get_bool_option(ctx, &is_async, options_obj,
                             "async"))
             return JS_EXCEPTION;
+    }
+
+    if (eval_module) {
+        obj = argv[0];
+        if (JS_VALUE_GET_TAG(obj) != JS_TAG_MODULE)
+            return JS_ThrowTypeError(ctx, "not a module");
+
+        if (JS_ResolveModule(ctx, obj) < 0)
+            return JS_EXCEPTION;
+
+        js_module_set_import_meta(ctx, obj, FALSE, FALSE);
+
+        return JS_EvalFunction(ctx, obj);
     }
 
     if (!eval_function) {
@@ -877,7 +898,7 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
         /* install the interrupt handler */
         JS_SetInterruptHandler(JS_GetRuntime(ctx), interrupt_handler, NULL);
     }
-    flags = JS_EVAL_TYPE_GLOBAL;
+    flags = compile_module ? JS_EVAL_TYPE_MODULE : JS_EVAL_TYPE_GLOBAL;
     if (backtrace_barrier)
         flags |= JS_EVAL_FLAG_BACKTRACE_BARRIER;
     if (compile_only)
