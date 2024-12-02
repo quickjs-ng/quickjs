@@ -1,6 +1,6 @@
 #
 # QuickJS Javascript Engine
-# 
+#
 # Copyright (c) 2017-2021 Fabrice Bellard
 # Copyright (c) 2017-2021 Charlie Gordon
 # Copyright (c) 2023 Ben Noordhuis
@@ -26,6 +26,7 @@
 
 BUILD_DIR=build
 BUILD_TYPE?=Release
+INSTALL_PREFIX?=/usr/local
 
 QJS=$(BUILD_DIR)/qjs
 QJSC=$(BUILD_DIR)/qjsc
@@ -49,7 +50,7 @@ fuzz:
 	./fuzz
 
 $(BUILD_DIR):
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX)
 
 $(QJS): $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) -j $(JOBS)
