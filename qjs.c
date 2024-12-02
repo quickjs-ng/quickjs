@@ -178,7 +178,7 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     for(i = 0; i < qjs__argc; i++) {
         JS_SetPropertyUint32(ctx, args, i, JS_NewString(ctx, qjs__argv[i]));
     }
-    JS_SetPropertyStr(ctx, global, "__argv", args);
+    JS_SetPropertyStr(ctx, global, "execArgv", args);
     JS_SetPropertyStr(ctx, global, "argv0", JS_NewString(ctx, qjs__argv[0]));
     JSValue navigator_proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, navigator_proto, navigator_proto_funcs, countof(navigator_proto_funcs));
