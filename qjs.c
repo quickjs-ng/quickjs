@@ -46,7 +46,9 @@
 extern const uint8_t qjsc_repl[];
 extern const uint32_t qjsc_repl_size;
 
-static JSCFunctionListEntry argv0;
+static int qjs__argc;
+static char **qjs__argv;
+
 
 static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
                     const char *filename, int eval_flags)
@@ -171,7 +173,13 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
 
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyFunctionList(ctx, global, global_obj, countof(global_obj));
-    JS_SetPropertyFunctionList(ctx, global, &argv0, 1);
+    JSValue args = JS_NewArray(ctx);
+    int i;
+    for(i = 0; i < qjs__argc; i++) {
+        JS_SetPropertyUint32(ctx, args, i, JS_NewString(ctx, qjs__argv[i]));
+    }
+    JS_SetPropertyStr(ctx, global, "__argv", args);
+    JS_SetPropertyStr(ctx, global, "argv0", JS_NewString(ctx, qjs__argv[0]));
     JSValue navigator_proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, navigator_proto, navigator_proto_funcs, countof(navigator_proto_funcs));
     JSValue navigator = JS_NewObjectProto(ctx, navigator_proto);
@@ -354,8 +362,9 @@ int main(int argc, char **argv)
     int64_t memory_limit = -1;
     int64_t stack_size = -1;
 
-    argv0 = (JSCFunctionListEntry)JS_PROP_STRING_DEF("argv0", argv[0],
-                                                     JS_PROP_C_W_E);
+    /* save for later */
+    qjs__argc = argc;
+    qjs__argv = argv;
 
     dump_flags_str = getenv("QJS_DUMP_FLAGS");
     dump_flags = dump_flags_str ? strtol(dump_flags_str, NULL, 16) : 0;
