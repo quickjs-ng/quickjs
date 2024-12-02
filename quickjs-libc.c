@@ -478,14 +478,41 @@ static JSValue js_loadScript(JSContext *ctx, JSValue this_val,
     return ret;
 }
 
-/* load a file as a UTF-8 encoded string */
+static int get_bool_option(JSContext *ctx, BOOL *pbool,
+                           JSValue obj,
+                           const char *option)
+{
+    JSValue val;
+    val = JS_GetPropertyStr(ctx, obj, option);
+    if (JS_IsException(val))
+        return -1;
+    if (!JS_IsUndefined(val)) {
+        *pbool = JS_ToBool(ctx, val);
+    }
+    JS_FreeValue(ctx, val);
+    return 0;
+}
+
+static void free_buf(JSRuntime *rt, void *opaque, void *ptr) {
+    js_free_rt(rt, ptr);
+}
+
+/* load a file as a UTF-8 encoded string or Uint8Array */
 static JSValue js_std_loadFile(JSContext *ctx, JSValue this_val,
                                int argc, JSValue *argv)
 {
     uint8_t *buf;
     const char *filename;
-    JSValue ret;
+    JSValue ret, options_obj;
     size_t buf_len;
+    BOOL binary = FALSE;
+
+    if (argc >= 2) {
+        options_obj = argv[1];
+        if (get_bool_option(ctx, &binary, options_obj,
+                            "binary"))
+            return JS_EXCEPTION;
+    }
 
     filename = JS_ToCString(ctx, argv[0]);
     if (!filename)
@@ -494,8 +521,13 @@ static JSValue js_std_loadFile(JSContext *ctx, JSValue this_val,
     JS_FreeCString(ctx, filename);
     if (!buf)
         return JS_NULL;
-    ret = JS_NewStringLen(ctx, (char *)buf, buf_len);
-    js_free(ctx, buf);
+    if (binary) {
+        ret = JS_NewUint8Array(ctx, buf, buf_len, free_buf, NULL, FALSE);
+    } else {
+        ret = JS_NewStringLen(ctx, (char *)buf, buf_len);
+        js_free(ctx, buf);
+    }
+
     return ret;
 }
 
@@ -820,21 +852,6 @@ static JSValue js_std_gc(JSContext *ctx, JSValue this_val,
 static int interrupt_handler(JSRuntime *rt, void *opaque)
 {
     return (os_pending_signals >> SIGINT) & 1;
-}
-
-static int get_bool_option(JSContext *ctx, BOOL *pbool,
-                           JSValue obj,
-                           const char *option)
-{
-    JSValue val;
-    val = JS_GetPropertyStr(ctx, obj, option);
-    if (JS_IsException(val))
-        return -1;
-    if (!JS_IsUndefined(val)) {
-        *pbool = JS_ToBool(ctx, val);
-    }
-    JS_FreeValue(ctx, val);
-    return 0;
 }
 
 static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
