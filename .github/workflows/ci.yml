@@ -160,6 +160,11 @@ jobs:
           git submodule update --init --checkout --depth 1
           time make test262
 
+      - name: test standalone
+        run: |
+          ./build/qjs -c examples/hello.js -o hello
+          ./hello
+
   windows-msvc:
     runs-on: windows-latest
     strategy:
@@ -184,6 +189,10 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
+      - name: test standalone
+        run: |
+          build\${{matrix.buildType}}\qjs.exe -c examples\hello.js -o hello.exe
+          .\hello.exe
       - name: Set up Visual Studio shell
         uses: egor-tensin/vs-shell@v2
         with:
@@ -351,6 +360,10 @@ jobs:
     - name: test
       run: |
         make test
+    - name: test standalone
+      run: |
+        ./build/qjs -c examples/hello.js -o hello.exe
+        ./hello
   windows-mingw-shared:
     runs-on: windows-latest
     defaults:
