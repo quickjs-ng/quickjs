@@ -213,9 +213,9 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
     list(APPEND qjs_libs ${CMAKE_THREAD_LIBS_INIT})
 endif()
 
-# if CC is clang, and the ABI is (.*)-windows-msvc, we don't want to link libm.
-xoption(QJS_CLANG_MSVC_ABI "Whether to treat compilation as using Clang's MSVC ABI." OFF)
-if(NOT MSVC AND NOT QJS_CLANG_MSVC_ABI)
+# try to find libm
+find_library(M_LIBRARIES m)
+if(M_LIBRARIES)
     list(APPEND qjs_libs m)
 endif()
 
