@@ -67,6 +67,7 @@ export function compileStandalone(inFile, outFile, targetExe) {
     throw new Error(`failed to create ${outFile}`);
   }
   if (os.write(newFd, newBuffer, 0, newBuffer.byteLength) < 0) {
+    os.close(newFd);
     throw new Error(`failed to write to output file`);
   }
   os.close(newFd);
@@ -103,11 +104,13 @@ export function runStandalone() {
 
   r = exe.seek(offset, std.SEEK_SET);
   if (r < 0) {
+    exe.close();
     throw new Error(`seek error: ${-r}`);
   }
 
   exe.read(bytecode.buffer, 0, bytecode.length);
   if (exe.error()) {
+    exe.close();
     throw new Error('read error');
   }
   exe.close();

@@ -64,13 +64,15 @@ static BOOL is_standalone(const char *exe)
     if (!exe_f)
         return FALSE;
     if (fseek(exe_f, -trailer_size, SEEK_END) < 0)
-        return FALSE;
+        goto fail;
     uint8_t buf[TRAILER_SIZE];
     if (fread(buf, 1, trailer_size, exe_f) != trailer_size)
-        return FALSE;
+        goto fail;
     fclose(exe_f);
-
     return !memcmp(buf, trailer_magic, trailer_magic_size);
+fail:
+    fclose(exe_f);
+    return FALSE;
 }
 
 static JSValue load_standalone_module(JSContext *ctx)
@@ -468,7 +470,7 @@ int main(int argc, char **argv)
                 if (!opt_arg) {
                     if (optind >= argc) {
                         fprintf(stderr, "qjs: missing expression for -e\n");
-                        exit(2);
+                        exit(1);
                     }
                     opt_arg = argv[optind++];
                 }
@@ -549,7 +551,7 @@ int main(int argc, char **argv)
                 if (!opt_arg) {
                     if (optind >= argc) {
                         fprintf(stderr, "qjs: missing file for -c\n");
-                        exit(2);
+                        exit(1);
                     }
                     opt_arg = argv[optind++];
                 }
@@ -560,7 +562,7 @@ int main(int argc, char **argv)
                 if (!opt_arg) {
                     if (optind >= argc) {
                         fprintf(stderr, "qjs: missing file for -o\n");
-                        exit(2);
+                        exit(1);
                     }
                     opt_arg = argv[optind++];
                 }
@@ -571,7 +573,7 @@ int main(int argc, char **argv)
                 if (!opt_arg) {
                     if (optind >= argc) {
                         fprintf(stderr, "qjs: missing file for --exe\n");
-                        exit(2);
+                        exit(1);
                     }
                     opt_arg = argv[optind++];
                 }
