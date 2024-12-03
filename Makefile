@@ -70,6 +70,7 @@ clean:
 
 codegen: $(QJSC)
 	$(QJSC) -ss -o gen/repl.c -m repl.js
+	$(QJSC) -ss -o gen/standalone.c -m standalone.js
 	$(QJSC) -e -o gen/function_source.c tests/function_source.js
 	$(QJSC) -e -o gen/hello.c examples/hello.js
 	$(QJSC) -e -o gen/hello_module.c -m examples/hello_module.js

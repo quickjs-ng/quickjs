@@ -259,6 +259,7 @@ target_link_libraries(qjsc qjs)
 
 add_executable(qjs_exe
     gen/repl.c
+    gen/standalone.c
     qjs.c
 )
 add_qjs_libc_if_needed(qjs_exe)
