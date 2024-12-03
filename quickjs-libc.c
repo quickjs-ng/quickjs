@@ -1024,7 +1024,7 @@ static JSValue js_std_open(JSContext *ctx, JSValue this_val,
     mode = JS_ToCString(ctx, argv[1]);
     if (!mode)
         goto fail;
-    if (mode[strspn(mode, "rwa+b")] != '\0') {
+    if (mode[strspn(mode, "rwa+bx")] != '\0') {
         JS_ThrowTypeError(ctx, "invalid file mode");
         goto fail;
     }
