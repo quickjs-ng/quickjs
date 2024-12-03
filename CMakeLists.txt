@@ -214,8 +214,15 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
 endif()
 
 # try to find libm
+string(TOLOWER "${CMAKE_C_COMPILER}" CC_LOWER)
+string(FIND "${CC_LOWER}" "clang" CLANG_SUBSTRING)
+if(CLANG_SUBSTRING GREATER -1)
+    set(IS_CLANG ON)
+else()
+    set(IS_CLANG OFF)
+endif()
 find_library(M_LIBRARIES m)
-if(M_LIBRARIES)
+if(NOT MSVC AND (NOT IS_CLANG OR (IS_CLANG AND M_LIBRARIES)))
     list(APPEND qjs_libs m)
 endif()
 
