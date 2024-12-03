@@ -126,5 +126,5 @@ Hello World
 ```
 
 :::note
-We have plans to make this process easier, stay tuned!
+See the ["Creating standalone executables"](#creating-standalone-executables) section for a simpler way.
 :::
