@@ -214,15 +214,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
 endif()
 
 # try to find libm
-string(TOLOWER "${CMAKE_C_COMPILER}" CC_LOWER)
-string(FIND "${CC_LOWER}" "tcc" TCC_SUBSTRING)
-if(TCC_SUBSTRING GREATER -1)
-    set(IS_TCC ON)
-else()
-    set(IS_TCC OFF)
-endif()
 find_library(M_LIBRARIES m)
-if(M_LIBRARIES OR IS_TCC)
+if(M_LIBRARIES OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC")
     list(APPEND qjs_libs m)
 endif()
 
