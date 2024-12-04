@@ -18626,7 +18626,8 @@ typedef struct BlockEnv {
     int drop_count; /* number of stack elements to drop */
     int label_finally; /* -1 if none */
     int scope_level;
-    int has_iterator;
+    uint8_t has_iterator : 1;
+    uint8_t is_regular_stmt : 1; // i.e. not a loop statement
 } BlockEnv;
 
 typedef struct JSGlobalVar {
@@ -24891,6 +24892,7 @@ static void push_break_entry(JSFunctionDef *fd, BlockEnv *be,
     be->label_finally = -1;
     be->scope_level = fd->scope_level;
     be->has_iterator = FALSE;
+    be->is_regular_stmt = FALSE;
 }
 
 static void pop_break_entry(JSFunctionDef *fd)
@@ -24917,11 +24919,12 @@ static __exception int emit_break(JSParseState *s, JSAtom name, int is_cont)
             emit_goto(s, OP_goto, top->label_cont);
             return 0;
         }
-        if (!is_cont &&
-            top->label_break != -1 &&
-            (name == JS_ATOM_NULL || top->label_name == name)) {
-            emit_goto(s, OP_goto, top->label_break);
-            return 0;
+        if (!is_cont && top->label_break != -1) {
+            if (top->label_name == name ||
+                (name == JS_ATOM_NULL && !top->is_regular_stmt)) {
+                emit_goto(s, OP_goto, top->label_break);
+                return 0;
+            }
         }
         i = 0;
         if (top->has_iterator) {
@@ -25335,7 +25338,8 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     JS_FreeAtom(ctx, var_name);
 
     if (token_is_pseudo_keyword(s, JS_ATOM_of)) {
-        break_entry.has_iterator = is_for_of = TRUE;
+        is_for_of = TRUE;
+        break_entry.has_iterator = TRUE;
         break_entry.drop_count += 2;
         if (has_initializer)
             goto initializer_error;
@@ -25479,13 +25483,14 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         &&  s->token.val != TOK_DO
         &&  s->token.val != TOK_WHILE) {
             /* labelled regular statement */
+            JSFunctionDef *fd = s->cur_func;
             int label_break, mask;
             BlockEnv break_entry;
 
             label_break = new_label(s);
-            push_break_entry(s->cur_func, &break_entry,
-                             label_name, label_break, -1, 0);
-            if (!s->cur_func->is_strict_mode &&
+            push_break_entry(fd, &break_entry, label_name, label_break, -1, 0);
+            fd->top_break->is_regular_stmt = 1;
+            if (!fd->is_strict_mode &&
                 (decl_mask & DECL_MASK_FUNC_WITH_LABEL)) {
                 mask = DECL_MASK_FUNC | DECL_MASK_FUNC_WITH_LABEL;
             } else {
@@ -25494,7 +25499,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             if (js_parse_statement_or_decl(s, mask))
                 goto fail;
             emit_label(s, label_break);
-            pop_break_entry(s->cur_func);
+            pop_break_entry(fd);
             goto done;
         }
     }
