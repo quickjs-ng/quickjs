@@ -25338,7 +25338,8 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     JS_FreeAtom(ctx, var_name);
 
     if (token_is_pseudo_keyword(s, JS_ATOM_of)) {
-        break_entry.has_iterator = is_for_of = TRUE;
+        is_for_of = TRUE;
+        break_entry.has_iterator = TRUE;
         break_entry.drop_count += 2;
         if (has_initializer)
             goto initializer_error;
