@@ -18626,8 +18626,8 @@ typedef struct BlockEnv {
     int drop_count; /* number of stack elements to drop */
     int label_finally; /* -1 if none */
     int scope_level;
-    BOOL has_iterator : 1;
-    BOOL is_regular_stmt : 1; // i.e. not a loop statement
+    uint8_t has_iterator : 1;
+    uint8_t is_regular_stmt : 1; // i.e. not a loop statement
 } BlockEnv;
 
 typedef struct JSGlobalVar {
