@@ -487,6 +487,7 @@ typedef void JSClassGCMark(JSRuntime *rt, JSValue val,
 typedef JSValue JSClassCall(JSContext *ctx, JSValue func_obj,
                             JSValue this_val, int argc, JSValue *argv,
                             int flags);
+typedef JS_BOOL JSClassCanDestroy(JSRuntime *rt, JSValue val);
 
 typedef struct JSClassDef {
     const char *class_name; /* pure ASCII only! */
@@ -501,6 +502,7 @@ typedef struct JSClassDef {
     /* XXX: suppress this indirection ? It is here only to save memory
        because only a few classes need these methods */
     JSClassExoticMethods *exotic;
+    JSClassCanDestroy *can_destroy;
 } JSClassDef;
 
 #define JS_INVALID_CLASS_ID 0
