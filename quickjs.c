@@ -43386,9 +43386,14 @@ static const JSCFunctionListEntry js_math_obj[] = {
    between UTC time and local time 'd' in minutes */
 static int getTimezoneOffset(int64_t time) {
 #if defined(_WIN32)
-    TIME_ZONE_INFORMATION time_zone_info;
-    GetTimeZoneInformation(&time_zone_info);
-    return (int)time_zone_info.Bias / 60;
+    DWORD r;
+    TIME_ZONE_INFORMATION t;
+    r = GetTimeZoneInformation(&t);
+    if (r == TIME_ZONE_ID_INVALID)
+        return 0;
+    if (r == TIME_ZONE_ID_DAYLIGHT)
+         return (int)(t.Bias + t.DaylightBias);
+    return (int)t.Bias;
 #else
     time_t ti;
     struct tm tm;
