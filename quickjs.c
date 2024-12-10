@@ -307,7 +307,7 @@ struct JSRuntime {
     JSRuntimeFinalizerState *finalizers;
 
     /* Unified handler for all the engine hooks */
-    BOOL (*hooks)(JSRuntimeHooks type, void* opaque);
+    JS_BOOL (*hooks)(JSRuntimeHooks type, void* opaque);
 };
 
 struct JSClass {
@@ -1443,7 +1443,17 @@ static void js_trigger_gc(JSRuntime *rt, size_t size)
                    (uint64_t)rt->malloc_state.malloc_size);
         }
 #endif
-        JS_RunGC(rt);
+        //To ensure JS_RunGC cannot be executed again within callbacks, disable and restore it after.
+        size_t tmp_threshold = rt->malloc_gc_threshold;
+        rt->malloc_gc_threshold=-1;
+
+        if((rt->hooks == NULL) || rt->hooks(JS_HOOK_GC_BEFORE,NULL)){
+            JS_RunGC(rt);
+            if(rt->hooks != NULL)rt->hooks(JS_HOOK_GC_AFTER,NULL);
+        }
+
+        rt->malloc_gc_threshold=tmp_threshold;
+
         rt->malloc_gc_threshold = rt->malloc_state.malloc_size +
             (rt->malloc_state.malloc_size >> 1);
     }
@@ -1938,7 +1948,7 @@ void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold)
     rt->malloc_gc_threshold = gc_threshold;
 }
 
-void JS_SetHooksHandler(JSRuntime *rt, BOOL (*fn)(JSRuntimeHooks type, void* opaque))
+void JS_SetHooksHandler(JSRuntime *rt, JS_BOOL (*fn)(JSRuntimeHooks type, void* opaque))
 {
     rt->hooks = fn;
 }
