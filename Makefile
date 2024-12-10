@@ -65,7 +65,6 @@ install: $(QJS) $(QJSC)
 	cmake --build $(BUILD_DIR) --target install
 
 clean:
-	@rm -f v8.txt[1-9]*
 	cmake --build $(BUILD_DIR) --target clean
 
 codegen: $(QJSC)
