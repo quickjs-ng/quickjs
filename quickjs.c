@@ -15412,8 +15412,24 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
         CASE(OP_check_ctor):
             if (JS_IsUndefined(new_target)) {
+            non_ctor_call:
                 JS_ThrowTypeError(ctx, "class constructors must be invoked with 'new'");
                 goto exception;
+            }
+            BREAK;
+        CASE(OP_init_ctor):
+            {
+                JSValue super, ret;
+                if (JS_IsUndefined(new_target))
+                    goto non_ctor_call;
+                super = JS_GetPrototype(ctx, func_obj);
+                if (JS_IsException(super))
+                    goto exception;
+                ret = JS_CallConstructor2(ctx, super, new_target, argc, argv);
+                JS_FreeValue(ctx, super);
+                if (JS_IsException(ret))
+                    goto exception;
+                *sp++ = ret;
             }
             BREAK;
         CASE(OP_check_brand):
@@ -21896,9 +21912,6 @@ static __exception int js_parse_class_default_ctor(JSParseState *s,
     fd->has_this_binding = TRUE;
     fd->new_target_allowed = TRUE;
 
-    /* error if not invoked as a constructor */
-    emit_op(s, OP_check_ctor);
-
     push_scope(s);  /* enter body scope */
     fd->body_scope = fd->scope_level;
     if (has_super) {
@@ -21906,43 +21919,17 @@ static __exception int js_parse_class_default_ctor(JSParseState *s,
         fd->super_call_allowed = TRUE;
         fd->arguments_allowed = TRUE;
         fd->has_arguments_binding = TRUE;
-
         func_type = JS_PARSE_FUNC_DERIVED_CLASS_CONSTRUCTOR;
-        /* super */
-        emit_op(s, OP_scope_get_var);
-        emit_atom(s, JS_ATOM_this_active_func);
-        emit_u16(s, 0);
-
-        emit_op(s, OP_get_super);
-
-        emit_op(s, OP_scope_get_var);
-        emit_atom(s, JS_ATOM_new_target);
-        emit_u16(s, 0);
-
-        emit_op(s, OP_array_from);
-        emit_u16(s, 0);
-        emit_op(s, OP_push_i32);
-        emit_u32(s, 0);
-
-        /* arguments */
-        emit_op(s, OP_scope_get_var);
-        emit_atom(s, JS_ATOM_arguments);
-        emit_u16(s, 0);
-
-        emit_op(s, OP_append);
-        /* drop the index */
-        emit_op(s, OP_drop);
-
-        emit_op(s, OP_apply);
-        emit_u16(s, 1);
-        /* set the 'this' value */
-        emit_op(s, OP_dup);
+        emit_op(s, OP_init_ctor);
+        // TODO(bnoordhuis) roll into OP_init_ctor
         emit_op(s, OP_scope_put_var_init);
         emit_atom(s, JS_ATOM_this);
         emit_u16(s, 0);
         emit_class_field_init(s);
     } else {
         func_type = JS_PARSE_FUNC_CLASS_CONSTRUCTOR;
+        /* error if not invoked as a constructor */
+        emit_op(s, OP_check_ctor);
         emit_class_field_init(s);
     }
 
