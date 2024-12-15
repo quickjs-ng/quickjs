@@ -672,10 +672,10 @@ int js_module_set_import_meta(JSContext *ctx, JSValue func_val,
         } else
 #endif
         {
-            pstrcat(buf, sizeof(buf), module_name);
+            js__pstrcat(buf, sizeof(buf), module_name);
         }
     } else {
-        pstrcpy(buf, sizeof(buf), module_name);
+        js__pstrcpy(buf, sizeof(buf), module_name);
     }
     JS_FreeCString(ctx, module_name);
 
@@ -697,7 +697,7 @@ JSModuleDef *js_module_loader(JSContext *ctx,
 {
     JSModuleDef *m;
 
-    if (has_suffix(module_name, QJS_NATIVE_MODULE_SUFFIX)) {
+    if (js__has_suffix(module_name, QJS_NATIVE_MODULE_SUFFIX)) {
         m = js_module_loader_so(ctx, module_name);
     } else {
         size_t buf_len;

@@ -146,7 +146,7 @@ static int eval_file(JSContext *ctx, const char *filename, int module)
     }
 
     if (module < 0) {
-        module = (has_suffix(filename, ".mjs") ||
+        module = (js__has_suffix(filename, ".mjs") ||
                   JS_DetectModule((const char *)buf, buf_len));
     }
     if (module)
