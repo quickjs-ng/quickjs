@@ -1821,7 +1821,7 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
     error:
         dbuf_free(&s->byte_code);
         dbuf_free(&s->group_names);
-        pstrcpy(error_msg, error_msg_size, s->u.error_msg);
+        js__pstrcpy(error_msg, error_msg_size, s->u.error_msg);
         *plen = 0;
         return NULL;
     }

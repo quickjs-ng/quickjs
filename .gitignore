@@ -10,3 +10,4 @@ cmake-*
 out/
 CMakeUserPresets.json
 fuzz
+.vscode/

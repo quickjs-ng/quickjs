@@ -10497,7 +10497,7 @@ static JSValue js_atof(JSContext *ctx, const char *p, size_t len,
             }
         }
     } else {
-        if (*p == 'I' && (flags & ATOD_ACCEPT_INFINITY) && strstart(p, "Infinity", &p)) {
+        if (*p == 'I' && (flags & ATOD_ACCEPT_INFINITY) && js__strstart(p, "Infinity", &p)) {
             d = INF;
             if (sign == '-')
                 d = -d;
@@ -26496,8 +26496,8 @@ static char *js_default_module_normalize_name(JSContext *ctx,
         }
     }
     if (filename[0] != '\0')
-        pstrcat(filename, cap, "/");
-    pstrcat(filename, cap, r);
+        js__pstrcat(filename, cap, "/");
+    js__pstrcat(filename, cap, r);
     //    printf("normalize: %s %s -> %s\n", base_name, name, filename);
     return filename;
 }
