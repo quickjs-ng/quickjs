@@ -3636,7 +3636,7 @@ static JSValue js_worker_ctor(JSContext *ctx, JSValue new_target,
     /* no join at the end */
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     // musl libc gives threads 80 kb stacks, much smaller than
-    // JS_DEFAULT_STACK_SIZE (256 kb)
+    // JS_DEFAULT_STACK_SIZE (1 MB)
     pthread_attr_setstacksize(&attr, 2 << 20); // 2 MB, glibc default
     ret = pthread_create(&tid, &attr, worker_func, args);
     pthread_attr_destroy(&attr);
