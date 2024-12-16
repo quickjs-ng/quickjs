@@ -515,7 +515,7 @@ static JSValue js_evalScript_262(JSContext *ctx, JSValue this_val,
 static void start_thread(js_thread_t *thrd, void *(*start)(void *), void *arg)
 {
     // musl libc gives threads 80 kb stacks, much smaller than
-    // JS_DEFAULT_STACK_SIZE (256 kb)
+    // JS_DEFAULT_STACK_SIZE (1 MB)
     static const unsigned stacksize = 2 << 20; // 2 MB, glibc default
 #ifdef _WIN32
     HANDLE h, cp;
