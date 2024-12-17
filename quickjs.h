@@ -788,6 +788,7 @@ typedef enum JSTypedArrayEnum {
     JS_TYPED_ARRAY_UINT32,
     JS_TYPED_ARRAY_BIG_INT64,
     JS_TYPED_ARRAY_BIG_UINT64,
+    JS_TYPED_ARRAY_FLOAT16,
     JS_TYPED_ARRAY_FLOAT32,
     JS_TYPED_ARRAY_FLOAT64,
 } JSTypedArrayEnum;
@@ -801,19 +802,8 @@ JS_EXTERN JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValue obj,
 JS_EXTERN JSValue JS_NewUint8Array(JSContext *ctx, uint8_t *buf, size_t len,
                                    JSFreeArrayBufferDataFunc *free_func, void *opaque,
                                    JS_BOOL is_shared);
-JS_EXTERN JS_BOOL JS_IsTypedArray(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsUint8ClampedArray(JSValue obj); 
-JS_EXTERN JS_BOOL JS_IsInt8Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsUint8Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsInt16Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsUint16Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsInt32Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsUint32Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsBigInt64Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsBigUint64Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsFloat16Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsFloat32Array(JSValue obj);
-JS_EXTERN JS_BOOL JS_IsFloat64Array(JSValue obj);
+/* returns -1 if not a typed array otherwise return a JSTypedArrayEnum value */
+JS_EXTERN int JS_GetTypedArrayType(JSValue obj);
 JS_EXTERN JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len);
 typedef struct {
     void *(*sab_alloc)(void *opaque, size_t size);
