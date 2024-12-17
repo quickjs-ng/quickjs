@@ -52448,6 +52448,16 @@ static JSValue js_typed_array_get_byteOffset(JSContext *ctx, JSValue this_val)
     return js_uint32(ta->offset);
 }
 
+JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValueConst *argv,
+                         JSTypedArrayEnum type)
+{
+    if (type < JS_TYPED_ARRAY_UINT8C || type > JS_TYPED_ARRAY_FLOAT64)
+        return JS_ThrowRangeError(ctx, "invalid typed array type");
+
+    return js_typed_array_constructor(ctx, JS_UNDEFINED, argc, argv,
+                                      JS_CLASS_UINT8C_ARRAY + type);
+}
+
 /* Return the buffer associated to the typed array or an exception if
    it is not a typed array or if the buffer is detached. pbyte_offset,
    pbyte_length or pbytes_per_element can be NULL. */
@@ -54755,8 +54765,57 @@ JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len)
     return js_new_uint8array(ctx, buffer);
 }
 
+JS_BOOL JS_IsTypedArray(JSValue obj) {
+    JSClassID class_id = JS_GetClassID(obj);
+    return class_id >= JS_CLASS_INT8_ARRAY && class_id <= JS_CLASS_FLOAT64_ARRAY;
+}
+
+JS_BOOL JS_isUint8ClampedArray(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_UINT8C_ARRAY;
+}
+
+JS_BOOL JS_IsInt8Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_INT8_ARRAY;
+}
+
 JS_BOOL JS_IsUint8Array(JSValue obj) {
     return JS_GetClassID(obj) == JS_CLASS_UINT8_ARRAY;
+}
+
+JS_BOOL JS_IsInt16Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_INT16_ARRAY;
+}
+
+JS_BOOL JS_IsUint16Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_UINT16_ARRAY;
+}
+
+JS_BOOL JS_IsInt32Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_INT32_ARRAY;
+}
+
+JS_BOOL JS_IsUint32Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_UINT32_ARRAY;
+}
+
+JS_BOOL JS_IsBigInt64Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_BIG_INT64_ARRAY;
+}
+
+JS_BOOL JS_IsBigUint64Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_BIG_UINT64_ARRAY;
+}
+
+JS_BOOL JS_IsFloat16Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_FLOAT16_ARRAY;
+}
+
+JS_BOOL JS_IsFloat32Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_FLOAT32_ARRAY;
+}
+
+JS_BOOL JS_IsFloat64Array(JSValue obj) {
+    return JS_GetClassID(obj) == JS_CLASS_FLOAT64_ARRAY;
 }
 
 /* Atomics */
