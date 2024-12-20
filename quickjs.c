@@ -52448,7 +52448,7 @@ static JSValue js_typed_array_get_byteOffset(JSContext *ctx, JSValue this_val)
     return js_uint32(ta->offset);
 }
 
-JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValueConst *argv,
+JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValue *argv,
                          JSTypedArrayEnum type)
 {
     if (type < JS_TYPED_ARRAY_UINT8C || type > JS_TYPED_ARRAY_FLOAT64)
