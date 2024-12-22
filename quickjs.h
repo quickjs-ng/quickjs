@@ -775,6 +775,24 @@ JS_EXTERN void JS_DetachArrayBuffer(JSContext *ctx, JSValue obj);
 JS_EXTERN uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize, JSValue obj);
 JS_EXTERN JS_BOOL JS_IsArrayBuffer(JSValue obj);
 JS_EXTERN uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValue obj);
+
+typedef enum JSTypedArrayEnum {
+    JS_TYPED_ARRAY_UINT8C = 0,
+    JS_TYPED_ARRAY_INT8,
+    JS_TYPED_ARRAY_UINT8,
+    JS_TYPED_ARRAY_INT16,
+    JS_TYPED_ARRAY_UINT16,
+    JS_TYPED_ARRAY_INT32,
+    JS_TYPED_ARRAY_UINT32,
+    JS_TYPED_ARRAY_BIG_INT64,
+    JS_TYPED_ARRAY_BIG_UINT64,
+    JS_TYPED_ARRAY_FLOAT16,
+    JS_TYPED_ARRAY_FLOAT32,
+    JS_TYPED_ARRAY_FLOAT64,
+} JSTypedArrayEnum;
+
+JS_EXTERN JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValue *argv,
+                         JSTypedArrayEnum array_type);
 JS_EXTERN JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValue obj,
                                          size_t *pbyte_offset,
                                          size_t *pbyte_length,
@@ -782,7 +800,8 @@ JS_EXTERN JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValue obj,
 JS_EXTERN JSValue JS_NewUint8Array(JSContext *ctx, uint8_t *buf, size_t len,
                                    JSFreeArrayBufferDataFunc *free_func, void *opaque,
                                    JS_BOOL is_shared);
-JS_EXTERN JS_BOOL JS_IsUint8Array(JSValue obj);
+/* returns -1 if not a typed array otherwise return a JSTypedArrayEnum value */
+JS_EXTERN int JS_GetTypedArrayType(JSValue obj);
 JS_EXTERN JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len);
 typedef struct {
     void *(*sab_alloc)(void *opaque, size_t size);

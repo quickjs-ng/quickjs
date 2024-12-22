@@ -52449,6 +52449,16 @@ static JSValue js_typed_array_get_byteOffset(JSContext *ctx, JSValue this_val)
     return js_uint32(ta->offset);
 }
 
+JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValue *argv,
+                         JSTypedArrayEnum type)
+{
+    if (type < JS_TYPED_ARRAY_UINT8C || type > JS_TYPED_ARRAY_FLOAT64)
+        return JS_ThrowRangeError(ctx, "invalid typed array type");
+
+    return js_typed_array_constructor(ctx, JS_UNDEFINED, argc, argv,
+                                      JS_CLASS_UINT8C_ARRAY + type);
+}
+
 /* Return the buffer associated to the typed array or an exception if
    it is not a typed array or if the buffer is detached. pbyte_offset,
    pbyte_length or pbytes_per_element can be NULL. */
@@ -54756,8 +54766,13 @@ JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len)
     return js_new_uint8array(ctx, buffer);
 }
 
-JS_BOOL JS_IsUint8Array(JSValue obj) {
-    return JS_GetClassID(obj) == JS_CLASS_UINT8_ARRAY;
+int JS_GetTypedArrayType(JSValue obj)
+{
+    JSClassID class_id = JS_GetClassID(obj);
+    if (class_id >= JS_CLASS_UINT8C_ARRAY && class_id <= JS_CLASS_FLOAT64_ARRAY)
+        return class_id - JS_CLASS_UINT8C_ARRAY;
+    else
+        return -1;
 }
 
 /* Atomics */
