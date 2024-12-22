@@ -54768,9 +54768,10 @@ JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len)
 int JS_GetTypedArrayType(JSValue obj)
 {
     JSClassID class_id = JS_GetClassID(obj);
-    int mask = -((class_id >= JS_CLASS_UINT8C_ARRAY) & (class_id <= JS_CLASS_FLOAT64_ARRAY));
-    int offset = (class_id - JS_CLASS_UINT8C_ARRAY) & mask;
-    return offset | (~mask & -1);
+    if (class_id >= JS_CLASS_UINT8C_ARRAY && class_id <= JS_CLASS_FLOAT64_ARRAY)
+        return class_id - JS_CLASS_UINT8C_ARRAY;
+    else
+        return -1;
 }
 
 /* Atomics */
