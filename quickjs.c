@@ -1273,6 +1273,8 @@ static JSValue js_promise_resolve(JSContext *ctx, JSValue this_val,
                                   int argc, JSValue *argv, int magic);
 static JSValue js_promise_then(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv);
+static BOOL js_string_eq(JSContext *ctx,
+                             const JSString *p1, const JSString *p2);
 static int js_string_compare(JSContext *ctx,
                              const JSString *p1, const JSString *p2);
 static JSValue JS_ToNumber(JSContext *ctx, JSValue val);
@@ -3367,9 +3369,9 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
         JS_FreeValue(ctx, num);
         return str;
     }
-    ret = js_string_compare(ctx, p, JS_VALUE_GET_STRING(str));
+    ret = js_string_eq(ctx, p, JS_VALUE_GET_STRING(str));
     JS_FreeValue(ctx, str);
-    if (ret == 0) {
+    if (ret) {
         return num;
     } else {
         JS_FreeValue(ctx, num);
@@ -4274,6 +4276,12 @@ static int js_string_memcmp(const JSString *p1, const JSString *p2, int len)
             res = memcmp16(p1->u.str16, p2->u.str16, len);
     }
     return res;
+}
+
+static BOOL js_string_eq(JSContext *ctx, const JSString *p1, const JSString *p2) {
+    if (p1->len != p2->len)
+        return false;
+    return js_string_memcmp(p1, p2, p1->len) == 0;
 }
 
 /* return < 0, 0 or > 0 */
@@ -13230,7 +13238,7 @@ static BOOL js_strict_eq2(JSContext *ctx, JSValue op1, JSValue op2,
             } else {
                 p1 = JS_VALUE_GET_STRING(op1);
                 p2 = JS_VALUE_GET_STRING(op2);
-                res = (js_string_compare(ctx, p1, p2) == 0);
+                res = js_string_eq(ctx, p1, p2);
             }
         }
         break;
