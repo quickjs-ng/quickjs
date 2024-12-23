@@ -4280,7 +4280,7 @@ static int js_string_memcmp(const JSString *p1, const JSString *p2, int len)
 
 static BOOL js_string_eq(JSContext *ctx, const JSString *p1, const JSString *p2) {
     if (p1->len != p2->len)
-        return false;
+        return FALSE;
     return js_string_memcmp(p1, p2, p1->len) == 0;
 }
 
