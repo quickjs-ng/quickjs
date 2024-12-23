@@ -48,7 +48,13 @@ export function compileStandalone(inFile, outFile, targetExe) {
   const bytecode = new Uint8Array(bjson.write(code, JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_REFERENCE | JS_WRITE_OBJ_STRIP_SOURCE));
 
   // Step 2: copy the bytecode to the end of the executable and add a marker.
-  const exe = std.loadFile(targetExe ?? globalThis.argv0, { binary: true });
+  const exeFileName = targetExe ?? globalThis.argv0;
+  const exe = std.loadFile(exeFileName, { binary: true });
+
+  if (!exe) {
+    throw new Error(`failed to open executable: ${exeFileName}`);
+  }
+
   const exeSize = exe.length;
   const newBuffer = exe.buffer.transfer(exeSize + bytecode.length + Trailer.Size);
   const newExe = new Uint8Array(newBuffer);
