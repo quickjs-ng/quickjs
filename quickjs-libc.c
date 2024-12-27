@@ -3035,14 +3035,18 @@ static int my_execvpe(const char *filename, char **argv, char **envp)
     return -1;
 }
 
-static js_once_t js_os_exec_once = JS_ONCE_INIT;
-
 static void (*js_os_exec_closefrom)(int);
+
+#ifndef EMSCRIPTEN
+
+static js_once_t js_os_exec_once = JS_ONCE_INIT;
 
 static void js_os_exec_once_init(void)
 {
     js_os_exec_closefrom = dlsym(RTLD_DEFAULT, "closefrom");
 }
+
+#endif
 
 /* exec(args[, options]) -> exitcode */
 static JSValue js_os_exec(JSContext *ctx, JSValue this_val,
@@ -3163,9 +3167,11 @@ static JSValue js_os_exec(JSContext *ctx, JSValue this_val,
         }
     }
 
+#ifndef EMSCRIPTEN
     // should happen pre-fork because it calls dlsym()
     // and that's not an async-signal-safe function
     js_once(&js_os_exec_once, js_os_exec_once_init);
+#endif
 
     pid = fork();
     if (pid < 0) {
