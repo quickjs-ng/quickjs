@@ -3037,7 +3037,7 @@ static int my_execvpe(const char *filename, char **argv, char **envp)
 
 static void (*js_os_exec_closefrom)(int);
 
-#ifndef EMSCRIPTEN
+#if !defined(EMSCRIPTEN) && !defined(__wasi__)
 
 static js_once_t js_os_exec_once = JS_ONCE_INIT;
 
@@ -3167,7 +3167,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValue this_val,
         }
     }
 
-#ifndef EMSCRIPTEN
+#if !defined(EMSCRIPTEN) && !defined(__wasi__)
     // should happen pre-fork because it calls dlsym()
     // and that's not an async-signal-safe function
     js_once(&js_os_exec_once, js_os_exec_once_init);
