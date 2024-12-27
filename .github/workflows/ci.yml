@@ -398,7 +398,7 @@ jobs:
         run: emcc -v
       - name: build
         run: |
-          emcmake cmake -B build
+          emcmake cmake -B build -DBUILD_QJS_LIBC=ON
           emmake make -C build qjs_wasm -j$(getconf _NPROCESSORS_ONLN)
       - name: result
         run: ls -lh build
