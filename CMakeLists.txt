@@ -165,10 +165,6 @@ endif()
 
 if(CONFIG_UBSAN)
 message(STATUS "Building with UBSan")
-# __has_feature(undefined_sanitizer) or __SANITIZE_UNDEFINED__ don't exist
-add_compile_definitions(
-    __UBSAN__=1
-)
 add_compile_options(
     -fsanitize=undefined
     -fno-sanitize-recover=all
