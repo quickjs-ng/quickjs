@@ -7,12 +7,12 @@ function test_exception_source_pos()
     var e;
 
     try {
-        throw new Error(""); // line 10, column 15
+        throw new Error(""); // line 10, column 19
     } catch(_e) {
         e = _e;
     }
 
-    assert(e.stack.includes("test_builtin.js:10:15"));
+    assert(e.stack.includes("test_builtin.js:10:19"));
 }
 
 // Keep this at the top; it tests source positions.
@@ -36,7 +36,7 @@ function test_exception_prepare_stack()
     };
 
     try {
-        throw new Error(""); // line 39, column 15
+        throw new Error(""); // line 39, column 19
     } catch(_e) {
         e = _e;
     }
@@ -48,7 +48,7 @@ function test_exception_prepare_stack()
     assert(f.getFunctionName(), 'test_exception_prepare_stack');
     assert(f.getFileName().endsWith('test_builtin.js'));
     assert(f.getLineNumber(), 39);
-    assert(f.getColumnNumber(), 15);
+    assert(f.getColumnNumber(), 19);
     assert(!f.isNative());
 }
 
@@ -64,7 +64,7 @@ function test_exception_stack_size_limit()
     };
 
     try {
-        throw new Error(""); // line 67, column 15
+        throw new Error(""); // line 67, column 19
     } catch(_e) {
         e = _e;
     }
@@ -77,7 +77,7 @@ function test_exception_stack_size_limit()
     assert(f.getFunctionName(), 'test_exception_stack_size_limit');
     assert(f.getFileName().endsWith('test_builtin.js'));
     assert(f.getLineNumber(), 67);
-    assert(f.getColumnNumber(), 15);
+    assert(f.getColumnNumber(), 19);
     assert(!f.isNative());
 }
 
