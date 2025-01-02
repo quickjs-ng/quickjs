@@ -19928,6 +19928,8 @@ static __exception int next_token(JSParseState *s)
     }
     s->token.col_num = max_int(1, s->mark - s->eol);
     s->buf_ptr = p;
+    s->last_line_num = s->token.line_num;
+    s->last_col_num = s->token.col_num;
 
     //    dump_token(s, &s->token);
     return 0;
@@ -24436,6 +24438,7 @@ static __exception int js_parse_expr_binary(JSParseState *s, int level,
         }
         if (next_token(s))
             return -1;
+        emit_source_loc(s);
         if (js_parse_expr_binary(s, level - 1, parse_flags))
             return -1;
         emit_op(s, opcode);
