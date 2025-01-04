@@ -3519,7 +3519,7 @@ static inline BOOL JS_IsEmptyString(JSValue v)
 
 /* JSClass support */
 
-/* a new class ID is allocated if *pclass_id != 0 */
+/* a new class ID is allocated if *pclass_id == 0, otherwise *pclass_id is left unchanged */
 JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id)
 {
     JSClassID class_id = *pclass_id;
