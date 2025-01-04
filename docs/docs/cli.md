@@ -66,7 +66,7 @@ $ qjs -c app.js -o app --exe qjs
 
 The resulting `app` binary will have the same runtime dependencies as the `qjs` binary. This is acomplished
 by compiling the target JavaScript file to bytecode and adding it a copy of the executable, with a little
-trailer to help locate it.
+trailer to help locate it. `--exe` expects the absolute path to `qjs`, e.g., `~/bin/qjs` or `$HOME/bin/qjs`.
 
 Rather than using the current executable, it's possible to use the `--exe` switch to create standalone
 executables for other platforms.
