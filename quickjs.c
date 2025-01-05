@@ -20414,8 +20414,8 @@ static void emit_source_loc(JSParseState *s)
     DynBuf *bc = &fd->byte_code;
 
     dbuf_putc(bc, OP_source_loc);
-    dbuf_put_u32(bc, s->last_line_num);
-    dbuf_put_u32(bc, s->last_col_num);
+    dbuf_put_u32(bc, s->token.line_num);
+    dbuf_put_u32(bc, s->token.col_num);
 }
 
 static void emit_op(JSParseState *s, uint8_t val)
@@ -24424,6 +24424,7 @@ static __exception int js_parse_expr_binary(JSParseState *s, int level,
         }
         if (next_token(s))
             return -1;
+        emit_source_loc(s);
         if (js_parse_expr_binary(s, level - 1, parse_flags))
             return -1;
         emit_op(s, opcode);
