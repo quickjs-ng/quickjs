@@ -243,7 +243,7 @@ define_i64toa(shift)
 #endif /* TEST_SHIFTBUF */
 
 #if defined(TEST_DIGIT_PAIRS) || defined(TEST_DIGIT_1PASS)
-static char const digits100[200] =
+static char const digits100[] =
     "00010203040506070809"
     "10111213141516171819"
     "20212223242526272829"
