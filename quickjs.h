@@ -614,7 +614,7 @@ static inline JS_BOOL JS_IsObject(JSValue v)
 
 JS_EXTERN JSValue JS_Throw(JSContext *ctx, JSValue obj);
 JS_EXTERN JSValue JS_GetException(JSContext *ctx);
-JS_BOOL JS_HasException(JSContext *ctx);
+JS_EXTERN JS_BOOL JS_HasException(JSContext *ctx);
 JS_EXTERN JS_BOOL JS_IsError(JSContext *ctx, JSValue val);
 JS_EXTERN JS_BOOL JS_IsUncatchableError(JSContext* ctx, JSValue val);
 JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
