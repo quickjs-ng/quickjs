@@ -15420,6 +15420,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         CASE(OP_init_ctor):
             {
                 JSValue super, ret;
+                sf->cur_pc = pc;
                 if (JS_IsUndefined(new_target))
                     goto non_ctor_call;
                 super = JS_GetPrototype(ctx, func_obj);
