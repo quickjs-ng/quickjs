@@ -6622,9 +6622,9 @@ static const char *get_func_name(JSContext *ctx, JSValue func)
 
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
-static void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_func,
-                            const char *filename, int line_num, int col_num,
-                            int backtrace_flags)
+void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_func,
+                     const char *filename, int line_num, int col_num,
+                     int backtrace_flags)
 {
     JSStackFrame *sf, *sf_start;
     JSValue stack, prepare, saved_exception;
