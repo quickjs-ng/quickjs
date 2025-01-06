@@ -540,6 +540,16 @@ typedef struct JSClassDef {
     JSClassExoticMethods *exotic;
 } JSClassDef;
 
+#define JS_EVAL_OPTIONS_VERSION 1
+
+typedef struct JSEvalOptions {
+  int version;
+  int eval_flags;
+  const char *filename;
+  int line_num;
+  // can add new fields in ABI-compatible manner by incrementing JS_EVAL_OPTIONS_VERSION
+} JSEvalOptions;
+
 #define JS_INVALID_CLASS_ID 0
 JS_EXTERN JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id);
 /* Returns the class ID if `v` is an object, otherwise returns JS_INVALID_CLASS_ID. */
@@ -803,10 +813,14 @@ JS_EXTERN bool JS_DetectModule(const char *input, size_t input_len);
 /* 'input' must be zero terminated i.e. input[input_len] = '\0'. */
 JS_EXTERN JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
                           const char *filename, int eval_flags);
-/* same as JS_Eval() but with an explicit 'this_obj' parameter */
+JS_EXTERN JSValue JS_Eval2(JSContext *ctx, const char *input, size_t input_len, 
+                           JSEvalOptions *options);
 JS_EXTERN JSValue JS_EvalThis(JSContext *ctx, JSValue this_obj,
                               const char *input, size_t input_len,
                               const char *filename, int eval_flags);
+JS_EXTERN JSValue JS_EvalThis2(JSContext *ctx, JSValue this_obj,
+                              const char *input, size_t input_len,
+                              JSEvalOptions *options);
 JS_EXTERN JSValue JS_GetGlobalObject(JSContext *ctx);
 JS_EXTERN int JS_IsInstanceOf(JSContext *ctx, JSValue val, JSValue obj);
 JS_EXTERN int JS_DefineProperty(JSContext *ctx, JSValue this_obj,
