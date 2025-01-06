@@ -1774,10 +1774,25 @@ static int init_class_range(JSRuntime *rt, JSClassShortDef const *tab,
     return 0;
 }
 
-/* Note: OS and CPU dependent */
+/* Uses code from LLVM project. */
 static inline uintptr_t js_get_stack_pointer(void)
 {
+#ifdef _MSC_VER
+    return (uintptr_t)_AddressOfReturnAddress();
+#elif defined(__has_builtin) && __has_builtin(__builtin_frame_address)
     return (uintptr_t)__builtin_frame_address(0);
+#elif defined(__GNUC__)
+    return (uintptr_t)__builtin_frame_address(0);
+#else
+    char CharOnStack = 0;
+    // The volatile store here is intended to escape the local variable, to
+    // prevent the compiler from optimizing CharOnStack into anything other
+    // than a char on the stack.
+    //
+    // Tested on: MSVC 2015 - 2019, GCC 4.9 - 9, Clang 3.2 - 9, ICC 13 - 19.
+    char *volatile Ptr = &CharOnStack;
+    return (uintptr_t) Ptr;
+#endif
 }
 
 static inline BOOL js_check_stack_overflow(JSRuntime *rt, size_t alloca_size)
