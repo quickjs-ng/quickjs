@@ -1043,7 +1043,7 @@ JS_EXTERN int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *exp
 JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
                                      const JSCFunctionListEntry *tab, int len);
 
-JS_EXTERN void js_build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_func,
+JS_EXTERN void JS_BuildBacktrace(JSContext *ctx, JSValue error_obj, JSValue filter_func,
                                   const char *filename, int line_num, int col_num,
                                   int backtrace_flags);
 /* Version */
