@@ -389,7 +389,6 @@ void help(void)
            "    --exe          select the executable to use as the base, defaults to the current one\n"
            "    --memory-limit n       limit the memory usage to 'n' Kbytes\n"
            "    --stack-size n         limit the stack size to 'n' Kbytes\n"
-           "    --unhandled-rejection  dump unhandled promise rejections\n"
            "-q  --quit         just instantiate the interpreter and quit\n", JS_GetVersion());
     exit(1);
 }
@@ -414,7 +413,6 @@ int main(int argc, char **argv)
     int empty_run = 0;
     int module = -1;
     int load_std = 0;
-    int dump_unhandled_promise_rejection = 0;
     char *include_list[32];
     int i, include_count = 0;
     int64_t memory_limit = -1;
@@ -512,10 +510,6 @@ int main(int argc, char **argv)
             }
             if (!strcmp(longopt, "std")) {
                 load_std = 1;
-                continue;
-            }
-            if (!strcmp(longopt, "unhandled-rejection")) {
-                dump_unhandled_promise_rejection = 1;
                 continue;
             }
             if (opt == 'q' || !strcmp(longopt, "quit")) {
@@ -622,10 +616,8 @@ start:
     /* loader for ES6 modules */
     JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
 
-    if (dump_unhandled_promise_rejection) {
-        JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker,
-                                          NULL);
-    }
+    /* exit on unhandled promise rejections */
+    JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker, NULL);
 
     if (!empty_run) {
         js_std_add_helpers(ctx, argc - optind, argv + optind);
