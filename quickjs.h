@@ -1043,9 +1043,9 @@ JS_EXTERN int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *exp
 JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
                                      const JSCFunctionListEntry *tab, int len);
 
-JS_EXTERN void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_func,
-                               const char *filename, int line_num, int col_num,
-                               int backtrace_flags);
+JS_EXTERN void js_build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_func,
+                                  const char *filename, int line_num, int col_num,
+                                  int backtrace_flags);
 /* Version */
 
 #define QJS_VERSION_MAJOR 0
