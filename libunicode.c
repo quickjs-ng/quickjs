@@ -1542,11 +1542,13 @@ static int unicode_prop_ops(CharRange *cr, ...)
         }
     }
  done:
+    va_end(ap);
     assert(stack_len == 1);
     ret = cr_copy(cr, &stack[0]);
     cr_free(&stack[0]);
     return ret;
  fail:
+    va_end(ap);
     for(i = 0; i < stack_len; i++)
         cr_free(&stack[i]);
     return -1;
