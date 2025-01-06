@@ -399,6 +399,7 @@ int main(int argc, char **argv)
     JSContext *ctx;
     JSValue ret = JS_UNDEFINED;
     struct trace_malloc_data trace_data = { NULL };
+    int r = 0;
     int optind = 1;
     char *compile_file = NULL;
     char *exe = NULL;
@@ -683,17 +684,16 @@ start:
         }
         if (standalone || compile_file) {
             if (JS_IsException(ret)) {
-                ret = JS_GetException(ctx);
+                r = 1;
             } else {
                 JS_FreeValue(ctx, ret);
-                ret = js_std_loop(ctx);
+                r = js_std_loop(ctx);
             }
         } else {
-            ret = js_std_loop(ctx);
+            r = js_std_loop(ctx);
         }
-        if (!JS_IsUndefined(ret)) {
-            js_std_dump_error1(ctx, ret);
-            JS_FreeValue(ctx, ret);
+        if (r) {
+            js_std_dump_error(ctx);
             goto fail;
         }
     }

@@ -315,7 +315,6 @@ static const char main_c_template1[] =
     "int main(int argc, char **argv)\n"
     "{\n"
     "  int r;\n"
-    "  JSValue ret;\n"
     "  JSRuntime *rt;\n"
     "  JSContext *ctx;\n"
     "  r = 0;\n"
@@ -325,14 +324,12 @@ static const char main_c_template1[] =
     ;
 
 static const char main_c_template2[] =
-    "  ret = js_std_loop(ctx);\n"
-    "  if (JS_IsException(ret)) {\n"
-    "    js_std_dump_error1(ctx, ret);\n"
-    "    r = 1;\n"
+    "  r = js_std_loop(ctx);\n"
+    "  if (r) {\n"
+    "    js_std_dump_error(ctx);\n"
     "  }\n"
-    "  JS_FreeValue(ctx, ret);\n"
-    "  JS_FreeContext(ctx);\n"
     "  js_std_free_handlers(rt);\n"
+    "  JS_FreeContext(ctx);\n"
     "  JS_FreeRuntime(rt);\n"
     "  return r;\n"
     "}\n";
