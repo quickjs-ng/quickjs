@@ -442,7 +442,7 @@ struct JSContext {
     /* if NULL, eval is not supported */
     JSValue (*eval_internal)(JSContext *ctx, JSValue this_obj,
                              const char *input, size_t input_len,
-                             const char *filename, int flags, int scope_idx);
+                             const char *filename, int line, int flags, int scope_idx);
     void *user_opaque;
 };
 
@@ -1256,7 +1256,7 @@ static void js_async_function_resolve_mark(JSRuntime *rt, JSValue val,
                                            JS_MarkFunc *mark_func);
 static JSValue JS_EvalInternal(JSContext *ctx, JSValue this_obj,
                                const char *input, size_t input_len,
-                               const char *filename, int flags, int scope_idx);
+                               const char *filename, int line, int flags, int scope_idx);
 static void js_free_module_def(JSContext *ctx, JSModuleDef *m);
 static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
                                JS_MarkFunc *mark_func);
@@ -33351,12 +33351,12 @@ static __exception int js_parse_program(JSParseState *s)
 
 static void js_parse_init(JSContext *ctx, JSParseState *s,
                           const char *input, size_t input_len,
-                          const char *filename)
+                          const char *filename, int line)
 {
     memset(s, 0, sizeof(*s));
     s->ctx = ctx;
     s->filename = filename;
-    s->line_num = 1;
+    s->line_num = line;
     s->col_num = 1;
     s->buf_start = s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
@@ -33408,7 +33408,7 @@ JSValue JS_EvalFunction(JSContext *ctx, JSValue fun_obj)
 /* `export_name` and `input` may be pure ASCII or UTF-8 encoded */
 static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
                                  const char *input, size_t input_len,
-                                 const char *filename, int flags, int scope_idx)
+                                 const char *filename, int line, int flags, int scope_idx)
 {
     JSParseState s1, *s = &s1;
     int err, eval_type;
@@ -33420,7 +33420,7 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
     JSModuleDef *m;
     BOOL is_strict_mode;
 
-    js_parse_init(ctx, s, input, input_len, filename);
+    js_parse_init(ctx, s, input, input_len, filename, line);
     skip_shebang(&s->buf_ptr, s->buf_end);
 
     eval_type = flags & JS_EVAL_TYPE_MASK;
@@ -33450,7 +33450,7 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
             is_strict_mode = TRUE;
         }
     }
-    fd = js_new_function_def(ctx, NULL, TRUE, FALSE, filename, 1, 1);
+    fd = js_new_function_def(ctx, NULL, TRUE, FALSE, filename, line, 1);
     if (!fd)
         goto fail1;
     s->cur_func = fd;
@@ -33523,12 +33523,12 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValue this_obj,
 /* the indirection is needed to make 'eval' optional */
 static JSValue JS_EvalInternal(JSContext *ctx, JSValue this_obj,
                                const char *input, size_t input_len,
-                               const char *filename, int flags, int scope_idx)
+                               const char *filename, int line, int flags, int scope_idx)
 {
     if (unlikely(!ctx->eval_internal)) {
         return JS_ThrowTypeError(ctx, "eval is not supported");
     }
-    return ctx->eval_internal(ctx, this_obj, input, input_len, filename,
+    return ctx->eval_internal(ctx, this_obj, input, input_len, filename, line,
                               flags, scope_idx);
 }
 
@@ -33544,7 +33544,7 @@ static JSValue JS_EvalObject(JSContext *ctx, JSValue this_obj,
     str = JS_ToCStringLen(ctx, &len, val);
     if (!str)
         return JS_EXCEPTION;
-    ret = JS_EvalInternal(ctx, this_obj, str, len, "<input>", flags, scope_idx);
+    ret = JS_EvalInternal(ctx, this_obj, str, len, "<input>", 1, flags, scope_idx);
     JS_FreeCString(ctx, str);
     return ret;
 
@@ -33552,13 +33552,13 @@ static JSValue JS_EvalObject(JSContext *ctx, JSValue this_obj,
 
 JSValue JS_EvalThis(JSContext *ctx, JSValue this_obj,
                     const char *input, size_t input_len,
-                    const char *filename, int eval_flags)
+                    const char *filename, int line, int eval_flags)
 {
     JSValue ret;
 
     assert((eval_flags & JS_EVAL_TYPE_MASK) == JS_EVAL_TYPE_GLOBAL ||
            (eval_flags & JS_EVAL_TYPE_MASK) == JS_EVAL_TYPE_MODULE);
-    ret = JS_EvalInternal(ctx, this_obj, input, input_len, filename,
+    ret = JS_EvalInternal(ctx, this_obj, input, input_len, filename, line,
                           eval_flags, -1);
     return ret;
 }
@@ -33566,7 +33566,7 @@ JSValue JS_EvalThis(JSContext *ctx, JSValue this_obj,
 JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
                 const char *filename, int eval_flags)
 {
-    return JS_EvalThis(ctx, ctx->global_obj, input, input_len, filename,
+    return JS_EvalThis(ctx, ctx->global_obj, input, input_len, filename, 1,
                        eval_flags);
 }
 
@@ -45181,7 +45181,7 @@ JSValue JS_ParseJSON(JSContext *ctx, const char *buf, size_t buf_len, const char
     JSParseState s1, *s = &s1;
     JSValue val = JS_UNDEFINED;
 
-    js_parse_init(ctx, s, buf, buf_len, filename);
+    js_parse_init(ctx, s, buf, buf_len, filename, 1);
     if (json_next_token(s))
         goto fail;
     val = json_parse_value(s);
@@ -56120,7 +56120,7 @@ BOOL JS_DetectModule(const char *input, size_t input_len)
         return FALSE;
     }
     JS_AddIntrinsicRegExp(ctx); // otherwise regexp literals don't parse
-    val = __JS_EvalInternal(ctx, JS_UNDEFINED, input, input_len, "<unnamed>",
+    val = __JS_EvalInternal(ctx, JS_UNDEFINED, input, input_len, "<unnamed>", 1,
                             JS_EVAL_TYPE_MODULE|JS_EVAL_FLAG_COMPILE_ONLY, -1);
     if (JS_IsException(val)) {
         const char *msg = JS_ToCString(ctx, rt->current_exception);
