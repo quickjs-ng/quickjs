@@ -6839,7 +6839,7 @@ static JSValue JS_MakeError(JSContext *ctx, JSErrorEnum error_num,
 static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
                               const char *fmt, va_list ap, BOOL add_backtrace)
 {
-    char buf[256];
+    char buf[8192];
     JSValue obj;
 
     vsnprintf(buf, sizeof(buf), fmt, ap);
