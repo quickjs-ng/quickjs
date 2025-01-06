@@ -33,6 +33,7 @@
 #if !defined(_MSC_VER)
 #include <sys/time.h>
 #if defined(_WIN32)
+#include <intrin.h>
 #include <timezoneapi.h>
 #endif
 #endif

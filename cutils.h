@@ -62,10 +62,6 @@ extern "C" {
 #  define __maybe_unused
 #  define __attribute__(x)
 #  define __attribute(x)
-#  include <intrin.h>
-static void *__builtin_frame_address(unsigned int level) {
-    return (void *)((char*)_AddressOfReturnAddress() - sizeof(int *) - level * sizeof(int *));
-}
 #else
 #  define likely(x)       __builtin_expect(!!(x), 1)
 #  define unlikely(x)     __builtin_expect(!!(x), 0)
