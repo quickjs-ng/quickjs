@@ -51266,6 +51266,13 @@ JSValue JS_NewDate(JSContext *ctx, double epoch_ms)
     return obj;
 }
 
+JS_BOOL JS_IsDate(JSValue v)
+{
+    if (JS_VALUE_GET_TAG(v) != JS_TAG_OBJECT)
+        return FALSE;
+    return JS_VALUE_GET_OBJ(v)->class_id == JS_CLASS_DATE;
+}
+
 void JS_AddIntrinsicDate(JSContext *ctx)
 {
     JSValue obj;
