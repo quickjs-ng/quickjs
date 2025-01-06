@@ -4172,6 +4172,8 @@ void js_std_promise_rejection_tracker(JSContext *ctx, JSValue promise,
     if (!is_handled) {
         fprintf(stderr, "Possibly unhandled promise rejection: ");
         js_std_dump_error1(ctx, reason);
+        fflush(stderr);
+        exit(1);
     }
 }
 
