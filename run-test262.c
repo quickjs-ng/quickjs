@@ -1555,12 +1555,9 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
     }
 
     if (local) {
-        JSValue val = js_std_loop(ctx);
-        if (JS_IsException(val)) {
-            js_std_dump_error1(ctx, val);
-            ret = -1;
-        }
-        JS_FreeValue(ctx, val);
+        ret = js_std_loop(ctx);
+        if (ret)
+            js_std_dump_error(ctx);
     }
 
     JS_FreeCString(ctx, error_name);

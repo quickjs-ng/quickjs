@@ -37,12 +37,11 @@ JSModuleDef *js_init_module_std(JSContext *ctx, const char *module_name);
 JSModuleDef *js_init_module_os(JSContext *ctx, const char *module_name);
 JSModuleDef *js_init_module_bjson(JSContext *ctx, const char *module_name);
 void js_std_add_helpers(JSContext *ctx, int argc, char **argv);
-JSValue js_std_loop(JSContext *ctx);
+int js_std_loop(JSContext *ctx);
 JSValue js_std_await(JSContext *ctx, JSValue obj);
 void js_std_init_handlers(JSRuntime *rt);
 void js_std_free_handlers(JSRuntime *rt);
 void js_std_dump_error(JSContext *ctx);
-void js_std_dump_error1(JSContext *ctx, JSValue exception_val);
 uint8_t *js_load_file(JSContext *ctx, size_t *pbuf_len, const char *filename);
 int js_module_set_import_meta(JSContext *ctx, JSValue func_val,
                               JS_BOOL use_realpath, JS_BOOL is_main);
