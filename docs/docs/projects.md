@@ -26,3 +26,7 @@ JavaScript runtime for Nintendo Switch homebrew applications.
 ## [quickjs-rusty](https://github.com/Icemic/quickjs-rusty)
 
 Rust wrapper focus on embedding-ready and no-pain type conversion and interoperability. 
+
+## [GodotJS](https://github.com/godotjs/GodotJS)
+
+This project adds TypeScript/JavaScript support for Godot 4.x. It supports multiple javascript runtimes, including QuicJS-NG.
