@@ -370,10 +370,6 @@ if(BUILD_EXAMPLES)
     target_link_libraries(test_fib qjs)
 endif()
 
-add_executable(test_conv
-    tests/test_conv.c
-)
-
 # Install target
 #
 
