@@ -1778,9 +1778,7 @@ static int init_class_range(JSRuntime *rt, JSClassShortDef const *tab,
 /* Uses code from LLVM project. */
 static inline uintptr_t js_get_stack_pointer(void)
 {
-#if defined(__has_builtin) && __has_builtin(__builtin_frame_address)
-    return (uintptr_t)__builtin_frame_address(0);
-#elif defined(__GNUC__)
+#if defined(__clang__) || defined(__GNUC__)
     return (uintptr_t)__builtin_frame_address(0);
 #elif defined(_MSC_VER)
     return (uintptr_t)_AddressOfReturnAddress();
