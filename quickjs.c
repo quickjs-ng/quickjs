@@ -10100,6 +10100,13 @@ BOOL JS_SetConstructorBit(JSContext *ctx, JSValue func_obj, BOOL val)
     return TRUE;
 }
 
+JS_BOOL JS_IsRegExp(JSValue val)
+{
+    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
+        return FALSE;
+    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_REGEXP;
+}
+
 BOOL JS_IsError(JSContext *ctx, JSValue val)
 {
     JSObject *p;
