@@ -673,6 +673,7 @@ JS_EXTERN JS_BOOL JS_IsConstructor(JSContext* ctx, JSValue val);
 JS_EXTERN JS_BOOL JS_SetConstructorBit(JSContext *ctx, JSValue func_obj, JS_BOOL val);
 
 JS_EXTERN JS_BOOL JS_IsRegExp(JSValue val);
+JS_EXTERN JS_BOOL JS_IsMap(JSValue val);
 
 JS_EXTERN JSValue JS_NewArray(JSContext *ctx);
 JS_EXTERN int JS_IsArray(JSContext *ctx, JSValue val);
