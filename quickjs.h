@@ -823,6 +823,7 @@ typedef enum JSPromiseStateEnum {
 JS_EXTERN JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs);
 JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
 JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
+JS_EXTERN JS_BOOL JS_IsPromise(JSValue val);
 
 JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, JS_BOOL is_global);
 

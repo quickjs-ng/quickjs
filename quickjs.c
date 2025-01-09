@@ -48545,6 +48545,13 @@ JSValue JS_PromiseResult(JSContext *ctx, JSValue promise)
     return JS_DupValue(ctx, s->promise_result);
 }
 
+JS_BOOL JS_IsPromise(JSValue val)
+{
+    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
+        return FALSE;
+    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_PROMISE;
+}
+
 static int js_create_resolving_functions(JSContext *ctx, JSValue *args,
                                          JSValue promise);
 
