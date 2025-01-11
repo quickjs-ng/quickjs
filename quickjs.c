@@ -415,6 +415,7 @@ struct JSContext {
     JSValue promise_ctor;
     JSValue native_error_proto[JS_NATIVE_ERROR_COUNT];
     JSValue error_ctor;
+    JSValue error_back_trace;
     JSValue error_prepare_stack;
     int error_stack_trace_limit;
     JSValue iterator_ctor;
@@ -2318,6 +2319,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->regexp_ctor = JS_NULL;
     ctx->promise_ctor = JS_NULL;
     ctx->error_ctor = JS_NULL;
+    ctx->error_back_trace = JS_UNDEFINED;
     ctx->error_prepare_stack = JS_UNDEFINED;
     ctx->error_stack_trace_limit = 10;
     init_list_head(&ctx->loaded_modules);
@@ -2437,6 +2439,7 @@ static void JS_MarkContext(JSRuntime *rt, JSContext *ctx,
         JS_MarkValue(rt, ctx->native_error_proto[i], mark_func);
     }
     JS_MarkValue(rt, ctx->error_ctor, mark_func);
+    JS_MarkValue(rt, ctx->error_back_trace, mark_func);
     JS_MarkValue(rt, ctx->error_prepare_stack, mark_func);
     for(i = 0; i < rt->class_count; i++) {
         JS_MarkValue(rt, ctx->class_proto[i], mark_func);
@@ -2504,6 +2507,7 @@ void JS_FreeContext(JSContext *ctx)
         JS_FreeValue(ctx, ctx->native_error_proto[i]);
     }
     JS_FreeValue(ctx, ctx->error_ctor);
+    JS_FreeValue(ctx, ctx->error_back_trace);
     JS_FreeValue(ctx, ctx->error_prepare_stack);
     for(i = 0; i < rt->class_count; i++) {
         JS_FreeValue(ctx, ctx->class_proto[i]);
@@ -6629,6 +6633,20 @@ static const char *get_func_name(JSContext *ctx, JSValue func)
     return JS_ToCString(ctx, val);
 }
 
+/* Note: it is important that no exception is returned by this function */
+static BOOL can_add_backtrace(JSValue obj)
+{
+    JSObject *p;
+    if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)
+        return FALSE;
+    p = JS_VALUE_GET_OBJ(obj);
+    if (p->class_id != JS_CLASS_ERROR)
+        return FALSE;
+    if (find_own_property1(p, JS_ATOM_stack))
+        return FALSE;
+    return TRUE;
+}
+
 #define JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL (1 << 0)
 /* only taken into account if filename is provided */
 #define JS_BACKTRACE_FLAG_SINGLE_LEVEL     (1 << 1)
@@ -6636,7 +6654,7 @@ static const char *get_func_name(JSContext *ctx, JSValue func)
 
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
-static void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_func,
+static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_func,
                             const char *filename, int line_num, int col_num,
                             int backtrace_flags)
 {
@@ -6781,7 +6799,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_fu
             JS_FreeValue(ctx, csd[k].func_name);
         }
         JSValue args[] = {
-            error_obj,
+            error_val,
             stack,
         };
         JSValue stack2 = JS_Call(ctx, prepare, ctx->error_ctor, countof(args), args);
@@ -6802,21 +6820,12 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_fu
     }
 
     rt->in_prepare_stack_trace = FALSE;
-    JS_DefinePropertyValue(ctx, error_obj, JS_ATOM_stack, stack, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-}
-
-/* Note: it is important that no exception is returned by this function */
-static BOOL is_backtrace_needed(JSContext *ctx, JSValue obj)
-{
-    JSObject *p;
-    if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)
-        return FALSE;
-    p = JS_VALUE_GET_OBJ(obj);
-    if (p->class_id != JS_CLASS_ERROR)
-        return FALSE;
-    if (find_own_property1(p, JS_ATOM_stack))
-        return FALSE;
-    return TRUE;
+    if (JS_IsUndefined(ctx->error_back_trace))
+        ctx->error_back_trace = js_dup(stack);
+    if (can_add_backtrace(error_val)) {
+        JS_DefinePropertyValue(ctx, error_val, JS_ATOM_stack, stack,
+                               JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+    }
 }
 
 JSValue JS_NewError(JSContext *ctx)
@@ -17444,13 +17453,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         }
     }
  exception:
-    if (is_backtrace_needed(ctx, rt->current_exception)) {
-        /* add the backtrace information now (it is not done
-           before if the exception happens in a bytecode
-           operation */
-        sf->cur_pc = pc;
-        build_backtrace(ctx, rt->current_exception, JS_UNDEFINED, NULL, 0, 0, 0);
-    }
+    sf->cur_pc = pc;
+    build_backtrace(ctx, rt->current_exception, JS_UNDEFINED, NULL, 0, 0, 0);
     if (!JS_IsUncatchableError(ctx, rt->current_exception)) {
         while (sp > stack_buf) {
             JSValue val = *--sp;
@@ -17465,6 +17469,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                 } else {
                     *sp++ = rt->current_exception;
                     rt->current_exception = JS_UNINITIALIZED;
+                    JS_FreeValueRT(rt, ctx->error_back_trace);
+                    ctx->error_back_trace = JS_UNDEFINED;
                     pc = b->byte_code_buf + pos;
                     goto restart;
                 }
@@ -25564,6 +25570,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             js_parse_error(s, "line terminator not allowed after throw");
             goto fail;
         }
+        emit_source_loc(s);
         if (js_parse_expr(s))
             goto fail;
         emit_op(s, OP_throw);
@@ -56136,7 +56143,9 @@ BOOL JS_DetectModule(const char *input, size_t input_len)
 }
 
 uintptr_t js_std_cmd(int cmd, ...) {
+    JSContext *ctx;
     JSRuntime *rt;
+    JSValue *pv;
     uintptr_t rv;
     va_list ap;
 
@@ -56150,6 +56159,12 @@ uintptr_t js_std_cmd(int cmd, ...) {
     case 1: // SetOpaque
         rt = va_arg(ap, JSRuntime *);
         rt->libc_opaque = va_arg(ap, void *);
+        break;
+    case 2: // ErrorBackTrace
+        ctx = va_arg(ap, JSContext *);
+        pv = va_arg(ap, JSValue *);
+        *pv = ctx->error_back_trace;
+        ctx->error_back_trace = JS_UNDEFINED;
         break;
     default:
         rv = -1;
