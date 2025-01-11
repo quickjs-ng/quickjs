@@ -298,6 +298,15 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(run-test262 qjs)
 endif()
 
+# Interrupt test
+#
+
+add_executable(interrupt-test
+    interrupt-test.c
+)
+target_compile_definitions(interrupt-test PRIVATE ${qjs_defines})
+target_link_libraries(interrupt-test qjs)
+
 # Unicode generator
 #
 
