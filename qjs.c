@@ -58,11 +58,11 @@ static int qjs__argc;
 static char **qjs__argv;
 
 
-static BOOL is_standalone(const char *exe)
+static bool is_standalone(const char *exe)
 {
     FILE *exe_f = fopen(exe, "rb");
     if (!exe_f)
-        return FALSE;
+        return false;
     if (fseek(exe_f, -trailer_size, SEEK_END) < 0)
         goto fail;
     uint8_t buf[TRAILER_SIZE];
@@ -72,7 +72,7 @@ static BOOL is_standalone(const char *exe)
     return !memcmp(buf, trailer_magic, trailer_magic_size);
 fail:
     fclose(exe_f);
-    return FALSE;
+    return false;
 }
 
 static JSValue load_standalone_module(JSContext *ctx)
@@ -87,7 +87,7 @@ static JSValue load_standalone_module(JSContext *ctx)
         JS_FreeValue(ctx, obj);
         goto exception;
     }
-    js_module_set_import_meta(ctx, obj, FALSE, TRUE);
+    js_module_set_import_meta(ctx, obj, false, true);
     val = JS_EvalFunction(ctx, JS_DupValue(ctx, obj));
     val = js_std_await(ctx, val);
 
@@ -116,7 +116,7 @@ static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
         val = JS_Eval(ctx, buf, buf_len, filename,
                       eval_flags | JS_EVAL_FLAG_COMPILE_ONLY);
         if (!JS_IsException(val)) {
-            js_module_set_import_meta(ctx, val, TRUE, TRUE);
+            js_module_set_import_meta(ctx, val, true, true);
             val = JS_EvalFunction(ctx, val);
         }
         val = js_std_await(ctx, val);
