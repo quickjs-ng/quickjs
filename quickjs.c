@@ -33552,7 +33552,14 @@ static JSValue JS_EvalObject(JSContext *ctx, JSValue this_obj,
 
 JSValue JS_EvalThis(JSContext *ctx, JSValue this_obj,
                     const char *input, size_t input_len,
-                    const char *filename, int line, int eval_flags)
+                    const char *filename, int eval_flags)
+{
+    return JS_EvalThis2(ctx, this_obj, input, input_len, filename, 1, eval_flags);
+}
+
+JSValue JS_EvalThis2(JSContext *ctx, JSValue this_obj,
+                     const char *input, size_t input_len,
+                     const char *filename, int line, int eval_flags)
 {
     JSValue ret;
 
@@ -33566,8 +33573,15 @@ JSValue JS_EvalThis(JSContext *ctx, JSValue this_obj,
 JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
                 const char *filename, int eval_flags)
 {
-    return JS_EvalThis(ctx, ctx->global_obj, input, input_len, filename, 1,
-                       eval_flags);
+    return JS_EvalThis2(ctx, ctx->global_obj, input, input_len, filename, 1,
+                        eval_flags);
+}
+
+JSValue JS_Eval2(JSContext *ctx, const char *input, size_t input_len,
+                 const char *filename, int line, int eval_flags)
+{
+    return JS_EvalThis2(ctx, ctx->global_obj, input, input_len, filename, line,
+                        eval_flags);
 }
 
 int JS_ResolveModule(JSContext *ctx, JSValue obj)
