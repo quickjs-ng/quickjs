@@ -616,6 +616,7 @@ JS_EXTERN JSValue JS_Throw(JSContext *ctx, JSValue obj);
 JS_EXTERN JSValue JS_GetException(JSContext *ctx);
 JS_EXTERN JS_BOOL JS_HasException(JSContext *ctx);
 JS_EXTERN JS_BOOL JS_IsError(JSContext *ctx, JSValue val);
+JS_EXTERN void JS_SetUncatchableError(JSContext *ctx, JSValue val, JS_BOOL flag);
 JS_EXTERN JS_BOOL JS_IsUncatchableError(JSContext* ctx, JSValue val);
 JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
 JS_EXTERN JSValue JS_NewError(JSContext *ctx);
@@ -631,6 +632,11 @@ JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
 JS_EXTERN JSValue JS_DupValue(JSContext *ctx, JSValue v);
 JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValue v);
 JS_EXTERN int JS_ToBool(JSContext *ctx, JSValue val); /* return -1 for JS_EXCEPTION */
+static inline JSValue JS_ToBoolean(JSContext *ctx, JSValue val)
+{
+    return JS_NewBool(ctx, JS_ToBool(ctx, val));
+}
+JS_EXTERN JSValue JS_ToNumber(JSContext *ctx, JSValue val);
 JS_EXTERN int JS_ToInt32(JSContext *ctx, int32_t *pres, JSValue val);
 static inline int JS_ToUint32(JSContext *ctx, uint32_t *pres, JSValue val)
 {
@@ -667,6 +673,7 @@ JS_EXTERN JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValue proto, JSClassI
 JS_EXTERN JSValue JS_NewObjectClass(JSContext *ctx, int class_id);
 JS_EXTERN JSValue JS_NewObjectProto(JSContext *ctx, JSValue proto);
 JS_EXTERN JSValue JS_NewObject(JSContext *ctx);
+JS_EXTERN JSValue JS_ToObject(JSContext *ctx, JSValue val);
 
 JS_EXTERN JS_BOOL JS_IsFunction(JSContext* ctx, JSValue val);
 JS_EXTERN JS_BOOL JS_IsConstructor(JSContext* ctx, JSValue val);
