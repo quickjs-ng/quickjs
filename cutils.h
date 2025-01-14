@@ -128,6 +128,7 @@ enum {
   __attribute__((format(printf, format_param, dots_param)))
 #endif
 #endif
+#endif
 
 void js__pstrcpy(char *buf, int buf_size, const char *str);
 char *js__pstrcat(char *buf, int buf_size, const char *s);

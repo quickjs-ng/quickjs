@@ -64,6 +64,7 @@ extern "C" {
   __attribute__((format(printf, format_param, dots_param)))
 #endif
 #endif
+#endif
 
 #define JS_BOOL int
 
