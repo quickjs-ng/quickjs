@@ -56,6 +56,10 @@ extern "C" {
 #define JS_PRINTF_FORMAT_ATTR(format_param, dots_param)
 #else
 #define JS_PRINTF_FORMAT
+#if !defined(__clang__) && defined(__GNUC__)
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param) \
+  __attribute__((format(gnu_printf, format_param, dots_param)))
+#else
 #define JS_PRINTF_FORMAT_ATTR(format_param, dots_param) \
   __attribute__((format(printf, format_param, dots_param)))
 #endif
