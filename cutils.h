@@ -70,19 +70,6 @@ extern "C" {
 #  define __maybe_unused __attribute__((unused))
 #endif
 
-// https://stackoverflow.com/a/6849629
-#undef FORMAT_STRING
-#if _MSC_VER >= 1400
-# include <sal.h>
-# if _MSC_VER > 1400
-#  define FORMAT_STRING(p) _Printf_format_string_ p
-# else
-#  define FORMAT_STRING(p) __format_string p
-# endif /* FORMAT_STRING */
-#else
-# define FORMAT_STRING(p) p
-#endif /* _MSC_VER */
-
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <math.h>
 #define INF INFINITY
@@ -120,6 +107,9 @@ enum {
     TRUE = 1,
 };
 #endif
+
+#define JS_FORMAT_PRINTF __attribute__((format(printf, 2, 3)))
+#define JS_FORMAT_PRINTF2(a, b) __attribute__((format(printf, a, b)))
 
 void js__pstrcpy(char *buf, int buf_size, const char *str);
 char *js__pstrcat(char *buf, int buf_size, const char *s);
@@ -453,8 +443,7 @@ static inline int dbuf_put_u64(DynBuf *s, uint64_t val)
 {
     return dbuf_put(s, (uint8_t *)&val, 8);
 }
-int __attribute__((format(printf, 2, 3))) dbuf_printf(DynBuf *s,
-                                                      FORMAT_STRING(const char *fmt), ...);
+int JS_FORMAT_PRINTF dbuf_printf(DynBuf *s, const char *fmt, ...);
 void dbuf_free(DynBuf *s);
 static inline BOOL dbuf_error(DynBuf *s) {
     return s->error;

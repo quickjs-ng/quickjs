@@ -38,13 +38,12 @@ extern "C" {
 
 #if defined(__GNUC__) || defined(__clang__)
 #define js_force_inline       inline __attribute__((always_inline))
-#define __js_printf_like(f, a)   __attribute__((format(printf, f, a)))
 #define JS_EXTERN __attribute__((visibility("default")))
 #else
 #define js_force_inline  inline
-#define __js_printf_like(a, b)
 #define JS_EXTERN /* nothing */
 #endif
+#define __JS_FORMAT_PRINTF __attribute__((format(printf, 2, 3)))
 
 #define JS_BOOL int
 
@@ -619,12 +618,12 @@ JS_EXTERN JS_BOOL JS_IsError(JSContext *ctx, JSValue val);
 JS_EXTERN JS_BOOL JS_IsUncatchableError(JSContext* ctx, JSValue val);
 JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
 JS_EXTERN JSValue JS_NewError(JSContext *ctx);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowPlainError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowTypeError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowReferenceError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowRangeError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __JS_FORMAT_PRINTF JS_ThrowPlainError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __JS_FORMAT_PRINTF JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __JS_FORMAT_PRINTF JS_ThrowTypeError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __JS_FORMAT_PRINTF JS_ThrowReferenceError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __JS_FORMAT_PRINTF JS_ThrowRangeError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue __JS_FORMAT_PRINTF JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
 JS_EXTERN JSValue JS_ThrowOutOfMemory(JSContext *ctx);
 JS_EXTERN void JS_FreeValue(JSContext *ctx, JSValue v);
 JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
@@ -1061,8 +1060,8 @@ JS_EXTERN const char* JS_GetVersion(void);
 JS_EXTERN uintptr_t js_std_cmd(int cmd, ...);
 
 #undef JS_EXTERN
+#undef __JS_FORMAT_PRINTF
 #undef js_force_inline
-#undef __js_printf_like
 
 #ifdef __cplusplus
 } /* extern "C" { */
