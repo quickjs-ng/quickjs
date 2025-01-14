@@ -39,12 +39,28 @@ extern "C" {
 
 #if defined(__GNUC__) || defined(__clang__)
 #define js_force_inline       inline __attribute__((always_inline))
-#define __js_printf_like(f, a)   __attribute__((format(printf, f, a)))
 #define JS_EXTERN __attribute__((visibility("default")))
 #else
 #define js_force_inline  inline
-#define __js_printf_like(a, b)
 #define JS_EXTERN /* nothing */
+#endif
+
+/* Borrowed from Folly */
+#ifndef JS_PRINTF_FORMAT
+#ifdef _MSC_VER
+#include <sal.h>
+#define JS_PRINTF_FORMAT _Printf_format_string_
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param)
+#else
+#define JS_PRINTF_FORMAT
+#if !defined(__clang__) && defined(__GNUC__)
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param) \
+  __attribute__((format(gnu_printf, format_param, dots_param)))
+#else
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param) \
+  __attribute__((format(printf, format_param, dots_param)))
+#endif
+#endif
 #endif
 
 typedef struct JSRuntime JSRuntime;
@@ -624,12 +640,12 @@ JS_EXTERN void JS_ClearUncatchableError(JSContext *ctx, JSValue val);
 //  JS_Throw(ctx, exc);
 JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
 JS_EXTERN JSValue JS_NewError(JSContext *ctx);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowPlainError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowSyntaxError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowTypeError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowReferenceError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowRangeError(JSContext *ctx, const char *fmt, ...);
-JS_EXTERN JSValue __js_printf_like(2, 3) JS_ThrowInternalError(JSContext *ctx, const char *fmt, ...);
+JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowSyntaxError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowTypeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowReferenceError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowRangeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
 JS_EXTERN JSValue JS_ThrowOutOfMemory(JSContext *ctx);
 JS_EXTERN void JS_FreeValue(JSContext *ctx, JSValue v);
 JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
@@ -1075,7 +1091,6 @@ JS_EXTERN uintptr_t js_std_cmd(int cmd, ...);
 
 #undef JS_EXTERN
 #undef js_force_inline
-#undef __js_printf_like
 
 #ifdef __cplusplus
 } /* extern "C" { */
