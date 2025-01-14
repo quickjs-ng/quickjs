@@ -108,8 +108,22 @@ enum {
 };
 #endif
 
-#define JS_FORMAT_PRINTF __attribute__((format(printf, 2, 3)))
-#define JS_FORMAT_PRINTF2(a, b) __attribute__((format(printf, a, b)))
+/* Borrowed from Folly */
+#ifndef JS_PRINTF_FORMAT
+#ifdef _MSC_VER
+#ifdef _USE_ATTRIBUTES_FOR_SAL
+#undef _USE_ATTRIBUTES_FOR_SAL
+#endif
+#define _USE_ATTRIBUTES_FOR_SAL 1
+#include <sal.h>
+#define JS_PRINTF_FORMAT _Printf_format_string_
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param)
+#else
+#define JS_PRINTF_FORMAT
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param) \
+  __attribute__((format(printf, format_param, dots_param)))
+#endif
+#endif
 
 void js__pstrcpy(char *buf, int buf_size, const char *str);
 char *js__pstrcat(char *buf, int buf_size, const char *s);
@@ -443,7 +457,7 @@ static inline int dbuf_put_u64(DynBuf *s, uint64_t val)
 {
     return dbuf_put(s, (uint8_t *)&val, 8);
 }
-int JS_FORMAT_PRINTF dbuf_printf(DynBuf *s, const char *fmt, ...);
+int JS_PRINTF_FORMAT_ATTR(2, 3) dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const char *fmt, ...);
 void dbuf_free(DynBuf *s);
 static inline BOOL dbuf_error(DynBuf *s) {
     return s->error;
