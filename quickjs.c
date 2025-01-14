@@ -1320,6 +1320,7 @@ static JSValue js_module_ns_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                                  void *opaque);
 static JSValue JS_InstantiateFunctionListItem2(JSContext *ctx, JSObject *p,
                                                JSAtom atom, void *opaque);
+static void js_set_uncatchable_error(JSContext *ctx, JSValue val, BOOL flag);
 
 static JSValue js_new_callsite(JSContext *ctx, JSCallSiteData *csd);
 static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFrame *sf);
@@ -7065,7 +7066,7 @@ static no_inline __exception int __js_poll_interrupts(JSContext *ctx)
         if (rt->interrupt_handler(rt, rt->interrupt_opaque)) {
             /* XXX: should set a specific flag to avoid catching */
             JS_ThrowInternalError(ctx, "interrupted");
-            JS_SetUncatchableError(ctx, ctx->rt->current_exception, TRUE);
+            js_set_uncatchable_error(ctx, ctx->rt->current_exception, TRUE);
             return -1;
         }
     }
@@ -10134,7 +10135,7 @@ BOOL JS_IsUncatchableError(JSContext *ctx, JSValue val)
     return p->class_id == JS_CLASS_ERROR && p->is_uncatchable_error;
 }
 
-void JS_SetUncatchableError(JSContext *ctx, JSValue val, BOOL flag)
+static void js_set_uncatchable_error(JSContext *ctx, JSValue val, BOOL flag)
 {
     JSObject *p;
     if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
@@ -10144,9 +10145,19 @@ void JS_SetUncatchableError(JSContext *ctx, JSValue val, BOOL flag)
         p->is_uncatchable_error = flag;
 }
 
+void JS_SetUncatchableError(JSContext *ctx, JSValue val)
+{
+    js_set_uncatchable_error(ctx, val, TRUE);
+}
+
+void JS_ClearUncatchableError(JSContext *ctx, JSValue val)
+{
+    js_set_uncatchable_error(ctx, val, FALSE);
+}
+
 void JS_ResetUncatchableError(JSContext *ctx)
 {
-    JS_SetUncatchableError(ctx, ctx->rt->current_exception, FALSE);
+    js_set_uncatchable_error(ctx, ctx->rt->current_exception, FALSE);
 }
 
 int JS_SetOpaque(JSValue obj, void *opaque)
