@@ -70,19 +70,6 @@ extern "C" {
 #  define __maybe_unused __attribute__((unused))
 #endif
 
-// https://stackoverflow.com/a/6849629
-#undef FORMAT_STRING
-#if _MSC_VER >= 1400
-# include <sal.h>
-# if _MSC_VER > 1400
-#  define FORMAT_STRING(p) _Printf_format_string_ p
-# else
-#  define FORMAT_STRING(p) __format_string p
-# endif /* FORMAT_STRING */
-#else
-# define FORMAT_STRING(p) p
-#endif /* _MSC_VER */
-
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <math.h>
 #define INF INFINITY
@@ -119,6 +106,28 @@ enum {
     FALSE = 0,
     TRUE = 1,
 };
+#endif
+
+/* Borrowed from Folly */
+#ifndef JS_PRINTF_FORMAT
+#ifdef _MSC_VER
+#ifdef _USE_ATTRIBUTES_FOR_SAL
+#undef _USE_ATTRIBUTES_FOR_SAL
+#endif
+#define _USE_ATTRIBUTES_FOR_SAL 1
+#include <sal.h>
+#define JS_PRINTF_FORMAT _Printf_format_string_
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param)
+#else
+#define JS_PRINTF_FORMAT
+#if !defined(__clang__) && defined(__GNUC__)
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param) \
+  __attribute__((format(gnu_printf, format_param, dots_param)))
+#else
+#define JS_PRINTF_FORMAT_ATTR(format_param, dots_param) \
+  __attribute__((format(printf, format_param, dots_param)))
+#endif
+#endif
 #endif
 
 void js__pstrcpy(char *buf, int buf_size, const char *str);
@@ -453,8 +462,7 @@ static inline int dbuf_put_u64(DynBuf *s, uint64_t val)
 {
     return dbuf_put(s, (uint8_t *)&val, 8);
 }
-int __attribute__((format(printf, 2, 3))) dbuf_printf(DynBuf *s,
-                                                      FORMAT_STRING(const char *fmt), ...);
+int JS_PRINTF_FORMAT_ATTR(2, 3) dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const char *fmt, ...);
 void dbuf_free(DynBuf *s);
 static inline BOOL dbuf_error(DynBuf *s) {
     return s->error;

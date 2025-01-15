@@ -374,7 +374,7 @@ static void re_emit_op_u16(REParseState *s, int op, uint32_t val)
     dbuf_put_u16(&s->byte_code, val);
 }
 
-static int __attribute__((format(printf, 2, 3))) re_parse_error(REParseState *s, const char *fmt, ...)
+static int JS_PRINTF_FORMAT_ATTR(2, 3) re_parse_error(REParseState *s, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1596,7 +1596,7 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
                         pos += 4;
                         if (add_zero_advance_check) {
                             s->byte_code.buf[pos++] = REOP_push_char_pos;
-                            re_emit_op(s, REOP_check_advance); 
+                            re_emit_op(s, REOP_check_advance);
                         }
                         re_emit_goto(s, REOP_loop, last_atom_start + 5);
                         re_emit_op(s, REOP_drop);
