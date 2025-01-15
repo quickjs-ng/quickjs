@@ -754,10 +754,15 @@ JS_EXTERN JS_BOOL JS_DetectModule(const char *input, size_t input_len);
 /* 'input' must be zero terminated i.e. input[input_len] = '\0'. */
 JS_EXTERN JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
                           const char *filename, int eval_flags);
+JS_EXTERN JSValue JS_Eval2(JSContext *ctx, const char *input, size_t input_len,
+                          const char *filename, int line, int eval_flags);
 /* same as JS_Eval() but with an explicit 'this_obj' parameter */
 JS_EXTERN JSValue JS_EvalThis(JSContext *ctx, JSValue this_obj,
                               const char *input, size_t input_len,
                               const char *filename, int eval_flags);
+JS_EXTERN JSValue JS_EvalThis2(JSContext *ctx, JSValue this_obj,
+                              const char *input, size_t input_len,
+                              const char *filename, int line, int eval_flags);
 JS_EXTERN JSValue JS_GetGlobalObject(JSContext *ctx);
 JS_EXTERN int JS_IsInstanceOf(JSContext *ctx, JSValue val, JSValue obj);
 JS_EXTERN int JS_DefineProperty(JSContext *ctx, JSValue this_obj,
