@@ -125,7 +125,7 @@ int dbuf_realloc(DynBuf *s, size_t new_size)
             new_size = size;
         new_buf = s->realloc_func(s->opaque, s->buf, new_size);
         if (!new_buf) {
-            s->error = TRUE;
+            s->error = true;
             return -1;
         }
         s->buf = new_buf;
@@ -1209,12 +1209,12 @@ typedef struct {
     js__once_cb callback;
 } js__once_data_t;
 
-static BOOL WINAPI js__once_inner(INIT_ONCE *once, void *param, void **context) {
+static int WINAPI js__once_inner(INIT_ONCE *once, void *param, void **context) {
     js__once_data_t *data = param;
 
     data->callback();
 
-    return TRUE;
+    return 1;
 }
 
 void js_once(js_once_t *guard, js__once_cb callback) {

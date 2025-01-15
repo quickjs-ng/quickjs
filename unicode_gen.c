@@ -567,7 +567,7 @@ void parse_composition_exclusions(const char *filename)
             continue;
         c0 = strtoul(p, (char **)&p, 16);
         assert(c0 > 0 && c0 <= CHARCODE_MAX);
-        unicode_db[c0].is_excluded = TRUE;
+        unicode_db[c0].is_excluded = true;
     }
     fclose(f);
 }
@@ -887,7 +887,7 @@ void dump_unicode_data(CCInfo *tab)
     }
 }
 
-BOOL is_complicated_case(const CCInfo *ci)
+bool is_complicated_case(const CCInfo *ci)
 {
     return (ci->u_len > 1 || ci->l_len > 1 ||
             (ci->u_len > 0 && ci->l_len > 0) ||
@@ -1373,7 +1373,7 @@ static int sp_cc_cmp(const void *p1, const void *p2)
         return memcmp(c1->f_data, c2->f_data, sizeof(c1->f_data[0]) * c1->f_len);
     }
 }
-                     
+
 /* dump the case special cases (multi character results which are
    identical and need specific handling in lre_canonicalize() */
 void dump_case_folding_special_cases(CCInfo *tab)
@@ -1393,7 +1393,7 @@ void dump_case_folding_special_cases(CCInfo *tab)
             len = 1;
             while ((i + len) <= CHARCODE_MAX && !sp_cc_cmp(&perm[i], &perm[i + len]))
                 len++;
-            
+
             if (len > 1) {
                 for(j = i; j < i + len; j++)
                     dump_cc_info(&tab[perm[j]], perm[j]);
@@ -1404,7 +1404,7 @@ void dump_case_folding_special_cases(CCInfo *tab)
     free(perm);
     global_tab = NULL;
 }
-                                     
+
 
 int tabcmp(const int *tab1, const int *tab2, int n)
 {
@@ -1428,7 +1428,7 @@ void dump_str(const char *str, const int *buf, int len)
 void compute_internal_props(void)
 {
     int i;
-    BOOL has_ul;
+    bool has_ul;
 
     for(i = 0; i <= CHARCODE_MAX; i++) {
         CCInfo *ci = &unicode_db[i];
@@ -1468,7 +1468,7 @@ void dump_byte_table(FILE *f, const char *cname, const uint8_t *tab, int len)
 
 #define PROP_BLOCK_LEN 32
 
-void build_prop_table(FILE *f, int prop_index, BOOL add_index)
+void build_prop_table(FILE *f, int prop_index, bool add_index)
 {
     int i, j, n, v, offset, code;
     DynBuf dbuf_s, *dbuf = &dbuf_s;
@@ -1570,11 +1570,11 @@ void build_prop_table(FILE *f, int prop_index, BOOL add_index)
 
 void build_flags_tables(FILE *f)
 {
-    build_prop_table(f, PROP_Cased1, TRUE);
-    build_prop_table(f, PROP_Case_Ignorable, TRUE);
-    build_prop_table(f, PROP_ID_Start, TRUE);
-    build_prop_table(f, PROP_ID_Continue1, TRUE);
-    build_prop_table(f, PROP_White_Space, TRUE);
+    build_prop_table(f, PROP_Cased1, true);
+    build_prop_table(f, PROP_Case_Ignorable, true);
+    build_prop_table(f, PROP_ID_Start, true);
+    build_prop_table(f, PROP_ID_Continue1, true);
+    build_prop_table(f, PROP_White_Space, true);
 }
 
 void dump_name_table(FILE *f, const char *cname, const char **tab_name, int len,
@@ -1818,7 +1818,7 @@ void build_prop_list_table(FILE *f)
             i == PROP_White_Space) {
             /* already generated */
         } else {
-            build_prop_table(f, i, FALSE);
+            build_prop_table(f, i, false);
         }
     }
 
@@ -1912,7 +1912,7 @@ static int64_t get_time_ns(void)
 void check_flags(void)
 {
     int c;
-    BOOL flag_ref, flag;
+    bool flag_ref, flag;
     for(c = 0; c <= CHARCODE_MAX; c++) {
         flag_ref = get_prop(c, PROP_Cased);
         flag = lre_is_cased(c);
@@ -2220,29 +2220,29 @@ int get_short_code(int c)
     }
 }
 
-static BOOL is_short(int code)
+static bool is_short(int code)
 {
     return get_short_code(code) >= 0;
 }
 
-static BOOL is_short_tab(const int *tab, int len)
+static bool is_short_tab(const int *tab, int len)
 {
     int i;
     for(i = 0; i < len; i++) {
         if (!is_short(tab[i]))
-            return FALSE;
+            return false;
     }
-    return TRUE;
+    return true;
 }
 
-static BOOL is_16bit(const int *tab, int len)
+static bool is_16bit(const int *tab, int len)
 {
     int i;
     for(i = 0; i < len; i++) {
         if (tab[i] > 0xffff)
-            return FALSE;
+            return false;
     }
-    return TRUE;
+    return true;
 }
 
 static uint32_t to_lower_simple(uint32_t c)
@@ -2487,10 +2487,10 @@ void find_decomp_run(DecompEntry *tab_de, int i)
     }
 
     if (l == 2) {
-        BOOL is_16bit;
+        bool is_16bit;
 
         n = 0;
-        is_16bit = FALSE;
+        is_16bit = false;
         for(;;) {
             if (!((i + n + 1) <= CHARCODE_MAX && n + 2 <= len_max))
                 break;
@@ -2500,7 +2500,7 @@ void find_decomp_run(DecompEntry *tab_de, int i)
                   is_short(ci1->decomp_data[1])))
                 break;
             if (!is_16bit && !is_short(ci1->decomp_data[0]))
-                is_16bit = TRUE;
+                is_16bit = true;
             ci2 = &unicode_db[i + n + 1];
             if (!(ci2->decomp_len == l &&
                   ci2->is_compat == ci->is_compat &&
@@ -3063,7 +3063,7 @@ int main(int argc, char **argv)
     build_conv_table(unicode_db);
 
 #ifdef DUMP_CASE_FOLDING_SPECIAL_CASES
-    dump_case_folding_special_cases(unicode_db); 
+    dump_case_folding_special_cases(unicode_db);
 #endif
 
     if (!outfilename) {

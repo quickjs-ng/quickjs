@@ -67,10 +67,10 @@ typedef struct {
     const uint8_t *buf_end;
     const uint8_t *buf_start;
     int re_flags;
-    BOOL is_unicode;
-    BOOL unicode_sets;
-    BOOL ignore_case;
-    BOOL dotall;
+    bool is_unicode;
+    bool unicode_sets;
+    bool ignore_case;
+    bool dotall;
     int capture_count;
     int total_capture_count; /* -1 = not computed yet */
     int has_named_captures; /* -1 = don't know, 0 = no, 1 = yes */
@@ -143,19 +143,19 @@ static const uint16_t char_range_s[] = {
     0xFEFF, 0xFEFF + 1,
 };
 
-BOOL lre_is_space(int c)
+bool lre_is_space(int c)
 {
     int i, n, low, high;
     n = (countof(char_range_s) - 1) / 2;
     for(i = 0; i < n; i++) {
         low = char_range_s[2 * i + 1];
         if (c < low)
-            return FALSE;
+            return false;
         high = char_range_s[2 * i + 2];
         if (c < high)
-            return TRUE;
+            return true;
     }
-    return FALSE;
+    return false;
 }
 
 uint32_t const lre_id_start_table_ascii[4] = {
@@ -196,7 +196,7 @@ static const uint16_t *char_range_table[] = {
 
 static int cr_init_char_range(REParseState *s, CharRange *cr, uint32_t c)
 {
-    BOOL invert;
+    bool invert;
     const uint16_t *c_pt;
     int len, i;
 
@@ -390,7 +390,7 @@ static int re_parse_out_of_memory(REParseState *s)
 
 /* If allow_overflow is false, return -1 in case of
    overflow. Otherwise return INT32_MAX. */
-static int parse_digits(const uint8_t **pp, BOOL allow_overflow)
+static int parse_digits(const uint8_t **pp, bool allow_overflow)
 {
     const uint8_t *p;
     uint64_t v;
@@ -548,7 +548,7 @@ int lre_parse_escape(const uint8_t **pp, int allow_utf16)
 }
 
 /* XXX: we use the same chars for name and value */
-static BOOL is_unicode_char(int c)
+static bool is_unicode_char(int c)
 {
     return ((c >= '0' && c <= '9') ||
             (c >= 'A' && c <= 'Z') ||
@@ -557,12 +557,12 @@ static BOOL is_unicode_char(int c)
 }
 
 static int parse_unicode_property(REParseState *s, CharRange *cr,
-                                  const uint8_t **pp, BOOL is_inv)
+                                  const uint8_t **pp, bool is_inv)
 {
     const uint8_t *p;
     char name[64], value[64];
     char *q;
-    BOOL script_ext;
+    bool script_ext;
     int ret;
 
     p = *pp;
@@ -592,10 +592,10 @@ static int parse_unicode_property(REParseState *s, CharRange *cr,
     //    printf("name=%s value=%s\n", name, value);
 
     if (!strcmp(name, "Script") || !strcmp(name, "sc")) {
-        script_ext = FALSE;
+        script_ext = false;
         goto do_script;
     } else if (!strcmp(name, "Script_Extensions") || !strcmp(name, "scx")) {
-        script_ext = TRUE;
+        script_ext = true;
     do_script:
         cr_init(cr, s->opaque, lre_realloc);
         ret = unicode_script(cr, value, script_ext);
@@ -654,7 +654,7 @@ static int parse_unicode_property(REParseState *s, CharRange *cr,
    (CLASS_RANGE_BASE). In case of class range, 'cr' is
    initialized. Otherwise, it is ignored. */
 static int get_class_atom(REParseState *s, CharRange *cr,
-                          const uint8_t **pp, BOOL inclass)
+                          const uint8_t **pp, bool inclass)
 {
     const uint8_t *p, *p_next;
     uint32_t c;
@@ -813,7 +813,7 @@ static int re_parse_char_class(REParseState *s, const uint8_t **pp)
     uint32_t c1, c2;
     CharRange cr_s, *cr = &cr_s;
     CharRange cr1_s, *cr1 = &cr1_s;
-    BOOL invert;
+    bool invert;
 
     cr_init(cr, s->opaque, lre_realloc);
     p = *pp;
@@ -838,16 +838,16 @@ static int re_parse_char_class(REParseState *s, const uint8_t **pp)
         } while (n < 4);
     }
 
-    invert = FALSE;
+    invert = false;
     if (*p == '^') {
         p++;
-        invert = TRUE;
+        invert = true;
     }
 
     for(;;) {
         if (*p == ']')
             break;
-        c1 = get_class_atom(s, cr1, &p, TRUE);
+        c1 = get_class_atom(s, cr1, &p, true);
         if ((int)c1 < 0)
             goto fail;
         if (*p == '-' && p[1] == ']' && s->unicode_sets) {
@@ -865,7 +865,7 @@ static int re_parse_char_class(REParseState *s, const uint8_t **pp)
                 /* Annex B: match '-' character */
                 goto class_atom;
             }
-            c2 = get_class_atom(s, cr1, &p0, TRUE);
+            c2 = get_class_atom(s, cr1, &p0, true);
             if ((int)c2 < 0)
                 goto fail;
             if (c2 >= CLASS_RANGE_BASE) {
@@ -923,13 +923,13 @@ static int re_parse_char_class(REParseState *s, const uint8_t **pp)
    - true if the opcodes may not advance the char pointer
    - false if the opcodes always advance the char pointer
 */
-static BOOL re_need_check_advance(const uint8_t *bc_buf, int bc_buf_len)
+static bool re_need_check_advance(const uint8_t *bc_buf, int bc_buf_len)
 {
     int pos, opcode, len;
     uint32_t val;
-    BOOL ret;
+    bool ret;
 
-    ret = TRUE;
+    ret = true;
     pos = 0;
 
     while (pos < bc_buf_len) {
@@ -950,7 +950,7 @@ static BOOL re_need_check_advance(const uint8_t *bc_buf, int bc_buf_len)
         case REOP_dot:
         case REOP_any:
         simple_char:
-            ret = FALSE;
+            ret = false;
             break;
         case REOP_line_start:
         case REOP_line_end:
@@ -970,7 +970,7 @@ static BOOL re_need_check_advance(const uint8_t *bc_buf, int bc_buf_len)
             break;
         default:
             /* safe behvior: we cannot predict the outcome */
-            return TRUE;
+            return true;
         }
         pos += len;
     }
@@ -1136,7 +1136,7 @@ static int re_count_captures(REParseState *s)
     return s->total_capture_count;
 }
 
-static BOOL re_has_named_captures(REParseState *s)
+static bool re_has_named_captures(REParseState *s)
 {
     if (s->has_named_captures < 0)
         re_count_captures(s);
@@ -1164,13 +1164,13 @@ static int find_group_name(REParseState *s, const char *name)
     return -1;
 }
 
-static int re_parse_disjunction(REParseState *s, BOOL is_backward_dir);
+static int re_parse_disjunction(REParseState *s, bool is_backward_dir);
 
-static int re_parse_term(REParseState *s, BOOL is_backward_dir)
+static int re_parse_term(REParseState *s, bool is_backward_dir)
 {
     const uint8_t *p;
     int c, last_atom_start, quant_min, quant_max, last_capture_count;
-    BOOL greedy, add_zero_advance_check, is_neg, is_backward_lookahead;
+    bool greedy, add_zero_advance_check, is_neg, is_backward_lookahead;
     CharRange cr_s, *cr = &cr_s;
 
     last_atom_start = -1;
@@ -1206,11 +1206,11 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
         } else {
             const uint8_t *p1 = p + 1;
             /* Annex B: error if it is like a repetition count */
-            parse_digits(&p1, TRUE);
+            parse_digits(&p1, true);
             if (*p1 == ',') {
                 p1++;
                 if (lre_is_digit(*p1)) {
-                    parse_digits(&p1, TRUE);
+                    parse_digits(&p1, true);
                 }
             }
             if (*p1 != '}') {
@@ -1236,14 +1236,14 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
                     return -1;
             } else if ((p[2] == '=' || p[2] == '!')) {
                 is_neg = (p[2] == '!');
-                is_backward_lookahead = FALSE;
+                is_backward_lookahead = false;
                 p += 3;
                 goto lookahead;
             } else if (p[2] == '<' &&
                        (p[3] == '=' || p[3] == '!')) {
                 int pos;
                 is_neg = (p[3] == '!');
-                is_backward_lookahead = TRUE;
+                is_backward_lookahead = true;
                 p += 4;
                 /* lookahead */
             lookahead:
@@ -1376,7 +1376,7 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
             {
                 const uint8_t *q = ++p;
 
-                c = parse_digits(&p, FALSE);
+                c = parse_digits(&p, false);
                 if (c < 0 || (c >= s->capture_count && c >= re_count_captures(s))) {
                     if (!s->is_unicode) {
                         /* Annex B.1.4: accept legacy octal */
@@ -1425,7 +1425,7 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
         goto parse_class_atom;
     default:
     parse_class_atom:
-        c = get_class_atom(s, cr, &p, FALSE);
+        c = get_class_atom(s, cr, &p, false);
         if ((int)c < 0)
             return -1;
     normal_char:
@@ -1485,12 +1485,12 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
                     break;
                 }
                 p++;
-                quant_min = parse_digits(&p, TRUE);
+                quant_min = parse_digits(&p, true);
                 quant_max = quant_min;
                 if (*p == ',') {
                     p++;
                     if (lre_is_digit(*p)) {
-                        quant_max = parse_digits(&p, TRUE);
+                        quant_max = parse_digits(&p, true);
                         if (quant_max < quant_min) {
                         invalid_quant_count:
                             return re_parse_error(s, "invalid repetition count");
@@ -1508,10 +1508,10 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
                     return -1;
             }
         quantifier:
-            greedy = TRUE;
+            greedy = true;
             if (*p == '?') {
                 p++;
-                greedy = FALSE;
+                greedy = false;
             }
             if (last_atom_start < 0) {
                 return re_parse_error(s, "nothing to repeat");
@@ -1571,7 +1571,7 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
                     if (quant_max == 0) {
                         s->byte_code.size = last_atom_start;
                     } else if (quant_max == 1 || quant_max == INT32_MAX) {
-                        BOOL has_goto = (quant_max == INT32_MAX);
+                        bool has_goto = (quant_max == INT32_MAX);
                         if (dbuf_insert(&s->byte_code, last_atom_start, 5 + add_zero_advance_check))
                             goto out_of_memory;
                         s->byte_code.buf[last_atom_start] = REOP_split_goto_first +
@@ -1596,7 +1596,7 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
                         pos += 4;
                         if (add_zero_advance_check) {
                             s->byte_code.buf[pos++] = REOP_push_char_pos;
-                            re_emit_op(s, REOP_check_advance); 
+                            re_emit_op(s, REOP_check_advance);
                         }
                         re_emit_goto(s, REOP_loop, last_atom_start + 5);
                         re_emit_op(s, REOP_drop);
@@ -1658,7 +1658,7 @@ static int re_parse_term(REParseState *s, BOOL is_backward_dir)
     return re_parse_out_of_memory(s);
 }
 
-static int re_parse_alternative(REParseState *s, BOOL is_backward_dir)
+static int re_parse_alternative(REParseState *s, bool is_backward_dir)
 {
     const uint8_t *p;
     int ret;
@@ -1692,7 +1692,7 @@ static int re_parse_alternative(REParseState *s, BOOL is_backward_dir)
     return 0;
 }
 
-static int re_parse_disjunction(REParseState *s, BOOL is_backward_dir)
+static int re_parse_disjunction(REParseState *s, bool is_backward_dir)
 {
     int start, len, pos;
 
@@ -1781,7 +1781,7 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
 {
     REParseState s_s, *s = &s_s;
     int stack_size;
-    BOOL is_sticky;
+    bool is_sticky;
 
     memset(s, 0, sizeof(*s));
     s->opaque = opaque;
@@ -1817,7 +1817,7 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
     }
     re_emit_op_u8(s, REOP_save_start, 0);
 
-    if (re_parse_disjunction(s, FALSE)) {
+    if (re_parse_disjunction(s, false)) {
     error:
         dbuf_free(&s->byte_code);
         dbuf_free(&s->group_names);
@@ -1868,12 +1868,12 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
     return s->byte_code.buf;
 }
 
-static BOOL is_line_terminator(uint32_t c)
+static bool is_line_terminator(uint32_t c)
 {
     return (c == '\n' || c == '\r' || c == CP_LS || c == CP_PS);
 }
 
-static BOOL is_word_char(uint32_t c)
+static bool is_word_char(uint32_t c)
 {
     return ((c >= '0' && c <= '9') ||
             (c >= 'a' && c <= 'z') ||
@@ -1989,9 +1989,9 @@ typedef struct {
     int cbuf_type;
     int capture_count;
     int stack_size_max;
-    BOOL multi_line;
-    BOOL ignore_case;
-    BOOL is_unicode;
+    bool multi_line;
+    bool ignore_case;
+    bool is_unicode;
     void *opaque; /* used for stack overflow check */
 
     size_t state_size;
@@ -2042,7 +2042,7 @@ static int push_state(REExecContext *s,
 static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                                    StackInt *stack, int stack_len,
                                    const uint8_t *pc, const uint8_t *cptr,
-                                   BOOL no_recurse)
+                                   bool no_recurse)
 {
     int opcode, ret;
     int cbuf_type;
@@ -2256,17 +2256,17 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
         case REOP_word_boundary:
         case REOP_not_word_boundary:
             {
-                BOOL v1, v2;
+                bool v1, v2;
                 /* char before */
                 if (cptr == s->cbuf) {
-                    v1 = FALSE;
+                    v1 = false;
                 } else {
                     PEEK_PREV_CHAR(c, cptr, s->cbuf, cbuf_type);
                     v1 = is_word_char(c);
                 }
                 /* current char */
                 if (cptr >= cbuf_end) {
-                    v2 = FALSE;
+                    v2 = false;
                 } else {
                     PEEK_CHAR(c, cptr, cbuf_end, cbuf_type);
                     v2 = is_word_char(c);
@@ -2419,7 +2419,7 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                 q = 0;
                 for(;;) {
                     res = lre_exec_backtrack(s, capture, stack, stack_len,
-                                             pc1, cptr, TRUE);
+                                             pc1, cptr, true);
                     if (res == -1)
                         return res;
                     if (!res)
@@ -2484,7 +2484,7 @@ int lre_exec(uint8_t **capture,
     alloca_size = s->stack_size_max * sizeof(stack_buf[0]);
     stack_buf = alloca(alloca_size);
     ret = lre_exec_backtrack(s, capture, stack_buf, 0, bc_buf + RE_HEADER_LEN,
-                             cbuf + (cindex << cbuf_type), FALSE);
+                             cbuf + (cindex << cbuf_type), false);
     lre_realloc(s->opaque, s->state_stack, 0);
     return ret;
 }
@@ -2510,7 +2510,7 @@ const char *lre_get_groupnames(const uint8_t *bc_buf)
     return (const char *)(bc_buf + RE_HEADER_LEN + re_bytecode_len);
 }
 
-void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
+void lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped)
 {
     uint8_t *p, *pe;
     uint32_t n, r, nw;
@@ -2586,9 +2586,9 @@ void lre_byte_swap(uint8_t *buf, size_t len, BOOL is_byte_swapped)
 
 #ifdef TEST
 
-BOOL lre_check_stack_overflow(void *opaque, size_t alloca_size)
+bool lre_check_stack_overflow(void *opaque, size_t alloca_size)
 {
-    return FALSE;
+    return false;
 }
 
 void *lre_realloc(void *opaque, void *ptr, size_t size)

@@ -656,7 +656,7 @@ dirent_next(
     } else if (dirp->handle != INVALID_HANDLE_VALUE) {
 
         /* Get the next directory entry from stream */
-        if (FindNextFileW (dirp->handle, &dirp->data) != FALSE) {
+        if (FindNextFileW (dirp->handle, &dirp->data) != 0) {
             /* Got a file */
             p = &dirp->data;
         } else {
