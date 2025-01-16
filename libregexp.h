@@ -24,6 +24,7 @@
 #ifndef LIBREGEXP_H
 #define LIBREGEXP_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "libunicode.h"
@@ -31,8 +32,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define LRE_BOOL  int       /* for documentation purposes */
 
 #define LRE_FLAG_GLOBAL     (1 << 0)
 #define LRE_FLAG_IGNORECASE (1 << 1)
@@ -55,12 +54,12 @@ int lre_exec(uint8_t **capture,
              int cbuf_type, void *opaque);
 
 int lre_parse_escape(const uint8_t **pp, int allow_utf16);
-LRE_BOOL lre_is_space(int c);
+bool lre_is_space(int c);
 
-void lre_byte_swap(uint8_t *buf, size_t len, LRE_BOOL is_byte_swapped);
+void lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped);
 
 /* must be provided by the user */
-LRE_BOOL lre_check_stack_overflow(void *opaque, size_t alloca_size);
+bool lre_check_stack_overflow(void *opaque, size_t alloca_size);
 void *lre_realloc(void *opaque, void *ptr, size_t size);
 
 /* JS identifier test */
@@ -85,8 +84,6 @@ static inline int lre_js_is_ident_next(int c)
         return lre_is_id_continue(c) || c == 0x200C || c == 0x200D;
     }
 }
-
-#undef LRE_BOOL
 
 #ifdef __cplusplus
 } /* extern "C" { */

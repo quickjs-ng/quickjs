@@ -18,10 +18,13 @@ usage: qjs [options] [file [args]]
 -m  --module       load as ES6 module (default=autodetect)
     --script       load as ES6 script (default=autodetect)
 -I  --include file include an additional file
-    --std          make 'std' and 'os' available to the loaded script
+    --std          make 'std', 'os' and 'bjson' available to script
 -T  --trace        trace memory allocation
 -d  --dump         dump the memory usage stats
 -D  --dump-flags   flags for dumping debug data (see DUMP_* defines)
+-c  --compile FILE compile the given JS file as a standalone executable
+-o  --out FILE     output file for standalone executables
+    --exe          select the executable to use as the base, defaults to the current one
     --memory-limit n       limit the memory usage to 'n' Kbytes
     --stack-size n         limit the stack size to 'n' Kbytes
     --unhandled-rejection  dump unhandled promise rejections
@@ -50,6 +53,37 @@ DUMP_MEM           0x10000  /* dump memory usage in JS_FreeRuntime */
 DUMP_OBJECTS       0x20000  /* dump objects in JS_FreeRuntime */
 DUMP_ATOMS         0x40000  /* dump atoms in JS_FreeRuntime */
 DUMP_SHAPES        0x80000  /* dump shapes in JS_FreeRuntime */
+```
+
+### Creating standalone executables
+
+With the `qjs` CLI it's possible to create standalone executables that will bundle the given JavaScript file
+alongside the binary.
+
+```
+$ qjs -c app.js -o app --exe qjs
+```
+
+The resulting `app` binary will have the same runtime dependencies as the `qjs` binary. This is acomplished
+by compiling the target JavaScript file to bytecode and adding it a copy of the executable, with a little
+trailer to help locate it. `--exe` expects the absolute path to `qjs`, e.g., `~/bin/qjs` or `$HOME/bin/qjs`.
+
+Rather than using the current executable, it's possible to use the `--exe` switch to create standalone
+executables for other platforms.
+
+No JavaScript bundling is performed, the specified JS file cannot depend on other files. A bundler such
+as `esbuild` can be used to generate an app bundle which can then be turned into the executable.
+
+```
+npx esbuild my-app/index.js \
+    --bundle \
+    --outfile=app.js \
+    --external:qjs:* \
+    --minify \
+    --target=es2023 \
+    --platform=neutral \
+    --format=esm \
+    --main-fields=main,module
 ```
 
 ## `qjsc` - The QuickJS JavaScript compiler
@@ -92,5 +126,5 @@ Hello World
 ```
 
 :::note
-We have plans to make this process easier, stay tuned!
+See the ["Creating standalone executables"](#creating-standalone-executables) section for a simpler way.
 :::

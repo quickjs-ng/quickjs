@@ -1,6 +1,6 @@
 #
 # QuickJS Javascript Engine
-# 
+#
 # Copyright (c) 2017-2021 Fabrice Bellard
 # Copyright (c) 2017-2021 Charlie Gordon
 # Copyright (c) 2023 Ben Noordhuis
@@ -26,6 +26,7 @@
 
 BUILD_DIR=build
 BUILD_TYPE?=Release
+INSTALL_PREFIX?=/usr/local
 
 QJS=$(BUILD_DIR)/qjs
 QJSC=$(BUILD_DIR)/qjsc
@@ -49,7 +50,7 @@ fuzz:
 	./fuzz
 
 $(BUILD_DIR):
-	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX)
 
 $(QJS): $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) -j $(JOBS)
@@ -57,18 +58,15 @@ $(QJS): $(BUILD_DIR)
 $(QJSC): $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) --target qjsc -j $(JOBS)
 
-$(BUILD_DIR)/test_conv: $(BUILD_DIR) tests/test_conv.c
-	cmake --build $(BUILD_DIR) --target test_conv
-
 install: $(QJS) $(QJSC)
 	cmake --build $(BUILD_DIR) --target install
 
 clean:
-	@rm -f v8.txt[1-9]*
 	cmake --build $(BUILD_DIR) --target clean
 
 codegen: $(QJSC)
 	$(QJSC) -ss -o gen/repl.c -m repl.js
+	$(QJSC) -ss -o gen/standalone.c -m standalone.js
 	$(QJSC) -e -o gen/function_source.c tests/function_source.js
 	$(QJSC) -e -o gen/hello.c examples/hello.js
 	$(QJSC) -e -o gen/hello_module.c -m examples/hello_module.js
@@ -97,9 +95,6 @@ cxxtest: cxxtest.cc quickjs.h
 
 test: $(QJS)
 	$(RUN262) -c tests.conf
-
-testconv: $(BUILD_DIR)/test_conv
-	$(BUILD_DIR)/test_conv
 
 test262: $(QJS)
 	$(RUN262) -m -c test262.conf -a

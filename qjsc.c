@@ -126,7 +126,7 @@ static void get_c_name(char *buf, size_t buf_size, const char *file)
         len = strlen(p);
     else
         len = r - p;
-    pstrcpy(buf, buf_size, c_ident_prefix);
+    js__pstrcpy(buf, buf_size, c_ident_prefix);
     q = buf + strlen(buf);
     for(i = 0; i < len; i++) {
         c = p[i];
@@ -158,7 +158,7 @@ static void dump_hex(FILE *f, const uint8_t *buf, size_t len)
 
 static void output_object_code(JSContext *ctx,
                                FILE *fo, JSValue obj, const char *c_name,
-                               BOOL load_only)
+                               bool load_only)
 {
     uint8_t *out_buf;
     size_t out_buf_len;
@@ -218,7 +218,7 @@ static void find_unique_cname(char *cname, size_t cname_size)
             break;
         suffix_num++;
     }
-    pstrcpy(cname, cname_size, cname1);
+    js__pstrcpy(cname, cname_size, cname1);
 }
 
 JSModuleDef *jsc_module_loader(JSContext *ctx,
@@ -234,7 +234,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
         namelist_add(&init_module_list, e->name, e->short_name, 0);
         /* create a dummy module */
         m = JS_NewCModule(ctx, module_name, js_module_dummy_init);
-    } else if (has_suffix(module_name, ".so")) {
+    } else if (js__has_suffix(module_name, ".so")) {
         JS_ThrowReferenceError(ctx, "%s: dynamically linking to shared libraries not supported",
         module_name);
         return NULL;
@@ -261,7 +261,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
         if (namelist_find(&cname_list, cname)) {
             find_unique_cname(cname, sizeof(cname));
         }
-        output_object_code(ctx, outfile, func_val, cname, TRUE);
+        output_object_code(ctx, outfile, func_val, cname, true);
 
         /* the module is already referenced, so we must free it */
         m = JS_VALUE_GET_PTR(func_val);
@@ -289,7 +289,7 @@ static void compile_file(JSContext *ctx, FILE *fo,
     }
     eval_flags = JS_EVAL_FLAG_COMPILE_ONLY;
     if (module < 0) {
-        module = (has_suffix(filename, ".mjs") ||
+        module = (js__has_suffix(filename, ".mjs") ||
                   JS_DetectModule((const char *)buf, buf_len));
     }
     if (module)
@@ -303,11 +303,11 @@ static void compile_file(JSContext *ctx, FILE *fo,
     }
     js_free(ctx, buf);
     if (c_name1) {
-        pstrcpy(c_name, sizeof(c_name), c_name1);
+        js__pstrcpy(c_name, sizeof(c_name), c_name1);
     } else {
         get_c_name(c_name, sizeof(c_name), filename);
     }
-    output_object_code(ctx, fo, obj, c_name, FALSE);
+    output_object_code(ctx, fo, obj, c_name, false);
     JS_FreeValue(ctx, obj);
 }
 
@@ -315,7 +315,6 @@ static const char main_c_template1[] =
     "int main(int argc, char **argv)\n"
     "{\n"
     "  int r;\n"
-    "  JSValue ret;\n"
     "  JSRuntime *rt;\n"
     "  JSContext *ctx;\n"
     "  r = 0;\n"
@@ -325,14 +324,12 @@ static const char main_c_template1[] =
     ;
 
 static const char main_c_template2[] =
-    "  ret = js_std_loop(ctx);\n"
-    "  if (JS_IsException(ret)) {\n"
-    "    js_std_dump_error1(ctx, ret);\n"
-    "    r = 1;\n"
+    "  r = js_std_loop(ctx);\n"
+    "  if (r) {\n"
+    "    js_std_dump_error(ctx);\n"
     "  }\n"
-    "  JS_FreeValue(ctx, ret);\n"
-    "  JS_FreeContext(ctx);\n"
     "  js_std_free_handlers(rt);\n"
+    "  JS_FreeContext(ctx);\n"
     "  JS_FreeRuntime(rt);\n"
     "  return r;\n"
     "}\n";
@@ -422,11 +419,11 @@ int main(int argc, char **argv)
                 char *p;
                 char path[1024];
                 char cname[1024];
-                pstrcpy(path, sizeof(path), optarg);
+                js__pstrcpy(path, sizeof(path), optarg);
                 p = strchr(path, ',');
                 if (p) {
                     *p = '\0';
-                    pstrcpy(cname, sizeof(cname), p + 1);
+                    js__pstrcpy(cname, sizeof(cname), p + 1);
                 } else {
                     get_c_name(cname, sizeof(cname), path);
                 }
@@ -459,7 +456,7 @@ int main(int argc, char **argv)
     if (!out_filename)
         out_filename = "out.c";
 
-    pstrcpy(cfilename, sizeof(cfilename), out_filename);
+    js__pstrcpy(cfilename, sizeof(cfilename), out_filename);
 
     if (output_type == OUTPUT_RAW)
         fo = fopen(cfilename, "wb");

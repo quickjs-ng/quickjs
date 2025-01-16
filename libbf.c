@@ -646,20 +646,20 @@ int bf_normalize_and_round(bf_t *r, limb_t prec1, bf_flags_t flags)
    rounding */
 int bf_can_round(const bf_t *a, slimb_t prec, bf_rnd_t rnd_mode, slimb_t k)
 {
-    BOOL is_rndn;
+    bool is_rndn;
     slimb_t bit_pos, n;
     limb_t bit;
 
     if (a->expn == BF_EXP_INF || a->expn == BF_EXP_NAN)
-        return FALSE;
+        return false;
     if (rnd_mode == BF_RNDF) {
         return (k >= (prec + 1));
     }
     if (a->expn == BF_EXP_ZERO)
-        return FALSE;
+        return false;
     is_rndn = (rnd_mode == BF_RNDN || rnd_mode == BF_RNDNA);
     if (k < (prec + 2))
-        return FALSE;
+        return false;
     bit_pos = a->len * LIMB_BITS - 1 - prec;
     n = k - prec;
     /* bit pattern for RNDN or RNDNA: 0111.. or 1000...
@@ -672,11 +672,11 @@ int bf_can_round(const bf_t *a, slimb_t prec, bf_rnd_t rnd_mode, slimb_t k)
     /* XXX: slow, but a few iterations on average */
     while (n != 0) {
         if (get_bit(a->tab, a->len, bit_pos) != bit)
-            return TRUE;
+            return true;
         bit_pos--;
         n--;
     }
-    return FALSE;
+    return false;
 }
 
 /* Cannot fail with BF_ST_MEM_ERROR. */
@@ -955,20 +955,20 @@ static int bf_add_internal(bf_t *r, const bf_t *a, const bf_t *b, limb_t prec,
         i = r_len - tot_len;
         while (i < 0) {
             slimb_t ap, bp;
-            BOOL inflag;
+            bool inflag;
 
             ap = a_offset + i;
             bp = b_bit_offset + i * LIMB_BITS;
-            inflag = FALSE;
+            inflag = false;
             if (ap >= 0 && ap < a->len) {
                 v1 = a->tab[ap];
-                inflag = TRUE;
+                inflag = true;
             } else {
                 v1 = 0;
             }
             if (bp + LIMB_BITS > 0 && bp < (slimb_t)(b->len * LIMB_BITS)) {
                 v2 = get_bits(b->tab, b->len, bp);
-                inflag = TRUE;
+                inflag = true;
             } else {
                 v2 = 0;
             }
@@ -1758,7 +1758,7 @@ int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b,
     bf_t a1_s, *a1 = &a1_s;
     bf_t b1_s, *b1 = &b1_s;
     int q_sign, ret;
-    BOOL is_ceil, is_rndn;
+    bool is_ceil, is_rndn;
 
     assert(q != a && q != b);
     assert(r != a && r != b);
@@ -1785,7 +1785,7 @@ int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b,
     case BF_RNDZ:
     case BF_RNDN:
     case BF_RNDNA:
-        is_ceil = FALSE;
+        is_ceil = false;
         break;
     case BF_RNDD:
         is_ceil = q_sign;
@@ -1794,7 +1794,7 @@ int bf_divrem(bf_t *q, bf_t *r, const bf_t *a, const bf_t *b,
         is_ceil = q_sign ^ 1;
         break;
     case BF_RNDA:
-        is_ceil = TRUE;
+        is_ceil = true;
         break;
     case BF_DIVREM_EUCLIDIAN:
         is_ceil = a->sign;
@@ -2900,13 +2900,13 @@ static int strcasestart(const char *str, const char *val, const char **ptr)
 
 static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
                             const char *str, const char **pnext, int radix,
-                            limb_t prec, bf_flags_t flags, BOOL is_dec)
+                            limb_t prec, bf_flags_t flags, bool is_dec)
 {
     const char *p, *p_start;
     int is_neg, radix_bits, exp_is_neg, ret, digits_per_limb, shift;
     limb_t cur_limb;
     slimb_t pos, expn, int_len, digit_count;
-    BOOL has_decpt, is_bin_exp;
+    bool has_decpt, is_bin_exp;
     bf_t a_s, *a;
 
     *pexponent = 0;
@@ -2991,14 +2991,14 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
     cur_limb = 0;
     bf_resize(a, 1);
     pos = 0;
-    has_decpt = FALSE;
+    has_decpt = false;
     int_len = digit_count = 0;
     for(;;) {
         limb_t c;
         if (*p == '.' && (p > p_start || bf_to_digit(p[1]) < radix)) {
             if (has_decpt)
                 break;
-            has_decpt = TRUE;
+            has_decpt = true;
             int_len = digit_count;
             p++;
         }
@@ -3067,7 +3067,7 @@ static int bf_atof_internal(bf_t *r, slimb_t *pexponent,
 
     /* parse the exponent, if any */
     expn = 0;
-    is_bin_exp = FALSE;
+    is_bin_exp = false;
     if (((radix == 10 && (*p == 'e' || *p == 'E')) ||
          (radix != 10 && (*p == '@' ||
                           (radix_bits && (*p == 'p' || *p == 'P'))))) &&
@@ -3162,14 +3162,14 @@ int bf_atof2(bf_t *r, slimb_t *pexponent,
              limb_t prec, bf_flags_t flags)
 {
     return bf_atof_internal(r, pexponent, str, pnext, radix, prec, flags,
-                            FALSE);
+                            false);
 }
 
 int bf_atof(bf_t *r, const char *str, const char **pnext, int radix,
             limb_t prec, bf_flags_t flags)
 {
     slimb_t dummy_exp;
-    return bf_atof_internal(r, &dummy_exp, str, pnext, radix, prec, flags, FALSE);
+    return bf_atof_internal(r, &dummy_exp, str, pnext, radix, prec, flags, false);
 }
 
 /* base conversion to radix */
@@ -3340,7 +3340,7 @@ slimb_t bf_mul_log2_radix(slimb_t a1, unsigned int radix, int is_inv,
 {
     int is_neg;
     limb_t a;
-    BOOL is_ceil;
+    bool is_ceil;
 
     is_ceil = is_ceil1;
     a = a1;
@@ -3510,7 +3510,7 @@ static int bf_integer_to_radix(bf_t *r, const bf_t *a, limb_t radixl)
 static int bf_convert_to_radix(bf_t *r, slimb_t *pE,
                                const bf_t *a, int radix,
                                limb_t P, bf_rnd_t rnd_mode,
-                               BOOL is_fixed_exponent)
+                               bool is_fixed_exponent)
 {
     slimb_t E, e, prec, extra_bits, ziv_extra_bits, prec0;
     bf_t B_s, *B = &B_s;
@@ -3526,7 +3526,7 @@ static int bf_convert_to_radix(bf_t *r, slimb_t *pE,
         E = *pE;
     } else {
         /* compute the new exponent */
-        E = 1 + bf_mul_log2_radix(a->expn - 1, radix, TRUE, FALSE);
+        E = 1 + bf_mul_log2_radix(a->expn - 1, radix, true, false);
     }
     //    bf_print_str("a", a);
     //    printf("E=%ld P=%ld radix=%d\n", E, P, radix);
@@ -3539,7 +3539,7 @@ static int bf_convert_to_radix(bf_t *r, slimb_t *pE,
             e_sign = 1;
         }
         /* Note: precision for log2(radix) is not critical here */
-        prec0 = bf_mul_log2_radix(P, radix, FALSE, TRUE);
+        prec0 = bf_mul_log2_radix(P, radix, false, true);
         ziv_extra_bits = 16;
         for(;;) {
             prec = prec0 + ziv_extra_bits;
@@ -3632,12 +3632,12 @@ static void limb_to_a2(char *buf, limb_t n, unsigned int radix_bits, int len)
     }
 }
 
-/* 'a' must be an integer if the is_dec = FALSE or if the radix is not
+/* 'a' must be an integer if the is_dec = false or if the radix is not
    a power of two. A dot is added before the 'dot_pos' digit. dot_pos
    = n_digits does not display the dot. 0 <= dot_pos <=
    n_digits. n_digits >= 1. */
 static void output_digits(DynBuf *s, const bf_t *a1, int radix, limb_t n_digits,
-                          limb_t dot_pos, BOOL is_dec)
+                          limb_t dot_pos, bool is_dec)
 {
     limb_t i, v, l;
     slimb_t pos, pos_incr;
@@ -3721,7 +3721,7 @@ static void *bf_dbuf_realloc(void *opaque, void *ptr, size_t size)
 
 /* return the length in bytes. A trailing '\0' is added */
 static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
-                              limb_t prec, bf_flags_t flags, BOOL is_dec)
+                              limb_t prec, bf_flags_t flags, bool is_dec)
 {
     bf_context_t *ctx = a2->ctx;
     DynBuf s_s, *s = &s_s;
@@ -3810,11 +3810,11 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                     a->sign = 0;
 
                     /* one more digit for the rounding */
-                    n = 1 + bf_mul_log2_radix(bf_max(a->expn, 0), radix, TRUE, TRUE);
+                    n = 1 + bf_mul_log2_radix(bf_max(a->expn, 0), radix, true, true);
                     n_digits = n + prec;
                     n1 = n;
                     if (bf_convert_to_radix(a1, &n1, a, radix, n_digits,
-                                            flags & BF_RND_MASK, TRUE))
+                                            flags & BF_RND_MASK, true))
                         goto fail1;
                     start = s->size;
                     output_digits(s, a1, radix, n_digits, n, is_dec);
@@ -3897,7 +3897,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         slimb_t n_digits_max, n_digits_min;
 
                         assert(prec != BF_PREC_INF);
-                        n_digits = 1 + bf_mul_log2_radix(prec, radix, TRUE, TRUE);
+                        n_digits = 1 + bf_mul_log2_radix(prec, radix, true, true);
                         /* max number of digits for non exponential
                            notation. The rational is to have the same rule
                            as JS i.e. n_max = 21 for 64 bit float in base 10. */
@@ -3914,7 +3914,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                             while (n_digits_min < n_digits_max) {
                                 n_digits = (n_digits_min + n_digits_max) / 2;
                                 if (bf_convert_to_radix(a1, &n, a, radix, n_digits,
-                                                        flags & BF_RND_MASK, FALSE)) {
+                                                        flags & BF_RND_MASK, false)) {
                                     bf_delete(b);
                                     goto fail1;
                                 }
@@ -3938,7 +3938,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         }
                     }
                     if (bf_convert_to_radix(a1, &n, a, radix, n_digits,
-                                            flags & BF_RND_MASK, FALSE)) {
+                                            flags & BF_RND_MASK, false)) {
                     fail1:
                         bf_delete(a1);
                         goto fail;
@@ -4017,7 +4017,7 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
 char *bf_ftoa(size_t *plen, const bf_t *a, int radix, limb_t prec,
               bf_flags_t flags)
 {
-    return bf_ftoa_internal(plen, a, radix, prec, flags, FALSE);
+    return bf_ftoa_internal(plen, a, radix, prec, flags, false);
 }
 
 /***************************************************************/
@@ -4025,7 +4025,7 @@ char *bf_ftoa(size_t *plen, const bf_t *a, int radix, limb_t prec,
 
 /* Note: the algorithm is from MPFR */
 static void bf_const_log2_rec(bf_t *T, bf_t *P, bf_t *Q, limb_t n1,
-                              limb_t n2, BOOL need_P)
+                              limb_t n2, bool need_P)
 {
     bf_context_t *s = T->ctx;
     if ((n2 - n1) == 1) {
@@ -4045,7 +4045,7 @@ static void bf_const_log2_rec(bf_t *T, bf_t *P, bf_t *Q, limb_t n1,
         bf_t Q1_s, *Q1 = &Q1_s;
 
         m = n1 + ((n2 - n1) >> 1);
-        bf_const_log2_rec(T, P, Q, n1, m, TRUE);
+        bf_const_log2_rec(T, P, Q, n1, m, true);
         bf_init(s, T1);
         bf_init(s, P1);
         bf_init(s, Q1);
@@ -4073,7 +4073,7 @@ static void bf_const_log2_internal(bf_t *T, limb_t prec)
     N = w / 3 + 1;
     bf_init(T->ctx, P);
     bf_init(T->ctx, Q);
-    bf_const_log2_rec(T, P, Q, 0, N, FALSE);
+    bf_const_log2_rec(T, P, Q, 0, N, false);
     bf_div(T, T, Q, prec, BF_RNDN);
     bf_delete(P);
     bf_delete(Q);
@@ -4635,10 +4635,10 @@ static int bf_pow_int(bf_t *r, const bf_t *x, limb_t prec, void *opaque)
     return ret;
 }
 
-/* x must be a finite non zero float. Return TRUE if there is a
+/* x must be a finite non zero float. Return true if there is a
    floating point number r such as x=r^(2^n) and return this floating
-   point number 'r'. Otherwise return FALSE and r is undefined. */
-static BOOL check_exact_power2n(bf_t *r, const bf_t *x, slimb_t n)
+   point number 'r'. Otherwise return false and r is undefined. */
+static bool check_exact_power2n(bf_t *r, const bf_t *x, slimb_t n)
 {
     bf_context_t *s = r->ctx;
     bf_t T_s, *T = &T_s;
@@ -4650,17 +4650,17 @@ static BOOL check_exact_power2n(bf_t *r, const bf_t *x, slimb_t n)
     /* fast check on the exponent */
     if (n > (LIMB_BITS - 1)) {
         if (e != 0)
-            return FALSE;
+            return false;
         er = 0;
     } else {
         if ((e & (((limb_t)1 << n) - 1)) != 0)
-            return FALSE;
+            return false;
         er = e >> n;
     }
     /* every perfect odd square = 1 modulo 8 */
     v = get_bits(x->tab, x->len, x->len * LIMB_BITS - x->expn + e);
     if ((v & 7) != 1)
-        return FALSE;
+        return false;
 
     bf_init(s, T);
     bf_set(T, x);
@@ -4669,10 +4669,10 @@ static BOOL check_exact_power2n(bf_t *r, const bf_t *x, slimb_t n)
         if (i != 0)
             bf_set(T, r);
         if (bf_sqrtrem(r, NULL, T) != 0)
-            return FALSE;
+            return false;
     }
     r->expn += er;
-    return TRUE;
+    return true;
 }
 
 /* prec = BF_PREC_INF is accepted for x and y integers and y >= 0 */
@@ -4681,7 +4681,7 @@ int bf_pow(bf_t *r, const bf_t *x, const bf_t *y, limb_t prec, bf_flags_t flags)
     bf_context_t *s = r->ctx;
     bf_t T_s, *T = &T_s;
     bf_t ytmp_s;
-    BOOL y_is_int, y_is_odd;
+    bool y_is_int, y_is_odd;
     int r_sign, ret, rnd_mode;
     slimb_t y_emin;
 
@@ -5072,7 +5072,7 @@ static int bf_atan_internal(bf_t *r, const bf_t *a, limb_t prec,
                             void *opaque)
 {
     bf_context_t *s = r->ctx;
-    BOOL add_pi2 = (BOOL)(intptr_t)opaque;
+    bool add_pi2 = (bool)(intptr_t)opaque;
     bf_t T_s, *T = &T_s;
     bf_t U_s, *U = &U_s;
     bf_t V_s, *V = &V_s;
@@ -5197,7 +5197,7 @@ int bf_atan(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags)
         }
     }
 
-    return bf_ziv_rounding(r, a, prec, flags, bf_atan_internal, (void *)FALSE);
+    return bf_ziv_rounding(r, a, prec, flags, bf_atan_internal, (void *)false);
 }
 
 static int bf_atan2_internal(bf_t *r, const bf_t *y, limb_t prec, void *opaque)
@@ -5247,7 +5247,7 @@ int bf_atan2(bf_t *r, const bf_t *y, const bf_t *x,
 static int bf_asin_internal(bf_t *r, const bf_t *a, limb_t prec, void *opaque)
 {
     bf_context_t *s = r->ctx;
-    BOOL is_acos = (BOOL)(intptr_t)opaque;
+    bool is_acos = (bool)(intptr_t)opaque;
     bf_t T_s, *T = &T_s;
     limb_t prec1, prec2;
 
@@ -5313,7 +5313,7 @@ int bf_asin(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags)
         }
     }
 
-    return bf_ziv_rounding(r, a, prec, flags, bf_asin_internal, (void *)FALSE);
+    return bf_ziv_rounding(r, a, prec, flags, bf_asin_internal, (void *)false);
 }
 
 int bf_acos(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags)
@@ -5347,7 +5347,7 @@ int bf_acos(bf_t *r, const bf_t *a, limb_t prec, bf_flags_t flags)
         return 0;
     }
 
-    return bf_ziv_rounding(r, a, prec, flags, bf_asin_internal, (void *)TRUE);
+    return bf_ziv_rounding(r, a, prec, flags, bf_asin_internal, (void *)true);
 }
 
 /***************************************************************/
@@ -6930,7 +6930,7 @@ int bfdec_divrem(bfdec_t *q, bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
     bfdec_t b1_s, *b1 = &b1_s;
     bfdec_t r1_s, *r1 = &r1_s;
     int q_sign, res;
-    BOOL is_ceil, is_rndn;
+    bool is_ceil, is_rndn;
 
     assert(q != a && q != b);
     assert(r != a && r != b);
@@ -6957,7 +6957,7 @@ int bfdec_divrem(bfdec_t *q, bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
     case BF_RNDZ:
     case BF_RNDN:
     case BF_RNDNA:
-        is_ceil = FALSE;
+        is_ceil = false;
         break;
     case BF_RNDD:
         is_ceil = q_sign;
@@ -6966,7 +6966,7 @@ int bfdec_divrem(bfdec_t *q, bfdec_t *r, const bfdec_t *a, const bfdec_t *b,
         is_ceil = q_sign ^ 1;
         break;
     case BF_RNDA:
-        is_ceil = TRUE;
+        is_ceil = true;
         break;
     case BF_DIVREM_EUCLIDIAN:
         is_ceil = a->sign;
@@ -7196,7 +7196,7 @@ int bfdec_pow_ui(bfdec_t *r, const bfdec_t *a, limb_t b)
 
 char *bfdec_ftoa(size_t *plen, const bfdec_t *a, limb_t prec, bf_flags_t flags)
 {
-    return bf_ftoa_internal(plen, (const bf_t *)a, 10, prec, flags, TRUE);
+    return bf_ftoa_internal(plen, (const bf_t *)a, 10, prec, flags, true);
 }
 
 int bfdec_atof(bfdec_t *r, const char *str, const char **pnext,
@@ -7204,7 +7204,7 @@ int bfdec_atof(bfdec_t *r, const char *str, const char **pnext,
 {
     slimb_t dummy_exp;
     return bf_atof_internal((bf_t *)r, &dummy_exp, str, pnext, 10, prec,
-                            flags, TRUE);
+                            flags, true);
 }
 
 #endif /* USE_BF_DEC */

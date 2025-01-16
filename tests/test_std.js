@@ -258,8 +258,6 @@ function test_timeout()
 
 function test_timeout_order()
 {
-    if (globalThis.__running_with_sanitizer__) return;
-
     var s = "";
     os.setTimeout(a, 0);
     os.setTimeout(b, 100);

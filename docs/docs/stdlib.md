@@ -311,7 +311,7 @@ The worker class has the following static properties:
   worker and is used to send or receive messages.
 
 The worker instances have the following properties:
-  
+
 - `postMessage(msg)` - Send a message to the corresponding worker. `msg` is cloned in
   the destination worker using an algorithm similar to the `HTML`
   structured clone algorithm. `SharedArrayBuffer` are shared
@@ -348,10 +348,12 @@ optional properties:
 
 Evaluate the file `filename` as a script (global eval).
 
-### `loadFile(filename)`
+### `loadFile(filename, [options])`
 
 Load the file `filename` and return it as a string assuming UTF-8
 encoding. Return `null` in case of I/O error.
+
+If `options.binary` is set to `true` a `Uint8Array` is returned instead.
 
 ### `open(filename, flags, errorObj = undefined)`
 

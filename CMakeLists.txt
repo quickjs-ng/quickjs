@@ -165,10 +165,6 @@ endif()
 
 if(CONFIG_UBSAN)
 message(STATUS "Building with UBSan")
-# __has_feature(undefined_sanitizer) or __SANITIZE_UNDEFINED__ don't exist
-add_compile_definitions(
-    __UBSAN__=1
-)
 add_compile_options(
     -fsanitize=undefined
     -fno-sanitize-recover=all
@@ -212,7 +208,10 @@ find_package(Threads)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
     list(APPEND qjs_libs ${CMAKE_THREAD_LIBS_INIT})
 endif()
-if(NOT MSVC)
+
+# try to find libm
+find_library(M_LIBRARIES m)
+if(M_LIBRARIES OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC")
     list(APPEND qjs_libs m)
 endif()
 
@@ -259,6 +258,7 @@ target_link_libraries(qjsc qjs)
 
 add_executable(qjs_exe
     gen/repl.c
+    gen/standalone.c
     qjs.c
 )
 add_qjs_libc_if_needed(qjs_exe)
@@ -370,10 +370,6 @@ if(BUILD_EXAMPLES)
     target_link_libraries(test_fib qjs)
 endif()
 
-add_executable(test_conv
-    tests/test_conv.c
-)
-
 # Install target
 #
 
@@ -392,6 +388,7 @@ if(NOT IOS)
         install(FILES quickjs-libc.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     endif()
     install(TARGETS qjs_exe RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(TARGETS qjsc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(TARGETS qjs EXPORT qjsConfig
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

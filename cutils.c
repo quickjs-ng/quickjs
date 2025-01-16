@@ -41,7 +41,7 @@
 #pragma GCC visibility push(default)
 #endif
 
-void pstrcpy(char *buf, int buf_size, const char *str)
+void js__pstrcpy(char *buf, int buf_size, const char *str)
 {
     int c;
     char *q = buf;
@@ -59,16 +59,16 @@ void pstrcpy(char *buf, int buf_size, const char *str)
 }
 
 /* strcat and truncate. */
-char *pstrcat(char *buf, int buf_size, const char *s)
+char *js__pstrcat(char *buf, int buf_size, const char *s)
 {
     int len;
     len = strlen(buf);
     if (len < buf_size)
-        pstrcpy(buf + len, buf_size - len, s);
+        js__pstrcpy(buf + len, buf_size - len, s);
     return buf;
 }
 
-int strstart(const char *str, const char *val, const char **ptr)
+int js__strstart(const char *str, const char *val, const char **ptr)
 {
     const char *p, *q;
     p = str;
@@ -84,7 +84,7 @@ int strstart(const char *str, const char *val, const char **ptr)
     return 1;
 }
 
-int has_suffix(const char *str, const char *suffix)
+int js__has_suffix(const char *str, const char *suffix)
 {
     size_t len = strlen(str);
     size_t slen = strlen(suffix);
@@ -125,7 +125,7 @@ int dbuf_realloc(DynBuf *s, size_t new_size)
             new_size = size;
         new_buf = s->realloc_func(s->opaque, s->buf, new_size);
         if (!new_buf) {
-            s->error = TRUE;
+            s->error = true;
             return -1;
         }
         s->buf = new_buf;
@@ -590,7 +590,13 @@ overflow:
  */
 
 /* 2 <= base <= 36 */
-char const digits36[36] = "0123456789abcdefghijklmnopqrstuvwxyz";
+char const digits36[36] = {
+    '0','1','2','3','4','5','6','7','8','9',
+    'a','b','c','d','e','f','g','h','i','j',
+    'k','l','m','n','o','p','q','r','s','t',
+    'u','v','w','x','y','z'
+};
+
 
 #define USE_SPECIAL_RADIX_10  1  // special case base 10 radix conversions
 #define USE_SINGLE_CASE_FAST  1  // special case single digit numbers
@@ -1203,12 +1209,12 @@ typedef struct {
     js__once_cb callback;
 } js__once_data_t;
 
-static BOOL WINAPI js__once_inner(INIT_ONCE *once, void *param, void **context) {
+static int WINAPI js__once_inner(INIT_ONCE *once, void *param, void **context) {
     js__once_data_t *data = param;
 
     data->callback();
 
-    return TRUE;
+    return 1;
 }
 
 void js_once(js_once_t *guard, js__once_cb callback) {

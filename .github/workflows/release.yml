@@ -75,7 +75,7 @@ jobs:
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: ${{ matrix.arch == 'x86' && 'mingw32' || 'mingw64' }}
+          msystem: ${{ matrix.arch == 'x86' && 'mingw32' || 'ucrt64' }}
           install: >-
             git
             make
@@ -90,6 +90,7 @@ jobs:
           mv build/qjsc.exe build/qjsc-windows-${{matrix.arch}}.exe
       - name: check
         run: |
+          file build/qjs-windows-${{matrix.arch}}.exe
           ldd build/qjs-windows-${{matrix.arch}}.exe build/qjsc-windows-${{matrix.arch}}.exe
       - name: upload
         uses: actions/upload-artifact@v4

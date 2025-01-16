@@ -190,7 +190,7 @@ int lre_case_conv(uint32_t *res, uint32_t c, int conv_type)
     return 1;
 }
 
-static int lre_case_folding_entry(uint32_t c, uint32_t idx, uint32_t v, BOOL is_unicode)
+static int lre_case_folding_entry(uint32_t c, uint32_t idx, uint32_t v, bool is_unicode)
 {
     uint32_t res[LRE_CC_RES_LEN_MAX];
     int len;
@@ -216,7 +216,7 @@ static int lre_case_folding_entry(uint32_t c, uint32_t idx, uint32_t v, BOOL is_
                 c = c - 'a' + 'A';
         } else {
             /* legacy regexp: to upper case if single char >= 128 */
-            len = lre_case_conv_entry(res, c, FALSE, idx, v);
+            len = lre_case_conv_entry(res, c, false, idx, v);
             if (len == 1 && res[0] >= 128)
                 c = res[0];
         }
@@ -225,7 +225,7 @@ static int lre_case_folding_entry(uint32_t c, uint32_t idx, uint32_t v, BOOL is_
 }
 
 /* JS regexp specific rules for case folding */
-int lre_canonicalize(uint32_t c, BOOL is_unicode)
+int lre_canonicalize(uint32_t c, bool is_unicode)
 {
     if (c < 128) {
         /* fast case */
@@ -241,7 +241,7 @@ int lre_canonicalize(uint32_t c, BOOL is_unicode)
     } else {
         uint32_t v, code, len;
         int idx, idx_min, idx_max;
-        
+
         idx_min = 0;
         idx_max = countof(case_conv_table1) - 1;
         while (idx_min <= idx_max) {
@@ -302,7 +302,7 @@ static int get_index_pos(uint32_t *pcode, uint32_t c,
     return (idx_min + 1) * UNICODE_INDEX_BLOCK_LEN + (v >> 21);
 }
 
-static BOOL lre_is_in_table(uint32_t c, const uint8_t *table,
+static bool lre_is_in_table(uint32_t c, const uint8_t *table,
                             const uint8_t *index_table, int index_table_len)
 {
     uint32_t code, b, bit;
@@ -311,7 +311,7 @@ static BOOL lre_is_in_table(uint32_t c, const uint8_t *table,
 
     pos = get_index_pos(&code, c, index_table, index_table_len);
     if (pos < 0)
-        return FALSE; /* outside the table */
+        return false; /* outside the table */
     p = table + pos;
     bit = 0;
     for(;;) {
@@ -337,7 +337,7 @@ static BOOL lre_is_in_table(uint32_t c, const uint8_t *table,
     }
 }
 
-BOOL lre_is_cased(uint32_t c)
+bool lre_is_cased(uint32_t c)
 {
     uint32_t v, code, len;
     int idx, idx_min, idx_max;
@@ -354,7 +354,7 @@ BOOL lre_is_cased(uint32_t c)
         } else if (c >= code + len) {
             idx_min = idx + 1;
         } else {
-            return TRUE;
+            return true;
         }
     }
     return lre_is_in_table(c, unicode_prop_Cased1_table,
@@ -362,7 +362,7 @@ BOOL lre_is_cased(uint32_t c)
                            sizeof(unicode_prop_Cased1_index) / 3);
 }
 
-BOOL lre_is_case_ignorable(uint32_t c)
+bool lre_is_case_ignorable(uint32_t c)
 {
     return lre_is_in_table(c, unicode_prop_Case_Ignorable_table,
                            unicode_prop_Case_Ignorable_index,
@@ -530,14 +530,14 @@ int cr_invert(CharRange *cr)
     return 0;
 }
 
-BOOL lre_is_id_start(uint32_t c)
+bool lre_is_id_start(uint32_t c)
 {
     return lre_is_in_table(c, unicode_prop_ID_Start_table,
                            unicode_prop_ID_Start_index,
                            sizeof(unicode_prop_ID_Start_index) / 3);
 }
 
-BOOL lre_is_id_continue(uint32_t c)
+bool lre_is_id_continue(uint32_t c)
 {
     return lre_is_id_start(c) ||
         lre_is_in_table(c, unicode_prop_ID_Continue1_table,
@@ -545,7 +545,7 @@ BOOL lre_is_id_continue(uint32_t c)
                         sizeof(unicode_prop_ID_Continue1_index) / 3);
 }
 
-BOOL lre_is_white_space(uint32_t c)
+bool lre_is_white_space(uint32_t c)
 {
     return lre_is_in_table(c, unicode_prop_White_Space_table,
                            unicode_prop_White_Space_index,
@@ -759,7 +759,7 @@ static int unicode_decomp_entry(uint32_t *res, uint32_t c,
 
 /* return the length of the decomposition (length <=
    UNICODE_DECOMP_LEN_MAX) or 0 if no decomposition */
-static int unicode_decomp_char(uint32_t *res, uint32_t c, BOOL is_compat1)
+static int unicode_decomp_char(uint32_t *res, uint32_t c, bool is_compat1)
 {
     uint32_t v, type, is_compat, code, len;
     int idx_min, idx_max, idx;
@@ -953,7 +953,7 @@ int unicode_normalize(uint32_t **pdst, const uint32_t *src, int src_len,
                       void *opaque, DynBufReallocFunc *realloc_func)
 {
     int *buf, buf_len, i, p, starter_pos, cc, last_cc, out_len;
-    BOOL is_compat;
+    bool is_compat;
     DynBuf dbuf_s, *dbuf = &dbuf_s;
 
     is_compat = n_type >> 1;
@@ -1053,14 +1053,14 @@ static int unicode_find_name(const char *name_table, const char *name)
 /* 'cr' must be initialized and empty. Return 0 if OK, -1 if error, -2
    if not found */
 int unicode_script(CharRange *cr,
-                   const char *script_name, BOOL is_ext)
+                   const char *script_name, bool is_ext)
 {
     int script_idx;
     const uint8_t *p, *p_end;
     uint32_t c, c1, b, n, v, v_len, i, type;
     CharRange cr1_s = { 0 }, *cr1 = NULL;
     CharRange cr2_s = { 0 }, *cr2 = &cr2_s;
-    BOOL is_common;
+    bool is_common;
 
     script_idx = unicode_find_name(unicode_script_name_table, script_name);
     if (script_idx < 0)
@@ -1380,7 +1380,7 @@ static void cr_sort_and_remove_overlap(CharRange *cr)
 
 /* canonicalize a character set using the JS regex case folding rules
    (see lre_canonicalize()) */
-int cr_regexp_canonicalize(CharRange *cr, BOOL is_unicode)
+int cr_regexp_canonicalize(CharRange *cr, bool is_unicode)
 {
     CharRange cr_inter, cr_mask, cr_result, cr_sub;
     uint32_t v, code, len, i, idx, start, end, c, d_start, d_end, d;
@@ -1542,11 +1542,13 @@ static int unicode_prop_ops(CharRange *cr, ...)
         }
     }
  done:
+    va_end(ap);
     assert(stack_len == 1);
     ret = cr_copy(cr, &stack[0]);
     cr_free(&stack[0]);
     return ret;
  fail:
+    va_end(ap);
     for(i = 0; i < stack_len; i++)
         cr_free(&stack[i]);
     return -1;

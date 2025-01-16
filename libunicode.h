@@ -24,14 +24,13 @@
 #ifndef LIBUNICODE_H
 #define LIBUNICODE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <inttypes.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define LRE_BOOL  int       /* for documentation purposes */
 
 #define LRE_CC_RES_LEN_MAX 3
 
@@ -43,9 +42,9 @@ typedef enum {
 } UnicodeNormalizationEnum;
 
 int lre_case_conv(uint32_t *res, uint32_t c, int conv_type);
-int lre_canonicalize(uint32_t c, BOOL is_unicode);
-LRE_BOOL lre_is_cased(uint32_t c);
-LRE_BOOL lre_is_case_ignorable(uint32_t c);
+int lre_canonicalize(uint32_t c, bool is_unicode);
+bool lre_is_cased(uint32_t c);
+bool lre_is_case_ignorable(uint32_t c);
 
 /* char ranges */
 
@@ -103,11 +102,11 @@ int cr_op(CharRange *cr, const uint32_t *a_pt, int a_len,
           const uint32_t *b_pt, int b_len, int op);
 
 int cr_invert(CharRange *cr);
-int cr_regexp_canonicalize(CharRange *cr, BOOL is_unicode);
+int cr_regexp_canonicalize(CharRange *cr, bool is_unicode);
 
-LRE_BOOL lre_is_id_start(uint32_t c);
-LRE_BOOL lre_is_id_continue(uint32_t c);
-LRE_BOOL lre_is_white_space(uint32_t c);
+bool lre_is_id_start(uint32_t c);
+bool lre_is_id_continue(uint32_t c);
+bool lre_is_white_space(uint32_t c);
 
 int unicode_normalize(uint32_t **pdst, const uint32_t *src, int src_len,
                       UnicodeNormalizationEnum n_type,
@@ -116,11 +115,9 @@ int unicode_normalize(uint32_t **pdst, const uint32_t *src, int src_len,
 /* Unicode character range functions */
 
 int unicode_script(CharRange *cr,
-                   const char *script_name, LRE_BOOL is_ext);
+                   const char *script_name, bool is_ext);
 int unicode_general_category(CharRange *cr, const char *gc_name);
 int unicode_prop(CharRange *cr, const char *prop_name);
-
-#undef LRE_BOOL
 
 #ifdef __cplusplus
 } /* extern "C" { */
