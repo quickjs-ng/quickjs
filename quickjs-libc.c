@@ -207,7 +207,6 @@ static JSValue js_printf_internal(JSContext *ctx,
     int64_t int64_arg;
     double double_arg;
     const char *string_arg;
-    int (*dbuf_printf_fun)(DynBuf *s, const char *fmt, ...) = dbuf_printf;
 
     js_std_dbuf_init(ctx, &dbuf);
 
@@ -332,17 +331,17 @@ static JSValue js_printf_internal(JSContext *ctx,
                     q[0] = '6';
                     q[1] = '4';
                     q[3] = '\0';
-                    dbuf_printf_fun(&dbuf, fmtbuf, (int64_t)int64_arg);
+                    dbuf_printf(&dbuf, fmtbuf, (int64_t)int64_arg);
 #else
                     if (q >= fmtbuf + sizeof(fmtbuf) - 2)
                         goto invalid;
                     q[1] = q[-1];
                     q[-1] = q[0] = 'l';
                     q[2] = '\0';
-                    dbuf_printf_fun(&dbuf, fmtbuf, (long long)int64_arg);
+                    dbuf_printf(&dbuf, fmtbuf, (long long)int64_arg);
 #endif
                 } else {
-                    dbuf_printf_fun(&dbuf, fmtbuf, (int)int64_arg);
+                    dbuf_printf(&dbuf, fmtbuf, (int)int64_arg);
                 }
                 break;
 
@@ -353,7 +352,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                 string_arg = JS_ToCString(ctx, argv[i++]);
                 if (!string_arg)
                     goto fail;
-                dbuf_printf_fun(&dbuf, fmtbuf, string_arg);
+                dbuf_printf(&dbuf, fmtbuf, string_arg);
                 JS_FreeCString(ctx, string_arg);
                 break;
 
@@ -369,7 +368,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                     goto missing;
                 if (JS_ToFloat64(ctx, &double_arg, argv[i++]))
                     goto fail;
-                dbuf_printf_fun(&dbuf, fmtbuf, double_arg);
+                dbuf_printf(&dbuf, fmtbuf, double_arg);
                 break;
 
             case '%':
