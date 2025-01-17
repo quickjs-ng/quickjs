@@ -48,6 +48,8 @@ jobs:
       fail-fast: false
       matrix:
         config:
+          - { os: ubuntu-24.04-arm, configType: Debug }
+          - { os: ubuntu-24.04-arm, configType: Release, runTest262: true }
           - { os: ubuntu-latest, configType: Debug }
           - { os: ubuntu-latest, configType: Release, runTest262: true }
           - { os: ubuntu-latest, configType: examples }
@@ -101,6 +103,9 @@ jobs:
         with:
           arch: ${{ matrix.config.arch }}
           packages: "build-base make cmake"
+
+      - name: uname
+        run: uname -a
 
       - name: Set build ENV vars
         run: |
