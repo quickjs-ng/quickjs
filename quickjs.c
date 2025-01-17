@@ -1436,8 +1436,7 @@ static void js_trigger_gc(JSRuntime *rt, size_t size)
     if (force_gc) {
 #ifdef DUMP_GC
         if (check_dump_flag(rt, DUMP_GC)) {
-            printf("GC: size=%" PRIu64 "\n",
-                   (uint64_t)rt->malloc_state.malloc_size);
+            printf("GC: size=%zd\n", rt->malloc_state.malloc_size);
         }
 #endif
         JS_RunGC(rt);
@@ -2277,9 +2276,9 @@ void JS_FreeRuntime(JSRuntime *rt)
         if (s->malloc_count > 1) {
             if (rt->rt_info)
                 printf("%s:1: ", rt->rt_info);
-            printf("Memory leak: %"PRIu64" bytes lost in %"PRIu64" block%s\n",
-                   (uint64_t)(s->malloc_size - sizeof(JSRuntime)),
-                   (uint64_t)(s->malloc_count - 1), &"s"[s->malloc_count == 2]);
+            printf("Memory leak: %zd bytes lost in %zd block%s\n",
+                   s->malloc_size - sizeof(JSRuntime),
+                   s->malloc_count - 1, &"s"[s->malloc_count == 2]);
         }
     }
 #endif
