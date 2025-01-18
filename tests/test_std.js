@@ -19,11 +19,15 @@ function test_printf()
 
 function test_file1()
 {
-    var f, len, str, size, buf, ret, i, str1;
+    var f, len, str, size, buf, ret, i, str1, ab;
 
     f = std.tmpfile();
     str = "hello world\n";
     f.puts(str);
+
+    f.seek(0, std.SEEK_SET);
+    ab = f.readAsArrayBuffer();
+    assert([...new Uint8Array(ab)], str.split("").map(c => c.charCodeAt(0)));
 
     f.seek(0, std.SEEK_SET);
     str1 = f.readAsString();
