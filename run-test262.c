@@ -463,26 +463,35 @@ static JSValue js_print_262(JSContext *ctx, JSValue this_val,
                         int argc, JSValue *argv)
 {
     ThreadLocalStorage *tls = JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
+    const char *s;
+    JSValue v;
     int i;
-    const char *str;
 
     for (i = 0; i < argc; i++) {
-        str = JS_ToCString(ctx, argv[i]);
-        if (!str)
+        v = argv[i];
+        s = JS_ToCString(ctx, v);
+        // same logic as js_print in quickjs-libc.c
+        if (local && !s && JS_IsObject(v)) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            v = JS_ToObjectString(ctx, v);
+            s = JS_ToCString(ctx, v);
+            JS_FreeValue(ctx, v);
+        }
+        if (!s)
             return JS_EXCEPTION;
-        if (!strcmp(str, "Test262:AsyncTestComplete")) {
+        if (!strcmp(s, "Test262:AsyncTestComplete")) {
             tls->async_done++;
-        } else if (js__strstart(str, "Test262:AsyncTestFailure", NULL)) {
+        } else if (js__strstart(s, "Test262:AsyncTestFailure", NULL)) {
             tls->async_done = 2; /* force an error */
         }
         if (outfile) {
             if (i != 0)
                 fputc(' ', outfile);
-            fputs(str, outfile);
+            fputs(s, outfile);
         }
         if (verbose > 1)
-            printf("%s%s", &" "[i < 1], str);
-        JS_FreeCString(ctx, str);
+            printf("%s%s", &" "[i < 1], s);
+        JS_FreeCString(ctx, s);
     }
     if (outfile)
         fputc('\n', outfile);

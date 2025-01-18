@@ -3984,12 +3984,20 @@ static JSValue js_print(JSContext *ctx, JSValue this_val,
     DWORD mode;
 #endif
     const char *s;
+    JSValue v;
     DynBuf b;
     int i;
 
     dbuf_init(&b);
     for(i = 0; i < argc; i++) {
-        s = JS_ToCString(ctx, argv[i]);
+        v = argv[i];
+        s = JS_ToCString(ctx, v);
+        if (!s && JS_IsObject(v)) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            v = JS_ToObjectString(ctx, v);
+            s = JS_ToCString(ctx, v);
+            JS_FreeValue(ctx, v);
+        }
         if (s) {
             dbuf_printf(&b, "%s%s", &" "[!i], s);
             JS_FreeCString(ctx, s);
