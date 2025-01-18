@@ -37079,6 +37079,11 @@ static JSValue js_object_toString(JSContext *ctx, JSValue this_val,
     return JS_ConcatString3(ctx, "[object ", tag, "]");
 }
 
+JSValue JS_ToObjectString(JSContext *ctx, JSValue val)
+{
+    return js_object_toString(ctx, val, 0, NULL);
+}
+
 static JSValue js_object_toLocaleString(JSContext *ctx, JSValue this_val,
                                         int argc, JSValue *argv)
 {

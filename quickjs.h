@@ -694,6 +694,7 @@ JS_EXTERN JSValue JS_NewObjectClass(JSContext *ctx, int class_id);
 JS_EXTERN JSValue JS_NewObjectProto(JSContext *ctx, JSValue proto);
 JS_EXTERN JSValue JS_NewObject(JSContext *ctx);
 JS_EXTERN JSValue JS_ToObject(JSContext *ctx, JSValue val);
+JS_EXTERN JSValue JS_ToObjectString(JSContext *ctx, JSValue val);
 
 JS_EXTERN bool JS_IsFunction(JSContext* ctx, JSValue val);
 JS_EXTERN bool JS_IsConstructor(JSContext* ctx, JSValue val);
