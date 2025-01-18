@@ -1365,8 +1365,8 @@ static JSValue js_std_file_getline(JSContext *ctx, JSValue this_val,
 }
 
 /* XXX: could use less memory and go faster */
-static JSValue js_std_file_readAsString(JSContext *ctx, JSValue this_val,
-                                        int argc, JSValue *argv)
+static JSValue js_std_file_readAs(JSContext *ctx, JSValue this_val,
+                                  int argc, JSValue *argv, int magic)
 {
     FILE *f = js_std_file_get(ctx, this_val);
     int c;
@@ -1402,7 +1402,11 @@ static JSValue js_std_file_readAsString(JSContext *ctx, JSValue this_val,
         }
         max_size--;
     }
-    obj = JS_NewStringLen(ctx, (const char *)dbuf.buf, dbuf.size);
+    if (magic) {
+        obj = JS_NewStringLen(ctx, (const char *)dbuf.buf, dbuf.size);
+    } else {
+        obj = JS_NewArrayBufferCopy(ctx, dbuf.buf, dbuf.size);
+    }
     dbuf_free(&dbuf);
     return obj;
 }
@@ -1694,7 +1698,8 @@ static const JSCFunctionListEntry js_std_file_proto_funcs[] = {
     JS_CFUNC_MAGIC_DEF("read", 3, js_std_file_read_write, 0 ),
     JS_CFUNC_MAGIC_DEF("write", 3, js_std_file_read_write, 1 ),
     JS_CFUNC_DEF("getline", 0, js_std_file_getline ),
-    JS_CFUNC_DEF("readAsString", 0, js_std_file_readAsString ),
+    JS_CFUNC_MAGIC_DEF("readAsArrayBuffer", 0, js_std_file_readAs, 0 ),
+    JS_CFUNC_MAGIC_DEF("readAsString", 0, js_std_file_readAs, 1 ),
     JS_CFUNC_DEF("getByte", 0, js_std_file_getByte ),
     JS_CFUNC_DEF("putByte", 1, js_std_file_putByte ),
     /* setvbuf, ...  */
