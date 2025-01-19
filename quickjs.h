@@ -330,6 +330,29 @@ typedef struct JSMallocFunctions {
     size_t (*js_malloc_usable_size)(const void *ptr);
 } JSMallocFunctions;
 
+// Debug trace system: the debug output will be produced to the dump stream (currently
+// stdout) if dumps are enabled and JS_SetDumpFlags is invoked with the corresponding
+// bit set.
+#define JS_DUMP_BYTECODE_FINAL   0x01  /* dump pass 3 final byte code */
+#define JS_DUMP_BYTECODE_PASS2   0x02  /* dump pass 2 code */
+#define JS_DUMP_BYTECODE_PASS1   0x04  /* dump pass 1 code */
+#define JS_DUMP_BYTECODE_HEX     0x10  /* dump bytecode in hex */
+#define JS_DUMP_BYTECODE_PC2LINE 0x20  /* dump line number table */
+#define JS_DUMP_BYTECODE_STACK   0x40  /* dump compute_stack_size */
+#define JS_DUMP_BYTECODE_STEP    0x80  /* dump executed bytecode */
+#define JS_DUMP_READ_OBJECT     0x100  /* dump the marshalled objects at load time */
+#define JS_DUMP_FREE            0x200  /* dump every object free */
+#define JS_DUMP_GC              0x400  /* dump the occurrence of the automatic GC */
+#define JS_DUMP_GC_FREE         0x800  /* dump objects freed by the GC */
+#define JS_DUMP_MODULE_RESOLVE 0x1000  /* dump module resolution steps */
+#define JS_DUMP_PROMISE        0x2000  /* dump promise steps */
+#define JS_DUMP_LEAKS          0x4000  /* dump leaked objects and strings in JS_FreeRuntime */
+#define JS_DUMP_ATOM_LEAKS     0x8000  /* dump leaked atoms in JS_FreeRuntime */
+#define JS_DUMP_MEM           0x10000  /* dump memory usage in JS_FreeRuntime */
+#define JS_DUMP_OBJECTS       0x20000  /* dump objects in JS_FreeRuntime */
+#define JS_DUMP_ATOMS         0x40000  /* dump atoms in JS_FreeRuntime */
+#define JS_DUMP_SHAPES        0x80000  /* dump shapes in JS_FreeRuntime */
+
 // Finalizers run in LIFO order at the very end of JS_FreeRuntime.
 // Intended for cleanup of associated resources; the runtime itself
 // is no longer usable.
@@ -343,6 +366,7 @@ JS_EXTERN void JS_SetRuntimeInfo(JSRuntime *rt, const char *info);
 /* use 0 to disable memory limit */
 JS_EXTERN void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
 JS_EXTERN void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
+JS_EXTERN uint64_t JS_GetDumpFlags(JSRuntime *rt);
 JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
 JS_EXTERN void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
 /* use 0 to disable maximum stack size check */
