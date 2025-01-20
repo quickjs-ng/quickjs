@@ -87,7 +87,10 @@ static JSValue load_standalone_module(JSContext *ctx)
         JS_FreeValue(ctx, obj);
         goto exception;
     }
-    js_module_set_import_meta(ctx, obj, false, true);
+    if (js_module_set_import_meta(ctx, obj, false, true) < 0) {
+        JS_FreeValue(ctx, obj);
+        goto exception;
+    }
     val = JS_EvalFunction(ctx, JS_DupValue(ctx, obj));
     val = js_std_await(ctx, val);
 
@@ -116,7 +119,11 @@ static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
         val = JS_Eval(ctx, buf, buf_len, filename,
                       eval_flags | JS_EVAL_FLAG_COMPILE_ONLY);
         if (!JS_IsException(val)) {
-            js_module_set_import_meta(ctx, val, true, true);
+            if (js_module_set_import_meta(ctx, val, true, true) < 0) {
+                JS_FreeValue(ctx, val);
+                js_std_dump_error(ctx);
+                ret = -1;
+            }
             val = JS_EvalFunction(ctx, val);
         }
         val = js_std_await(ctx, val);
