@@ -1518,12 +1518,6 @@ void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size)
     return ptr;
 }
 
-static void *js_dbuf_realloc(void *opaque, void *ptr, size_t size)
-{
-    JSRuntime *rt = opaque;
-    return js_realloc_rt(rt, ptr, size);
-}
-
 size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr)
 {
     return rt->mf.js_malloc_usable_size(ptr);
@@ -1666,9 +1660,14 @@ static inline int js_resize_array(JSContext *ctx, void **parray, int elem_size,
         return 0;
 }
 
+static void *js_dbuf_realloc(void *ctx, void *ptr, size_t size)
+{
+    return js_realloc(ctx, ptr, size);
+}
+
 static inline void js_dbuf_init(JSContext *ctx, DynBuf *s)
 {
-    dbuf_init2(s, ctx->rt, js_dbuf_realloc);
+    dbuf_init2(s, ctx, js_dbuf_realloc);
 }
 
 static inline int is_digit(int c) {
