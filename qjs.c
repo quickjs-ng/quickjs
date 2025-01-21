@@ -120,9 +120,9 @@ static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
                       eval_flags | JS_EVAL_FLAG_COMPILE_ONLY);
         if (!JS_IsException(val)) {
             if (js_module_set_import_meta(ctx, val, true, true) < 0) {
-                JS_FreeValue(ctx, val);
                 js_std_dump_error(ctx);
                 ret = -1;
+                goto end;
             }
             val = JS_EvalFunction(ctx, val);
         }
@@ -136,6 +136,7 @@ static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
     } else {
         ret = 0;
     }
+end:
     JS_FreeValue(ctx, val);
     return ret;
 }
