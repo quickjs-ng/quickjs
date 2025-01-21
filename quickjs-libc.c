@@ -1365,8 +1365,8 @@ static JSValue js_std_file_getline(JSContext *ctx, JSValue this_val,
 }
 
 /* XXX: could use less memory and go faster */
-static JSValue js_std_file_readAsString(JSContext *ctx, JSValue this_val,
-                                        int argc, JSValue *argv)
+static JSValue js_std_file_readAs(JSContext *ctx, JSValue this_val,
+                                  int argc, JSValue *argv, int magic)
 {
     FILE *f = js_std_file_get(ctx, this_val);
     int c;
@@ -1402,7 +1402,11 @@ static JSValue js_std_file_readAsString(JSContext *ctx, JSValue this_val,
         }
         max_size--;
     }
-    obj = JS_NewStringLen(ctx, (const char *)dbuf.buf, dbuf.size);
+    if (magic) {
+        obj = JS_NewStringLen(ctx, (const char *)dbuf.buf, dbuf.size);
+    } else {
+        obj = JS_NewArrayBufferCopy(ctx, dbuf.buf, dbuf.size);
+    }
     dbuf_free(&dbuf);
     return obj;
 }
@@ -1694,7 +1698,8 @@ static const JSCFunctionListEntry js_std_file_proto_funcs[] = {
     JS_CFUNC_MAGIC_DEF("read", 3, js_std_file_read_write, 0 ),
     JS_CFUNC_MAGIC_DEF("write", 3, js_std_file_read_write, 1 ),
     JS_CFUNC_DEF("getline", 0, js_std_file_getline ),
-    JS_CFUNC_DEF("readAsString", 0, js_std_file_readAsString ),
+    JS_CFUNC_MAGIC_DEF("readAsArrayBuffer", 0, js_std_file_readAs, 0 ),
+    JS_CFUNC_MAGIC_DEF("readAsString", 0, js_std_file_readAs, 1 ),
     JS_CFUNC_DEF("getByte", 0, js_std_file_getByte ),
     JS_CFUNC_DEF("putByte", 1, js_std_file_putByte ),
     /* setvbuf, ...  */
@@ -3984,12 +3989,20 @@ static JSValue js_print(JSContext *ctx, JSValue this_val,
     DWORD mode;
 #endif
     const char *s;
+    JSValue v;
     DynBuf b;
     int i;
 
     dbuf_init(&b);
     for(i = 0; i < argc; i++) {
-        s = JS_ToCString(ctx, argv[i]);
+        v = argv[i];
+        s = JS_ToCString(ctx, v);
+        if (!s && JS_IsObject(v)) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            v = JS_ToObjectString(ctx, v);
+            s = JS_ToCString(ctx, v);
+            JS_FreeValue(ctx, v);
+        }
         if (s) {
             dbuf_printf(&b, "%s%s", &" "[!i], s);
             JS_FreeCString(ctx, s);

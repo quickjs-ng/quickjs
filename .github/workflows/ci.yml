@@ -48,6 +48,8 @@ jobs:
       fail-fast: false
       matrix:
         config:
+          - { os: ubuntu-24.04-arm, configType: Debug }
+          - { os: ubuntu-24.04-arm, configType: Release, runTest262: true }
           - { os: ubuntu-latest, configType: Debug }
           - { os: ubuntu-latest, configType: Release, runTest262: true }
           - { os: ubuntu-latest, configType: examples }
@@ -101,6 +103,9 @@ jobs:
         with:
           arch: ${{ matrix.config.arch }}
           packages: "build-base make cmake"
+
+      - name: uname
+        run: uname -a
 
       - name: Set build ENV vars
         run: |
@@ -164,6 +169,10 @@ jobs:
         run: |
           ./build/qjs -c examples/hello.js -o hello
           ./hello
+      
+      - name: test interrupt
+        run: |
+          ./build/interrupt-test
 
   windows-msvc:
     runs-on: windows-latest
@@ -193,6 +202,9 @@ jobs:
         run: |
           build\${{matrix.buildType}}\qjs.exe -c examples\hello.js -o hello.exe
           .\hello.exe
+      - name: test interrupt
+        run: |
+          build\${{matrix.buildType}}\interrupt-test.exe
       - name: Set up Visual Studio shell
         uses: egor-tensin/vs-shell@v2
         with:
@@ -255,6 +267,9 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
+      - name: test interrupt
+        run: |
+          build\${{matrix.buildType}}\interrupt-test.exe
 
   windows-ninja:
     runs-on: windows-latest
@@ -284,6 +299,9 @@ jobs:
           build\qjs.exe examples\test_point.js
           build\run-test262.exe -c tests.conf
           build\function_source.exe
+      - name: test interrupt
+        run: |
+          build\interrupt-test.exe
 
   windows-sdk:
     runs-on: windows-latest
@@ -314,6 +332,9 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
+      - name: test interrupt
+        run: |
+          build\${{matrix.buildType}}\interrupt-test.exe
 
   windows-mingw:
     runs-on: windows-latest
@@ -364,6 +385,9 @@ jobs:
       run: |
         ./build/qjs -c examples/hello.js -o hello.exe
         ./hello
+    - name: test interrupt
+      run: |
+        ./build/interrupt-test
   windows-mingw-shared:
     runs-on: windows-latest
     defaults:
@@ -447,6 +471,10 @@ jobs:
 
       - name: test
         run: make test
+
+      - name: test interrupt
+        run: |
+          ./build/interrupt-test
 
   openbsd:
     runs-on: ubuntu-latest

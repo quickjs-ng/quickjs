@@ -538,11 +538,16 @@ position `position` (wrapper to the libc `fwrite`).
 Return the next line from the file, assuming UTF-8 encoding, excluding
 the trailing line feed.
 
+#### `readAsArrayBuffer(max_size = undefined)`
+
+Read `max_size` bytes from the file and return them as an ArrayBuffer.
+If `max_size` is not present, the file is read until its end.
+
 #### `readAsString(max_size = undefined)`
 
 Read `max_size` bytes from the file and return them as a string
 assuming UTF-8 encoding. If `max_size` is not present, the file
-is read up its end.
+is read until its end.
 
 #### `getByte()`
 
