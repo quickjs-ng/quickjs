@@ -634,7 +634,7 @@ static JSInlineCache *init_ic(JSContext *ctx);
 static int rebuild_ic(JSContext *ctx, JSInlineCache *ic);
 static int resize_ic_hash(JSContext *ctx, JSInlineCache *ic);
 static int free_ic(JSRuntime *rt, JSInlineCache *ic);
-static int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom, BOOL force);
+static int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom, bool force);
 static int ic_watchpoint_delete_handler(JSRuntime* rt, JSInlineCacheRingSlot *ref, uint8_t offset, JSAtom atom, JSInlineCacheRingSlot *target);
 static int js_shape_delete_watchpoints(JSRuntime *rt, JSShape *shape, JSInlineCacheRingSlot *target);
 static JSInlineCacheWatchpoint *js_shape_create_watchpoint(JSRuntime *rt, JSShape *shape, JSInlineCacheRingSlot *ptr, uint8_t offset, JSAtom atom);
@@ -7179,7 +7179,7 @@ static int JS_SetPrototypeInternal(JSContext *ctx, JSValue obj,
     if (js_shape_prepare_update(ctx, p, NULL))
         return -1;
     sh = p->shape;
-    ic_delete_shape_proto_watchpoints(ctx->rt, sh, JS_ATOM_NULL, TRUE);
+    ic_delete_shape_proto_watchpoints(ctx->rt, sh, JS_ATOM_NULL, true);
     if (sh->proto)
         JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     sh->proto = proto;
@@ -8502,7 +8502,7 @@ static int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
             pr->flags = 0;
             pr->atom = JS_ATOM_NULL;
             pr1->u.value = JS_UNDEFINED;
-            ic_delete_shape_proto_watchpoints(ctx->rt, sh, atom, FALSE);
+            ic_delete_shape_proto_watchpoints(ctx->rt, sh, atom, false);
             /* compact the properties if too many deleted properties */
             if (sh->deleted_prop_count >= 8 &&
                 sh->deleted_prop_count >= ((unsigned)sh->prop_count / 2)) {
@@ -8923,7 +8923,7 @@ retry:
             }
             goto generic_create_prop;
         } else {
-            ic_delete_shape_proto_watchpoints(ctx->rt, p->shape, prop, FALSE);
+            ic_delete_shape_proto_watchpoints(ctx->rt, p->shape, prop, false);
             pr = add_property(ctx, p, prop, JS_PROP_C_W_E);
             if (unlikely(!pr))
                 goto fail;
@@ -56086,7 +56086,7 @@ int ic_watchpoint_delete_handler(JSRuntime* rt, JSInlineCacheRingSlot *ref, uint
     return 0;
 }
 
-int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom, BOOL force) {
+int ic_delete_shape_proto_watchpoints(JSRuntime *rt, JSShape *shape, JSAtom atom, bool force) {
     struct list_head *el, *el1;
     JSObject *p;
     JSInlineCacheRingSlot *cr;
