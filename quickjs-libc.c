@@ -716,8 +716,10 @@ JSModuleDef *js_module_loader(JSContext *ctx,
         js_free(ctx, buf);
         if (JS_IsException(func_val))
             return NULL;
-        /* XXX: could propagate the exception */
-        js_module_set_import_meta(ctx, func_val, true, false);
+        if (js_module_set_import_meta(ctx, func_val, true, false) < 0) {
+            JS_FreeValue(ctx, func_val);
+            return NULL;
+        }
         /* the module is already referenced, so we must free it */
         m = JS_VALUE_GET_PTR(func_val);
         JS_FreeValue(ctx, func_val);
@@ -900,7 +902,8 @@ static JSValue js_evalScript(JSContext *ctx, JSValue this_val,
         if (JS_ResolveModule(ctx, obj) < 0)
             return JS_EXCEPTION;
 
-        js_module_set_import_meta(ctx, obj, false, false);
+        if (js_module_set_import_meta(ctx, obj, false, false) < 0)
+            return JS_EXCEPTION;
 
         return JS_EvalFunction(ctx, obj);
     }
@@ -4257,7 +4260,8 @@ void js_std_eval_binary(JSContext *ctx, const uint8_t *buf, size_t buf_len,
         goto exception;
     if (load_only) {
         if (JS_VALUE_GET_TAG(obj) == JS_TAG_MODULE) {
-            js_module_set_import_meta(ctx, obj, false, false);
+            if (js_module_set_import_meta(ctx, obj, false, false) < 0)
+                goto exception;
         }
     } else {
         if (JS_VALUE_GET_TAG(obj) == JS_TAG_MODULE) {
@@ -4265,7 +4269,8 @@ void js_std_eval_binary(JSContext *ctx, const uint8_t *buf, size_t buf_len,
                 JS_FreeValue(ctx, obj);
                 goto exception;
             }
-            js_module_set_import_meta(ctx, obj, false, true);
+            if (js_module_set_import_meta(ctx, obj, false, true) < 0)
+                goto exception;
             val = JS_EvalFunction(ctx, obj);
             val = js_std_await(ctx, val);
         } else {
