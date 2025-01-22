@@ -8886,8 +8886,7 @@ retry:
             // try give function name in every possible way
             if (JS_IsFunction(ctx, val)) {
                 JSObject *vf = JS_VALUE_GET_OBJ(val);
-                if (vf->class_id == JS_CLASS_BYTECODE_FUNCTION &&
-                    vf->u.func.var_refs == NULL) {
+                if (vf->class_id == JS_CLASS_BYTECODE_FUNCTION) {
                    const char* name = get_func_name(ctx, val);
                     if (strcmp(name, "") == 0) {
                         JSValue js_value = JS_AtomToValue(ctx, prop);
