@@ -6640,6 +6640,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_fu
     uint32_t i;
     int stack_trace_limit;
 
+    saved_exception = JS_UNINITIALIZED;
     stack_trace_limit = ctx->error_stack_trace_limit;
     stack_trace_limit = min_int(stack_trace_limit, countof(csd));
     stack_trace_limit = max_int(stack_trace_limit, 0);
@@ -6655,7 +6656,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj, JSValue filter_fu
 
     if (has_prepare) {
         saved_exception = rt->current_exception;
-        rt->current_exception = JS_NULL;
+        rt->current_exception = JS_UNINITIALIZED;
         if (stack_trace_limit == 0)
             goto done;
         if (filename)
@@ -18007,7 +18008,7 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
             if (unlikely(JS_IsException(ret2))) {
                 if (JS_IsUncatchableError(ctx, ctx->rt->current_exception)) {
                     is_success = false;
-                } else { 
+                } else {
                     abort(); /* BUG */
                 }
             }
