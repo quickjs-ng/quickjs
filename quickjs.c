@@ -25579,6 +25579,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             js_parse_error(s, "line terminator not allowed after throw");
             goto fail;
         }
+        emit_source_loc(s);
         if (js_parse_expr(s))
             goto fail;
         emit_op(s, OP_throw);
