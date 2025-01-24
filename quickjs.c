@@ -6652,7 +6652,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
     const char *str1;
     JSObject *p;
     JSFunctionBytecode *b;
-    bool backtrace_barrier, has_prepare;
+    bool backtrace_barrier, has_prepare, has_filter_func;
     JSRuntime *rt;
     JSCallSiteData csd[64];
     uint32_t i;
@@ -6664,6 +6664,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
     stack_trace_limit = max_int(stack_trace_limit, 0);
     rt = ctx->rt;
     has_prepare = false;
+    has_filter_func = backtrace_flags & JS_BACKTRACE_FLAG_FILTER_FUNC;
     i = 0;
 
     if (!rt->in_prepare_stack_trace && !JS_IsNull(ctx->error_ctor)) {
@@ -6699,7 +6700,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
 
     /* Find the frame we want to start from. Note that when a filter is used the filter
        function will be the first, but we also specify we want to skip the first one. */
-    if (backtrace_flags & JS_BACKTRACE_FLAG_FILTER_FUNC) {
+    if (has_filter_func) {
         for (sf = sf_start; sf != NULL && i < stack_trace_limit; sf = sf->prev_frame) {
             if (js_same_value(ctx, sf->cur_func, filter_func)) {
                 sf_start = sf;
@@ -6811,7 +6812,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
     rt->in_prepare_stack_trace = false;
     if (JS_IsUndefined(ctx->error_back_trace))
         ctx->error_back_trace = js_dup(stack);
-    if (can_add_backtrace(error_val)) {
+    if (has_filter_func || can_add_backtrace(error_val)) {
         JS_DefinePropertyValue(ctx, error_val, JS_ATOM_stack, stack,
                                JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
     } else {
