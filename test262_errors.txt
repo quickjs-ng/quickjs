@@ -70,7 +70,6 @@ test262/test/language/expressions/in/private-field-invalid-assignment-target.js:
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/object/computed-property-name-topropertykey-before-value-evaluation.js:31: Test262Error: Expected SameValue(«"bad"», «"ok"») to be true
 test262/test/language/expressions/object/computed-property-name-topropertykey-before-value-evaluation.js:31: strict mode: Test262Error: Expected SameValue(«"bad"», «"ok"») to be true
-test262/test/language/module-code/top-level-await/async-module-does-not-block-sibling-modules.js:13: SyntaxError: Could not find export 'check' in module 'test262/test/language/module-code/top-level-await/async-module-sync_FIXTURE.js'
 test262/test/language/module-code/top-level-await/module-graphs-does-not-hang.js:10: TypeError: $DONE() not called
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: SyntaxError: invalid property name
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: strict mode: SyntaxError: invalid property name
