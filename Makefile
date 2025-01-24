@@ -52,6 +52,9 @@ fuzz:
 $(BUILD_DIR):
 	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX)
 
+libqjs.a: $(BUILD_DIR)
+	cmake --build $(BUILD_DIR) --target qjs -j $(JOBS)
+
 $(QJS): $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) -j $(JOBS)
 
