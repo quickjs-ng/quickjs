@@ -1220,6 +1220,7 @@ static JSValue js_typed_array_constructor_ta(JSContext *ctx,
                                              JSValue new_target,
                                              JSValue src_obj,
                                              int classid, uint32_t len);
+static bool is_typed_array(JSClassID class_id);
 static bool typed_array_is_oob(JSObject *p);
 static uint32_t typed_array_get_length(JSContext *ctx, JSObject *p);
 static JSValue JS_ThrowTypeErrorDetachedArrayBuffer(JSContext *ctx);
@@ -7454,12 +7455,10 @@ static JSValue JS_GetPropertyInternal2(JSContext *ctx, JSValue obj,
                     if (idx < p->u.array.count) {
                         /* we avoid duplicating the code */
                         return JS_GetPropertyUint32(ctx, JS_MKPTR(JS_TAG_OBJECT, p), idx);
-                    } else if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-                               p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+                    } else if (is_typed_array(p->class_id)) {
                         return JS_UNDEFINED;
                     }
-                } else if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-                           p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+                } else if (is_typed_array(p->class_id)) {
                     int ret;
                     ret = JS_AtomIsNumericIndex(ctx, prop);
                     if (ret != 0) {
@@ -8135,8 +8134,7 @@ int JS_HasProperty(JSContext *ctx, JSValue obj, JSAtom prop)
         JS_FreeValue(ctx, JS_MKPTR(JS_TAG_OBJECT, p));
         if (ret != 0)
             return ret;
-        if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-            p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+        if (is_typed_array(p->class_id)) {
             ret = JS_AtomIsNumericIndex(ctx, prop);
             if (ret != 0) {
                 if (ret < 0)
@@ -8773,12 +8771,10 @@ retry:
                             return JS_SetPropertyValue(ctx, this_obj, js_int32(idx), val, flags);
                         else
                             break;
-                    } else if (p1->class_id >= JS_CLASS_UINT8C_ARRAY &&
-                               p1->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+                    } else if (is_typed_array(p1->class_id)) {
                         goto typed_array_oob;
                     }
-                } else if (p1->class_id >= JS_CLASS_UINT8C_ARRAY &&
-                           p1->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+                } else if (is_typed_array(p1->class_id)) {
                     ret = JS_AtomIsNumericIndex(ctx, prop);
                     if (ret != 0) {
                         if (ret < 0)
@@ -9230,8 +9226,7 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                     set_value(ctx, &plen->u.value, js_uint32(len));
                 }
             }
-        } else if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-                   p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+        } else if (is_typed_array(p->class_id)) {
             ret = JS_AtomIsNumericIndex(ctx, prop);
             if (ret != 0) {
                 if (ret < 0)
@@ -9587,8 +9582,7 @@ int JS_DefineProperty(JSContext *ctx, JSValue this_obj,
                     return true;
                 }
             }
-        } else if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-                   p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+        } else if (is_typed_array(p->class_id)) {
             JSValue num;
             int ret;
 
@@ -34491,8 +34485,7 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValue obj)
                 ret = JS_WriteSet(s, p->u.map_state);
                 break;
             default:
-                if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-                    p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+                if (is_typed_array(p->class_id)) {
                     ret = JS_WriteTypedArray(s, obj);
                 } else {
                     JS_ThrowTypeError(s->ctx, "unsupported object class");
@@ -38622,8 +38615,7 @@ static JSObject *get_typed_array(JSContext *ctx, JSValue this_val)
     if (JS_VALUE_GET_TAG(this_val) != JS_TAG_OBJECT)
         goto fail;
     p = JS_VALUE_GET_OBJ(this_val);
-    if (!(p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-          p->class_id <= JS_CLASS_FLOAT64_ARRAY)) {
+    if (!is_typed_array(p->class_id)) {
     fail:
         JS_ThrowTypeError(ctx, "not a TypedArray");
         return NULL;
@@ -40124,8 +40116,7 @@ static JSValue js_array_iterator_next(JSContext *ctx, JSValue this_val,
     if (JS_IsUndefined(it->obj))
         goto done;
     p = JS_VALUE_GET_OBJ(it->obj);
-    if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-        p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+    if (is_typed_array(p->class_id)) {
         if (typed_array_is_oob(p)) {
             JS_ThrowTypeErrorArrayBufferOOB(ctx);
             goto fail1;
@@ -52067,16 +52058,13 @@ static JSValue js_array_buffer_isView(JSContext *ctx,
                                       int argc, JSValue *argv)
 {
     JSObject *p;
-    bool res;
-    res = false;
+
     if (JS_VALUE_GET_TAG(argv[0]) == JS_TAG_OBJECT) {
         p = JS_VALUE_GET_OBJ(argv[0]);
-        if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-            p->class_id <= JS_CLASS_DATAVIEW) {
-            res = true;
-        }
+        return js_bool(is_typed_array(p->class_id) ||
+                       p->class_id == JS_CLASS_DATAVIEW);
     }
-    return js_bool(res);
+    return JS_FALSE;
 }
 
 static const JSCFunctionListEntry js_array_buffer_funcs[] = {
@@ -52431,6 +52419,11 @@ static const JSCFunctionListEntry js_shared_array_buffer_proto_funcs[] = {
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "SharedArrayBuffer", JS_PROP_CONFIGURABLE ),
 };
 
+static bool is_typed_array(JSClassID class_id)
+{
+    return class_id >= JS_CLASS_UINT8C_ARRAY && class_id <= JS_CLASS_FLOAT64_ARRAY;
+}
+
 // is the typed array detached or out of bounds relative to its RAB?
 // |p| must be a typed array, *not* a DataView
 static bool typed_array_is_oob(JSObject *p)
@@ -52440,8 +52433,7 @@ static bool typed_array_is_oob(JSObject *p)
     int len, size_elem;
     int64_t end;
 
-    assert(p->class_id >= JS_CLASS_UINT8C_ARRAY);
-    assert(p->class_id <= JS_CLASS_FLOAT64_ARRAY);
+    assert(is_typed_array(p->class_id));
 
     ta = p->u.typed_array;
     abuf = ta->buffer->u.array_buffer;
@@ -52603,8 +52595,7 @@ static JSValue js_typed_array_get_toStringTag(JSContext *ctx,
     if (JS_VALUE_GET_TAG(this_val) != JS_TAG_OBJECT)
         return JS_UNDEFINED;
     p = JS_VALUE_GET_OBJ(this_val);
-    if (!(p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-          p->class_id <= JS_CLASS_FLOAT64_ARRAY))
+    if (!is_typed_array(p->class_id))
         return JS_UNDEFINED;
     return JS_AtomToString(ctx, ctx->rt->class_array[p->class_id].class_name);
 }
@@ -52637,8 +52628,7 @@ static JSValue js_typed_array_set_internal(JSContext *ctx,
     if (JS_IsException(src_obj))
         goto fail;
     src_p = JS_VALUE_GET_OBJ(src_obj);
-    if (src_p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-        src_p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+    if (is_typed_array(src_p->class_id)) {
         JSTypedArray *dest_ta = p->u.typed_array;
         JSArrayBuffer *dest_abuf = dest_ta->buffer->u.array_buffer;
         JSTypedArray *src_ta = src_p->u.typed_array;
@@ -54372,8 +54362,7 @@ static JSValue js_typed_array_constructor(JSContext *ctx,
             }
             buffer = js_dup(argv[0]);
         } else {
-            if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
-                p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+            if (is_typed_array(p->class_id)) {
                 return js_typed_array_constructor_ta(ctx, new_target, argv[0],
                                                      classid, p->u.array.count);
             } else {
@@ -54852,7 +54841,7 @@ JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len)
 int JS_GetTypedArrayType(JSValue obj)
 {
     JSClassID class_id = JS_GetClassID(obj);
-    if (class_id >= JS_CLASS_UINT8C_ARRAY && class_id <= JS_CLASS_FLOAT64_ARRAY)
+    if (is_typed_array(class_id))
         return class_id - JS_CLASS_UINT8C_ARRAY;
     else
         return -1;
