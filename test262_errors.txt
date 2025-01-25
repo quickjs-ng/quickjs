@@ -30,8 +30,6 @@ test262/test/built-ins/Object/defineProperty/coerced-P-shrink.js:16: Test262Erro
 test262/test/built-ins/Object/defineProperty/coerced-P-shrink.js:16: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/Object/defineProperty/typedarray-backed-by-resizable-buffer.js:18: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/Object/defineProperty/typedarray-backed-by-resizable-buffer.js:18: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/built-ins/Object/freeze/typedarray-backed-by-resizable-buffer.js:14: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
-test262/test/built-ins/Object/freeze/typedarray-backed-by-resizable-buffer.js:14: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
 test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: strict mode: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
 test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
