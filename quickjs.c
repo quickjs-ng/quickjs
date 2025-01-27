@@ -145,6 +145,7 @@ enum {
     JS_CLASS_STRING_ITERATOR,   /* u.array_iterator_data */
     JS_CLASS_REGEXP_STRING_ITERATOR,   /* u.regexp_string_iterator_data */
     JS_CLASS_GENERATOR,         /* u.generator_data */
+    JS_CLASS_DISPOSABLE_STACK,
     JS_CLASS_PROXY,             /* u.proxy_data */
     JS_CLASS_PROMISE,           /* u.promise_data */
     JS_CLASS_PROMISE_RESOLVE_FUNCTION,  /* u.promise_function_data */
@@ -155,6 +156,7 @@ enum {
     JS_CLASS_ASYNC_FROM_SYNC_ITERATOR,  /* u.async_from_sync_iterator_data */
     JS_CLASS_ASYNC_GENERATOR_FUNCTION,  /* u.func */
     JS_CLASS_ASYNC_GENERATOR,   /* u.async_generator_data */
+    JS_CLASS_ASYNC_DISPOSABLE_STACK,
     JS_CLASS_WEAK_REF,
     JS_CLASS_FINALIZATION_REGISTRY,
     JS_CLASS_CALL_SITE,
@@ -176,6 +178,7 @@ typedef enum JSErrorEnum {
     JS_URI_ERROR,
     JS_INTERNAL_ERROR,
     JS_AGGREGATE_ERROR,
+    JS_SUPPRESSED_ERROR,
 
     JS_NATIVE_ERROR_COUNT, /* number of different NativeError objects */
     JS_PLAIN_ERROR = JS_NATIVE_ERROR_COUNT
@@ -1008,7 +1011,7 @@ enum {
 #undef DEF
     JS_ATOM_END,
 };
-#define JS_ATOM_LAST_KEYWORD JS_ATOM_super
+#define JS_ATOM_LAST_KEYWORD JS_ATOM_using
 #define JS_ATOM_LAST_STRICT_KEYWORD JS_ATOM_yield
 
 static const char js_atom_init[] =
@@ -1138,6 +1141,9 @@ static void js_promise_mark(JSRuntime *rt, JSValue val,
 static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValue val);
 static void js_promise_resolve_function_mark(JSRuntime *rt, JSValue val,
                                 JS_MarkFunc *mark_func);
+static void js_disposable_stack_finalizer(JSRuntime *rt, JSValue val);
+static void js_disposable_stack_mark(JSRuntime *rt, JSValue val,
+                                     JS_MarkFunc *mark_func);
 
 #define HINT_STRING  0
 #define HINT_NUMBER  1
@@ -1736,6 +1742,7 @@ static JSClassShortDef const js_std_class_def[] = {
     { JS_ATOM_String_Iterator, js_array_iterator_finalizer, js_array_iterator_mark }, /* JS_CLASS_STRING_ITERATOR */
     { JS_ATOM_RegExp_String_Iterator, js_regexp_string_iterator_finalizer, js_regexp_string_iterator_mark }, /* JS_CLASS_REGEXP_STRING_ITERATOR */
     { JS_ATOM_Generator, js_generator_finalizer, js_generator_mark }, /* JS_CLASS_GENERATOR */
+    { JS_ATOM_DisposableStack, js_disposable_stack_finalizer, js_disposable_stack_mark }, /* JS_CLASS_DISPOSABLE_STACK */
 };
 
 static int init_class_range(JSRuntime *rt, JSClassShortDef const *tab,
@@ -15699,6 +15706,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             }
             BREAK;
 
+        CASE(OP_check_object):
+            if (unlikely(!JS_IsObject(sp[-1]))) {
+                JS_ThrowTypeErrorNotAnObject(ctx);
+                goto exception;
+            }
+            BREAK;
+
         CASE(OP_check_var):
             {
                 int ret;
@@ -16247,12 +16261,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             if (js_iterator_get_value_done(ctx, sp))
                 goto exception;
             sp += 1;
-            BREAK;
-        CASE(OP_iterator_check_object):
-            if (unlikely(!JS_IsObject(sp[-1]))) {
-                JS_ThrowTypeError(ctx, "iterator must return an object");
-                goto exception;
-            }
             BREAK;
 
         CASE(OP_iterator_close):
@@ -18745,6 +18753,7 @@ enum {
     TOK_EXTENDS,
     TOK_IMPORT,
     TOK_SUPER,
+    TOK_USING,
     /* FutureReservedWords when parsing strict mode code */
     TOK_IMPLEMENTS,
     TOK_INTERFACE,
@@ -20457,6 +20466,9 @@ static int simple_next_token(const uint8_t **pp, bool no_line_terminator)
                 } else if (c == 'a' && p[0] == 'w' && p[1] == 'a' &&
                          p[2] == 'i' && p[3] == 't' && !lre_js_is_ident_next(p[4])) {
                     return TOK_AWAIT;
+                } else if (c == 'u' && p[0] == 's' && p[1] == 'i' &&
+                         p[2] == 'n' && p[3] == 'g' && !lre_js_is_ident_next(p[4])) {
+                    return TOK_USING;
                 }
                 return TOK_IDENT;
             }
@@ -21099,6 +21111,7 @@ typedef enum {
     JS_VAR_DEF_NEW_FUNCTION_DECL, /* async/generator function declaration */
     JS_VAR_DEF_CATCH,
     JS_VAR_DEF_VAR,
+    JS_VAR_DEF_USING,
 } JSVarDefEnum;
 
 static int define_var(JSParseState *s, JSFunctionDef *fd, JSAtom name,
@@ -21115,6 +21128,7 @@ static int define_var(JSParseState *s, JSFunctionDef *fd, JSAtom name,
 
     case JS_VAR_DEF_LET:
     case JS_VAR_DEF_CONST:
+    case JS_VAR_DEF_USING:
     case JS_VAR_DEF_FUNCTION_DECL:
     case JS_VAR_DEF_NEW_FUNCTION_DECL:
         idx = find_lexical_decl(ctx, fd, name, fd->scope_first, true);
@@ -21896,6 +21910,7 @@ static __exception int js_parse_object_literal(JSParseState *s)
 #define PF_POW_ALLOWED  (1 << 2)
 /* forbid the exponentiation operator in js_parse_unary() */
 #define PF_POW_FORBIDDEN (1 << 3)
+#define PF_AWAIT_USING   (1 << 4)
 
 static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags);
 
@@ -23021,6 +23036,9 @@ static __exception int js_define_var(JSParseState *s, JSAtom name, int tok)
         break;
     case TOK_VAR:
         var_def_type = JS_VAR_DEF_VAR;
+        break;
+    case TOK_USING:
+        var_def_type = JS_VAR_DEF_USING;
         break;
     case TOK_CATCH:
         var_def_type = JS_VAR_DEF_CATCH;
@@ -24276,6 +24294,9 @@ static __exception int js_parse_delete(JSParseState *s)
     return 0;
 }
 
+static __exception int js_parse_var(JSParseState *s, int parse_flags, int tok,
+                                    bool export_flag);
+
 /* allowed parse_flags: PF_POW_ALLOWED, PF_POW_FORBIDDEN */
 static __exception int js_parse_unary(JSParseState *s, int parse_flags)
 {
@@ -24360,10 +24381,17 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
             return js_parse_error(s, "await in default expression");
         if (next_token(s))
             return -1;
-        if (js_parse_unary(s, PF_POW_FORBIDDEN))
-            return -1;
+        if (s->token.val == TOK_USING) {
+            if (next_token(s))
+                return -1;
+            if (js_parse_var(s, PF_AWAIT_USING, TOK_USING, /*export_flag*/false))
+                return -1;
+        } else {
+            if (js_parse_unary(s, PF_POW_FORBIDDEN))
+                return -1;
+            emit_op(s, OP_await);
+        }
         s->cur_func->has_await = true;
-        emit_op(s, OP_await);
         parse_flags = 0;
         break;
     default:
@@ -24719,7 +24747,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
             emit_op(s, OP_iterator_next);
             if (is_async)
                 emit_op(s, OP_await);
-            emit_op(s, OP_iterator_check_object);
+            emit_op(s, OP_check_object);
             emit_op(s, OP_get_field2);
             emit_atom(s, JS_ATOM_done);
             emit_ic(s, JS_ATOM_done);
@@ -24754,7 +24782,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
             label_return1 = emit_goto(s, OP_if_true, -1);
             if (is_async)
                 emit_op(s, OP_await);
-            emit_op(s, OP_iterator_check_object);
+            emit_op(s, OP_check_object);
             emit_op(s, OP_get_field2);
             emit_atom(s, JS_ATOM_done);
             emit_ic(s, JS_ATOM_done);
@@ -24777,7 +24805,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
             label_throw1 = emit_goto(s, OP_if_true, -1);
             if (is_async)
                 emit_op(s, OP_await);
-            emit_op(s, OP_iterator_check_object);
+            emit_op(s, OP_check_object);
             emit_op(s, OP_get_field2);
             emit_atom(s, JS_ATOM_done);
             emit_ic(s, JS_ATOM_done);
@@ -25125,7 +25153,7 @@ static void emit_return(JSParseState *s, bool hasval)
                     label_next = emit_goto(s, OP_if_true, -1);
                     emit_op(s, OP_call_method);
                     emit_u16(s, 0);
-                    emit_op(s, OP_iterator_check_object);
+                    emit_op(s, OP_check_object);
                     emit_op(s, OP_await);
                     label_next2 = emit_goto(s, OP_goto, -1);
                     emit_label(s, label_next);
@@ -25215,6 +25243,7 @@ static __exception int js_parse_var(JSParseState *s, int parse_flags, int tok,
 
     for (;;) {
         if (s->token.val == TOK_IDENT) {
+        ident:
             if (s->token.u.ident.is_reserved) {
                 return js_parse_error_reserved_identifier(s);
             }
@@ -25254,17 +25283,24 @@ static __exception int js_parse_var(JSParseState *s, int parse_flags, int tok,
                     put_lvalue(s, opcode, scope, name1, label,
                                PUT_LVALUE_NOKEEP, false);
                 } else {
+                    bool init;
                     if (js_parse_assign_expr2(s, parse_flags))
                         goto var_error;
                     set_object_name(s, name);
-                    emit_op(s, (tok == TOK_CONST || tok == TOK_LET) ?
-                        OP_scope_put_var_init : OP_scope_put_var);
+                    if (tok == TOK_USING && (parse_flags & PF_AWAIT_USING)) {
+                        emit_op(s, OP_dup);
+                        emit_op(s, OP_await);
+                    }
+                    if (tok == TOK_USING)
+                        emit_op(s, OP_check_object);
+                    init = (tok == TOK_CONST || tok == TOK_LET || tok == TOK_USING);
+                    emit_op(s, init ? OP_scope_put_var_init : OP_scope_put_var);
                     emit_atom(s, name);
                     emit_u16(s, fd->scope_level);
                 }
             } else {
-                if (tok == TOK_CONST) {
-                    js_parse_error(s, "missing initializer for const variable");
+                if (tok == TOK_CONST || tok == TOK_USING) {
+                    js_parse_error(s, "missing initializer for variable");
                     goto var_error;
                 }
                 if (tok == TOK_LET) {
@@ -25284,6 +25320,11 @@ static __exception int js_parse_var(JSParseState *s, int parse_flags, int tok,
                 if (js_parse_destructuring_element(s, tok, false, true, skip_bits & SKIP_HAS_ELLIPSIS, true, export_flag) < 0)
                     return -1;
             } else {
+                // to avoid pessimizing the common case of a normal
+                // let/const/var declaration, check for the uncommon
+                // case here instead of at the top of the loop
+                if (s->token.val == TOK_USING)
+                    goto ident;
                 return js_parse_error(s, "variable name expected");
             }
         }
@@ -25397,7 +25438,14 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     default:
         return -1;
     }
-    if (tok == TOK_VAR || tok == TOK_LET || tok == TOK_CONST) {
+    if (tok == TOK_AWAIT) {
+        if (next_token(s))
+            return -1;
+        tok = s->token.val;
+        if (tok != TOK_USING)
+            return js_parse_error(s, "'using' expected");
+    }
+    if (tok == TOK_VAR || tok == TOK_LET || tok == TOK_CONST || tok == TOK_USING) {
         if (next_token(s))
             return -1;
 
@@ -25411,6 +25459,7 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
             }
             var_name = JS_ATOM_NULL;
         } else {
+            bool init;
             var_name = JS_DupAtom(ctx, s->token.u.ident.atom);
             if (next_token(s)) {
                 JS_FreeAtom(s->ctx, var_name);
@@ -25420,8 +25469,8 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
                 JS_FreeAtom(s->ctx, var_name);
                 return -1;
             }
-            emit_op(s, (tok == TOK_CONST || tok == TOK_LET) ?
-                    OP_scope_put_var_init : OP_scope_put_var);
+            init = (tok == TOK_CONST || tok == TOK_LET || tok == TOK_USING);
+            emit_op(s, init ? OP_scope_put_var_init : OP_scope_put_var);
             emit_atom(s, var_name);
             emit_u16(s, fd->scope_level);
         }
@@ -25676,6 +25725,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         break;
     case TOK_LET:
     case TOK_CONST:
+    case TOK_USING:
     haslet:
         if (!(decl_mask & DECL_MASK_OTHER)) {
             js_parse_error(s, "lexical declarations can't appear in single-statement context");
@@ -25845,7 +25895,10 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 default:
                     goto fail;
                 }
-                if (tok == TOK_VAR || tok == TOK_LET || tok == TOK_CONST) {
+                if (tok == TOK_VAR
+                || tok == TOK_LET
+                || tok == TOK_CONST
+                || tok == TOK_USING) {
                     if (next_token(s))
                         goto fail;
                     if (js_parse_var(s, 0, tok, /*export_flag*/false))
@@ -28345,6 +28398,7 @@ static __exception int js_parse_export(JSParseState *s)
     case TOK_VAR:
     case TOK_LET:
     case TOK_CONST:
+    case TOK_USING:
         return js_parse_var(s, PF_IN_ACCEPTED, tok, /*export_flag*/true);
     default:
         return js_parse_error(s, "invalid export syntax");
@@ -32685,6 +32739,7 @@ static __exception int js_parse_directives(JSParseState *s)
         case TOK_IF:
         case TOK_RETURN:
         case TOK_VAR:
+        case TOK_USING:
         case TOK_THIS:
         case TOK_DELETE:
         case TOK_TYPEOF:
@@ -36316,11 +36371,25 @@ static void JS_NewGlobalCConstructor2(JSContext *ctx,
 }
 
 static JSValue JS_NewGlobalCConstructor(JSContext *ctx, const char *name,
-                                             JSCFunction *func, int length,
-                                             JSValue proto)
+                                        JSCFunction *func, int length,
+                                        JSValue proto)
 {
     JSValue func_obj;
     func_obj = JS_NewCFunction2(ctx, func, name, length, JS_CFUNC_constructor_or_func, 0);
+    JS_NewGlobalCConstructor2(ctx, func_obj, name, proto);
+    return func_obj;
+}
+
+static JSValue JS_NewGlobalCConstructorMagic(JSContext *ctx, const char *name,
+                                             JSCFunctionMagic *func, int length,
+                                             JSValue proto, int magic)
+{
+    /* Used to squelch a -Wcast-function-type warning. */
+    JSCFunctionType ft = { .constructor_magic = func };
+    JSValue func_obj;
+
+    func_obj = JS_NewCFunction2(ctx, ft.constructor, name, length,
+                                JS_CFUNC_constructor_or_func_magic, magic);
     JS_NewGlobalCConstructor2(ctx, func_obj, name, proto);
     return func_obj;
 }
@@ -38084,14 +38153,19 @@ static JSValue js_error_constructor(JSContext *ctx, JSValue new_target,
     JS_FreeValue(ctx, proto);
     if (JS_IsException(obj))
         return obj;
-    if (magic == JS_AGGREGATE_ERROR) {
+    switch (magic) {
+    case JS_AGGREGATE_ERROR:
         message = argv[1];
         opts = 2;
-    } else {
+        break;
+    case JS_SUPPRESSED_ERROR:
+        message = argv[2];
+        opts = 3;
+        break;
+    default:
         message = argv[0];
         opts = 1;
     }
-
     if (!JS_IsUndefined(message)) {
         msg = JS_ToString(ctx, message);
         if (unlikely(JS_IsException(msg)))
@@ -40771,6 +40845,20 @@ exception:
     return JS_EXCEPTION;
 }
 
+// call this.return() iff this.return !== undefined
+static JSValue js_iterator_proto_dispose(JSContext *ctx, JSValue this_val,
+                                         int argc, JSValue *argv)
+{
+    JSValue method;
+
+    method = JS_GetProperty(ctx, this_val, JS_ATOM_return);
+    if (JS_IsException(method))
+        return JS_EXCEPTION;
+    if (JS_IsUndefined(method))
+        return JS_UNDEFINED;
+    return JS_CallFree(ctx, method, this_val, 0, NULL);
+}
+
 static JSValue js_iterator_proto_iterator(JSContext *ctx, JSValue this_val,
                                           int argc, JSValue *argv)
 {
@@ -41094,6 +41182,7 @@ static const JSCFunctionListEntry js_iterator_proto_funcs[] = {
     JS_CFUNC_MAGIC_DEF("some", 1, js_iterator_proto_func, JS_ITERATOR_HELPER_KIND_SOME ),
     JS_CFUNC_DEF("reduce", 1, js_iterator_proto_reduce ),
     JS_CFUNC_DEF("toArray", 0, js_iterator_proto_toArray ),
+    JS_CFUNC_DEF("[Symbol.dispose]", 0, js_iterator_proto_dispose ),
     JS_CFUNC_DEF("[Symbol.iterator]", 0, js_iterator_proto_iterator ),
     JS_CGETSET_DEF("[Symbol.toStringTag]", js_iterator_proto_get_toStringTag, js_iterator_proto_set_toStringTag),
 };
@@ -48680,6 +48769,141 @@ static const JSCFunctionListEntry js_generator_proto_funcs[] = {
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Generator", JS_PROP_CONFIGURABLE),
 };
 
+// explicit resource management
+
+typedef struct JSDisposableStack {
+    bool disposed;
+} JSDisposableStack;
+
+static JSValue js_disposable_stack_constructor(JSContext *ctx,
+                                               JSValue new_target,
+                                               int argc, JSValue *argv,
+                                               int class_id)
+{
+    JSDisposableStack *s;
+    JSValue obj;
+
+    obj = js_create_from_ctor(ctx, new_target, class_id);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    JS_SetOpaqueInternal(obj, s);
+    return obj;
+}
+
+static void js_disposable_stack_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSObject *p;
+
+    p = JS_VALUE_GET_OBJ(val);
+    js_free_rt(rt, p->u.opaque);
+}
+
+static void js_disposable_stack_mark(JSRuntime *rt, JSValue val,
+                                     JS_MarkFunc *mark_func)
+{
+}
+
+static JSValue js_disposable_stack_adopt(JSContext *ctx, JSValue this_val,
+                                         int argc, JSValue *argv, int class_id)
+{
+    JSDisposableStack *s;
+
+    s = JS_GetOpaque2(ctx, this_val, class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    return JS_ThrowInternalError(ctx, "TODO %s", __func__);
+}
+
+static JSValue js_disposable_stack_defer(JSContext *ctx, JSValue this_val,
+                                         int argc, JSValue *argv, int class_id)
+{
+    JSDisposableStack *s;
+
+    s = JS_GetOpaque2(ctx, this_val, class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    return JS_ThrowInternalError(ctx, "TODO %s", __func__);
+}
+
+static JSValue js_disposable_stack_dispose(JSContext *ctx, JSValue this_val,
+                                           int argc, JSValue *argv, int class_id)
+{
+    JSDisposableStack *s;
+
+    s = JS_GetOpaque2(ctx, this_val, class_id);
+    if (!s) {
+        if (class_id == JS_CLASS_DISPOSABLE_STACK)
+            return JS_EXCEPTION;
+        JSValue exc = JS_GetException(ctx);
+        return js_promise_resolve(ctx, ctx->promise_ctor, 1, &exc, /*is_reject*/1);
+    }
+    return JS_ThrowInternalError(ctx, "TODO %s", __func__);
+}
+
+static JSValue js_disposable_stack_move(JSContext *ctx, JSValue this_val,
+                                        int argc, JSValue *argv, int class_id)
+{
+    JSDisposableStack *s;
+
+    s = JS_GetOpaque2(ctx, this_val, class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    return JS_ThrowInternalError(ctx, "TODO %s", __func__);
+}
+
+static JSValue js_disposable_stack_use(JSContext *ctx, JSValue this_val,
+                                       int argc, JSValue *argv, int class_id)
+{
+    JSDisposableStack *s;
+    JSValue arg;
+
+    s = JS_GetOpaque2(ctx, this_val, class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    arg = argv[0];
+    if (!JS_IsObject(arg) && !JS_IsNull(arg) && !JS_IsUndefined(arg))
+        return JS_ThrowTypeError(ctx, "object expected");
+    return JS_ThrowInternalError(ctx, "TODO %s", __func__);
+}
+
+static JSValue js_disposable_stack_get_disposed(JSContext *ctx,
+                                                JSValue this_val, int class_id)
+{
+    JSDisposableStack *s;
+
+    s = JS_GetOpaque2(ctx, this_val, class_id);
+    if (!s)
+        return JS_EXCEPTION;
+    return js_bool(s->disposed);
+}
+
+static const JSCFunctionListEntry js_disposable_stack_proto_funcs[] = {
+    JS_CFUNC_MAGIC_DEF("adopt", 2, js_disposable_stack_adopt, JS_CLASS_DISPOSABLE_STACK ),
+    JS_CFUNC_MAGIC_DEF("defer", 1, js_disposable_stack_defer, JS_CLASS_DISPOSABLE_STACK ),
+    JS_CFUNC_MAGIC_DEF("dispose", 0, js_disposable_stack_dispose, JS_CLASS_DISPOSABLE_STACK ),
+    JS_CFUNC_MAGIC_DEF("move", 0, js_disposable_stack_move, JS_CLASS_DISPOSABLE_STACK ),
+    JS_CFUNC_MAGIC_DEF("use", 1, js_disposable_stack_use, JS_CLASS_DISPOSABLE_STACK ),
+    JS_CGETSET_MAGIC_DEF("disposed", js_disposable_stack_get_disposed, NULL, JS_CLASS_DISPOSABLE_STACK ),
+    JS_ALIAS_DEF("[Symbol.dispose]", "dispose" ),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "DisposableStack", JS_PROP_CONFIGURABLE ),
+};
+
+static const JSCFunctionListEntry js_async_disposable_stack_proto_funcs[] = {
+    JS_CFUNC_MAGIC_DEF("adopt", 2, js_disposable_stack_adopt, JS_CLASS_ASYNC_DISPOSABLE_STACK ),
+    JS_CFUNC_MAGIC_DEF("defer", 1, js_disposable_stack_defer, JS_CLASS_ASYNC_DISPOSABLE_STACK ),
+    JS_CFUNC_MAGIC_DEF("disposeAsync", 0, js_disposable_stack_dispose, JS_CLASS_ASYNC_DISPOSABLE_STACK ),
+    JS_CFUNC_MAGIC_DEF("move", 0, js_disposable_stack_move, JS_CLASS_ASYNC_DISPOSABLE_STACK ),
+    JS_CFUNC_MAGIC_DEF("use", 1, js_disposable_stack_use, JS_CLASS_ASYNC_DISPOSABLE_STACK ),
+    JS_CGETSET_MAGIC_DEF("disposed", js_disposable_stack_get_disposed, NULL, JS_CLASS_ASYNC_DISPOSABLE_STACK ),
+    JS_ALIAS_DEF("[Symbol.asyncDispose]", "disposeAsync" ),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "AsyncDisposableStack", JS_PROP_CONFIGURABLE),
+};
+
 /* Promise */
 
 typedef struct JSPromiseData {
@@ -49958,6 +50182,7 @@ static JSClassShortDef const js_async_class_def[] = {
     { JS_ATOM_empty_string, js_async_from_sync_iterator_finalizer, js_async_from_sync_iterator_mark }, /* JS_CLASS_ASYNC_FROM_SYNC_ITERATOR */
     { JS_ATOM_AsyncGeneratorFunction, js_bytecode_function_finalizer, js_bytecode_function_mark },  /* JS_CLASS_ASYNC_GENERATOR_FUNCTION */
     { JS_ATOM_AsyncGenerator, js_async_generator_finalizer, js_async_generator_mark },  /* JS_CLASS_ASYNC_GENERATOR */
+    { JS_ATOM_AsyncDisposableStack, js_disposable_stack_finalizer, js_disposable_stack_mark }, /* JS_CLASS_ASYNC_DISPOSABLE_STACK */
 };
 
 void JS_AddIntrinsicPromise(JSContext *ctx)
@@ -50048,6 +50273,16 @@ void JS_AddIntrinsicPromise(JSContext *ctx)
     JS_SetConstructor2(ctx, obj1, ctx->class_proto[JS_CLASS_ASYNC_GENERATOR_FUNCTION],
                        0, JS_PROP_CONFIGURABLE);
     JS_FreeValue(ctx, obj1);
+
+    // AsyncDisposableStack
+    ctx->class_proto[JS_CLASS_ASYNC_DISPOSABLE_STACK] = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ASYNC_DISPOSABLE_STACK],
+                               js_async_disposable_stack_proto_funcs,
+                               countof(js_async_disposable_stack_proto_funcs));
+    JS_NewGlobalCConstructorMagic(ctx, "AsyncDisposableStack",
+                                  js_disposable_stack_constructor, 0,
+                                  ctx->class_proto[JS_CLASS_ASYNC_DISPOSABLE_STACK],
+                                  JS_CLASS_ASYNC_DISPOSABLE_STACK);
 }
 
 /* URI handling */
@@ -51689,6 +51924,7 @@ static const char * const native_error_name[JS_NATIVE_ERROR_COUNT] = {
     "EvalError", "RangeError", "ReferenceError",
     "SyntaxError", "TypeError", "URIError",
     "InternalError", "AggregateError",
+    "SuppressedError",
 };
 
 /* Minimum amount of objects to be able to compile code and display
@@ -51788,7 +52024,16 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     for(i = 0; i < JS_NATIVE_ERROR_COUNT; i++) {
         JSValue func_obj;
         int n_args;
-        n_args = 1 + (i == JS_AGGREGATE_ERROR);
+        switch (i) {
+        case JS_AGGREGATE_ERROR:
+            n_args = 2;
+            break;
+        case JS_SUPPRESSED_ERROR:
+            n_args = 3;
+            break;
+        default:
+            n_args = 1;
+        }
         func_obj = JS_NewCFunction3(ctx, ft.generic,
                                     native_error_name[i], n_args,
                                     JS_CFUNC_constructor_or_func_magic, i,
@@ -51959,6 +52204,16 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     JS_SetConstructor2(ctx, obj1, ctx->class_proto[JS_CLASS_GENERATOR_FUNCTION],
                        0, JS_PROP_CONFIGURABLE);
     JS_FreeValue(ctx, obj1);
+
+    // explicit resource management
+    ctx->class_proto[JS_CLASS_DISPOSABLE_STACK] = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_DISPOSABLE_STACK],
+                               js_disposable_stack_proto_funcs,
+                               countof(js_disposable_stack_proto_funcs));
+    JS_NewGlobalCConstructorMagic(ctx, "DisposableStack",
+                                  js_disposable_stack_constructor, 0,
+                                  ctx->class_proto[JS_CLASS_DISPOSABLE_STACK],
+                                  JS_CLASS_DISPOSABLE_STACK);
 
     /* global properties */
     ctx->eval_obj = JS_NewCFunction(ctx, js_global_eval, "eval", 1);

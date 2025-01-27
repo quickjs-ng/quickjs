@@ -63,6 +63,7 @@ DEF(export, "export")
 DEF(extends, "extends")
 DEF(import, "import")
 DEF(super, "super")
+DEF(using, "using")
 /* FutureReservedWords when parsing strict mode code */
 DEF(implements, "implements")
 DEF(interface, "interface")
@@ -242,6 +243,8 @@ DEF(TypeError, "TypeError")
 DEF(URIError, "URIError")
 DEF(InternalError, "InternalError")
 DEF(CallSite, "CallSite")
+DEF(DisposableStack, "DisposableStack")
+DEF(AsyncDisposableStack, "AsyncDisposableStack")
 /* private symbols */
 DEF(Private_brand, "<brand>")
 /* symbols */
@@ -258,5 +261,7 @@ DEF(Symbol_hasInstance, "Symbol.hasInstance")
 DEF(Symbol_species, "Symbol.species")
 DEF(Symbol_unscopables, "Symbol.unscopables")
 DEF(Symbol_asyncIterator, "Symbol.asyncIterator")
+DEF(Symbol_dispose, "Symbol.dispose")
+DEF(Symbol_asyncDispose, "Symbol.asyncDispose")
 
 #endif /* DEF */
