@@ -110,6 +110,7 @@ static JSValue load_standalone_module(JSContext *ctx)
 static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
                     const char *filename, int eval_flags)
 {
+    bool use_realpath;
     JSValue val;
     int ret;
 
@@ -119,7 +120,8 @@ static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
         val = JS_Eval(ctx, buf, buf_len, filename,
                       eval_flags | JS_EVAL_FLAG_COMPILE_ONLY);
         if (!JS_IsException(val)) {
-            if (js_module_set_import_meta(ctx, val, true, true) < 0) {
+            use_realpath = (*filename != '<'); // ex. "<cmdline>"
+            if (js_module_set_import_meta(ctx, val, use_realpath, true) < 0) {
                 js_std_dump_error(ctx);
                 ret = -1;
                 goto end;
@@ -669,7 +671,8 @@ start:
             JS_FreeValue(ctx, args[1]);
             JS_FreeValue(ctx, args[2]);
         } else if (expr) {
-            if (eval_buf(ctx, expr, strlen(expr), "<cmdline>", 0))
+            int flags = module ? JS_EVAL_TYPE_MODULE : 0;
+            if (eval_buf(ctx, expr, strlen(expr), "<cmdline>", flags))
                 goto fail;
         } else if (optind >= argc) {
             /* interactive mode */
