@@ -3962,22 +3962,20 @@ static char *bf_ftoa_internal(size_t *plen, const bf_t *a2, int radix,
                         n = 1;
                     if ((flags & BF_FTOA_FORCE_EXP) ||
                         n <= -6 || n > n_max) {
-                        const char *fmt;
                         /* exponential notation */
                         output_digits(s, a1, radix, n_digits, 1, is_dec);
                         if (radix_bits != 0 && radix <= 16) {
+                            slimb_t exp_n = (n - 1) * radix_bits;
                             if (flags & BF_FTOA_JS_QUIRKS)
-                                fmt = "p%+" PRId_LIMB;
+                                dbuf_printf(s, "p%+" PRId_LIMB, exp_n);
                             else
-                                fmt = "p%" PRId_LIMB;
-                            dbuf_printf(s, fmt, (n - 1) * radix_bits);
+                                dbuf_printf(s, "p%" PRId_LIMB, exp_n);
                         } else {
+                            const char c = radix <= 10 ? 'e' : '@';
                             if (flags & BF_FTOA_JS_QUIRKS)
-                                fmt = "%c%+" PRId_LIMB;
+                                dbuf_printf(s, "%c%+" PRId_LIMB, c, n - 1);
                             else
-                                fmt = "%c%" PRId_LIMB;
-                            dbuf_printf(s, fmt,
-                                        radix <= 10 ? 'e' : '@', n - 1);
+                                dbuf_printf(s, "%c%" PRId_LIMB, c, n - 1);
                         }
                     } else if (n <= 0) {
                         /* 0.x */

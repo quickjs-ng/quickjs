@@ -3197,7 +3197,6 @@ JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global)
 
 #define ATOM_GET_STR_BUF_SIZE 64
 
-/* Should only be used for debug. */
 static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
                                    JSAtom atom)
 {
@@ -3220,13 +3219,6 @@ static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
                 /* encode surrogates correctly */
                 utf8_encode_buf16(buf, buf_size, str->u.str16, str->len);
             } else {
-                /* special case ASCII strings */
-                int i, c = 0;
-                for(i = 0; i < str->len; i++) {
-                    c |= str->u.str8[i];
-                }
-                if (c < 0x80)
-                    return (const char *)str->u.str8;
                 utf8_encode_buf8(buf, buf_size, str->u.str8, str->len);
             }
         }
@@ -6856,8 +6848,9 @@ static JSValue JS_MakeError(JSContext *ctx, JSErrorEnum error_num,
 }
 
 /* fmt and arguments may be pure ASCII or UTF-8 encoded contents */
-static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
-                              const char *fmt, va_list ap, bool add_backtrace)
+static JSValue JS_PRINTF_FORMAT_ATTR(4, 0)
+JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
+               bool add_backtrace, JS_PRINTF_FORMAT const char *fmt, va_list ap)
 {
     char buf[256];
     JSValue obj;
@@ -6871,8 +6864,9 @@ static JSValue JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
     return JS_Throw(ctx, obj);
 }
 
-static JSValue JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
-                             const char *fmt, va_list ap)
+static JSValue JS_PRINTF_FORMAT_ATTR(3, 0)
+JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
+              JS_PRINTF_FORMAT const char *fmt, va_list ap)
 {
     JSRuntime *rt = ctx->rt;
     JSStackFrame *sf;
@@ -6882,7 +6876,7 @@ static JSValue JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
     sf = rt->current_stack_frame;
     add_backtrace = !rt->in_out_of_memory &&
         (!sf || (JS_GetFunctionBytecode(sf->cur_func) == NULL));
-    return JS_ThrowError2(ctx, error_num, fmt, ap, add_backtrace);
+    return JS_ThrowError2(ctx, error_num, add_backtrace, fmt, ap);
 }
 
 JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
@@ -6933,26 +6927,22 @@ static int JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowTypeErrorOrFalse(JSContext *ctx, 
     }
 }
 
-/* never use it directly */
-static JSValue JS_PRINTF_FORMAT_ATTR(3, 4) __JS_ThrowTypeErrorAtom(JSContext *ctx, JSAtom atom, JS_PRINTF_FORMAT const char *fmt, ...)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+static JSValue JS_ThrowTypeErrorAtom(JSContext *ctx, const char *fmt, JSAtom atom)
 {
     char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowTypeError(ctx, fmt,
-                             JS_AtomGetStr(ctx, buf, sizeof(buf), atom));
+    JS_AtomGetStr(ctx, buf, sizeof(buf), atom);
+    return JS_ThrowTypeError(ctx, fmt, buf);
 }
 
-/* never use it directly */
-static JSValue JS_PRINTF_FORMAT_ATTR(3, 4) __JS_ThrowSyntaxErrorAtom(JSContext *ctx, JSAtom atom, JS_PRINTF_FORMAT const char *fmt, ...)
+static JSValue JS_ThrowSyntaxErrorAtom(JSContext *ctx, const char *fmt, JSAtom atom)
 {
     char buf[ATOM_GET_STR_BUF_SIZE];
-    return JS_ThrowSyntaxError(ctx, fmt,
-                             JS_AtomGetStr(ctx, buf, sizeof(buf), atom));
+    JS_AtomGetStr(ctx, buf, sizeof(buf), atom);
+    return JS_ThrowSyntaxError(ctx, fmt, buf);
 }
-
-/* %s is replaced by 'atom'. The macro is used so that gcc can check
-    the format string. */
-#define JS_ThrowTypeErrorAtom(ctx, fmt, atom) __JS_ThrowTypeErrorAtom(ctx, atom, fmt, "")
-#define JS_ThrowSyntaxErrorAtom(ctx, fmt, atom) __JS_ThrowSyntaxErrorAtom(ctx, atom, fmt, "")
+#pragma GCC diagnostic pop // ignored "-Wformat-nonliteral"
 
 static int JS_ThrowTypeErrorReadOnly(JSContext *ctx, int flags, JSAtom atom)
 {
@@ -19038,7 +19028,7 @@ int JS_PRINTF_FORMAT_ATTR(2, 3) js_parse_error(JSParseState *s, JS_PRINTF_FORMAT
     int backtrace_flags;
 
     va_start(ap, fmt);
-    JS_ThrowError2(ctx, JS_SYNTAX_ERROR, fmt, ap, false);
+    JS_ThrowError2(ctx, JS_SYNTAX_ERROR, false, fmt, ap);
     va_end(ap);
     backtrace_flags = 0;
     if (s->cur_func && s->cur_func->backtrace_barrier)
