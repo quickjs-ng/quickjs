@@ -38060,7 +38060,7 @@ static JSValue js_error_set_stackTraceLimit(JSContext *ctx, JSValue this_val, JS
     double limit = 0;
     if (JS_ToFloat64(ctx, &limit, value) < 0)
         return JS_EXCEPTION;
-    ctx->error_stack_trace_limit = isinf(limit) ? INT_MAX : (int) limit;
+    ctx->error_stack_trace_limit = isinf(limit) ? INT_MAX : limit;
     return JS_UNDEFINED;
 }
 
