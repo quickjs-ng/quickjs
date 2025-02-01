@@ -931,36 +931,33 @@ static JSValue js_IsHTMLDDA(JSContext *ctx, JSValue this_val,
 static JSValue add_helpers1(JSContext *ctx)
 {
     JSValue global_obj;
-    JSValue obj262, obj;
+    JSValue obj262, is_html_dda;
 
     global_obj = JS_GetGlobalObject(ctx);
 
     JS_SetPropertyStr(ctx, global_obj, "print",
                       JS_NewCFunction(ctx, js_print_262, "print", 1));
 
+    is_html_dda = JS_NewCFunction(ctx, js_IsHTMLDDA, "IsHTMLDDA", 0);
+    JS_SetIsHTMLDDA(ctx, is_html_dda);
+#define N 7
+    static const char *props[N] = {
+        "detachArrayBuffer", "evalScript", "codePointRange",
+        "agent", "global", "createRealm", "IsHTMLDDA",
+    };
+    JSValue values[N] = {
+        JS_NewCFunction(ctx, js_detachArrayBuffer, "detachArrayBuffer", 1),
+        JS_NewCFunction(ctx, js_evalScript_262, "evalScript", 1),
+        JS_NewCFunction(ctx, js_string_codePointRange, "codePointRange", 2),
+        js_new_agent(ctx),
+        JS_DupValue(ctx, global_obj),
+        JS_NewCFunction(ctx, js_createRealm, "createRealm", 0),
+        is_html_dda,
+    };
     /* $262 special object used by the tests */
-    obj262 = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj262, "detachArrayBuffer",
-                      JS_NewCFunction(ctx, js_detachArrayBuffer,
-                                      "detachArrayBuffer", 1));
-    JS_SetPropertyStr(ctx, obj262, "evalScript",
-                      JS_NewCFunction(ctx, js_evalScript_262,
-                                      "evalScript", 1));
-    JS_SetPropertyStr(ctx, obj262, "codePointRange",
-                      JS_NewCFunction(ctx, js_string_codePointRange,
-                                      "codePointRange", 2));
-    JS_SetPropertyStr(ctx, obj262, "agent", js_new_agent(ctx));
-
-    JS_SetPropertyStr(ctx, obj262, "global",
-                      JS_DupValue(ctx, global_obj));
-    JS_SetPropertyStr(ctx, obj262, "createRealm",
-                      JS_NewCFunction(ctx, js_createRealm,
-                                      "createRealm", 0));
-    obj = JS_NewCFunction(ctx, js_IsHTMLDDA, "IsHTMLDDA", 0);
-    JS_SetIsHTMLDDA(ctx, obj);
-    JS_SetPropertyStr(ctx, obj262, "IsHTMLDDA", obj);
-
+    obj262 = JS_NewObjectFromStr(ctx, N, props, values);
     JS_SetPropertyStr(ctx, global_obj, "$262", JS_DupValue(ctx, obj262));
+#undef N
 
     JS_FreeValue(ctx, global_obj);
     return obj262;

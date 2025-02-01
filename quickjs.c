@@ -5038,6 +5038,53 @@ JSValue JS_NewObjectProto(JSContext *ctx, JSValue proto)
     return JS_NewObjectProtoClass(ctx, proto, JS_CLASS_OBJECT);
 }
 
+JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
+                         const JSValue *values)
+{
+    JSValue obj;
+    int i;
+
+    obj = JS_NewObject(ctx);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    for (i = 0; i < count; i++) {
+        if (JS_SetProperty(ctx, obj, props[i], values[i]) < 0) {
+            JS_FreeValue(ctx, obj);
+            return JS_EXCEPTION;
+        }
+    }
+    return obj;
+}
+
+JSValue JS_NewObjectFromStr(JSContext *ctx, int count, const char **props,
+                            const JSValue *values)
+{
+    JSAtom *atoms;
+    JSValue ret;
+    int i;
+
+    i = 0;
+    ret = JS_EXCEPTION;
+    count = max_int(0, count);
+    atoms = NULL;
+    if (count) {
+        atoms = js_malloc(ctx, count * sizeof(*atoms));
+        if (!atoms)
+            return JS_EXCEPTION;
+        for (i = 0; i < count; i++) {
+            atoms[i] = JS_NewAtom(ctx, props[i]);
+            if (atoms[i] == JS_ATOM_NULL)
+                goto fail;
+        }
+    }
+    ret = JS_NewObjectFrom(ctx, count, atoms, values);
+fail:
+    while (i-- > 0)
+        JS_FreeAtom(ctx, atoms[i]);
+    js_free(ctx, atoms);
+    return ret;
+}
+
 JSValue JS_NewArray(JSContext *ctx)
 {
     return JS_NewObjectFromShape(ctx, js_dup_shape(ctx->array_shape),
