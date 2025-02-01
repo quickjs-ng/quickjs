@@ -5041,12 +5041,15 @@ JSValue JS_NewObjectProto(JSContext *ctx, JSValue proto)
 JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
                          const JSValue *values)
 {
-    JSProperty *pr;
+    JSShapeProperty *pr;
+    uint32_t *hash;
     JSRuntime *rt;
     JSObject *p;
     JSShape *sh;
     JSValue obj;
-    int i, r;
+    JSAtom atom;
+    intptr_t h;
+    int i;
 
     rt = ctx->rt;
     obj = JS_NewObject(ctx);
@@ -5058,22 +5061,29 @@ JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
         assert(sh->is_hashed);
         assert(sh->header.ref_count == 1);
         js_shape_hash_unlink(rt, sh);
-        r = resize_properties(ctx, &sh, p, count);
-        js_shape_hash_link(rt, sh);
-        if (r)
-            goto fail;
-        p->shape = sh;
-        pr = p->prop;
-        for (i = 0; i < count; i++) {
-            if (add_shape_property(ctx, &p->shape, p, props[i], JS_PROP_C_W_E))
-                goto fail;
-            pr[i].u.value = values[i];
+        if (resize_properties(ctx, &sh, p, count)) {
+            js_shape_hash_link(rt, sh);
+            JS_FreeValue(ctx, obj);
+            return JS_EXCEPTION;
         }
+        p->shape = sh;
+        for (i = 0; i < count; i++) {
+            atom = props[i];
+            pr = &sh->prop[i];
+            sh->hash = shape_hash(shape_hash(sh->hash, atom), JS_PROP_C_W_E);
+            sh->has_small_array_index |= __JS_AtomIsTaggedInt(atom);
+            h = atom & sh->prop_hash_mask;
+            hash = &prop_hash_end(sh)[-h - 1];
+            pr->hash_next = *hash;
+            *hash = i + 1;
+            pr->atom = JS_DupAtom(ctx, atom);
+            pr->flags = JS_PROP_C_W_E;
+            p->prop[i].u.value = values[i];
+        }
+        js_shape_hash_link(rt, sh);
+        sh->prop_count = count;
     }
     return obj;
-fail:
-    JS_FreeValue(ctx, obj);
-    return JS_EXCEPTION;
 }
 
 JSValue JS_NewObjectFromStr(JSContext *ctx, int count, const char **props,
