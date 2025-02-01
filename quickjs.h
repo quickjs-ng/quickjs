@@ -728,6 +728,9 @@ JS_EXTERN bool JS_IsRegExp(JSValue val);
 JS_EXTERN bool JS_IsMap(JSValue val);
 
 JS_EXTERN JSValue JS_NewArray(JSContext *ctx);
+// takes ownership of the values
+JS_EXTERN JSValue JS_NewArrayFrom(JSContext *ctx, int count,
+                                  const JSValue *values);
 JS_EXTERN int JS_IsArray(JSContext *ctx, JSValue val);
 
 JS_EXTERN JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
