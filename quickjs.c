@@ -5089,28 +5089,30 @@ JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
 JSValue JS_NewObjectFromStr(JSContext *ctx, int count, const char **props,
                             const JSValue *values)
 {
-    JSAtom *atoms;
+    JSAtom atoms_s[16], *atoms = atoms_s;
     JSValue ret;
     int i;
 
     i = 0;
     ret = JS_EXCEPTION;
-    atoms = NULL;
-    if (count > 0) {
+    if (count < 1)
+        goto out;
+    if (count > (int)countof(atoms_s)) {
         atoms = js_malloc(ctx, count * sizeof(*atoms));
         if (!atoms)
             return JS_EXCEPTION;
-        for (i = 0; i < count; i++) {
-            atoms[i] = JS_NewAtom(ctx, props[i]);
-            if (atoms[i] == JS_ATOM_NULL)
-                goto fail;
-        }
+    }
+    for (i = 0; i < count; i++) {
+        atoms[i] = JS_NewAtom(ctx, props[i]);
+        if (atoms[i] == JS_ATOM_NULL)
+            goto out;
     }
     ret = JS_NewObjectFrom(ctx, count, atoms, values);
-fail:
+out:
     while (i-- > 0)
         JS_FreeAtom(ctx, atoms[i]);
-    js_free(ctx, atoms);
+    if (atoms != atoms_s)
+        js_free(ctx, atoms);
     return ret;
 }
 
