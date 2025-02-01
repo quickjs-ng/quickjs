@@ -5042,11 +5042,13 @@ JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
                          const JSValue *values)
 {
     JSProperty *pr;
+    JSRuntime *rt;
     JSObject *p;
     JSShape *sh;
     JSValue obj;
-    int i;
+    int i, r;
 
+    rt = ctx->rt;
     obj = JS_NewObject(ctx);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
@@ -5054,20 +5056,18 @@ JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
         p = JS_VALUE_GET_OBJ(obj);
         sh = p->shape;
         assert(sh->is_hashed);
+        assert(sh->header.ref_count == 1);
+        js_shape_hash_unlink(rt, sh);
+        r = resize_properties(ctx, &sh, p, count);
+        js_shape_hash_link(rt, sh);
+        if (r)
+            goto fail;
+        p->shape = sh;
+        pr = p->prop;
         for (i = 0; i < count; i++) {
-            if (sh->header.ref_count > 1) {
-                sh = js_clone_shape(ctx, sh);
-                if (!sh)
-                    goto fail;
-                sh->is_hashed = true;
-                js_shape_hash_link(ctx->rt, sh);
-                js_free_shape(ctx->rt, p->shape);
-                p->shape = sh;
-            }
             if (add_shape_property(ctx, &p->shape, p, props[i], JS_PROP_C_W_E))
                 goto fail;
-            pr = &p->prop[p->shape->prop_count-1];
-            pr->u.value = values[i];
+            pr[i].u.value = values[i];
         }
     }
     return obj;
