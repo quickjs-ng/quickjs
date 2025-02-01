@@ -1283,6 +1283,7 @@ static JSValue *build_arg_list(JSContext *ctx, uint32_t *plen,
                                JSValue array_arg);
 static bool js_get_fast_array(JSContext *ctx, JSValue obj,
                               JSValue **arrpp, uint32_t *countp);
+static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len);
 static JSValue JS_CreateAsyncFromSyncIterator(JSContext *ctx,
                                               JSValue sync_iter);
 static void js_c_function_data_finalizer(JSRuntime *rt, JSValue val);
@@ -5040,6 +5041,28 @@ JSValue JS_NewArray(JSContext *ctx)
 {
     return JS_NewObjectFromShape(ctx, js_dup_shape(ctx->array_shape),
                                  JS_CLASS_ARRAY);
+}
+
+// note: takes ownership of |values|, unlike js_create_array
+JSValue JS_NewArrayFrom(JSContext *ctx, int count, const JSValue *values)
+{
+    JSObject *p;
+    JSValue obj;
+
+    obj = JS_NewArray(ctx);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    if (count > 0) {
+        p = JS_VALUE_GET_OBJ(obj);
+        if (expand_fast_array(ctx, p, count)) {
+            JS_FreeValue(ctx, obj);
+            return JS_EXCEPTION;
+        }
+        p->u.array.count = count;
+        p->prop[0].u.value = js_int32(count);
+        memcpy(p->u.array.u.values, values, count * sizeof(*values));
+    }
+    return obj;
 }
 
 JSValue JS_NewObject(JSContext *ctx)
@@ -15372,23 +15395,12 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
         CASE(OP_array_from):
             {
-                int i, ret;
-
                 call_argc = get_u16(pc);
                 pc += 2;
-                ret_val = JS_NewArray(ctx);
+                call_argv = sp - call_argc;
+                ret_val = JS_NewArrayFrom(ctx, call_argc, call_argv);
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
-                call_argv = sp - call_argc;
-                for(i = 0; i < call_argc; i++) {
-                    ret = JS_DefinePropertyValue(ctx, ret_val, __JS_AtomFromUInt32(i), call_argv[i],
-                                                 JS_PROP_C_W_E | JS_PROP_THROW);
-                    call_argv[i] = JS_UNDEFINED;
-                    if (ret < 0) {
-                        JS_FreeValue(ctx, ret_val);
-                        goto exception;
-                    }
-                }
                 sp -= call_argc;
                 *sp++ = ret_val;
             }
