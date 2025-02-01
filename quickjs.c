@@ -5043,22 +5043,37 @@ JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
 {
     JSProperty *pr;
     JSObject *p;
+    JSShape *sh;
     JSValue obj;
     int i;
 
     obj = JS_NewObject(ctx);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
-    p = JS_VALUE_GET_OBJ(obj);
-    for (i = 0; i < count; i++) {
-        pr = add_property(ctx, p, props[i], JS_PROP_C_W_E);
-        if (!pr) {
-            JS_FreeValue(ctx, obj);
-            return JS_EXCEPTION;
+    if (count > 0) {
+        p = JS_VALUE_GET_OBJ(obj);
+        sh = p->shape;
+        assert(sh->is_hashed);
+        for (i = 0; i < count; i++) {
+            if (sh->header.ref_count > 1) {
+                sh = js_clone_shape(ctx, sh);
+                if (!sh)
+                    goto fail;
+                sh->is_hashed = true;
+                js_shape_hash_link(ctx->rt, sh);
+                js_free_shape(ctx->rt, p->shape);
+                p->shape = sh;
+            }
+            if (add_shape_property(ctx, &p->shape, p, props[i], JS_PROP_C_W_E))
+                goto fail;
+            pr = &p->prop[p->shape->prop_count-1];
+            pr->u.value = values[i];
         }
-        pr->u.value = values[i];
     }
     return obj;
+fail:
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
 }
 
 JSValue JS_NewObjectFromStr(JSContext *ctx, int count, const char **props,
@@ -5070,9 +5085,8 @@ JSValue JS_NewObjectFromStr(JSContext *ctx, int count, const char **props,
 
     i = 0;
     ret = JS_EXCEPTION;
-    count = max_int(0, count);
     atoms = NULL;
-    if (count) {
+    if (count > 0) {
         atoms = js_malloc(ctx, count * sizeof(*atoms));
         if (!atoms)
             return JS_EXCEPTION;
