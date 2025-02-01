@@ -249,8 +249,8 @@ struct JSRuntime {
     JSValue current_exception;
     /* true if inside an out of memory error, to avoid recursing */
     bool in_out_of_memory;
-    /* and likewise if inside Error.prepareStackTrace() */
-    bool in_prepare_stack_trace;
+    /* true if inside build_backtrace, to avoid recursing */
+    bool in_build_stack_trace;
     /* true if inside JS_FreeRuntime */
     bool in_free;
 
@@ -396,7 +396,7 @@ struct JSContext {
     JSValue error_ctor;
     JSValue error_back_trace;
     JSValue error_prepare_stack;
-    int error_stack_trace_limit;
+    JSValue error_stack_trace_limit;
     JSValue iterator_ctor;
     JSValue iterator_proto;
     JSValue async_iterator_proto;
@@ -2311,7 +2311,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->error_ctor = JS_NULL;
     ctx->error_back_trace = JS_UNDEFINED;
     ctx->error_prepare_stack = JS_UNDEFINED;
-    ctx->error_stack_trace_limit = 10;
+    ctx->error_stack_trace_limit = js_int32(10);
     init_list_head(&ctx->loaded_modules);
 
     JS_AddIntrinsicBasicObjects(ctx);
@@ -2431,6 +2431,7 @@ static void JS_MarkContext(JSRuntime *rt, JSContext *ctx,
     JS_MarkValue(rt, ctx->error_ctor, mark_func);
     JS_MarkValue(rt, ctx->error_back_trace, mark_func);
     JS_MarkValue(rt, ctx->error_prepare_stack, mark_func);
+    JS_MarkValue(rt, ctx->error_stack_trace_limit, mark_func);
     for(i = 0; i < rt->class_count; i++) {
         JS_MarkValue(rt, ctx->class_proto[i], mark_func);
     }
@@ -2499,6 +2500,7 @@ void JS_FreeContext(JSContext *ctx)
     JS_FreeValue(ctx, ctx->error_ctor);
     JS_FreeValue(ctx, ctx->error_back_trace);
     JS_FreeValue(ctx, ctx->error_prepare_stack);
+    JS_FreeValue(ctx, ctx->error_stack_trace_limit);
     for(i = 0; i < rt->class_count; i++) {
         JS_FreeValue(ctx, ctx->class_proto[i]);
     }
@@ -6673,26 +6675,44 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
     JSRuntime *rt;
     JSCallSiteData csd[64];
     uint32_t i;
+    double d_stack_trace_limit;
     int stack_trace_limit;
 
+    rt = ctx->rt;
+    if (rt->in_build_stack_trace)
+        return;
+    rt->in_build_stack_trace = true;
+
+    // Save exception because conversion to double may fail.
+    saved_exception = JS_GetException(ctx);
+
+    // Extract stack trace limit.
+    d_stack_trace_limit = 10;
+    JS_ToFloat64(ctx, &d_stack_trace_limit, ctx->error_stack_trace_limit);
+    if (isfinite(d_stack_trace_limit))
+        stack_trace_limit = d_stack_trace_limit;
+    else if (isnan(d_stack_trace_limit) || d_stack_trace_limit < 0)
+        stack_trace_limit = 0;
+    else
+        stack_trace_limit = INT32_MAX;
+
+    // Restore current exception.
+    JS_Throw(ctx, saved_exception);
     saved_exception = JS_UNINITIALIZED;
-    stack_trace_limit = ctx->error_stack_trace_limit;
+
     stack_trace_limit = min_int(stack_trace_limit, countof(csd));
     stack_trace_limit = max_int(stack_trace_limit, 0);
-    rt = ctx->rt;
     has_prepare = false;
     has_filter_func = backtrace_flags & JS_BACKTRACE_FLAG_FILTER_FUNC;
     i = 0;
 
-    if (!rt->in_prepare_stack_trace && !JS_IsNull(ctx->error_ctor)) {
+    if (!JS_IsNull(ctx->error_ctor)) {
         prepare = js_dup(ctx->error_prepare_stack);
         has_prepare = JS_IsFunction(ctx, prepare);
-        rt->in_prepare_stack_trace = true;
     }
 
     if (has_prepare) {
-        saved_exception = rt->current_exception;
-        rt->current_exception = JS_UNINITIALIZED;
+        saved_exception = JS_GetException(ctx);
         if (stack_trace_limit == 0)
             goto done;
         if (filename)
@@ -6816,8 +6836,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
         else
             stack = stack2;
         JS_FreeValue(ctx, prepare);
-        JS_FreeValue(ctx, rt->current_exception);
-        rt->current_exception = saved_exception;
+        JS_Throw(ctx, saved_exception);
     } else {
         if (dbuf_error(&dbuf))
             stack = JS_NULL;
@@ -6826,7 +6845,6 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
         dbuf_free(&dbuf);
     }
 
-    rt->in_prepare_stack_trace = false;
     if (JS_IsUndefined(ctx->error_back_trace))
         ctx->error_back_trace = js_dup(stack);
     if (has_filter_func || can_add_backtrace(error_val)) {
@@ -6835,6 +6853,8 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
     } else {
         JS_FreeValue(ctx, stack);
     }
+
+    rt->in_build_stack_trace = false;
 }
 
 JSValue JS_NewError(JSContext *ctx)
@@ -38041,23 +38061,14 @@ static JSValue js_error_get_stackTraceLimit(JSContext *ctx, JSValue this_val)
     if (JS_IsException(val))
         return val;
     JS_FreeValue(ctx, val);
-    return js_int32(ctx->error_stack_trace_limit);
+    return js_dup(ctx->error_stack_trace_limit);
 }
 
 static JSValue js_error_set_stackTraceLimit(JSContext *ctx, JSValue this_val, JSValue value)
 {
     if (JS_IsUndefined(this_val) || JS_IsNull(this_val))
         return JS_ThrowTypeErrorNotAnObject(ctx);
-    double limit = 0;
-    if (JS_ToFloat64(ctx, &limit, value) < 0)
-        return JS_EXCEPTION;
-    if (isfinite(limit)) {
-        ctx->error_stack_trace_limit = limit;
-    } else if (isnan(limit) || limit == -INFINITY) {
-        ctx->error_stack_trace_limit = 0;
-    } else {
-        ctx->error_stack_trace_limit = INT32_MAX;
-    }
+    ctx->error_stack_trace_limit = js_dup(value);
     return JS_UNDEFINED;
 }
 
