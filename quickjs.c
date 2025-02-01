@@ -5041,17 +5041,22 @@ JSValue JS_NewObjectProto(JSContext *ctx, JSValue proto)
 JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
                          const JSValue *values)
 {
+    JSProperty *pr;
+    JSObject *p;
     JSValue obj;
     int i;
 
     obj = JS_NewObject(ctx);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
+    p = JS_VALUE_GET_OBJ(obj);
     for (i = 0; i < count; i++) {
-        if (JS_SetProperty(ctx, obj, props[i], values[i]) < 0) {
+        pr = add_property(ctx, p, props[i], JS_PROP_C_W_E);
+        if (!pr) {
             JS_FreeValue(ctx, obj);
             return JS_EXCEPTION;
         }
+        pr->u.value = values[i];
     }
     return obj;
 }
