@@ -1281,6 +1281,7 @@ static __exception int js_set_length64(JSContext *ctx, JSValue obj,
 static void free_arg_list(JSContext *ctx, JSValue *tab, uint32_t len);
 static JSValue *build_arg_list(JSContext *ctx, uint32_t *plen,
                                JSValue array_arg);
+static JSValue js_create_array(JSContext *ctx, int len, JSValue *tab);
 static bool js_get_fast_array(JSContext *ctx, JSValue obj,
                               JSValue **arrpp, uint32_t *countp);
 static JSValue JS_CreateAsyncFromSyncIterator(JSContext *ctx,
@@ -13713,26 +13714,6 @@ static JSValue js_build_mapped_arguments(JSContext *ctx, int argc,
     return JS_EXCEPTION;
 }
 
-static JSValue js_build_rest(JSContext *ctx, int first, int argc, JSValue *argv)
-{
-    JSValue val;
-    int i, ret;
-
-    val = JS_NewArray(ctx);
-    if (JS_IsException(val))
-        return val;
-    for (i = first; i < argc; i++) {
-        ret = JS_DefinePropertyValueUint32(ctx, val, i - first,
-                                           js_dup(argv[i]),
-                                           JS_PROP_C_W_E);
-        if (ret < 0) {
-            JS_FreeValue(ctx, val);
-            return JS_EXCEPTION;
-        }
-    }
-    return val;
-}
-
 static JSValue build_for_in_iterator(JSContext *ctx, JSValue obj)
 {
     JSObject *p;
@@ -15148,9 +15129,11 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
         CASE(OP_rest):
             {
-                int first = get_u16(pc);
+                int i, n, first = get_u16(pc);
                 pc += 2;
-                *sp++ = js_build_rest(ctx, first, argc, argv);
+                i = min_int(first, argc);
+                n = argc - i;
+                *sp++ = js_create_array(ctx, n, &argv[i]);
                 if (unlikely(JS_IsException(sp[-1])))
                     goto exception;
             }
