@@ -27133,7 +27133,7 @@ static int js_create_module_bytecode_function(JSContext *ctx, JSModuleDef *m)
                 if (!var_ref)
                     goto fail;
 
-                module_trace(ctx, "local %d: %p\n", i, var_ref);
+                module_trace(ctx, "local %d: %p\n", i, (void *)var_ref);
 
                 var_refs[i] = var_ref;
             }
@@ -27344,7 +27344,7 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
                     var_ref->header.ref_count++;
                     var_refs[mi->var_idx] = var_ref;
 
-                    module_trace(ctx, "local export (var_ref=%p)\n", var_ref);
+                    module_trace(ctx, "local export (var_ref=%p)\n", (void *)var_ref);
                 }
             }
         }
