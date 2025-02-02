@@ -5038,6 +5038,84 @@ JSValue JS_NewObjectProto(JSContext *ctx, JSValue proto)
     return JS_NewObjectProtoClass(ctx, proto, JS_CLASS_OBJECT);
 }
 
+JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
+                         const JSValue *values)
+{
+    JSShapeProperty *pr;
+    uint32_t *hash;
+    JSRuntime *rt;
+    JSObject *p;
+    JSShape *sh;
+    JSValue obj;
+    JSAtom atom;
+    intptr_t h;
+    int i;
+
+    rt = ctx->rt;
+    obj = JS_NewObject(ctx);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    if (count > 0) {
+        p = JS_VALUE_GET_OBJ(obj);
+        sh = p->shape;
+        assert(sh->is_hashed);
+        assert(sh->header.ref_count == 1);
+        js_shape_hash_unlink(rt, sh);
+        if (resize_properties(ctx, &sh, p, count)) {
+            js_shape_hash_link(rt, sh);
+            JS_FreeValue(ctx, obj);
+            return JS_EXCEPTION;
+        }
+        p->shape = sh;
+        for (i = 0; i < count; i++) {
+            atom = props[i];
+            pr = &sh->prop[i];
+            sh->hash = shape_hash(shape_hash(sh->hash, atom), JS_PROP_C_W_E);
+            sh->has_small_array_index |= __JS_AtomIsTaggedInt(atom);
+            h = atom & sh->prop_hash_mask;
+            hash = &prop_hash_end(sh)[-h - 1];
+            pr->hash_next = *hash;
+            *hash = i + 1;
+            pr->atom = JS_DupAtom(ctx, atom);
+            pr->flags = JS_PROP_C_W_E;
+            p->prop[i].u.value = values[i];
+        }
+        js_shape_hash_link(rt, sh);
+        sh->prop_count = count;
+    }
+    return obj;
+}
+
+JSValue JS_NewObjectFromStr(JSContext *ctx, int count, const char **props,
+                            const JSValue *values)
+{
+    JSAtom atoms_s[16], *atoms = atoms_s;
+    JSValue ret;
+    int i;
+
+    i = 0;
+    ret = JS_EXCEPTION;
+    if (count < 1)
+        goto out;
+    if (count > (int)countof(atoms_s)) {
+        atoms = js_malloc(ctx, count * sizeof(*atoms));
+        if (!atoms)
+            return JS_EXCEPTION;
+    }
+    for (i = 0; i < count; i++) {
+        atoms[i] = JS_NewAtom(ctx, props[i]);
+        if (atoms[i] == JS_ATOM_NULL)
+            goto out;
+    }
+    ret = JS_NewObjectFrom(ctx, count, atoms, values);
+out:
+    while (i-- > 0)
+        JS_FreeAtom(ctx, atoms[i]);
+    if (atoms != atoms_s)
+        js_free(ctx, atoms);
+    return ret;
+}
+
 JSValue JS_NewArray(JSContext *ctx)
 {
     return JS_NewObjectFromShape(ctx, js_dup_shape(ctx->array_shape),

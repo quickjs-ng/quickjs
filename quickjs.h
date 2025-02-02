@@ -717,6 +717,12 @@ JS_EXTERN JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValue proto, JSClassI
 JS_EXTERN JSValue JS_NewObjectClass(JSContext *ctx, int class_id);
 JS_EXTERN JSValue JS_NewObjectProto(JSContext *ctx, JSValue proto);
 JS_EXTERN JSValue JS_NewObject(JSContext *ctx);
+JS_EXTERN JSValue JS_NewObjectFrom(JSContext *ctx, int count,
+                                   const JSAtom *props,
+                                   const JSValue *values);
+JS_EXTERN JSValue JS_NewObjectFromStr(JSContext *ctx, int count,
+                                      const char **props,
+                                      const JSValue *values);
 JS_EXTERN JSValue JS_ToObject(JSContext *ctx, JSValue val);
 JS_EXTERN JSValue JS_ToObjectString(JSContext *ctx, JSValue val);
 
