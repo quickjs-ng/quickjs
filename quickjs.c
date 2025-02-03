@@ -6688,9 +6688,9 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
 
     // Extract stack trace limit.
     JS_ToFloat64(ctx, &d, ctx->error_stack_trace_limit);
-    if (isnan(d) || d < 0.0 || (isinf(d) && d < 0.0))
+    if (isnan(d) || d < 0.0)
         stack_trace_limit = 0;
-    else if (isinf(d) || d > (double)INT32_MAX)
+    else if (d > INT32_MAX)
         stack_trace_limit = INT32_MAX;
     else
         stack_trace_limit = fabs(d);
