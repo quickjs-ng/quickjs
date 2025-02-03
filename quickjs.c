@@ -10814,7 +10814,7 @@ static __exception int __JS_ToFloat64Free(JSContext *ctx, double *pres,
 
     val = JS_ToNumberFree(ctx, val);
     if (JS_IsException(val)) {
-        *pres = JS_FLOAT64_NAN;
+        *pres = NAN;
         return -1;
     }
     tag = JS_VALUE_GET_NORM_TAG(val);
@@ -12208,7 +12208,7 @@ static double js_math_pow(double a, double b)
 {
     if (unlikely(!isfinite(b)) && fabs(a) == 1) {
         /* not compatible with IEEE 754 */
-        return JS_FLOAT64_NAN;
+        return NAN;
     } else {
         return pow(a, b);
     }
@@ -47273,7 +47273,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValue key)
         d = JS_VALUE_GET_FLOAT64(key);
         /* normalize the NaN */
         if (isnan(d))
-            d = JS_FLOAT64_NAN;
+            d = NAN;
     hash_float64:
         u.d = d;
         h = (u.u32[0] ^ u.u32[1]) * 3163;

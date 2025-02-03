@@ -104,7 +104,6 @@ enum {
     /* any larger tag is FLOAT64 if JS_NAN_BOXING */
 };
 
-#define JS_FLOAT64_NAN NAN
 #define JSValueConst JSValue /* For backwards compatibility. */
 
 #if defined(JS_NAN_BOXING) && JS_NAN_BOXING
@@ -210,7 +209,7 @@ static inline JSValue JS_MKVAL(int64_t tag, int32_t int32)
 static inline JSValue JS_MKNAN(void)
 {
     JSValue v;
-    v.u.float64 = JS_FLOAT64_NAN;
+    v.u.float64 = NAN;
     v.tag = JS_TAG_FLOAT64;
     return v;
 }
@@ -221,7 +220,7 @@ static inline JSValue JS_MKNAN(void)
 #else
 #define JS_MKPTR(tag, p)   (JSValue){ (JSValueUnion){ .ptr = p }, tag }
 #define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .int32 = val }, tag }
-#define JS_NAN             (JSValue){ (JSValueUnion){ .float64 = JS_FLOAT64_NAN }, JS_TAG_FLOAT64 }
+#define JS_NAN             (JSValue){ (JSValueUnion){ .float64 = NAN }, JS_TAG_FLOAT64 }
 #endif
 
 #define JS_TAG_IS_FLOAT64(tag) ((unsigned)(tag) == JS_TAG_FLOAT64)
@@ -813,7 +812,7 @@ JS_EXTERN bool JS_DetectModule(const char *input, size_t input_len);
 /* 'input' must be zero terminated i.e. input[input_len] = '\0'. */
 JS_EXTERN JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
                           const char *filename, int eval_flags);
-JS_EXTERN JSValue JS_Eval2(JSContext *ctx, const char *input, size_t input_len, 
+JS_EXTERN JSValue JS_Eval2(JSContext *ctx, const char *input, size_t input_len,
                            JSEvalOptions *options);
 JS_EXTERN JSValue JS_EvalThis(JSContext *ctx, JSValue this_obj,
                               const char *input, size_t input_len,
