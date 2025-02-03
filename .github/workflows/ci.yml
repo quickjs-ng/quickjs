@@ -48,8 +48,9 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - { os: ubuntu-24.04-arm, configType: Debug }
-          - { os: ubuntu-24.04-arm, configType: Release, runTest262: true }
+          # see https://github.com/quickjs-ng/quickjs/issues/879 - tl;dr flaky
+          #- { os: ubuntu-24.04-arm, configType: Debug }
+          #- { os: ubuntu-24.04-arm, configType: Release, runTest262: true }
           - { os: ubuntu-latest, configType: Debug }
           - { os: ubuntu-latest, configType: Release, runTest262: true }
           - { os: ubuntu-latest, configType: examples }
