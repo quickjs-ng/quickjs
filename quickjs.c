@@ -16347,6 +16347,22 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             {
                 JSValue val;
                 JSAtom atom;
+                atom = get_u32(pc);
+                pc += 4;
+                sf->cur_pc = pc;
+                val = JS_GetPropertyInternal2(ctx, sp[-1], atom, sp[-1], NULL, false);
+                if (unlikely(JS_IsException(val)))
+                    goto exception;
+                put_u8(pc - 5, OP_get_field_preinit_ic);
+                JS_FreeValue(ctx, sp[-1]);
+                sp[-1] = val;
+            }
+            BREAK;
+
+        CASE(OP_get_field_preinit_ic):
+            {
+                JSValue val;
+                JSAtom atom;
                 JSInlineCacheUpdate icu;
                 atom = get_u32(pc);
                 pc += 4;
@@ -16389,6 +16405,21 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             {
                 JSValue val;
                 JSAtom atom;
+                atom = get_u32(pc);
+                pc += 4;
+                sf->cur_pc = pc;
+                val = JS_GetPropertyInternal2(ctx, sp[-1], atom, sp[-1], NULL, false);
+                if (unlikely(JS_IsException(val)))
+                    goto exception;
+                put_u8(pc - 5, OP_get_field2_preinit_ic);
+                *sp++ = val;
+          }
+          BREAK;
+
+        CASE(OP_get_field2_preinit_ic):
+            {
+                JSValue val;
+                JSAtom atom;
                 JSInlineCacheUpdate icu;
                 atom = get_u32(pc);
                 pc += 4;
@@ -16426,6 +16457,25 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             BREAK;
 
         CASE(OP_put_field):
+            {
+                int ret;
+                JSAtom atom;
+                atom = get_u32(pc);
+                pc += 4;
+                sf->cur_pc = pc;
+                ret = JS_SetPropertyInternal2(ctx,
+                                              sp[-2], atom,
+                                              sp[-1], sp[-2],
+                                              JS_PROP_THROW_STRICT, NULL);
+                JS_FreeValue(ctx, sp[-2]);
+                sp -= 2;
+                if (unlikely(ret < 0))
+                    goto exception;
+                put_u8(pc - 5, OP_put_field_preinit_ic);
+            }
+            BREAK;
+
+        CASE(OP_put_field_preinit_ic):
             {
                 int ret;
                 JSAtom atom;
@@ -34060,7 +34110,7 @@ static void bc_byte_swap(uint8_t *bc_buf, int bc_len)
 
 static bool is_ic_op(uint8_t op)
 {
-    return op >= OP_get_field_ic && op <= OP_put_field_ic;
+    return op >= OP_get_field_preinit_ic && op <= OP_put_field_ic;
 }
 
 static int JS_WriteFunctionBytecode(BCWriterState *s,
@@ -34101,7 +34151,11 @@ static int JS_WriteFunctionBytecode(BCWriterState *s,
                 if (bc_atom_to_idx(s, &val, atom))
                     goto fail;
                 put_u32(bc_buf + pos + 1, val);
-                bc_buf[pos] -= (OP_get_field_ic - OP_get_field);
+                if (op < OP_get_field_ic) {
+                    bc_buf[pos] -= (OP_get_field_preinit_ic - OP_get_field);
+                } else {
+                    bc_buf[pos] -= (OP_get_field_ic - OP_get_field);
+                }
             }
             break;
         }
