@@ -37,6 +37,8 @@
 extern "C" {
 #endif
 
+#define QUICKJS_NG 1
+
 #if defined(__GNUC__) || defined(__clang__)
 #define js_force_inline       inline __attribute__((always_inline))
 #define JS_EXTERN __attribute__((visibility("default")))
