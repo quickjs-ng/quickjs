@@ -6675,7 +6675,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
     JSRuntime *rt;
     JSCallSiteData csd[64];
     uint32_t i;
-    double d_stack_trace_limit;
+    double d;
     int stack_trace_limit;
 
     rt = ctx->rt;
@@ -6687,14 +6687,13 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
     saved_exception = JS_GetException(ctx);
 
     // Extract stack trace limit.
-    d_stack_trace_limit = 10;
-    JS_ToFloat64(ctx, &d_stack_trace_limit, ctx->error_stack_trace_limit);
-    if (isfinite(d_stack_trace_limit))
-        stack_trace_limit = d_stack_trace_limit;
-    else if (isnan(d_stack_trace_limit) || d_stack_trace_limit < 0)
+    JS_ToFloat64(ctx, &d, ctx->error_stack_trace_limit);
+    if (isnan(d) || d < 0.0 || (isinf(d) && d < 0.0))
         stack_trace_limit = 0;
-    else
+    else if (isinf(d) || d > (double)INT32_MAX)
         stack_trace_limit = INT32_MAX;
+    else
+        stack_trace_limit = fabs(d);
 
     // Restore current exception.
     JS_Throw(ctx, saved_exception);
