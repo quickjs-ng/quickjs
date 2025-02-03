@@ -20310,11 +20310,6 @@ static void emit_atom(JSParseState *s, JSAtom name)
     emit_u32(s, JS_DupAtom(s->ctx, name));
 }
 
-static force_inline uint32_t get_index_hash(JSAtom atom, int hash_bits)
-{
-    return (atom * 0x9e370001) >> (32 - hash_bits);
-}
-
 static int update_label(JSFunctionDef *s, int label, int delta)
 {
     LabelSlot *ls;
