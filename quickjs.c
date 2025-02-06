@@ -45531,49 +45531,36 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
                           JSValue holder, JSValue val,
                           JSValue indent)
 {
-    JSValue indent1, sep, sep1, tab, v, prop;
-    JSObject *p;
-    int64_t i, len;
-    int cl, ret;
-    bool has_content;
-
-    indent1 = JS_UNDEFINED;
-    sep = JS_UNDEFINED;
-    sep1 = JS_UNDEFINED;
-    tab = JS_UNDEFINED;
-    prop = JS_UNDEFINED;
+    if (!ctx || !jsc || !jsc->b) {
+        return -1;
+    }
 
     if (JS_IsObject(val)) {
-        p = JS_VALUE_GET_OBJ(val);
-        cl = p->class_id;
-        if (cl == JS_CLASS_STRING) {
-            val = JS_ToStringFree(ctx, val);
-            if (JS_IsException(val))
-                goto exception;
-            goto concat_primitive;
-        } else if (cl == JS_CLASS_NUMBER) {
-            val = JS_ToNumberFree(ctx, val);
-            if (JS_IsException(val))
-                goto exception;
-            goto concat_primitive;
-        } else if (cl == JS_CLASS_BOOLEAN || cl == JS_CLASS_BIG_INT) {
-            set_value(ctx, &val, js_dup(p->u.object_data));
-            goto concat_primitive;
-        }
-        v = js_array_includes(ctx, jsc->stack, 1, &val);
+        JSValue indent1 = JS_UNDEFINED;
+        JSValue sep = JS_UNDEFINED;
+        JSValue sep1 = JS_UNDEFINED;
+        JSValue tab = JS_UNDEFINED;
+        JSValue prop = JS_UNDEFINED;
+        int ret = -1;
+
+        JSValue v = js_array_includes(ctx, jsc->stack, 1, &val);
         if (JS_IsException(v))
             goto exception;
+            
         if (JS_ToBoolFree(ctx, v)) {
             JS_ThrowTypeError(ctx, "circular reference");
             goto exception;
         }
-        indent1 = JS_ConcatString(ctx, js_dup(indent), js_dup(jsc->gap));
-        if (JS_IsException(indent1))
-            goto exception;
-        if (!JS_IsEmptyString(jsc->gap)) {
+
+        if (!JS_IsUndefined(jsc->gap)) {
+            indent1 = JS_ConcatString(ctx, js_dup(indent), js_dup(jsc->gap));
+            if (JS_IsException(indent1))
+                goto exception;
+                
             sep = JS_ConcatString3(ctx, "\n", js_dup(indent1), "");
             if (JS_IsException(sep))
                 goto exception;
+                
             sep1 = js_new_string8(ctx, " ");
             if (JS_IsException(sep1))
                 goto exception;
@@ -45581,130 +45568,143 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
             sep = js_dup(jsc->empty);
             sep1 = js_dup(jsc->empty);
         }
-        v = js_array_push(ctx, jsc->stack, 1, &val, 0);
-        if (check_exception_free(ctx, v))
-            goto exception;
+
         ret = JS_IsArray(ctx, val);
         if (ret < 0)
             goto exception;
+            
         if (ret) {
+            int64_t len;
             if (js_get_length64(ctx, &len, val))
                 goto exception;
-            string_buffer_putc8(jsc->b, '[');
-            for(i = 0; i < len; i++) {
-                if (i > 0)
-                    string_buffer_putc8(jsc->b, ',');
-                string_buffer_concat_value(jsc->b, sep);
-                v = JS_GetPropertyInt64(ctx, val, i);
-                if (JS_IsException(v))
-                    goto exception;
-                /* XXX: could do this string conversion only when needed */
-                prop = JS_ToStringFree(ctx, js_int64(i));
-                if (JS_IsException(prop))
-                    goto exception;
-                v = js_json_check(ctx, jsc, val, v, prop);
-                JS_FreeValue(ctx, prop);
-                prop = JS_UNDEFINED;
-                if (JS_IsException(v))
-                    goto exception;
-                if (JS_IsUndefined(v))
-                    v = JS_NULL;
-                if (js_json_to_str(ctx, jsc, val, v, indent1))
-                    goto exception;
-            }
-            if (len > 0 && !JS_IsEmptyString(jsc->gap)) {
-                string_buffer_putc8(jsc->b, '\n');
-                string_buffer_concat_value(jsc->b, indent);
-            }
-            string_buffer_putc8(jsc->b, ']');
-        } else {
-            if (!JS_IsUndefined(jsc->property_list))
-                tab = js_dup(jsc->property_list);
-            else
-                tab = js_object_keys(ctx, JS_UNDEFINED, 1, &val, JS_ITERATOR_KIND_KEY);
-            if (JS_IsException(tab))
+                
+            if (len < 0 || len > INT32_MAX) {
+                JS_ThrowRangeError(ctx, "array length out of range");
                 goto exception;
-            if (js_get_length64(ctx, &len, tab))
+            }
+
+            if (string_buffer_putc8(jsc->b, '[') < 0)
                 goto exception;
-            string_buffer_putc8(jsc->b, '{');
-            has_content = false;
-            for(i = 0; i < len; i++) {
-                JS_FreeValue(ctx, prop);
-                prop = JS_GetPropertyInt64(ctx, tab, i);
-                if (JS_IsException(prop))
-                    goto exception;
-                v = JS_GetPropertyValue(ctx, val, js_dup(prop));
-                if (JS_IsException(v))
-                    goto exception;
-                v = js_json_check(ctx, jsc, val, v, prop);
-                if (JS_IsException(v))
-                    goto exception;
-                if (!JS_IsUndefined(v)) {
-                    if (has_content)
-                        string_buffer_putc8(jsc->b, ',');
-                    prop = JS_ToQuotedStringFree(ctx, prop);
-                    if (JS_IsException(prop)) {
-                        JS_FreeValue(ctx, v);
+
+            for(int64_t i = 0; i < len; i++) {
+                if (i > 0) {
+                    if (string_buffer_putc8(jsc->b, ',') < 0)
                         goto exception;
-                    }
-                    string_buffer_concat_value(jsc->b, sep);
-                    string_buffer_concat_value(jsc->b, prop);
-                    string_buffer_putc8(jsc->b, ':');
-                    string_buffer_concat_value(jsc->b, sep1);
-                    if (js_json_to_str(ctx, jsc, val, v, indent1))
-                        goto exception;
-                    has_content = true;
                 }
+                
+                JSValue elem = JS_GetPropertyInt64(ctx, val, i);
+                if (JS_IsException(elem))
+                    goto exception;
+                    
+                elem = js_json_check(ctx, jsc, val, elem, JS_NewInt64(ctx, i));
+                if (JS_IsException(elem))
+                    goto exception;
+
+                if (js_json_to_str(ctx, jsc, val, elem, indent1) < 0)
+                    goto exception;
             }
-            if (has_content && JS_VALUE_GET_STRING(jsc->gap)->len != 0) {
-                string_buffer_putc8(jsc->b, '\n');
-                string_buffer_concat_value(jsc->b, indent);
+
+            if (string_buffer_putc8(jsc->b, ']') < 0)
+                goto exception;
+        } else {
+            JSPropertyEnum *props = NULL;
+            uint32_t prop_count = 0;
+
+            if (JS_GetOwnPropertyNames(ctx, &props, &prop_count, val,
+                                     JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
+                goto exception;
+
+            if (string_buffer_putc8(jsc->b, '{') < 0)
+                goto exception;
+
+            for(uint32_t i = 0; i < prop_count; i++) {
+                if (i > 0) {
+                    if (string_buffer_putc8(jsc->b, ',') < 0)
+                        goto exception;
+                }
+
+                JSValue prop_val = JS_GetProperty(ctx, val, props[i].atom);
+                if (JS_IsException(prop_val))
+                    goto exception;
+
+                JSValue prop_str = JS_AtomToString(ctx, props[i].atom);
+                if (JS_IsException(prop_str)) {
+                    JS_FreeValue(ctx, prop_val);
+                    goto exception;
+                }
+
+                if (string_buffer_putc8(jsc->b, '"') < 0 ||
+                    string_buffer_concat_value(jsc->b, prop_str) < 0 ||
+                    string_buffer_putc8(jsc->b, '"') < 0 ||
+                    string_buffer_putc8(jsc->b, ':') < 0) {
+                    JS_FreeValue(ctx, prop_val);
+                    JS_FreeValue(ctx, prop_str);
+                    goto exception;
+                }
+
+                JS_FreeValue(ctx, prop_str);
+
+                if (js_json_to_str(ctx, jsc, val, prop_val, indent1) < 0)
+                    goto exception;
             }
-            string_buffer_putc8(jsc->b, '}');
+
+            if (string_buffer_putc8(jsc->b, '}') < 0)
+                goto exception;
+
+            js_free_prop_enum(ctx, props, prop_count);
         }
-        if (check_exception_free(ctx, js_array_pop(ctx, jsc->stack, 0, NULL, 0)))
-            goto exception;
-        JS_FreeValue(ctx, val);
-        JS_FreeValue(ctx, tab);
+
+        JS_FreeValue(ctx, indent1);
         JS_FreeValue(ctx, sep);
         JS_FreeValue(ctx, sep1);
-        JS_FreeValue(ctx, indent1);
+        JS_FreeValue(ctx, tab);
         JS_FreeValue(ctx, prop);
         return 0;
-    }
- concat_primitive:
-    switch (JS_VALUE_GET_NORM_TAG(val)) {
-    case JS_TAG_STRING:
-        val = JS_ToQuotedStringFree(ctx, val);
-        if (JS_IsException(val))
-            goto exception;
-        goto concat_value;
-    case JS_TAG_FLOAT64:
-        if (!isfinite(JS_VALUE_GET_FLOAT64(val))) {
-            val = JS_NULL;
-        }
-        goto concat_value;
-    case JS_TAG_INT:
-    case JS_TAG_BOOL:
-    case JS_TAG_NULL:
-    concat_value:
-        return string_buffer_concat_value_free(jsc->b, val);
-    case JS_TAG_BIG_INT:
-        JS_ThrowTypeError(ctx, "BigInt are forbidden in JSON.stringify");
-        goto exception;
-    default:
-        JS_FreeValue(ctx, val);
-        return 0;
-    }
 
 exception:
-    JS_FreeValue(ctx, val);
-    JS_FreeValue(ctx, tab);
-    JS_FreeValue(ctx, sep);
-    JS_FreeValue(ctx, sep1);
-    JS_FreeValue(ctx, indent1);
-    JS_FreeValue(ctx, prop);
-    return -1;
+        JS_FreeValue(ctx, indent1);
+        JS_FreeValue(ctx, sep);
+        JS_FreeValue(ctx, sep1);
+        JS_FreeValue(ctx, tab);
+        JS_FreeValue(ctx, prop);
+        return -1;
+    }
+
+    switch (JS_VALUE_GET_NORM_TAG(val)) {
+        case JS_TAG_STRING: {
+            JSValue quoted = JS_ToQuotedStringFree(ctx, js_dup(val));
+            if (JS_IsException(quoted))
+                return -1;
+            return string_buffer_concat_value(jsc->b, quoted);
+        }
+        
+        case JS_TAG_FLOAT64: {
+            double d = JS_VALUE_GET_FLOAT64(val);
+            if (!isfinite(d)) {
+                return string_buffer_concat_value(jsc->b, JS_NULL);
+            }
+            JSValue num_str = JS_ToString(ctx, val);
+            if (JS_IsException(num_str))
+                return -1;
+            return string_buffer_concat_value(jsc->b, num_str);
+        }
+        
+        case JS_TAG_INT:
+        case JS_TAG_BOOL:
+        case JS_TAG_NULL: {
+            JSValue str = JS_ToString(ctx, val);
+            if (JS_IsException(str))
+                return -1;
+            return string_buffer_concat_value(jsc->b, str);
+        }
+        
+        case JS_TAG_BIG_INT:
+            JS_ThrowTypeError(ctx, "BigInt are forbidden in JSON.stringify");
+            return -1;
+            
+        default:
+            return 0;
+    }
 }
 
 JSValue JS_JSONStringify(JSContext *ctx, JSValue obj,
