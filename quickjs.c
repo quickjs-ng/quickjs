@@ -7391,9 +7391,9 @@ static JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj,
     JSObject *p;
     JSProperty *pr;
     JSShapeProperty *prs;
-    uint32_t tag, offset, proto_depth;
+    uint32_t tag, proto_depth;
 
-    offset = proto_depth = 0;
+    proto_depth = 0;
     tag = JS_VALUE_GET_TAG(obj);
     if (unlikely(tag != JS_TAG_OBJECT)) {
         switch(tag) {
