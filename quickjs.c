@@ -56285,7 +56285,7 @@ bool JS_DetectModule(const char *input, size_t input_len)
         JS_FreeRuntime(rt);
         return false;
     }
-    JS_AddIntrinsicRegExp(ctx); // otherwise regexp literals don't parse
+    JS_AddIntrinsicRegExpCompiler(ctx); // otherwise regexp literals don't parse
     val = __JS_EvalInternal(ctx, JS_UNDEFINED, input, input_len, "<unnamed>", 1,
                             JS_EVAL_TYPE_MODULE|JS_EVAL_FLAG_COMPILE_ONLY, -1);
     if (JS_IsException(val)) {
