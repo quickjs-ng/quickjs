@@ -6765,6 +6765,8 @@ static void build_backtrace(JSContext *ctx, JSValue error_val, JSValue filter_fu
     saved_exception = JS_GetException(ctx);
 
     // Extract stack trace limit.
+    // Ignore error since it sets d to NAN anyway.
+    // coverity[check_return]
     JS_ToFloat64(ctx, &d, ctx->error_stack_trace_limit);
     if (isnan(d) || d < 0.0)
         stack_trace_limit = 0;
