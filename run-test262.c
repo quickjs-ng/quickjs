@@ -1062,8 +1062,9 @@ void update_exclude_dirs(void)
     namelist_t *lp = &test_list;
     namelist_t *ep = &exclude_list;
     namelist_t *dp = &exclude_dir_list;
-    char *name;
+    char *name, *path;
     int i, j, count;
+    size_t include, exclude;
 
     /* split directpries from exclude_list */
     for (count = i = 0; i < ep->count; i++) {
@@ -1082,15 +1083,19 @@ void update_exclude_dirs(void)
     /* filter out excluded directories */
     for (count = i = 0; i < lp->count; i++) {
         name = lp->array[i];
+        include = exclude = 0;
         for (j = 0; j < dp->count; j++) {
-            if (has_prefix(name, dp->array[j])) {
-                test_excluded++;
-                free(name);
-                name = NULL;
-                break;
-            }
+            path = dp->array[j];
+            if (has_prefix(name, path))
+                exclude = strlen(path);
+            if (*path == '!' && has_prefix(name, &path[1]))
+                include = strlen(&path[1]);
         }
-        if (name) {
+        // most specific include/exclude wins
+        if (exclude > include) {
+            test_excluded++;
+            free(name);
+        } else {
             lp->array[count++] = name;
         }
     }
