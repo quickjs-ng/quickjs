@@ -7129,6 +7129,11 @@ static JSValue JS_ThrowStackOverflow(JSContext *ctx)
     return JS_ThrowRangeError(ctx, "Maximum call stack size exceeded");
 }
 
+static JSValue JS_ThrowTypeErrorNotAFunction(JSContext *ctx)
+{
+    return JS_ThrowTypeError(ctx, "not a function");
+}
+
 static JSValue JS_ThrowTypeErrorNotAnObject(JSContext *ctx)
 {
     return JS_ThrowTypeError(ctx, "not an object");
@@ -15045,7 +15050,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         call_func = rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
-            return JS_ThrowTypeError(caller_ctx, "not a function");
+            return JS_ThrowTypeErrorNotAFunction(caller_ctx);
         }
         return call_func(caller_ctx, func_obj, this_obj, argc,
                          argv, flags);
@@ -17685,7 +17690,7 @@ static JSValue JS_CallConstructorInternal(JSContext *ctx,
         call_func = ctx->rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
-            return JS_ThrowTypeError(ctx, "not a function");
+            return JS_ThrowTypeErrorNotAFunction(ctx);
         }
         return call_func(ctx, func_obj, new_target, argc,
                          argv, flags);
@@ -36063,7 +36068,7 @@ static int check_function(JSContext *ctx, JSValue obj)
 {
     if (likely(JS_IsFunction(ctx, obj)))
         return 0;
-    JS_ThrowTypeError(ctx, "not a function");
+    JS_ThrowTypeErrorNotAFunction(ctx);
     return -1;
 }
 
@@ -40094,7 +40099,7 @@ static JSValue js_array_toSorted(JSContext *ctx, JSValue this_val,
 
     ok = JS_IsUndefined(argv[0]) || JS_IsFunction(ctx, argv[0]);
     if (!ok)
-        return JS_ThrowTypeError(ctx, "not a function");
+        return JS_ThrowTypeErrorNotAFunction(ctx);
 
     ret = JS_EXCEPTION;
     arr = JS_UNDEFINED;
@@ -46844,7 +46849,7 @@ static JSValue js_proxy_call(JSContext *ctx, JSValue func_obj,
         return JS_EXCEPTION;
     if (!s->is_func) {
         JS_FreeValue(ctx, method);
-        return JS_ThrowTypeError(ctx, "not a function");
+        return JS_ThrowTypeErrorNotAFunction(ctx);
     }
     if (JS_IsUndefined(method))
         return JS_Call(ctx, s->target, this_obj, argc, argv);
