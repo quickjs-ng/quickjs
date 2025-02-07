@@ -24,7 +24,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -DBUILD_STATIC_QJS_EXE=ON ..
+          cmake -DQJS_BUILD_STATIC_EXE=ON ..
           cd ..
           cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
           cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)

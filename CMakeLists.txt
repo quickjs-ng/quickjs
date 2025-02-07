@@ -110,20 +110,20 @@ if(BUILD_SHARED_LIBS)
     message(STATUS "Building a shared library")
 endif()
 
-# note: CONFIG_TSAN is currently incompatible with the other sanitizers but we
+# note: QJS_ENABLE_TSAN is currently incompatible with the other sanitizers but we
 # don't explicitly check for that because who knows what the future will bring?
-# CONFIG_MSAN only works with clang at the time of writing; also not checked
+# QJS_ENABLE_MSAN only works with clang at the time of writing; also not checked
 # for the same reason
-xoption(BUILD_EXAMPLES "Build examples" OFF)
-xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
-xoption(BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
-xoption(BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
-xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
-xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
-xoption(CONFIG_TSAN "Enable ThreadSanitizer (TSan)" OFF)
-xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
+xoption(QJS_BUILD_EXAMPLES "Build examples" OFF)
+xoption(QJS_BUILD_STATIC_EXE "Build a static qjs executable" OFF)
+xoption(QJS_BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
+xoption(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
+xoption(QJS_ENABLE_ASAN "Enable AddressSanitizer (ASan)" OFF)
+xoption(QJS_ENABLE_MSAN "Enable MemorySanitizer (MSan)" OFF)
+xoption(QJS_ENABLE_TSAN "Enable ThreadSanitizer (TSan)" OFF)
+xoption(QJS_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 
-if(CONFIG_ASAN)
+if(QJS_ENABLE_ASAN)
 message(STATUS "Building with ASan")
 add_compile_options(
     -fsanitize=address
@@ -137,7 +137,7 @@ add_link_options(
 )
 endif()
 
-if(CONFIG_MSAN)
+if(QJS_ENABLE_MSAN)
 message(STATUS "Building with MSan")
 add_compile_options(
     -fsanitize=memory
@@ -151,7 +151,7 @@ add_link_options(
 )
 endif()
 
-if(CONFIG_TSAN)
+if(QJS_ENABLE_TSAN)
 message(STATUS "Building with TSan")
 add_compile_options(
     -fsanitize=thread
@@ -165,7 +165,7 @@ add_link_options(
 )
 endif()
 
-if(CONFIG_UBSAN)
+if(QJS_ENABLE_UBSAN)
 message(STATUS "Building with UBSan")
 add_compile_options(
     -fsanitize=undefined
@@ -183,14 +183,14 @@ endif()
 # QuickJS library
 #
 
-xoption(BUILD_QJS_LIBC "Build standard library modules as part of the library" OFF)
+xoption(QJS_BUILD_LIBC "Build standard library modules as part of the library" OFF)
 macro(add_qjs_libc_if_needed target)
-    if(NOT BUILD_QJS_LIBC)
+    if(NOT QJS_BUILD_LIBC)
         target_sources(${target} PRIVATE quickjs-libc.c)
     endif()
 endmacro()
 macro(add_static_if_needed target)
-    if(BUILD_STATIC_QJS_EXE OR MINGW)
+    if(QJS_BUILD_STATIC_EXE OR MINGW)
         target_link_options(${target} PRIVATE -static)
         if(MINGW)
             target_link_options(${target} PRIVATE -static-libgcc)
@@ -206,7 +206,7 @@ set(qjs_sources
     quickjs.c
 )
 
-if(BUILD_QJS_LIBC)
+if(QJS_BUILD_LIBC)
     list(APPEND qjs_sources quickjs-libc.c)
 endif()
 list(APPEND qjs_defines _GNU_SOURCE)
@@ -282,10 +282,10 @@ target_link_libraries(qjs_exe qjs)
 if(NOT WIN32)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
-if(BUILD_CLI_WITH_MIMALLOC OR BUILD_CLI_WITH_STATIC_MIMALLOC)
+if(QJS_BUILD_CLI_WITH_MIMALLOC OR QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
     find_package(mimalloc REQUIRED)
     # Upstream mimalloc doesn't provide a way to know if both libraries are supported.
-    if(BUILD_CLI_WITH_STATIC_MIMALLOC)
+    if(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
         target_link_libraries(qjs_exe mimalloc-static)
     else()
         target_link_libraries(qjs_exe mimalloc)
@@ -334,7 +334,7 @@ target_link_libraries(function_source qjs)
 # Examples
 #
 
-if(BUILD_EXAMPLES)
+if(QJS_BUILD_EXAMPLES)
     add_executable(hello
         gen/hello.c
     )
@@ -399,7 +399,7 @@ if(NOT IOS)
         SOVERSION ${QJS_VERSION_MAJOR}
     )
     install(FILES quickjs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-    if(BUILD_QJS_LIBC)
+    if(QJS_BUILD_LIBC)
         install(FILES quickjs-libc.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     endif()
     install(TARGETS qjs_exe RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
