@@ -377,6 +377,7 @@ JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
 JS_EXTERN void JS_UpdateStackTop(JSRuntime *rt);
 JS_EXTERN JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque);
 JS_EXTERN void JS_FreeRuntime(JSRuntime *rt);
+JS_EXTERN void JS_FreeRuntime2(JSRuntime *rt, void (*gc_leak_handler)(const char* msg));
 JS_EXTERN void *JS_GetRuntimeOpaque(JSRuntime *rt);
 JS_EXTERN void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);
 JS_EXTERN int JS_AddRuntimeFinalizer(JSRuntime *rt,
