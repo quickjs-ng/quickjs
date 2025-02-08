@@ -240,7 +240,43 @@ jobs:
           cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
           cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
 
-  windows-clang:
+  windows-ninja-clang:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        buildType: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: install ninja
+        run: |
+          choco install ninja
+          ninja.exe --version
+      - name: build
+        run: |
+          git submodule update --init --checkout --depth 1
+          cmake -B build -DBUILD_EXAMPLES=ON -G "Ninja" -T Clang
+          cmake --build build --config ${{matrix.buildType}}
+      - name: stats
+        run: |
+          build\${{matrix.buildType}}\qjs.exe -qd
+      - name: cxxtest
+        run: |
+          clang.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
+          clang.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
+      - name: test
+        run: |
+          cp build\${{matrix.buildType}}\fib.dll examples\
+          cp build\${{matrix.buildType}}\point.dll examples\
+          build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
+          build\${{matrix.buildType}}\qjs.exe examples\test_point.js
+          build\${{matrix.buildType}}\run-test262.exe -c tests.conf
+          build\${{matrix.buildType}}\function_source.exe
+      - name: test interrupt
+        run: |
+          build\${{matrix.buildType}}\interrupt-test.exe
+
+  windows-clang-cl:
     runs-on: windows-latest
     strategy:
       fail-fast: false
