@@ -1085,8 +1085,8 @@ static JSValue js_regexp_constructor_internal(JSContext *ctx, JSValue ctor,
 static void gc_decref(JSRuntime *rt);
 static int JS_NewClass1(JSRuntime *rt, JSClassID class_id,
                         const JSClassDef *class_def, JSAtom name);
-static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
-                             int argc, JSValueConst *argv, int unshift);
+static JSValue js_array_push(JSContext *ctx, JSValue this_val,
+                             int argc, JSValue *argv, int unshift);
 
 typedef enum JSStrictEqModeEnum {
     JS_EQ_STRICT,
@@ -1180,8 +1180,8 @@ static __exception int perform_promise_then(JSContext *ctx,
                                             JSValue *cap_resolving_funcs);
 static JSValue js_promise_resolve(JSContext *ctx, JSValue this_val,
                                   int argc, JSValue *argv, int magic);
-static JSValue js_promise_then(JSContext *ctx, JSValueConst this_val,
-                               int argc, JSValueConst *argv);
+static JSValue js_promise_then(JSContext *ctx, JSValue this_val,
+                               int argc, JSValue *argv);
 static bool js_string_eq(const JSString *p1, const JSString *p2);
 static int js_string_compare(const JSString *p1, const JSString *p2);
 static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
@@ -27310,11 +27310,12 @@ static JSValue JS_NewModuleValue(JSContext *ctx, JSModuleDef *m)
     return JS_DupValue(ctx, JS_MKPTR(JS_TAG_MODULE, m));
 }
 
-static JSValue js_load_module_rejected(JSContext *ctx, JSValueConst this_val,
-                                       int argc, JSValueConst *argv, int magic, JSValue *func_data)
+static JSValue js_load_module_rejected(JSContext *ctx, JSValue this_val,
+                                       int argc, JSValue *argv, int magic,
+                                       JSValue *func_data)
 {
-    JSValueConst *resolving_funcs = (JSValueConst *)func_data;
-    JSValueConst error;
+    JSValue *resolving_funcs = func_data;
+    JSValue error;
     JSValue ret;
 
     /* XXX: check if the test is necessary */
@@ -27322,16 +27323,16 @@ static JSValue js_load_module_rejected(JSContext *ctx, JSValueConst this_val,
         error = argv[0];
     else
         error = JS_UNDEFINED;
-    ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED,
-                  1, &error);
+    ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, &error);
     JS_FreeValue(ctx, ret);
     return JS_UNDEFINED;
 }
 
-static JSValue js_load_module_fulfilled(JSContext *ctx, JSValueConst this_val,
-                                        int argc, JSValueConst *argv, int magic, JSValue *func_data)
+static JSValue js_load_module_fulfilled(JSContext *ctx, JSValue this_val,
+                                        int argc, JSValue *argv, int magic,
+                                        JSValue *func_data)
 {
-    JSValueConst *resolving_funcs = (JSValueConst *)func_data;
+    JSValue *resolving_funcs = func_data;
     JSModuleDef *m = JS_VALUE_GET_PTR(func_data[2]);
     JSValue ret, ns;
 
@@ -27339,11 +27340,10 @@ static JSValue js_load_module_fulfilled(JSContext *ctx, JSValueConst this_val,
     ns = JS_GetModuleNamespace(ctx, m);
     if (JS_IsException(ns)) {
         JSValue err = JS_GetException(ctx);
-        js_load_module_rejected(ctx, JS_UNDEFINED, 1, (JSValueConst *)&err, 0, func_data);
+        js_load_module_rejected(ctx, JS_UNDEFINED, 1, &err, 0, func_data);
         return JS_UNDEFINED;
     }
-    ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED,
-                   1, (JSValueConst *)&ns);
+    ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &ns);
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, ns);
     return JS_UNDEFINED;
@@ -27351,12 +27351,12 @@ static JSValue js_load_module_fulfilled(JSContext *ctx, JSValueConst this_val,
 
 static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
                                   const char *filename,
-                                  JSValueConst *resolving_funcs)
+                                  JSValue *resolving_funcs)
 {
     JSValue evaluate_promise;
     JSModuleDef *m;
     JSValue ret, err, func_obj, evaluate_resolving_funcs[2];
-    JSValueConst func_data[3];
+    JSValue func_data[3];
 
     m = js_host_resolve_imported_module(ctx, basename, filename);
     if (!m)
@@ -27373,8 +27373,7 @@ static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
     if (JS_IsException(evaluate_promise)) {
     fail:
         err = JS_GetException(ctx);
-        ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED,
-                      1, (JSValueConst *)&err);
+        ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, &err);
         JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
         JS_FreeValue(ctx, err);
         return;
@@ -27387,7 +27386,7 @@ static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
     evaluate_resolving_funcs[0] = JS_NewCFunctionData(ctx, js_load_module_fulfilled, 0, 0, 3, func_data);
     evaluate_resolving_funcs[1] = JS_NewCFunctionData(ctx, js_load_module_rejected, 0, 0, 3, func_data);
     JS_FreeValue(ctx, func_obj);
-    ret = js_promise_then(ctx, evaluate_promise, 2, (JSValueConst *)evaluate_resolving_funcs);
+    ret = js_promise_then(ctx, evaluate_promise, 2, evaluate_resolving_funcs);
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, evaluate_resolving_funcs[0]);
     JS_FreeValue(ctx, evaluate_resolving_funcs[1]);
@@ -27404,8 +27403,7 @@ JSValue JS_LoadModule(JSContext *ctx, const char *basename,
     promise = JS_NewPromiseCapability(ctx, resolving_funcs);
     if (JS_IsException(promise))
         return JS_EXCEPTION;
-    JS_LoadModuleInternal(ctx, basename, filename,
-                          (JSValueConst *)resolving_funcs);
+    JS_LoadModuleInternal(ctx, basename, filename, resolving_funcs);
     JS_FreeValue(ctx, resolving_funcs[0]);
     JS_FreeValue(ctx, resolving_funcs[1]);
     return promise;
@@ -27490,8 +27488,7 @@ static void js_set_module_evaluated(JSContext *ctx, JSModuleDef *m)
         JSValue value, ret_val;
         assert(m->cycle_root == m);
         value = JS_UNDEFINED;
-        ret_val = JS_Call(ctx, m->resolving_funcs[0], JS_UNDEFINED,
-                          1, (JSValueConst *)&value);
+        ret_val = JS_Call(ctx, m->resolving_funcs[0], JS_UNDEFINED, 1, &value);
         JS_FreeValue(ctx, ret_val);
     }
 }
@@ -27558,11 +27555,12 @@ static int js_execute_async_module(JSContext *ctx, JSModuleDef *m);
 static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
                                   JSValue *pvalue);
 
-static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst this_val,
-                                                  int argc, JSValueConst *argv, int magic, JSValue *func_data)
+static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValue this_val,
+                                                  int argc, JSValue *argv, int magic,
+                                                  JSValue *func_data)
 {
     JSModuleDef *module = JS_VALUE_GET_PTR(func_data[0]);
-    JSValueConst error = argv[0];
+    JSValue error = argv[0];
     int i;
 
     if (js_check_stack_overflow(ctx->rt, 0))
@@ -27599,8 +27597,9 @@ static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst t
     return JS_UNDEFINED;
 }
 
-static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValueConst this_val,
-                                                   int argc, JSValueConst *argv, int magic, JSValue *func_data)
+static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValue this_val,
+                                                   int argc, JSValue *argv, int magic,
+                                                   JSValue *func_data)
 {
     JSModuleDef *module = JS_VALUE_GET_PTR(func_data[0]);
     ExecModuleList exec_list_s, *exec_list = &exec_list_s;
@@ -27640,8 +27639,7 @@ static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValueConst 
             if (js_execute_sync_module(ctx, m, &error) < 0) {
                 JSValue m_obj = JS_NewModuleValue(ctx, m);
                 js_async_module_execution_rejected(ctx, JS_UNDEFINED,
-                                                   1, (JSValueConst *)&error, 0,
-                                                   &m_obj);
+                                                   1, &error, 0, &m_obj);
                 JS_FreeValue(ctx, m_obj);
                 JS_FreeValue(ctx, error);
             } else {
@@ -27661,9 +27659,9 @@ static int js_execute_async_module(JSContext *ctx, JSModuleDef *m)
     if (JS_IsException(promise))
         return -1;
     m_obj = JS_NewModuleValue(ctx, m);
-    resolve_funcs[0] = JS_NewCFunctionData(ctx, js_async_module_execution_fulfilled, 0, 0, 1, (JSValueConst *)&m_obj);
-    resolve_funcs[1] = JS_NewCFunctionData(ctx, js_async_module_execution_rejected, 0, 0, 1, (JSValueConst *)&m_obj);
-    ret_val = js_promise_then(ctx, promise, 2, (JSValueConst *)resolve_funcs);
+    resolve_funcs[0] = JS_NewCFunctionData(ctx, js_async_module_execution_fulfilled, 0, 0, 1, &m_obj);
+    resolve_funcs[1] = JS_NewCFunctionData(ctx, js_async_module_execution_rejected, 0, 0, 1, &m_obj);
+    ret_val = js_promise_then(ctx, promise, 2, resolve_funcs);
     JS_FreeValue(ctx, ret_val);
     JS_FreeValue(ctx, m_obj);
     JS_FreeValue(ctx, resolve_funcs[0]);
@@ -27857,7 +27855,7 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
         assert(m->status == JS_MODULE_STATUS_EVALUATED);
         assert(m->eval_has_exception);
         ret_val = JS_Call(ctx, m->resolving_funcs[1], JS_UNDEFINED,
-                          1, (JSValueConst *)&m->eval_exception);
+                          1, &m->eval_exception);
         JS_FreeValue(ctx, ret_val);
     } else {
         assert(m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
@@ -27868,7 +27866,7 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
             assert(m->status == JS_MODULE_STATUS_EVALUATED);
             value = JS_UNDEFINED;
             ret_val = JS_Call(ctx, m->resolving_funcs[0], JS_UNDEFINED,
-                              1, (JSValueConst *)&value);
+                              1, &value);
             JS_FreeValue(ctx, ret_val);
         }
         assert(stack_top == NULL);

@@ -2246,8 +2246,8 @@ static JSValue js_os_clearTimeout(JSContext *ctx, JSValue this_val,
 }
 
 /* return a promise */
-static JSValue js_os_sleepAsync(JSContext *ctx, JSValueConst this_val,
-                                int argc, JSValueConst *argv)
+static JSValue js_os_sleepAsync(JSContext *ctx, JSValue this_val,
+                                int argc, JSValue *argv)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
