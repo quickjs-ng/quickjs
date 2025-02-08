@@ -7,79 +7,100 @@ project(
     'warning_level=3',
     'default_library=static',
   ],
-  meson_version: '>=0.62.0',
+  meson_version: '>=1.3.0',
 )
 
 host_system = host_machine.system()
 cc = meson.get_compiler('c')
 
+qjs_gcc_warning_args = [
+  '-Wno-unsafe-buffer-usage',
+  '-Wno-sign-conversion',
+  '-Wno-nonportable-system-include-path',
+  '-Wno-implicit-int-conversion',
+  '-Wno-shorten-64-to-32',
+  '-Wno-reserved-macro-identifier',
+  '-Wno-reserved-identifier',
+  '-Wdeprecated-declarations',
+
+  '-Wno-implicit-fallthrough',
+  '-Wno-sign-compare',
+  '-Wno-missing-field-initializers',
+  '-Wno-unused-parameter',
+  '-Wno-unused-but-set-variable',
+  '-Wno-array-bounds',
+  '-Wno-format-truncation',
+]
+qjs_gcc_args = [
+  '-funsigned-char',
+]
+
+if host_system == 'darwin'
+  # https://github.com/quickjs-ng/quickjs/issues/453
+  qjs_gcc_warning_args += '-Wno-maybe-uninitialized'
+endif
+
+# https://github.com/microsoft/cpp-docs/tree/main/docs/error-messages/compiler-warnings
+qjs_msvc_warning_args = [
+  '/wd4018', # -Wno-sign-conversion
+  '/wd4061', # -Wno-implicit-fallthrough
+  '/wd4100', # -Wno-unused-parameter
+  '/wd4200', # -Wno-zero-length-array
+  '/wd4242', # -Wno-shorten-64-to-32
+  '/wd4244', # -Wno-shorten-64-to-32
+  '/wd4245', # -Wno-sign-compare
+  '/wd4267', # -Wno-shorten-64-to-32
+  '/wd4388', # -Wno-sign-compare
+  '/wd4389', # -Wno-sign-compare
+  '/wd4710', # Function not inlined
+  '/wd4711', # Function was inlined
+  '/wd4820', # Padding added after construct
+  '/wd4996', # -Wdeprecated-declarations
+  '/wd5045', # Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
+]
+qjs_msvc_args = [
+  '/experimental:c11atomics',
+  '/J', # -funsigned-char
+]
+
 if cc.get_argument_syntax() == 'msvc'
-  # https://github.com/microsoft/cpp-docs/tree/main/docs/error-messages/compiler-warnings
   add_project_arguments(
-    cc.get_supported_arguments(
-      '/experimental:c11atomics',
-      '/wd4018', # -Wno-sign-conversion
-      '/wd4061', # -Wno-implicit-fallthrough
-      '/wd4100', # -Wno-unused-parameter
-      '/wd4200', # -Wno-zero-length-array
-      '/wd4242', # -Wno-shorten-64-to-32
-      '/wd4244', # -Wno-shorten-64-to-32
-      '/wd4245', # -Wno-sign-compare
-      '/wd4267', # -Wno-shorten-64-to-32
-      '/wd4388', # -Wno-sign-compare
-      '/wd4389', # -Wno-sign-compare
-      '/wd4710', # Function not inlined
-      '/wd4711', # Function was inlined
-      '/wd4820', # Padding added after construct
-      '/wd4996', # -Wdeprecated-declarations
-      '/wd5045', # Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
-    ),
-    '/J', # -funsigned-char
+    cc.get_supported_arguments(qjs_msvc_warning_args),
+    cc.get_id().contains('clang') ? cc.get_supported_arguments(qjs_gcc_warning_args) : [],
+    qjs_msvc_args,
     language: 'c',
   )
-
-  if cc.get_id().contains('clang')
-    add_project_arguments(
-      cc.get_supported_arguments(
-        '-Wno-unsafe-buffer-usage',
-        '-Wno-sign-conversion',
-        '-Wno-nonportable-system-include-path',
-        '-Wno-implicit-int-conversion',
-        '-Wno-shorten-64-to-32',
-        '-Wno-reserved-macro-identifier',
-        '-Wno-reserved-identifier',
-        '-Wdeprecated-declarations',
-      ),
-      language: 'c',
-    )
-  endif
-
 else
   add_project_arguments(
-    cc.get_supported_arguments(
-      '-Wno-implicit-fallthrough',
-      '-Wno-sign-compare',
-      '-Wno-missing-field-initializers',
-      '-Wno-unused-parameter',
-      '-Wno-unused-but-set-variable',
-      '-Wno-array-bounds',
-      '-Wno-format-truncation',
-    ),
-    '-funsigned-char',
+    cc.get_supported_arguments(qjs_gcc_warning_args),
+    qjs_gcc_args,
     language: 'c',
   )
+endif
 
-  # https://github.com/quickjs-ng/quickjs/issues/453
-  if host_machine.system() == 'darwin'
+if meson.is_cross_build()
+  native_cc = meson.get_compiler('c', native: true)
+
+  if native_cc.get_argument_syntax() == 'msvc'
+    # https://github.com/microsoft/cpp-docs/tree/main/docs/error-messages/compiler-warnings
     add_project_arguments(
-      cc.get_supported_arguments(
-        '-Wno-maybe-uninitialized',
-      ),
+      native_cc.get_supported_arguments(qjs_msvc_warning_args),
+      native_cc.get_id().contains('clang') ? native_cc.get_supported_arguments(qjs_gcc_warning_args) : [],
+      qjs_msvc_args,
+
       language: 'c',
+      native: true,
+    )
+  else
+    add_project_arguments(
+      native_cc.get_supported_arguments(qjs_gcc_warning_args),
+      qjs_gcc_args,
+
+      language: 'c',
+      native: true,
     )
   endif
 endif
-
 if get_option('buildtype').contains('debug')
   add_project_arguments(
     cc.get_supported_arguments('-fno-omit-frame-pointer'),
@@ -110,10 +131,7 @@ qjs_libc_srcs = files('quickjs-libc.c')
 qjs_libc_hdrs = files('quickjs-libc.h')
 
 if qjs_libc
-  qjs_srcs += qjs_libc_srcs
   qjs_hdrs += qjs_libc_hdrs
-
-  qjs_libc_srcs = []
 endif
 
 qjs_c_args = ['-D_GNU_SOURCE']
@@ -121,6 +139,15 @@ qjs_c_args = ['-D_GNU_SOURCE']
 if host_system == 'windows'
   qjs_c_args += ['-DWIN32_LEAN_AND_MEAN', '-D_WIN32_WINNT=0x0602']
 endif
+
+qjs_libc_lib = static_library(
+  'quickjs-libc',
+  qjs_libc_srcs,
+
+  dependencies: qjs_sys_deps,
+  c_args: qjs_c_args,
+  gnu_symbol_visibility: 'hidden',
+)
 
 qjs_lib = library(
   'qjs',
@@ -134,10 +161,9 @@ qjs_lib = library(
   ).process(qjs_hdrs),
 
   dependencies: qjs_sys_deps,
+  link_whole: qjs_libc ? qjs_libc_lib : [],
   c_args: qjs_c_args,
   gnu_symbol_visibility: 'hidden',
-  implicit_include_directories: false,
-  include_directories: include_directories('.'),
 
   install: true,
   version: meson.project_version(),
@@ -168,8 +194,6 @@ if host_system == 'emscripten'
     ),
     dependencies: m_dep,
     c_args: qjs_c_args,
-    implicit_include_directories: false,
-    include_directories: include_directories('.'),
   )
 endif
 
@@ -215,12 +239,10 @@ qjsc_srcs = files(
 qjsc_exe = executable(
   'qjsc',
   qjsc_srcs,
-  qjs_libc_srcs,
 
   c_args: qjs_c_args,
+  link_with: qjs_libc ? [] : qjs_libc_lib,
   dependencies: qjs_dep,
-  implicit_include_directories: false,
-  include_directories: include_directories('.'),
 
   install: true,
 )
@@ -243,20 +265,15 @@ qjs_exe_srcs = files(
 qjs_exe = executable(
   'qjs',
   qjs_exe_srcs,
-  qjs_libc_srcs,
 
   c_args: qjs_c_args,
+  link_with: qjs_libc ? [] : qjs_libc_lib,
   dependencies: [qjs_dep, mimalloc_dep],
-  implicit_include_directories: false,
-  include_directories: include_directories('.'),
-  export_dynamic: host_system != 'windows',
 
   install: true,
 )
 
 if meson.is_cross_build()
-  native_cc = meson.get_compiler('c', native: true)
-
   mimalloc_native_dep = []
   mimalloc_sys_native_dep = dependency('mimalloc', required: get_option('cli_mimalloc'), native: true)
   if mimalloc_sys_dep.found()
@@ -279,13 +296,10 @@ if meson.is_cross_build()
     dependencies: qjs_sys_native_deps,
     c_args: qjs_c_args,
     gnu_symbol_visibility: 'hidden',
-    implicit_include_directories: false,
-    include_directories: include_directories('.'),
 
     build_by_default: false,
     native: true,
     install: false,
-    version: meson.project_version(),
   )
 
   meson.override_find_program(
@@ -297,8 +311,6 @@ if meson.is_cross_build()
       c_args: qjs_c_args,
       link_with: qjs_native_lib,
       dependencies: qjs_sys_native_deps,
-      implicit_include_directories: false,
-      include_directories: include_directories('.'),
 
       build_by_default: false,
       native: true,
@@ -314,8 +326,6 @@ if meson.is_cross_build()
       c_args: qjs_c_args,
       link_with: qjs_native_lib,
       dependencies: [qjs_sys_native_deps, mimalloc_native_dep],
-      implicit_include_directories: false,
-      include_directories: include_directories('.'),
 
       build_by_default: false,
       native: true,
@@ -340,8 +350,6 @@ if tests.allowed()
 
       c_args: qjs_c_args,
       dependencies: qjs_dep,
-      implicit_include_directories: false,
-      include_directories: include_directories('.'),
     )
 
     test(
@@ -434,8 +442,6 @@ if tests.allowed()
 
       c_args: qjs_c_args,
       dependencies: qjs_dep,
-      implicit_include_directories: false,
-      include_directories: include_directories('.'),
     ),
   )
 endif
@@ -448,8 +454,6 @@ executable(
   'unicode_gen.c',
 
   c_args: qjs_c_args,
-  implicit_include_directories: false,
-  include_directories: include_directories('.'),
   build_by_default: false,
 )
 
@@ -460,8 +464,6 @@ executable(
 
   c_args: qjs_c_args,
   dependencies: qjs_dep,
-  implicit_include_directories: false,
-  include_directories: include_directories('.'),
 )
 
 if examples.allowed()
@@ -472,8 +474,6 @@ if examples.allowed()
 
     c_args: qjs_c_args,
     dependencies: qjs_dep,
-    implicit_include_directories: false,
-    include_directories: include_directories('.'),
   )
 
   executable(
@@ -483,8 +483,6 @@ if examples.allowed()
 
     c_args: qjs_c_args,
     dependencies: qjs_dep,
-    implicit_include_directories: false,
-    include_directories: include_directories('.'),
   )
 
   subdir('examples')
@@ -497,7 +495,5 @@ if examples.allowed()
 
     c_args: qjs_c_args,
     dependencies: qjs_dep,
-    implicit_include_directories: false,
-    include_directories: include_directories('.'),
   )
 endif
