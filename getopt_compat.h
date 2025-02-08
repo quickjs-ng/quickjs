@@ -156,7 +156,7 @@ JS_PRINTF_FORMAT_ATTR(1, 0) _vwarnx(JS_PRINTF_FORMAT const char *fmt,va_list ap)
 }
 
 static void
-warnx(const char *fmt,...)
+JS_PRINTF_FORMAT_ATTR(1, 2) warnx(JS_PRINTF_FORMAT const char *fmt,...)
 {
   va_list ap;
   va_start(ap,fmt);
