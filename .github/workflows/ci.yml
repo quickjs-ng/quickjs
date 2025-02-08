@@ -255,7 +255,7 @@ jobs:
       - name: build
         run: |
           git submodule update --init --checkout --depth 1
-          cmake -B build -DBUILD_EXAMPLES=ON -G "Ninja" -T Clang
+          cmake -B build -DBUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -DCMAKE_C_COMPILER=clang.exe -DCMAKE_CXX_COMPILER=clang++.exe -G "Ninja"
           cmake --build build --config ${{matrix.buildType}}
       - name: stats
         run: |
