@@ -7,6 +7,8 @@ project(
     'warning_level=3',
     'default_library=static',
   ],
+  license: 'MIT',
+  license_files: 'LICENSE',
   meson_version: '>=1.3.0',
 )
 
@@ -101,7 +103,7 @@ if meson.is_cross_build()
     )
   endif
 endif
-if get_option('buildtype').contains('debug')
+if get_option('debug')
   add_project_arguments(
     cc.get_supported_arguments('-fno-omit-frame-pointer'),
     language: 'c',
