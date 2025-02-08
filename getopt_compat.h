@@ -68,6 +68,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <windows.h>
+/* Required for JS_PRINTF_FORMAT */
+#include "cutils.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -145,7 +147,7 @@ static const char illoptchar[] = "unknown option -- %c";
 static const char illoptstring[] = "unknown option -- %s";
 
 static void
-_vwarnx(const char *fmt,va_list ap)
+JS_PRINTF_FORMAT_ATTR(1, 0) _vwarnx(JS_PRINTF_FORMAT const char *fmt,va_list ap)
 {
   (void)fprintf(stderr,"%s: ",__progname);
   if (fmt != NULL)
