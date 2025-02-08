@@ -28,8 +28,6 @@ BUILD_DIR=build
 BUILD_TYPE?=Release
 INSTALL_PREFIX?=/usr/local
 
-BUILD_BACKEND?=cmake
-
 QJS=$(BUILD_DIR)/qjs
 QJSC=$(BUILD_DIR)/qjsc
 RUN262=$(BUILD_DIR)/run-test262
@@ -43,21 +41,6 @@ JOBS := $(shell nproc)
 endif
 ifeq ($(JOBS),)
 JOBS := 4
-endif
-
-ifeq ($(BUILD_BACKEND),meson)
-ifeq ($(BUILD_TYPE),Release)
-BUILD_TYPE=release
-endif
-ifeq ($(BUILD_TYPE),Debug)
-BUILD_TYPE=debug
-endif
-ifeq ($(BUILD_TYPE),RelWithDebInfo)
-BUILD_TYPE=debugoptimized
-endif
-ifeq ($(BUILD_TYPE),MinSizeRel)
-BUILD_TYPE=minsize
-endif
 endif
 
 all: $(QJS)
@@ -76,31 +59,19 @@ fuzz:
 	./fuzz
 
 $(BUILD_DIR):
-ifeq ($(BUILD_BACKEND),cmake)
 	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX)
-else
-ifeq ($(BUILD_BACKEND),meson)
-	meson setup $(BUILD_DIR) --buildtype=$(BUILD_TYPE) --prefix=$(INSTALL_PREFIX)
-else
-	false
-endif
-endif
 
 $(QJS): $(BUILD_DIR)
-	test -f $(BUILD_DIR)/meson-private/coredata.dat || cmake --build $(BUILD_DIR) -j $(JOBS)
-	test -f $(BUILD_DIR)/CMakeCache.txt || meson compile -C $(BUILD_DIR) -j $(JOBS)
+	cmake --build $(BUILD_DIR) -j $(JOBS)
 
 $(QJSC): $(BUILD_DIR)
-	test -f $(BUILD_DIR)/meson-private/coredata.dat || cmake --build $(BUILD_DIR) --target qjsc -j $(JOBS)
-	test -f $(BUILD_DIR)/CMakeCache.txt || meson compile -C $(BUILD_DIR) -j $(JOBS) qjsc
+	cmake --build $(BUILD_DIR) --target qjsc -j $(JOBS)
 
 install: $(QJS) $(QJSC)
-	test -f $(BUILD_DIR)/meson-private/coredata.dat || cmake --build $(BUILD_DIR) --target install
-	test -f $(BUILD_DIR)/CMakeCache.txt || meson install -C $(BUILD_DIR)
+	cmake --build $(BUILD_DIR) --target install
 
 clean:
-	test -f $(BUILD_DIR)/meson-private/coredata.dat || cmake --build $(BUILD_DIR) --target clean
-	test -f $(BUILD_DIR)/CMakeCache.txt || meson compile -C $(BUILD_DIR) --clean
+	cmake --build $(BUILD_DIR) --target clean
 
 codegen: $(QJSC)
 	$(QJSC) -ss -o gen/repl.c -m repl.js
@@ -167,8 +138,7 @@ microbench: $(QJS)
 	$(QJS) tests/microbench.js
 
 unicode_gen: $(BUILD_DIR)
-	test -f $(BUILD_DIR)/meson-private/coredata.dat || cmake --build $(BUILD_DIR) --target unicode_gen -j $(JOBS) 
-	test -f $(BUILD_DIR)/CMakeCache.txt || meson compile -C $(BUILD_DIR) -j $(JOBS) unicode_gen
+	cmake --build $(BUILD_DIR) --target unicode_gen
 
 libunicode-table.h: unicode_gen
 	$(BUILD_DIR)/unicode_gen unicode $@
