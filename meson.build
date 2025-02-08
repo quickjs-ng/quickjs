@@ -125,7 +125,6 @@ endif
 qjs_lib = library(
   'qjs',
   qjs_srcs,
-  qjs_libc_srcs,
 
   # export public headers
   generator(
@@ -210,9 +209,12 @@ import('pkgconfig').generate(
 )
 
 # QuickJS bytecode compiler
+qjsc_srcs = files(
+  'qjsc.c',
+)
 qjsc_exe = executable(
   'qjsc',
-  'qjsc.c',
+  qjsc_srcs,
   qjs_libc_srcs,
 
   c_args: qjs_c_args,
@@ -223,22 +225,24 @@ qjsc_exe = executable(
   install: true,
 )
 
+mimalloc_dep = []
 mimalloc_sys_dep = dependency('mimalloc', required: get_option('cli_mimalloc'))
 if mimalloc_sys_dep.found()
   mimalloc_dep = declare_dependency(
     dependencies: mimalloc_sys_dep,
     compile_args: '-DQJS_USE_MIMALLOC',
   )
-else
-  mimalloc_dep = []
 endif
 
 # QuickJS CLI
-qjs_exe = executable(
-  'qjs',
+qjs_exe_srcs = files(
   'gen/repl.c',
   'gen/standalone.c',
   'qjs.c',
+)
+qjs_exe = executable(
+  'qjs',
+  qjs_exe_srcs,
   qjs_libc_srcs,
 
   c_args: qjs_c_args,
@@ -250,7 +254,75 @@ qjs_exe = executable(
   install: true,
 )
 
-if not meson.is_cross_build()
+if meson.is_cross_build()
+  native_cc = meson.get_compiler('c', native: true)
+
+  mimalloc_native_dep = []
+  mimalloc_sys_native_dep = dependency('mimalloc', required: get_option('cli_mimalloc'), native: true)
+  if mimalloc_sys_dep.found()
+    mimalloc_native_dep = declare_dependency(
+      dependencies: mimalloc_sys_native_dep,
+      compile_args: '-DQJS_USE_MIMALLOC',
+    )
+  endif
+
+  qjs_sys_native_deps = [
+    native_cc.find_library('m', required: false),
+    dependency('threads', required: false, native: true),
+    dependency('dl', required: false, native: true),
+  ]
+  qjs_native_lib = static_library(
+    'qjs_native',
+    qjs_srcs,
+    qjs_libc_srcs,
+
+    dependencies: qjs_sys_native_deps,
+    c_args: qjs_c_args,
+    gnu_symbol_visibility: 'hidden',
+    implicit_include_directories: false,
+    include_directories: include_directories('.'),
+
+    build_by_default: false,
+    native: true,
+    install: false,
+    version: meson.project_version(),
+  )
+
+  meson.override_find_program(
+    'qjsc',
+    executable(
+      'qjsc_native',
+      qjsc_srcs,
+
+      c_args: qjs_c_args,
+      link_with: qjs_native_lib,
+      dependencies: qjs_sys_native_deps,
+      implicit_include_directories: false,
+      include_directories: include_directories('.'),
+
+      build_by_default: false,
+      native: true,
+      install: false,
+    ),
+  )
+  meson.override_find_program(
+    'qjs',
+    executable(
+      'qjs_native',
+      qjs_exe_srcs,
+
+      c_args: qjs_c_args,
+      link_with: qjs_native_lib,
+      dependencies: [qjs_sys_native_deps, mimalloc_native_dep],
+      implicit_include_directories: false,
+      include_directories: include_directories('.'),
+
+      build_by_default: false,
+      native: true,
+      install: false,
+    ),
+  )
+else
   meson.override_find_program('qjsc', qjsc_exe)
   meson.override_find_program('qjs', qjs_exe)
 endif
