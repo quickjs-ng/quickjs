@@ -58,6 +58,7 @@
 #define rmdir _rmdir
 #define getcwd _getcwd
 #define chdir _chdir
+#define pipe(fds) _pipe(fds,4096, O_BINARY)
 #else
 #include <sys/ioctl.h>
 #if !defined(__wasi__)
@@ -80,7 +81,7 @@ extern char **environ;
 
 #endif /* _WIN32 */
 
-#if !defined(_WIN32) && !defined(__wasi__)
+#if ! (defined(_WIN32) && !defined(__MINGW32__)) && !defined(__wasi__)
 /* enable the os.Worker API. IT relies on POSIX threads */
 #define USE_WORKER
 #endif
@@ -2330,60 +2331,6 @@ static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts, in
     return 0;
 }
 
-#if defined(_WIN32)
-
-static int js_os_poll(JSContext *ctx)
-{
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    JSThreadState *ts = js_get_thread_state(rt);
-    int min_delay, console_fd;
-    JSOSRWHandler *rh;
-    struct list_head *el;
-
-    /* XXX: handle signals if useful */
-
-    if (js_os_run_timers(rt, ctx, ts, &min_delay))
-        return -1;
-    if (min_delay == 0)
-        return 0; // expired timer
-    if (min_delay < 0)
-        if (list_empty(&ts->os_rw_handlers))
-            return -1; /* no more events */
-
-    console_fd = -1;
-    list_for_each(el, &ts->os_rw_handlers) {
-        rh = list_entry(el, JSOSRWHandler, link);
-        if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0])) {
-            console_fd = rh->fd;
-            break;
-        }
-    }
-
-    if (console_fd >= 0) {
-        DWORD ti, ret;
-        HANDLE handle;
-        if (min_delay == -1)
-            ti = INFINITE;
-        else
-            ti = min_delay;
-        handle = (HANDLE)_get_osfhandle(console_fd);
-        ret = WaitForSingleObject(handle, ti);
-        if (ret == WAIT_OBJECT_0) {
-            list_for_each(el, &ts->os_rw_handlers) {
-                rh = list_entry(el, JSOSRWHandler, link);
-                if (rh->fd == console_fd && !JS_IsNull(rh->rw_func[0])) {
-                    return call_handler(ctx, rh->rw_func[0]);
-                    /* must stop because the list may have been modified */
-                }
-            }
-        }
-    } else {
-        Sleep(min_delay);
-    }
-    return 0;
-}
-#else
-
 #ifdef USE_WORKER
 
 static void js_free_message(JSWorkerMessage *msg);
@@ -2461,6 +2408,98 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
 }
 #endif
 
+#if defined(_WIN32)
+
+static int js_os_poll(JSContext *ctx)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    int min_delay, console_fd;
+    JSOSRWHandler *rh;
+    struct list_head *el;
+
+    /* only check signals in the main thread */
+    if (!ts->recv_pipe &&
+        unlikely(os_pending_signals != 0)) {
+        JSOSSignalHandler *sh;
+        uint64_t mask;
+
+        list_for_each(el, &ts->os_signal_handlers) {
+            sh = list_entry(el, JSOSSignalHandler, link);
+            mask = (uint64_t)1 << sh->sig_num;
+            if (os_pending_signals & mask) {
+                os_pending_signals &= ~mask;
+                return call_handler(ctx, sh->func);
+            }
+        }
+    }
+
+    if (js_os_run_timers(rt, ctx, ts, &min_delay))
+        return -1;
+    if (min_delay == 0)
+        return 0; // expired timer
+    if (min_delay < 0)
+        if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))
+            return -1; /* no more events */
+
+    DWORD os_handles_length = 0;
+    HANDLE os_handles[MAXIMUM_WAIT_OBJECTS] = {0};
+    list_for_each(el, &ts->os_rw_handlers) {
+        rh = list_entry(el, JSOSRWHandler, link);
+        if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0])) {
+            os_handles[os_handles_length]=(HANDLE)_get_osfhandle(rh->fd);
+            os_handles_length++;
+            break;
+        }
+    }
+    #if defined(USE_WORKER)
+    list_for_each(el, &ts->port_list) {
+        JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
+        if (!JS_IsNull(port->on_message_func)) {
+            JSWorkerMessagePipe *ps = port->recv_pipe;
+            os_handles[os_handles_length]=(HANDLE)_get_osfhandle(ps->read_fd);
+            os_handles_length++;
+        }
+    }
+    #endif
+
+    if (os_handles_length > 0) {
+        DWORD ti, ret;
+        HANDLE handle;
+        if (min_delay == -1)
+            ti = INFINITE;
+        else
+            ti = min_delay;
+        ret = WaitForMultipleObjects(os_handles_length,os_handles,FALSE, ti);
+        if (ret >= WAIT_OBJECT_0 && ret < WAIT_OBJECT_0+os_handles_length) {
+            //TODO: possible optimization: WAIT_OBJECT_ can be used to determine the exact handler
+            list_for_each(el, &ts->os_rw_handlers) {
+                rh = list_entry(el, JSOSRWHandler, link);
+                if (rh->fd == console_fd && !JS_IsNull(rh->rw_func[0])) {
+                    return call_handler(ctx, rh->rw_func[0]);
+                    /* must stop because the list may have been modified */
+                }
+            }
+            #if defined(USE_WORKER)
+            list_for_each(el, &ts->port_list) {
+                JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
+                if (!JS_IsNull(port->on_message_func)) {
+                    JSWorkerMessagePipe *ps = port->recv_pipe;
+                    //if (FD_ISSET(ps->read_fd, &rfds)) { //missing condition, is it possible for port_list to change since start of pthread_cond_wait?
+                    if (handle_posted_message(rt, ctx, port))
+                        goto done;
+                }
+            }
+            #endif
+        }
+    }else{
+        Sleep(min_delay);
+    }
+    done:
+    return 0;
+}
+
+#else
 static int js_os_poll(JSContext *ctx)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
