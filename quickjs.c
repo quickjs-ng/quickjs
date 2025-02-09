@@ -8887,7 +8887,8 @@ retry:
             if (JS_IsFunction(ctx, val)) {
                 JSObject *vf = JS_VALUE_GET_OBJ(val);
                 if (vf->class_id == JS_CLASS_BYTECODE_FUNCTION) {
-                   const char* name = get_func_name(ctx, val);
+                   const char *name = get_func_name(ctx, val);
+                   if(name != NULL) {
                     if (strcmp(name, "") == 0) {
                         JSValue js_value = JS_AtomToValue(ctx, prop);
                         JS_DefinePropertyValue(ctx, val, JS_ATOM_name, js_value, JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE);
@@ -8895,6 +8896,7 @@ retry:
                     }
 
                     JS_FreeCString(ctx, name);
+                   }
                }
             }
 
