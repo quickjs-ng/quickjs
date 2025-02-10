@@ -14817,6 +14817,18 @@ static void dump_single_byte_code(JSContext *ctx, const uint8_t *pc,
 static void print_func_name(JSFunctionBytecode *b);
 #endif
 
+static bool needs_backtrace(JSValue exc)
+{
+    JSObject *p;
+
+    if (JS_VALUE_GET_TAG(exc) != JS_TAG_OBJECT)
+        return false;
+    p = JS_VALUE_GET_OBJ(exc);
+    if (p->class_id != JS_CLASS_ERROR)
+        return false;
+    return !find_own_property1(p, JS_ATOM_stack);
+}
+
 /* argv[] is modified if (flags & JS_CALL_FLAG_COPY_ARGV) = 0. */
 static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
                                JSValue this_obj, JSValue new_target,
@@ -17290,8 +17302,12 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         }
     }
  exception:
-    sf->cur_pc = pc;
-    build_backtrace(ctx, rt->current_exception, JS_UNDEFINED, NULL, 0, 0, 0);
+    if (needs_backtrace(rt->current_exception)
+    || JS_IsUndefined(ctx->error_back_trace)) {
+        sf->cur_pc = pc;
+        build_backtrace(ctx, rt->current_exception, JS_UNDEFINED,
+                        NULL, 0, 0, 0);
+    }
     if (!JS_IsUncatchableError(ctx, rt->current_exception)) {
         while (sp > stack_buf) {
             JSValue val = *--sp;
@@ -33325,8 +33341,14 @@ static JSValue JS_EvalInternal(JSContext *ctx, JSValue this_obj,
                                const char *input, size_t input_len,
                                const char *filename, int line, int flags, int scope_idx)
 {
+    JSRuntime *rt = ctx->rt;
+
     if (unlikely(!ctx->eval_internal)) {
         return JS_ThrowTypeError(ctx, "eval is not supported");
+    }
+    if (!rt->current_stack_frame) {
+        JS_FreeValueRT(rt, ctx->error_back_trace);
+        ctx->error_back_trace = JS_UNDEFINED;
     }
     return ctx->eval_internal(ctx, this_obj, input, input_len, filename, line,
                               flags, scope_idx);
