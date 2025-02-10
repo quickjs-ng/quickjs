@@ -211,6 +211,7 @@ if(BUILD_QJS_LIBC)
 endif()
 list(APPEND qjs_defines _GNU_SOURCE)
 if(WIN32)
+    # NB: Windows 7 is EOL and we are only supporting in so far as it doesn't interfere with progress.
     list(APPEND qjs_defines WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0601)
 endif()
 list(APPEND qjs_libs ${CMAKE_DL_LIBS})
