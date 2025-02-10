@@ -1548,7 +1548,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
                 }
             }
         }
-        if (is_unexpected_error && verbose > 1) {
+        if (is_unexpected_error && verbose > 1 && JS_IsException(exception_val)) {
             JSValue val = JS_GetPropertyStr(ctx, exception_val, "stack");
             if (!JS_IsException(val) &&
                 !JS_IsUndefined(val) &&
