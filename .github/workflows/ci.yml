@@ -760,9 +760,9 @@ jobs:
       - name: Running tests
         env: ${{ matrix.mode.extra_envs }}
         run: |
-          meson test -C build-${{ matrix.flavor }} --timeout-multiplier 5
+          meson test -C build-${{ matrix.flavor }} --timeout-multiplier 5 --print-errorlogs
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: ${{ failure() }}
         with:
           name: ${{ matrix.platform }}-${{ matrix.mode.name }}-${{ matrix.features.name }}-${{ matrix.flavor }}-logs
           path: build-${{ matrix.flavor }}/meson-logs
