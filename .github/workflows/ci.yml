@@ -72,12 +72,6 @@ jobs:
         with:
           submodules: true
 
-      # ASLR with big PIE slides does not work well with [AM]San
-      - name: disable ASLR
-        if: ${{ matrix.config.os == 'ubuntu-latest' && (matrix.config.configType == 'asan+ubsan' || matrix.config.configType == 'msan')}}
-        run: |
-          sudo sysctl -w kernel.randomize_va_space=0
-
       - name: install TCC
         if: ${{ matrix.config.configType == 'tcc' }}
         run: |
