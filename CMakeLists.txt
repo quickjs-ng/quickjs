@@ -308,11 +308,11 @@ endif()
 # Interrupt test
 #
 
-add_executable(interrupt-test
-    interrupt-test.c
+add_executable(api-test
+    api-test.c
 )
-target_compile_definitions(interrupt-test PRIVATE ${qjs_defines})
-target_link_libraries(interrupt-test qjs)
+target_compile_definitions(api-test PRIVATE ${qjs_defines})
+target_link_libraries(api-test qjs)
 
 # Unicode generator
 #
