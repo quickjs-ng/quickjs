@@ -33397,8 +33397,7 @@ JSValue JS_EvalThis2(JSContext *ctx, JSValue this_obj,
             return JS_ThrowInternalError(ctx, "bad JSEvalOptions version");
         if (options->filename)
             filename = options->filename;
-        if (options->line_num != 0)
-            line = options->line_num;
+        line = options->line_num;
         eval_flags = options->eval_flags;
     }
     JSValue ret;
