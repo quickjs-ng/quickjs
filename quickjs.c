@@ -18686,6 +18686,7 @@ typedef struct JSFunctionDef {
 
     DynBuf byte_code;
     int last_opcode_pos; /* -1 if no last opcode */
+    int last_source_loc;
     bool use_short_opcodes; /* true if short opcodes are used in byte_code */
 
     LabelSlot *label_slots;
@@ -20315,7 +20316,18 @@ static void emit_source_loc(JSParseState *s)
 {
     JSFunctionDef *fd = s->cur_func;
     DynBuf *bc = &fd->byte_code;
+    const uint8_t *p;
 
+    if (fd->last_source_loc == -1)
+        goto emit;
+    p = &bc->buf[fd->last_source_loc];
+    if (s->token.line_num != get_u32(&p[1]))
+        goto emit;
+    if (s->token.col_num != get_u32(&p[5]))
+        goto emit;
+    return;
+emit:
+    fd->last_source_loc = bc->size;
     dbuf_putc(bc, OP_source_loc);
     dbuf_put_u32(bc, s->token.line_num);
     dbuf_put_u32(bc, s->token.col_num);
@@ -28296,6 +28308,7 @@ static JSFunctionDef *js_new_function_def(JSContext *ctx,
     fd->is_func_expr = is_func_expr;
     js_dbuf_init(ctx, &fd->byte_code);
     fd->last_opcode_pos = -1;
+    fd->last_source_loc = -1;
     fd->func_name = JS_ATOM_NULL;
     fd->var_object_idx = -1;
     fd->arg_var_object_idx = -1;
