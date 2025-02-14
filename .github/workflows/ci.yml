@@ -165,9 +165,9 @@ jobs:
           ./build/qjs -c examples/hello.js -o hello
           ./hello
       
-      - name: test interrupt
+      - name: test api
         run: |
-          ./build/interrupt-test
+          ./build/api-test
 
   windows-msvc:
     runs-on: windows-latest
@@ -197,9 +197,9 @@ jobs:
         run: |
           build\${{matrix.buildType}}\qjs.exe -c examples\hello.js -o hello.exe
           .\hello.exe
-      - name: test interrupt
+      - name: test api
         run: |
-          build\${{matrix.buildType}}\interrupt-test.exe
+          build\${{matrix.buildType}}\api-test.exe
       - name: Set up Visual Studio shell
         uses: egor-tensin/vs-shell@v2
         with:
@@ -262,9 +262,9 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
-      - name: test interrupt
+      - name: test api
         run: |
-          build\${{matrix.buildType}}\interrupt-test.exe
+          build\${{matrix.buildType}}\api-test.exe
 
   windows-ninja:
     runs-on: windows-latest
@@ -294,9 +294,9 @@ jobs:
           build\qjs.exe examples\test_point.js
           build\run-test262.exe -c tests.conf
           build\function_source.exe
-      - name: test interrupt
+      - name: test api
         run: |
-          build\interrupt-test.exe
+          build\api-test.exe
 
   windows-sdk:
     runs-on: windows-latest
@@ -327,9 +327,9 @@ jobs:
           build\${{matrix.buildType}}\qjs.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
-      - name: test interrupt
+      - name: test api
         run: |
-          build\${{matrix.buildType}}\interrupt-test.exe
+          build\${{matrix.buildType}}\api-test.exe
 
   windows-mingw:
     runs-on: windows-latest
@@ -380,9 +380,9 @@ jobs:
       run: |
         ./build/qjs -c examples/hello.js -o hello.exe
         ./hello
-    - name: test interrupt
+    - name: test api
       run: |
-        ./build/interrupt-test
+        ./build/api-test
   windows-mingw-shared:
     runs-on: windows-latest
     defaults:
@@ -467,9 +467,9 @@ jobs:
       - name: test
         run: make test
 
-      - name: test interrupt
+      - name: test api
         run: |
-          ./build/interrupt-test
+          ./build/api-test
 
   openbsd:
     runs-on: ubuntu-latest

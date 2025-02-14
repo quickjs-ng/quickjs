@@ -2232,6 +2232,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->bf_ctx = &rt->bf_ctx;
     for(i = 0; i < rt->class_count; i++)
         ctx->class_proto[i] = JS_NULL;
+    ctx->global_obj = JS_NULL;
     ctx->array_ctor = JS_NULL;
     ctx->iterator_ctor = JS_NULL;
     ctx->regexp_ctor = JS_NULL;
@@ -51399,6 +51400,7 @@ static void JS_AddIntrinsicBasicObjects(JSContext *ctx)
     int i;
 
     ctx->class_proto[JS_CLASS_OBJECT] = JS_NewObjectProto(ctx, JS_NULL);
+    ctx->global_var_obj = JS_NewObjectProto(ctx, JS_NULL);
     ctx->function_proto = JS_NewCFunction3(ctx, js_function_proto, "", 0,
                                            JS_CFUNC_generic, 0,
                                            ctx->class_proto[JS_CLASS_OBJECT]);
@@ -51459,7 +51461,6 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     JS_FreeValue(ctx, js_object_seal(ctx, JS_UNDEFINED, 1, &ctx->throw_type_error, 1));
 
     ctx->global_obj = JS_NewObject(ctx);
-    ctx->global_var_obj = JS_NewObjectProto(ctx, JS_NULL);
 
     /* Object */
     obj = JS_NewGlobalCConstructor(ctx, "Object", js_object_constructor, 1,
