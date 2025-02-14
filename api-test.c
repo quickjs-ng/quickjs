@@ -125,10 +125,24 @@ static void raw_context_global_var(void)
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx = JS_NewContextRaw(rt);
     JS_AddIntrinsicEval(ctx);
-    JSValue ret = JS_Eval(ctx, "globalThis", strlen("globalThis"), "<input>",
-                          JS_EVAL_TYPE_GLOBAL);
-    assert(JS_IsException(ret));
-    JS_FreeValue(ctx, ret);
+    {
+        static const char code[] = "globalThis";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
+        assert(JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    {
+        static const char code[] = "var x = 42";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
+        assert(JS_IsUndefined(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    {
+        static const char code[] = "function f() {}";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
+        assert(JS_IsUndefined(ret));
+        JS_FreeValue(ctx, ret);
+    }
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
