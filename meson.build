@@ -497,5 +497,6 @@ if examples.allowed()
 
     c_args: qjs_c_args,
     dependencies: qjs_dep,
+    export_dynamic: true,
   )
 endif
