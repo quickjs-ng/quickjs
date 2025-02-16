@@ -275,9 +275,6 @@ add_executable(qjs_exe
 )
 add_qjs_libc_if_needed(qjs_exe)
 add_static_if_needed(qjs_exe)
-set_target_properties(qjs_exe PROPERTIES
-    OUTPUT_NAME "qjs"
-)
 target_compile_definitions(qjs_exe PRIVATE ${qjs_defines})
 target_link_libraries(qjs_exe qjs)
 if(NOT WIN32)
