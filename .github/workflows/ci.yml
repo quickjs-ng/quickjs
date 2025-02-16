@@ -751,16 +751,11 @@ jobs:
         run: |
           meson compile -C build-${{ matrix.flavor }}
 
-      # ASLR with big PIE slides does not work well with [AM]San
-      - name: disable ASLR
-        if: ${{ matrix.platform == 'ubuntu-latest' && contains(matrix.mode.name, 'san') }}
-        run: |
-          sudo sysctl -w kernel.randomize_va_space=0
-
       - name: Running tests
         env: ${{ matrix.mode.extra_envs }}
         run: |
           meson test -C build-${{ matrix.flavor }} --timeout-multiplier 5 --print-errorlogs
+          meson test --benchmark -C build-${{ matrix.flavor }} --timeout-multiplier 5 --print-errorlogs
       - uses: actions/upload-artifact@v4
         if: ${{ failure() }}
         with:
