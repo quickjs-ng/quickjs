@@ -184,18 +184,18 @@ jobs:
           cmake --build build --config ${{matrix.buildType}}
       - name: stats
         run: |
-          build\${{matrix.buildType}}\qjs.exe -qd
+          build\${{matrix.buildType}}\qjs_exe.exe -qd
       - name: test
         run: |
           cp build\${{matrix.buildType}}\fib.dll examples\
           cp build\${{matrix.buildType}}\point.dll examples\
-          build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
-          build\${{matrix.buildType}}\qjs.exe examples\test_point.js
+          build\${{matrix.buildType}}\qjs_exe.exe examples\test_fib.js
+          build\${{matrix.buildType}}\qjs_exe.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
       - name: test standalone
         run: |
-          build\${{matrix.buildType}}\qjs.exe -c examples\hello.js -o hello.exe
+          build\${{matrix.buildType}}\qjs_exe.exe -c examples\hello.js -o hello.exe
           .\hello.exe
       - name: test api
         run: |
@@ -224,7 +224,7 @@ jobs:
           cmake --build build --config ${{matrix.buildType}} --target qjs_exe
       - name: stats
         run: |
-          build\${{matrix.buildType}}\qjs.exe -qd
+          build\${{matrix.buildType}}\qjs_exe.exe -qd
       - name: Set up Visual Studio shell
         uses: egor-tensin/vs-shell@v2
         with:
@@ -249,7 +249,7 @@ jobs:
           cmake --build build --config ${{matrix.buildType}}
       - name: stats
         run: |
-          build\${{matrix.buildType}}\qjs.exe -qd
+          build\${{matrix.buildType}}\qjs_exe.exe -qd
       - name: cxxtest
         run: |
           clang-cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
@@ -258,8 +258,8 @@ jobs:
         run: |
           cp build\${{matrix.buildType}}\fib.dll examples\
           cp build\${{matrix.buildType}}\point.dll examples\
-          build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
-          build\${{matrix.buildType}}\qjs.exe examples\test_point.js
+          build\${{matrix.buildType}}\qjs_exe.exe examples\test_fib.js
+          build\${{matrix.buildType}}\qjs_exe.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
       - name: test api
@@ -285,13 +285,13 @@ jobs:
           cmake --build build
       - name: stats
         run: |
-          build\qjs.exe -qd
+          build\qjs_exe.exe -qd
       - name: test
         run: |
           cp build\fib.dll examples\
           cp build\point.dll examples\
-          build\qjs.exe examples\test_fib.js
-          build\qjs.exe examples\test_point.js
+          build\qjs_exe.exe examples\test_fib.js
+          build\qjs_exe.exe examples\test_point.js
           build\run-test262.exe -c tests.conf
           build\function_source.exe
       - name: test api
@@ -318,13 +318,13 @@ jobs:
           cmake --build build --config ${{matrix.buildType}}
       - name: stats
         run: |
-          build\${{matrix.buildType}}\qjs.exe -qd
+          build\${{matrix.buildType}}\qjs_exe.exe -qd
       - name: test
         run: |
           cp build\${{matrix.buildType}}\fib.dll examples\
           cp build\${{matrix.buildType}}\point.dll examples\
-          build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
-          build\${{matrix.buildType}}\qjs.exe examples\test_point.js
+          build\${{matrix.buildType}}\qjs_exe.exe examples\test_fib.js
+          build\${{matrix.buildType}}\qjs_exe.exe examples\test_point.js
           build\${{matrix.buildType}}\run-test262.exe -c tests.conf
           build\${{matrix.buildType}}\function_source.exe
       - name: test api

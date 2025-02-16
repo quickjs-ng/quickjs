@@ -86,7 +86,7 @@ jobs:
       - name: build
         run: |
           make
-          mv build/qjs.exe build/qjs-windows-${{matrix.arch}}.exe
+          mv build/qjs_exe.exe build/qjs-windows-${{matrix.arch}}.exe
           mv build/qjsc.exe build/qjsc-windows-${{matrix.arch}}.exe
       - name: check
         run: |
