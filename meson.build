@@ -435,12 +435,12 @@ if tests.allowed()
     endforeach
   endif
 
-  # Interrupt test
+  # API test
   test(
-    'interrupt',
+    'api',
     executable(
-      'interrupt-test',
-      'interrupt-test.c',
+      'api-test',
+      'api-test.c',
 
       c_args: qjs_c_args,
       dependencies: qjs_dep,
