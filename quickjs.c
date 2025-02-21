@@ -8890,7 +8890,7 @@ retry:
                    const char *name = get_func_name(ctx, val);
                    if(name && *name == '\0') {
                     JSValue js_value = JS_AtomToValue(ctx, prop);
-                    JS_DefinePropertyValue(ctx, val, JS_ATOM_name, js_value, JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE);
+                    JS_DefinePropertyValue(ctx, val, JS_ATOM_name, js_value, JS_PROP_CONFIGURABLE);
 
                     JS_FreeCString(ctx, name);
                    }
