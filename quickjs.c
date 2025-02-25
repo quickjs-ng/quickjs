@@ -28814,6 +28814,7 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
     int i;
     char atom_buf[ATOM_GET_STR_BUF_SIZE];
     const char *str;
+    const uint8_t *op;
 
     if (b->filename != JS_ATOM_NULL) {
         str = JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->filename);
@@ -28860,7 +28861,11 @@ static __maybe_unused void js_dump_function_bytecode(JSContext *ctx, JSFunctionB
         }
     }
     printf("  stack_size: %d\n", b->stack_size);
-    printf("  opcodes:\n");
+    printf("  byte_code_len: %d\n", b->byte_code_len);
+    op = b->byte_code_buf;
+    for (i = 0; op < &b->byte_code_buf[b->byte_code_len]; i++)
+        op += short_opcode_info(*op).size;
+    printf("  opcodes: %d\n", i);
     dump_byte_code(ctx, 3, b->byte_code_buf, b->byte_code_len,
                    b->vardefs, b->arg_count,
                    b->vardefs ? b->vardefs + b->arg_count : NULL, b->var_count,
