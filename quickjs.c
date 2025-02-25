@@ -42685,6 +42685,7 @@ static JSValue js_string_normalize(JSContext *ctx, JSValue this_val,
     val = JS_ToStringCheckObject(ctx, this_val);
     if (JS_IsException(val))
         return val;
+    buf = NULL; // appease bogus -Wmaybe-uninitialized warning
     buf_len = JS_ToUTF32String(ctx, &buf, val);
     JS_FreeValue(ctx, val);
     if (buf_len < 0)
