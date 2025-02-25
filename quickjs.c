@@ -484,11 +484,17 @@ struct JSString {
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
     struct list_head link; /* string list */
 #endif
-    union {
-        __extension__ uint8_t str8[0]; /* 8 bit strings will get an extra null terminator */
-        __extension__ uint16_t str16[0];
-    } u;
 };
+
+static inline uint8_t *str8(JSString *p)
+{
+    return (void *)(p + 1);
+}
+
+static inline uint16_t *str16(JSString *p)
+{
+    return (void *)(p + 1);
+}
 
 typedef struct JSClosureVar {
     uint8_t is_local : 1;
@@ -1003,7 +1009,7 @@ static JSValue JS_EvalObject(JSContext *ctx, JSValue this_obj,
                              JSValue val, int flags, int scope_idx);
 JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
 
-static __maybe_unused void JS_DumpString(JSRuntime *rt, const JSString *p);
+static __maybe_unused void JS_DumpString(JSRuntime *rt, JSString *p);
 static __maybe_unused void JS_DumpObjectHeader(JSRuntime *rt);
 static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p);
 static __maybe_unused void JS_DumpGCObject(JSRuntime *rt, JSGCObjectHeader *p);
@@ -1126,7 +1132,7 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                              JSAtom prop, JSValue val,
                              JSValue getter, JSValue setter,
                              int flags);
-static int js_string_memcmp(const JSString *p1, const JSString *p2, int len);
+static int js_string_memcmp(JSString *p1, JSString *p2, int len);
 static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref);
 static bool is_valid_weakref_target(JSValue val);
 static void insert_weakref_record(JSValue target, struct JSWeakRefRecord *wr);
@@ -1182,8 +1188,8 @@ static JSValue js_promise_resolve(JSContext *ctx, JSValue this_val,
                                   int argc, JSValue *argv, int magic);
 static JSValue js_promise_then(JSContext *ctx, JSValue this_val,
                                int argc, JSValue *argv);
-static bool js_string_eq(const JSString *p1, const JSString *p2);
-static int js_string_compare(const JSString *p1, const JSString *p2);
+static bool js_string_eq(JSString *p1, JSString *p2);
+static int js_string_compare(JSString *p1, JSString *p2);
 static int JS_SetPropertyValue(JSContext *ctx, JSValue this_obj,
                                JSValue prop, JSValue val, int flags);
 static int JS_NumberIsInteger(JSContext *ctx, JSValue val);
@@ -1606,8 +1612,8 @@ static inline int is_digit(int c) {
     return c >= '0' && c <= '9';
 }
 
-static inline int string_get(const JSString *p, int idx) {
-    return p->is_wide_char ? p->u.str16[idx] : p->u.str8[idx];
+static inline int string_get(JSString *p, int idx) {
+    return p->is_wide_char ? str16(p)[idx] : str8(p)[idx];
 }
 
 typedef struct JSClassShortDef {
@@ -2519,7 +2525,7 @@ static inline int is_num(int c)
 }
 
 /* return true if the string is a number n with 0 <= n <= 2^32-1 */
-static inline bool is_num_string(uint32_t *pval, const JSString *p)
+static inline bool is_num_string(uint32_t *pval, JSString *p)
 {
     uint32_t n;
     uint64_t n64;
@@ -2573,17 +2579,16 @@ static inline uint32_t hash_string16(const uint16_t *str,
     return h;
 }
 
-static uint32_t hash_string(const JSString *str, uint32_t h)
+static uint32_t hash_string(JSString *str, uint32_t h)
 {
     if (str->is_wide_char)
-        h = hash_string16(str->u.str16, str->len, h);
+        h = hash_string16(str16(str), str->len, h);
     else
-        h = hash_string8(str->u.str8, str->len, h);
+        h = hash_string8(str8(str), str->len, h);
     return h;
 }
 
-static __maybe_unused void JS_DumpString(JSRuntime *rt,
-                                                  const JSString *p)
+static __maybe_unused void JS_DumpString(JSRuntime *rt, JSString *p)
 {
     int i, c, sep;
 
@@ -2887,7 +2892,7 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
             list_add_tail(&p->link, &rt->string_list);
 #endif
-            memcpy(p->u.str8, str->u.str8, (str->len << str->is_wide_char) +
+            memcpy(str8(p), str8(str), (str->len << str->is_wide_char) +
                    1 - str->is_wide_char);
             js_free_string(rt, str);
         }
@@ -2942,8 +2947,8 @@ static JSAtom __JS_NewAtomInit(JSRuntime *rt, const char *str, int len,
     p = js_alloc_string_rt(rt, len, 0);
     if (!p)
         return JS_ATOM_NULL;
-    memcpy(p->u.str8, str, len);
-    p->u.str8[len] = '\0';
+    memcpy(str8(p), str, len);
+    str8(p)[len] = '\0';
     return __JS_NewAtom(rt, p, atom_type);
 }
 
@@ -2964,7 +2969,7 @@ static JSAtom __JS_FindAtom(JSRuntime *rt, const char *str, size_t len,
             p->atom_type == JS_ATOM_TYPE_STRING &&
             p->len == len &&
             p->is_wide_char == 0 &&
-            memcmp(p->u.str8, str, len) == 0) {
+            memcmp(str8(p), str, len) == 0) {
             if (!__JS_AtomIsConst(i))
                 p->header.ref_count++;
             return i;
@@ -3149,9 +3154,9 @@ static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
             JSString *str = p;
             if (str->is_wide_char) {
                 /* encode surrogates correctly */
-                utf8_encode_buf16(buf, buf_size, str->u.str16, str->len);
+                utf8_encode_buf16(buf, buf_size, str16(str), str->len);
             } else {
-                utf8_encode_buf8(buf, buf_size, str->u.str8, str->len);
+                utf8_encode_buf8(buf, buf_size, str8(str), str->len);
             }
         }
     }
@@ -3245,7 +3250,7 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
     p = p1;
     len = p->len;
     if (p->is_wide_char) {
-        const uint16_t *r = p->u.str16, *r_end = p->u.str16 + len;
+        const uint16_t *r = str16(p), *r_end = str16(p) + len;
         if (r >= r_end)
             return JS_UNDEFINED;
         c = *r;
@@ -3267,7 +3272,7 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
                 return JS_UNDEFINED;
         }
     } else {
-        const uint8_t *r = p->u.str8, *r_end = p->u.str8 + len;
+        const uint8_t *r = str8(p), *r_end = str8(p) + len;
         if (r >= r_end)
             return JS_UNDEFINED;
         c = *r;
@@ -3552,8 +3557,8 @@ static JSValue js_new_string8_len(JSContext *ctx, const char *buf, int len)
     str = js_alloc_string(ctx, len, 0);
     if (!str)
         return JS_EXCEPTION;
-    memcpy(str->u.str8, buf, len);
-    str->u.str8[len] = '\0';
+    memcpy(str8(str), buf, len);
+    str8(str)[len] = '\0';
     return JS_MKPTR(JS_TAG_STRING, str);
 }
 
@@ -3570,7 +3575,7 @@ static JSValue js_new_string16_len(JSContext *ctx, const uint16_t *buf, int len)
     str = js_alloc_string(ctx, len, 1);
     if (!str)
         return JS_EXCEPTION;
-    memcpy(str->u.str16, buf, len * 2);
+    memcpy(str16(str), buf, len * 2);
     return JS_MKPTR(JS_TAG_STRING, str);
 }
 
@@ -3599,21 +3604,21 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
         int i;
         uint16_t c = 0;
         for (i = start; i < end; i++) {
-            c |= p->u.str16[i];
+            c |= str16(p)[i];
         }
         if (c > 0xFF)
-            return js_new_string16_len(ctx, p->u.str16 + start, len);
+            return js_new_string16_len(ctx, str16(p) + start, len);
 
         str = js_alloc_string(ctx, len, 0);
         if (!str)
             return JS_EXCEPTION;
         for (i = 0; i < len; i++) {
-            str->u.str8[i] = p->u.str16[start + i];
+            str8(str)[i] = str16(p)[start + i];
         }
-        str->u.str8[len] = '\0';
+        str8(str)[len] = '\0';
         return JS_MKPTR(JS_TAG_STRING, str);
     } else {
-        return js_new_string8_len(ctx, (const char *)(p->u.str8 + start), len);
+        return js_new_string8_len(ctx, (const char *)(str8(p) + start), len);
     }
 }
 
@@ -3684,7 +3689,7 @@ static no_inline int string_buffer_widen(StringBuffer *s, int size)
         return string_buffer_set_error(s);
     size += slack >> 1;
     for(i = s->len; i-- > 0;) {
-        str->u.str16[i] = str->u.str8[i];
+        str16(str)[i] = str8(str)[i];
     }
     s->is_wide_char = 1;
     s->size = size;
@@ -3726,13 +3731,13 @@ static no_inline int string_buffer_putc_slow(StringBuffer *s, uint32_t c)
             return -1;
     }
     if (s->is_wide_char) {
-        s->str->u.str16[s->len++] = c;
+        str16(s->str)[s->len++] = c;
     } else if (c < 0x100) {
-        s->str->u.str8[s->len++] = c;
+        str8(s->str)[s->len++] = c;
     } else {
         if (string_buffer_widen(s, s->size))
             return -1;
-        s->str->u.str16[s->len++] = c;
+        str16(s->str)[s->len++] = c;
     }
     return 0;
 }
@@ -3745,9 +3750,9 @@ static int string_buffer_putc8(StringBuffer *s, uint32_t c)
             return -1;
     }
     if (s->is_wide_char) {
-        s->str->u.str16[s->len++] = c;
+        str16(s->str)[s->len++] = c;
     } else {
-        s->str->u.str8[s->len++] = c;
+        str8(s->str)[s->len++] = c;
     }
     return 0;
 }
@@ -3757,10 +3762,10 @@ static int string_buffer_putc16(StringBuffer *s, uint32_t c)
 {
     if (likely(s->len < s->size)) {
         if (s->is_wide_char) {
-            s->str->u.str16[s->len++] = c;
+            str16(s->str)[s->len++] = c;
             return 0;
         } else if (c < 0x100) {
-            s->str->u.str8[s->len++] = c;
+            str8(s->str)[s->len++] = c;
             return 0;
         }
     }
@@ -3779,21 +3784,21 @@ static int string_buffer_putc(StringBuffer *s, uint32_t c)
     return string_buffer_putc16(s, c);
 }
 
-static int string_getc(const JSString *p, int *pidx)
+static int string_getc(JSString *p, int *pidx)
 {
     int idx, c, c1;
     idx = *pidx;
     if (p->is_wide_char) {
-        c = p->u.str16[idx++];
+        c = str16(p)[idx++];
         if (is_hi_surrogate(c) && idx < p->len) {
-            c1 = p->u.str16[idx];
+            c1 = str16(p)[idx];
             if (is_lo_surrogate(c1)) {
                 c = from_surrogate(c, c1);
                 idx++;
             }
         }
     } else {
-        c = p->u.str8[idx++];
+        c = str8(p)[idx++];
     }
     *pidx = idx;
     return c;
@@ -3809,11 +3814,11 @@ static int string_buffer_write8(StringBuffer *s, const uint8_t *p, int len)
     }
     if (s->is_wide_char) {
         for (i = 0; i < len; i++) {
-            s->str->u.str16[s->len + i] = p[i];
+            str16(s->str)[s->len + i] = p[i];
         }
         s->len += len;
     } else {
-        memcpy(&s->str->u.str8[s->len], p, len);
+        memcpy(&str8(s->str)[s->len], p, len);
         s->len += len;
     }
     return 0;
@@ -3834,11 +3839,11 @@ static int string_buffer_write16(StringBuffer *s, const uint16_t *p, int len)
             return -1;
     }
     if (s->is_wide_char) {
-        memcpy(&s->str->u.str16[s->len], p, len << 1);
+        memcpy(&str16(s->str)[s->len], p, len << 1);
         s->len += len;
     } else {
         for (i = 0; i < len; i++) {
-            s->str->u.str8[s->len + i] = p[i];
+            str8(s->str)[s->len + i] = p[i];
         }
         s->len += len;
     }
@@ -3851,15 +3856,15 @@ static int string_buffer_puts8(StringBuffer *s, const char *str)
     return string_buffer_write8(s, (const uint8_t *)str, strlen(str));
 }
 
-static int string_buffer_concat(StringBuffer *s, const JSString *p,
+static int string_buffer_concat(StringBuffer *s, JSString *p,
                                 uint32_t from, uint32_t to)
 {
     if (to <= from)
         return 0;
     if (p->is_wide_char)
-        return string_buffer_write16(s, p->u.str16 + from, to - from);
+        return string_buffer_write16(s, str16(p) + from, to - from);
     else
-        return string_buffer_write8(s, p->u.str8 + from, to - from);
+        return string_buffer_write8(s, str8(p) + from, to - from);
 }
 
 static int string_buffer_concat_value(StringBuffer *s, JSValue v)
@@ -3942,7 +3947,7 @@ static JSValue string_buffer_end(StringBuffer *s)
         s->str = str;
     }
     if (!s->is_wide_char)
-        str->u.str8[s->len] = 0;
+        str8(str)[s->len] = 0;
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
     list_add_tail(&str->link, &s->ctx->rt->string_list);
 #endif
@@ -3972,15 +3977,15 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
         str = js_alloc_string(ctx, len, 0);
         if (!str)
             return JS_EXCEPTION;
-        memcpy(str->u.str8, buf, len);
-        str->u.str8[len] = '\0';
+        memcpy(str8(str), buf, len);
+        str8(str)[len] = '\0';
         break;
     case UTF8_NON_ASCII:
         /* buf contains non-ASCII code-points, but limited to 8-bit values */
         str = js_alloc_string(ctx, len, 0);
         if (!str)
             return JS_EXCEPTION;
-        utf8_decode_buf8(str->u.str8, len + 1, buf, buf_len);
+        utf8_decode_buf8(str8(str), len + 1, buf, buf_len);
         break;
     default:
         // This causes a potential problem in JS_ThrowError if message is invalid
@@ -3989,7 +3994,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
         str = js_alloc_string(ctx, len, 1);
         if (!str)
             return JS_EXCEPTION;
-        utf8_decode_buf16(str->u.str16, len, buf, buf_len);
+        utf8_decode_buf16(str16(str), len, buf, buf_len);
         break;
     }
     return JS_MKPTR(JS_TAG_STRING, str);
@@ -4078,7 +4083,7 @@ go:
     str = JS_VALUE_GET_STRING(val);
     len = str->len;
     if (!str->is_wide_char) {
-        const uint8_t *src = str->u.str8;
+        const uint8_t *src = str8(str);
         int count;
 
         /* count the number of non-ASCII characters */
@@ -4099,7 +4104,7 @@ go:
         str_new = js_alloc_string(ctx, len + count, 0);
         if (!str_new)
             goto fail;
-        q = str_new->u.str8;
+        q = str8(str_new);
         for (pos = 0; pos < len; pos++) {
             c = src[pos];
             if (c < 0x80) {
@@ -4110,14 +4115,14 @@ go:
             }
         }
     } else {
-        const uint16_t *src = str->u.str16;
+        const uint16_t *src = str16(str);
         /* Allocate 3 bytes per 16 bit code point. Surrogate pairs may
            produce 4 bytes but use 2 code points.
          */
         str_new = js_alloc_string(ctx, len * 3, 0);
         if (!str_new)
             goto fail;
-        q = str_new->u.str8;
+        q = str8(str_new);
         pos = 0;
         while (pos < len) {
             c = src[pos++];
@@ -4145,11 +4150,11 @@ go:
     }
 
     *q = '\0';
-    str_new->len = q - str_new->u.str8;
+    str_new->len = q - str8(str_new);
     JS_FreeValue(ctx, val);
     if (plen)
         *plen = str_new->len;
-    return (const char *)str_new->u.str8;
+    return (const char *)str8(str_new);
  fail:
     if (plen)
         *plen = 0;
@@ -4158,12 +4163,10 @@ go:
 
 void JS_FreeCString(JSContext *ctx, const char *ptr)
 {
-    JSString *p;
     if (!ptr)
         return;
     /* purposely removing constness */
-    p = container_of(ptr, JSString, u);
-    JS_FreeValue(ctx, JS_MKPTR(JS_TAG_STRING, p));
+    JS_FreeValue(ctx, JS_MKPTR(JS_TAG_STRING, (JSString *)ptr - 1));
 }
 
 static int memcmp16_8(const uint16_t *src1, const uint8_t *src2, int len)
@@ -4188,32 +4191,32 @@ static int memcmp16(const uint16_t *src1, const uint16_t *src2, int len)
     return 0;
 }
 
-static int js_string_memcmp(const JSString *p1, const JSString *p2, int len)
+static int js_string_memcmp(JSString *p1, JSString *p2, int len)
 {
     int res;
 
     if (likely(!p1->is_wide_char)) {
         if (likely(!p2->is_wide_char))
-            res = memcmp(p1->u.str8, p2->u.str8, len);
+            res = memcmp(str8(p1), str8(p2), len);
         else
-            res = -memcmp16_8(p2->u.str16, p1->u.str8, len);
+            res = -memcmp16_8(str16(p2), str8(p1), len);
     } else {
         if (!p2->is_wide_char)
-            res = memcmp16_8(p1->u.str16, p2->u.str8, len);
+            res = memcmp16_8(str16(p1), str8(p2), len);
         else
-            res = memcmp16(p1->u.str16, p2->u.str16, len);
+            res = memcmp16(str16(p1), str16(p2), len);
     }
     return res;
 }
 
-static bool js_string_eq(const JSString *p1, const JSString *p2) {
+static bool js_string_eq(JSString *p1, JSString *p2) {
     if (p1->len != p2->len)
         return false;
     return js_string_memcmp(p1, p2, p1->len) == 0;
 }
 
 /* return < 0, 0 or > 0 */
-static int js_string_compare(const JSString *p1, const JSString *p2)
+static int js_string_compare(JSString *p1, JSString *p2)
 {
     int res, len;
     len = min_int(p1->len, p2->len);
@@ -4223,12 +4226,12 @@ static int js_string_compare(const JSString *p1, const JSString *p2)
     return res;
 }
 
-static void copy_str16(uint16_t *dst, const JSString *p, int offset, int len)
+static void copy_str16(uint16_t *dst, JSString *p, int offset, int len)
 {
     if (p->is_wide_char) {
-        memcpy(dst, p->u.str16 + offset, len * 2);
+        memcpy(dst, str16(p) + offset, len * 2);
     } else {
-        const uint8_t *src1 = p->u.str8 + offset;
+        const uint8_t *src1 = str8(p) + offset;
         int i;
 
         for(i = 0; i < len; i++)
@@ -4236,8 +4239,7 @@ static void copy_str16(uint16_t *dst, const JSString *p, int offset, int len)
     }
 }
 
-static JSValue JS_ConcatString1(JSContext *ctx,
-                                const JSString *p1, const JSString *p2)
+static JSValue JS_ConcatString1(JSContext *ctx, JSString *p1, JSString *p2)
 {
     JSString *p;
     uint32_t len;
@@ -4251,12 +4253,12 @@ static JSValue JS_ConcatString1(JSContext *ctx,
     if (!p)
         return JS_EXCEPTION;
     if (!is_wide_char) {
-        memcpy(p->u.str8, p1->u.str8, p1->len);
-        memcpy(p->u.str8 + p1->len, p2->u.str8, p2->len);
-        p->u.str8[len] = '\0';
+        memcpy(str8(p), str8(p1), p1->len);
+        memcpy(str8(p) + p1->len, str8(p2), p2->len);
+        str8(p)[len] = '\0';
     } else {
-        copy_str16(p->u.str16, p1, 0, p1->len);
-        copy_str16(p->u.str16 + p1->len, p2, 0, p2->len);
+        copy_str16(str16(p), p1, 0, p1->len);
+        copy_str16(str16(p) + p1->len, p2, 0, p2->len);
     }
     return JS_MKPTR(JS_TAG_STRING, p);
 }
@@ -4293,12 +4295,12 @@ static JSValue JS_ConcatString(JSContext *ctx, JSValue op1, JSValue op2)
     &&  js_malloc_usable_size(ctx, p1) >= sizeof(*p1) + ((p1->len + p2->len) << p2->is_wide_char) + 1 - p1->is_wide_char) {
         /* Concatenate in place in available space at the end of p1 */
         if (p1->is_wide_char) {
-            memcpy(p1->u.str16 + p1->len, p2->u.str16, p2->len << 1);
+            memcpy(str16(p1) + p1->len, str16(p2), p2->len << 1);
             p1->len += p2->len;
         } else {
-            memcpy(p1->u.str8 + p1->len, p2->u.str8, p2->len);
+            memcpy(str8(p1) + p1->len, str8(p2), p2->len);
             p1->len += p2->len;
-            p1->u.str8[p1->len] = '\0';
+            str8(p1)[p1->len] = '\0';
         }
     ret_op1:
         JS_FreeValue(ctx, op2);
@@ -33839,9 +33841,9 @@ static void JS_WriteString(BCWriterState *s, JSString *p)
     bc_put_leb128(s, ((uint32_t)p->len << 1) | p->is_wide_char);
     if (p->is_wide_char) {
         for(i = 0; i < p->len; i++)
-            bc_put_u16(s, p->u.str16[i]);
+            bc_put_u16(s, str16(p)[i]);
     } else {
-        dbuf_put(&s->dbuf, p->u.str8, p->len);
+        dbuf_put(&s->dbuf, str8(p), p->len);
     }
 }
 
@@ -34196,12 +34198,12 @@ static int JS_WriteRegExp(BCWriterState *s, JSRegExp regexp)
     JS_WriteString(s, regexp.pattern);
 
     if (is_be())
-        lre_byte_swap(bc->u.str8, bc->len, /*is_byte_swapped*/false);
+        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/false);
 
     JS_WriteString(s, bc);
 
     if (is_be())
-        lre_byte_swap(bc->u.str8, bc->len, /*is_byte_swapped*/true);
+        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true);
 
     return 0;
 }
@@ -34690,16 +34692,16 @@ static JSString *JS_ReadString(BCReaderState *s)
         js_free_string(s->ctx->rt, p);
         return NULL;
     }
-    memcpy(p->u.str8, s->ptr, size);
+    memcpy(str8(p), s->ptr, size);
     s->ptr += size;
     if (is_wide_char) {
         if (is_be()) {
             uint32_t i;
             for (i = 0; i < len; i++)
-                p->u.str16[i] = bswap16(p->u.str16[i]);
+                str16(p)[i] = bswap16(str16(p)[i]);
         }
     } else {
-        p->u.str8[size] = '\0'; /* add the trailing zero for 8 bit strings */
+        str8(p)[size] = '\0'; /* add the trailing zero for 8 bit strings */
     }
 #ifdef ENABLE_DUMPS // JS_DUMP_READ_OBJECT
     if (check_dump_flag(s->ctx->rt, JS_DUMP_READ_OBJECT)) {
@@ -35454,7 +35456,7 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
     }
 
     if (is_be())
-        lre_byte_swap(bc->u.str8, bc->len, /*is_byte_swapped*/true);
+        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true);
 
     return js_regexp_constructor_internal(ctx, JS_UNDEFINED,
                                           JS_MKPTR(JS_TAG_STRING, pattern),
@@ -35799,7 +35801,7 @@ static JSAtom find_atom(JSContext *ctx, const char *name)
         for(atom = JS_ATOM_Symbol_toPrimitive; atom < JS_ATOM_END; atom++) {
             JSAtomStruct *p = ctx->rt->atom_array[atom];
             JSString *str = p;
-            if (str->len == len && !memcmp(str->u.str8, name, len))
+            if (str->len == len && !memcmp(str8(str), name, len))
                 return JS_DupAtom(ctx, atom);
         }
         abort();
@@ -39029,7 +39031,7 @@ static JSValue js_array_join(JSContext *ctx, JSValue this_val,
             goto exception;
         p = JS_VALUE_GET_STRING(sep);
         if (p->len == 1 && !p->is_wide_char)
-            c = p->u.str8[0];
+            c = str8(p)[0];
         else
             c = -1;
     }
@@ -41608,13 +41610,13 @@ static int string_indexof_char(JSString *p, int c, int from)
     int i, len = p->len;
     if (p->is_wide_char) {
         for (i = from; i < len; i++) {
-            if (p->u.str16[i] == c)
+            if (str16(p)[i] == c)
                 return i;
         }
     } else {
         if ((c & ~0xff) == 0) {
             for (i = from; i < len; i++) {
-                if (p->u.str8[i] == (uint8_t)c)
+                if (str8(p)[i] == (uint8_t)c)
                     return i;
             }
         }
@@ -41668,12 +41670,12 @@ static JSValue js_string_isWellFormed(JSContext *ctx, JSValue this_val,
         goto done; // by definition well-formed
 
     for (i = 0, n = p->len; i < n; i++) {
-        c = p->u.str16[i];
+        c = str16(p)[i];
         if (!is_surrogate(c))
             continue;
         if (is_lo_surrogate(c) || i + 1 == n)
             break;
-        c = p->u.str16[++i];
+        c = str16(p)[++i];
         if (!is_lo_surrogate(c))
             break;
     }
@@ -41703,23 +41705,23 @@ static JSValue js_string_toWellFormed(JSContext *ctx, JSValue this_val,
         return str; // by definition well-formed
 
     // TODO(bnoordhuis) don't clone when input is well-formed
-    ret = js_new_string16_len(ctx, p->u.str16, p->len);
+    ret = js_new_string16_len(ctx, str16(p), p->len);
     JS_FreeValue(ctx, str);
     if (JS_IsException(ret))
         return JS_EXCEPTION;
 
     p = JS_VALUE_GET_STRING(ret);
     for (i = 0, n = p->len; i < n; i++) {
-        c = p->u.str16[i];
+        c = str16(p)[i];
         if (!is_surrogate(c))
             continue;
         if (is_lo_surrogate(c) || i + 1 == n) {
-            p->u.str16[i] = 0xFFFD;
+            str16(p)[i] = 0xFFFD;
             continue;
         }
-        c = p->u.str16[++i];
+        c = str16(p)[++i];
         if (!is_lo_surrogate(c))
-            p->u.str16[--i] = 0xFFFD;
+            str16(p)[--i] = 0xFFFD;
     }
 
     return ret;
@@ -42488,16 +42490,16 @@ static int string_prevc(JSString *p, int *pidx)
         return 0;
     idx--;
     if (p->is_wide_char) {
-        c = p->u.str16[idx];
+        c = str16(p)[idx];
         if (is_lo_surrogate(c) && idx > 0) {
-            c1 = p->u.str16[idx - 1];
+            c1 = str16(p)[idx - 1];
             if (is_hi_surrogate(c1)) {
                 c = from_surrogate(c1, c);
                 idx--;
             }
         }
     } else {
-        c = p->u.str8[idx];
+        c = str8(p)[idx];
     }
     *pidx = idx;
     return c;
@@ -42688,6 +42690,7 @@ static JSValue js_string_normalize(JSContext *ctx, JSValue this_val,
     val = JS_ToStringCheckObject(ctx, this_val);
     if (JS_IsException(val))
         return val;
+    buf = NULL; // appease bogus -Wmaybe-uninitialized warning
     buf_len = JS_ToUTF32String(ctx, &buf, val);
     JS_FreeValue(ctx, val);
     if (buf_len < 0)
@@ -42774,7 +42777,7 @@ static JSValue js_string_iterator_next(JSContext *ctx, JSValue this_val,
     if (c <= 0xffff) {
         return js_new_string_char(ctx, c);
     } else {
-        return js_new_string16_len(ctx, p->u.str16 + start, 2);
+        return js_new_string16_len(ctx, str16(p) + start, 2);
     }
 }
 
@@ -42799,7 +42802,7 @@ static JSValue js_string_CreateHTML(JSContext *ctx, JSValue this_val,
                                     int argc, JSValue *argv, int magic)
 {
     JSValue str;
-    const JSString *p;
+    JSString *p;
     StringBuffer b_s, *b = &b_s;
     static struct { const char *tag, *attr; } const defs[] = {
         { "a", "name" }, { "big", NULL }, { "blink", NULL }, { "b", NULL },
@@ -43681,7 +43684,7 @@ static JSValue js_regexp_get_flag(JSContext *ctx, JSValue this_val, int mask)
             return JS_ThrowTypeErrorInvalidClass(ctx, JS_CLASS_REGEXP);
     }
 
-    flags = lre_get_flags(re->bytecode->u.str8);
+    flags = lre_get_flags(str8(re->bytecode));
     return js_bool(flags & mask);
 }
 
@@ -43792,7 +43795,7 @@ static JSValue js_regexp_escape(JSContext *ctx, JSValue this_val,
     p = JS_VALUE_GET_STRING(argv[0]);
     string_buffer_init2(ctx, b, 0, p->is_wide_char);
     for (i = 0; i < p->len; i++) {
-        c = p->is_wide_char ? (uint32_t)p->u.str16[i] : (uint32_t)p->u.str8[i];
+        c = p->is_wide_char ? (uint32_t)str16(p)[i] : (uint32_t)str8(p)[i];
         if (c < 33) {
             if (c >= 9 && c <= 13) {
                 string_buffer_putc8(b, '\\');
@@ -43857,7 +43860,7 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValue this_val,
     if (JS_IsException(val) || JS_ToLengthFree(ctx, &last_index, val))
         goto fail;
 
-    re_bytecode = re->bytecode->u.str8;
+    re_bytecode = str8(re->bytecode);
     re_flags = lre_get_flags(re_bytecode);
     if ((re_flags & (LRE_FLAG_GLOBAL | LRE_FLAG_STICKY)) == 0) {
         last_index = 0;
@@ -43870,7 +43873,7 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValue this_val,
             goto fail;
     }
     shift = str->is_wide_char;
-    str_buf = str->u.str8;
+    str_buf = str8(str);
     if (last_index > str->len) {
         rc = 2;
     } else {
@@ -44049,7 +44052,7 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValue this_val, JSValue arg)
     if (JS_IsException(str_val))
         goto fail;
     str = JS_VALUE_GET_STRING(str_val);
-    re_bytecode = re->bytecode->u.str8;
+    re_bytecode = str8(re->bytecode);
     re_flags = lre_get_flags(re_bytecode);
     if ((re_flags & (LRE_FLAG_GLOBAL | LRE_FLAG_STICKY)) == 0) {
         last_index = 0;
@@ -44065,7 +44068,7 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValue this_val, JSValue arg)
             goto fail;
     }
     shift = str->is_wide_char;
-    str_buf = str->u.str8;
+    str_buf = str8(str);
     next_src_pos = 0;
     for (;;) {
         if (last_index > str->len)
@@ -53323,7 +53326,7 @@ static JSValue js_typed_array_join(JSContext *ctx, JSValue this_val,
             goto exception;
         s = JS_VALUE_GET_STRING(sep);
         if (s->len == 1 && !s->is_wide_char)
-            c = s->u.str8[0];
+            c = str8(s)[0];
         else
             c = -1;
         // ToString(sep) can detach or resize the arraybuffer as a side effect
