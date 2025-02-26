@@ -189,6 +189,7 @@ DEF(          gosub, 5, 0, 0, label) /* used to execute the finally block */
 DEF(            ret, 1, 1, 0, none) /* used to return from the finally block */
 DEF(      nip_catch, 1, 2, 1, none) /* catch ... a -> a */
 
+DEF(   check_object, 1, 1, 1, none)
 DEF(      to_object, 1, 1, 1, none)
 //DEF(      to_string, 1, 1, 1, none)
 DEF(     to_propkey, 1, 1, 1, none)
@@ -211,7 +212,6 @@ DEF(   for_of_start, 1, 1, 3, none)
 DEF(for_await_of_start, 1, 1, 3, none)
 DEF(    for_in_next, 1, 1, 3, none)
 DEF(    for_of_next, 2, 3, 5, u8)
-DEF(iterator_check_object, 1, 1, 1, none)
 DEF(iterator_get_value_done, 1, 1, 2, none)
 DEF( iterator_close, 1, 3, 0, none)
 DEF(  iterator_next, 1, 4, 4, none)
