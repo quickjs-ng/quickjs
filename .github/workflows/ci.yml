@@ -566,3 +566,29 @@ jobs:
       - name: test
         run: |
           make test
+
+  amalgam:
+    strategy:
+      matrix:
+        # TODO(bnoordhuis) test on windows
+        config:
+          - { os: ubuntu-latest }
+          - { os: macos-latest }
+    runs-on: ${{ matrix.config.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: |
+          make
+      - name: copy files
+        run: |
+          cp quickjs.h run-test262.c $RUNNER_TEMP
+      - name: create amalgamation
+        run: |
+          build/qjs amalgam.js $RUNNER_TEMP/quickjs-amalgam.c
+      - name: build amalgamation
+        run: |
+          cd $RUNNER_TEMP && cc -Wall -o run-test262 run-test262.c quickjs-amalgam.c
+      - name: test
+        run: |
+          make test RUN262=$RUNNER_TEMP/run-test262

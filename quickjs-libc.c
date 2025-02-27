@@ -94,7 +94,9 @@ extern char **environ;
 #include "list.h"
 #include "quickjs-libc.h"
 
+#ifndef MAX_SAFE_INTEGER // already defined in amalgamation builds
 #define MAX_SAFE_INTEGER (((int64_t) 1 << 53) - 1)
+#endif
 
 #ifndef QJS_NATIVE_MODULE_SUFFIX
 #ifdef _WIN32
