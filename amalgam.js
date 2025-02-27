@@ -19,7 +19,7 @@ const quickjs_libc_c = loadFile("quickjs-libc.c")
 const quickjs_libc_h = loadFile("quickjs-libc.h")
 const quickjs_opcode_h = loadFile("quickjs-opcode.h")
 
-let source = "#if defined(CONFIG_QUICKJS_LIBC) && defined(__linux__) && !defined(_GNU_SOURCE)\n"
+let source = "#if defined(QJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU_SOURCE)\n"
            + "#define _GNU_SOURCE\n"
            + "#endif\n"
            + quickjs_c_atomics_h
@@ -35,10 +35,10 @@ let source = "#if defined(CONFIG_QUICKJS_LIBC) && defined(__linux__) && !defined
            + libbf_c
            + libregexp_c
            + libunicode_c
-           + "#ifdef CONFIG_QUICKJS_LIBC\n"
+           + "#ifdef QJS_BUILD_LIBC\n"
            + quickjs_libc_h
            + quickjs_libc_c
-           + "#endif // CONFIG_QUICKJS_LIBC\n"
+           + "#endif // QJS_BUILD_LIBC\n"
 source = source.replace(/#include "quickjs-atom.h"/g, quickjs_atom_h)
 source = source.replace(/#include "quickjs-opcode.h"/g, quickjs_opcode_h)
 source = source.replace(/#include "libregexp-opcode.h"/g, libregexp_opcode_h)
