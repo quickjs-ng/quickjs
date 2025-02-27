@@ -536,6 +536,68 @@ static JSValue js_std_loadFile(JSContext *ctx, JSValue this_val,
     return ret;
 }
 
+static JSValue js_std_writeFile(JSContext *ctx, JSValue this_val,
+                                int argc, JSValue *argv)
+{
+    const char *filename;
+    const char *mode;
+    const void *buf;
+    size_t len, n;
+    JSValue data, val, ret;
+    bool release, unref;
+    FILE *fp;
+
+    ret = JS_EXCEPTION;
+    len = 0;
+    buf = "";
+    mode = "w";
+    data = argv[1];
+    unref = false;
+    release = false;
+    filename = JS_ToCString(ctx, argv[0]);
+    if (!filename)
+        return JS_EXCEPTION;
+    if (JS_IsObject(data)) {
+        val = JS_GetPropertyStr(ctx, data, "buffer");
+        if (JS_IsException(val))
+            goto exception;
+        if (JS_IsArrayBuffer(val)) {
+            data = val;
+            unref = true;
+        } else {
+            JS_FreeValue(ctx, val);
+        }
+    }
+    if (JS_IsArrayBuffer(data)) {
+        buf = JS_GetArrayBuffer(ctx, &len, data);
+        mode = "wb";
+    } else if (!JS_IsUndefined(data)) {
+        buf = JS_ToCStringLen(ctx, &len, data);
+        release = true;
+    }
+    if (!buf)
+        goto exception;
+    fp = fopen(filename, mode);
+    if (!fp) {
+        JS_ThrowPlainError(ctx, "error opening %s for writing", filename);
+        goto exception;
+    }
+    n = fwrite(buf, len, 1, fp);
+    fclose(fp);
+    if (n != 1) {
+        JS_ThrowPlainError(ctx, "error writing to %s", filename);
+        goto exception;
+    }
+    ret = JS_UNDEFINED;
+exception:
+    JS_FreeCString(ctx, filename);
+    if (release)
+        JS_FreeCString(ctx, buf);
+    if (unref)
+        JS_FreeValue(ctx, data);
+    return ret;
+}
+
 typedef JSModuleDef *(JSInitModuleFunc)(JSContext *ctx,
                                         const char *module_name);
 
@@ -1674,6 +1736,7 @@ static const JSCFunctionListEntry js_std_funcs[] = {
     JS_CFUNC_DEF("urlGet", 1, js_std_urlGet ),
 #endif
     JS_CFUNC_DEF("loadFile", 1, js_std_loadFile ),
+    JS_CFUNC_DEF("writeFile", 2, js_std_writeFile ),
     JS_CFUNC_DEF("strerror", 1, js_std_strerror ),
 
     /* FILE I/O */
