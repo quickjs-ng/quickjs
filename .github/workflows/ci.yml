@@ -586,8 +586,8 @@ jobs:
       - name: build amalgamation
         run: |
           cc -Wall -I. -o $RUNNER_TEMP/run-test262.o -c run-test262.c
-          cc -Wall -I/ -o $RUNNER_TEMP/quickjs-amalgam.o -c $RUNNER_TEMP/quickjs-amalgam.c
-          cc -o $RUNNER_TEMP/run-test262 $RUNNER_TEMP/run-test262.o $RUNNER_TEMP/quickjs-amalgam.o
+          cc -Wall -I/ -DQJS_BUILD_LIBC -o $RUNNER_TEMP/quickjs-amalgam.o -c $RUNNER_TEMP/quickjs-amalgam.c
+          cc -o $RUNNER_TEMP/run-test262 $RUNNER_TEMP/run-test262.o $RUNNER_TEMP/quickjs-amalgam.o -lm
       - name: test
         run: |
           make test RUN262=$RUNNER_TEMP/run-test262
