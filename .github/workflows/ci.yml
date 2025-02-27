@@ -580,15 +580,14 @@ jobs:
       - name: build
         run: |
           make
-      - name: copy files
-        run: |
-          cp quickjs.h run-test262.c $RUNNER_TEMP
       - name: create amalgamation
         run: |
           build/qjs amalgam.js $RUNNER_TEMP/quickjs-amalgam.c
       - name: build amalgamation
         run: |
-          cd $RUNNER_TEMP && cc -Wall -o run-test262 run-test262.c quickjs-amalgam.c
+          cc -Wall -I. -o $RUNNER_TEMP/run-test262.o -c run-test262.c
+          cc -Wall -I/ -o $RUNNER_TEMP/quickjs-amalgam.o -c $RUNNER_TEMP/quickjs-amalgam.c
+          cc -o $RUNNER_TEMP/run-test262 $RUNNER_TEMP/run-test262.o $RUNNER_TEMP/quickjs-amalgam.o
       - name: test
         run: |
           make test RUN262=$RUNNER_TEMP/run-test262
