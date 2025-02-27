@@ -93,14 +93,15 @@ function test_getline()
 function test_popen()
 {
     var str, f, fname = "tmp_file.txt";
-    var content = "hello world";
+    var ta, content = "hello world";
     var cmd = isWin ? "type" : "cat";
 
-    f = std.open(fname, "w");
-    f.puts(content);
-    f.close();
-
-    /* test loadFile */
+    ta = new Uint8Array([...content].map(c => c.charCodeAt(0)));
+    std.writeFile(fname, ta);
+    assert(std.loadFile(fname), content);
+    std.writeFile(fname, ta.buffer);
+    assert(std.loadFile(fname), content);
+    std.writeFile(fname, content);
     assert(std.loadFile(fname), content);
 
     /* execute shell command */
