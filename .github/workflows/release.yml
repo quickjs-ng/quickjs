@@ -50,11 +50,20 @@ jobs:
           cd build
           cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ..
           make -j$(getconf _NPROCESSORS_ONLN)
+          (cd .. && build/qjs amalgam.js build/quickjs-amalgam.c)
+          cp ../quickjs.h .
+          zip -9 quickjs-amalgam.zip quickjs-amalgam.c quickjs.h
           mv qjs qjs-darwin
           mv qjsc qjsc-darwin
       - name: check
         run: |
           lipo -info build/qjs-darwin build/qjsc-darwin
+      - name: upload amalgamation
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickjs-amalgam.zip
+          path: build/quickjs-amalgam.zip
+          compression-level: 0 # already compressed
       - name: upload
         uses: actions/upload-artifact@v4
         with:
@@ -124,7 +133,7 @@ jobs:
       - name: get assets
         uses: actions/download-artifact@v4
         with:
-          pattern: qjs-*
+          pattern: *
           path: build
           merge-multiple: true
       - run: ls -R build
