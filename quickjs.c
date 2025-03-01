@@ -12059,8 +12059,17 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValue val)
     }
 }
 
+bool JS_IsArray(JSValue val)
+{
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_OBJECT) {
+        JSObject *p = JS_VALUE_GET_OBJ(val);
+        return p->class_id == JS_CLASS_ARRAY;
+    }
+    return false;
+}
+
 /* return -1 if exception (proxy case) or true/false */
-int JS_IsArray(JSContext *ctx, JSValue val)
+static int js_is_array(JSContext *ctx, JSValue val)
 {
     JSObject *p;
     if (JS_VALUE_GET_TAG(val) == JS_TAG_OBJECT) {
@@ -36880,7 +36889,7 @@ static JSValue js_object_toString(JSContext *ctx, JSValue this_val,
         obj = JS_ToObject(ctx, this_val);
         if (JS_IsException(obj))
             return obj;
-        is_array = JS_IsArray(ctx, obj);
+        is_array = js_is_array(ctx, obj);
         if (is_array < 0) {
             JS_FreeValue(ctx, obj);
             return JS_EXCEPTION;
@@ -38197,7 +38206,7 @@ static JSValue js_array_isArray(JSContext *ctx, JSValue this_val,
                                 int argc, JSValue *argv)
 {
     int ret;
-    ret = JS_IsArray(ctx, argv[0]);
+    ret = js_is_array(ctx, argv[0]);
     if (ret < 0)
         return JS_EXCEPTION;
     else
@@ -38217,7 +38226,7 @@ static JSValue JS_ArraySpeciesCreate(JSContext *ctx, JSValue obj,
     int res;
     JSContext *realm;
 
-    res = JS_IsArray(ctx, obj);
+    res = js_is_array(ctx, obj);
     if (res < 0)
         return JS_EXCEPTION;
     if (!res)
@@ -38274,7 +38283,7 @@ static int JS_isConcatSpreadable(JSContext *ctx, JSValue obj)
         return -1;
     if (!JS_IsUndefined(val))
         return JS_ToBoolFree(ctx, val);
-    return JS_IsArray(ctx, obj);
+    return js_is_array(ctx, obj);
 }
 
 static JSValue js_array_at(JSContext *ctx, JSValue this_val,
@@ -39555,7 +39564,7 @@ static int64_t JS_FlattenIntoArray(JSContext *ctx, JSValue target,
                 return -1;
         }
         if (depth > 0) {
-            is_array = JS_IsArray(ctx, element);
+            is_array = js_is_array(ctx, element);
             if (is_array < 0)
                 goto fail;
             if (is_array) {
@@ -45088,7 +45097,7 @@ static JSValue internalize_json_property(JSContext *ctx, JSValue holder,
     if (JS_IsException(val))
         return val;
     if (JS_IsObject(val)) {
-        is_array = JS_IsArray(ctx, val);
+        is_array = js_is_array(ctx, val);
         if (is_array < 0)
             goto fail;
         if (is_array) {
@@ -45299,7 +45308,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
         v = js_array_push(ctx, jsc->stack, 1, &val, 0);
         if (check_exception_free(ctx, v))
             goto exception;
-        ret = JS_IsArray(ctx, val);
+        ret = js_is_array(ctx, val);
         if (ret < 0)
             goto exception;
         if (ret) {
@@ -45447,7 +45456,7 @@ JSValue JS_JSONStringify(JSContext *ctx, JSValue obj,
     if (JS_IsFunction(ctx, replacer)) {
         jsc->replacer_func = replacer;
     } else {
-        res = JS_IsArray(ctx, replacer);
+        res = js_is_array(ctx, replacer);
         if (res < 0)
             goto exception;
         if (res) {
@@ -46591,7 +46600,7 @@ static int js_proxy_isArray(JSContext *ctx, JSValue obj)
         JS_ThrowTypeErrorRevokedProxy(ctx);
         return -1;
     }
-    return JS_IsArray(ctx, s->target);
+    return js_is_array(ctx, s->target);
 }
 
 static const JSClassExoticMethods js_proxy_exotic_methods = {
@@ -46706,6 +46715,39 @@ void JS_AddIntrinsicProxy(JSContext *ctx)
                                countof(js_proxy_funcs));
     JS_DefinePropertyValueStr(ctx, ctx->global_obj, "Proxy",
                               obj1, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+}
+
+bool JS_IsProxy(JSValue val)
+{
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_OBJECT) {
+        JSObject *p = JS_VALUE_GET_OBJ(val);
+        return p->class_id == JS_CLASS_PROXY;
+    }
+    return false;
+}
+
+static JSValue js_get_proxy_field(JSContext *ctx, JSValue proxy, int offset)
+{
+    if (JS_VALUE_GET_TAG(proxy) == JS_TAG_OBJECT) {
+        JSObject *p = JS_VALUE_GET_OBJ(proxy);
+        if (p->class_id == JS_CLASS_PROXY) {
+            JSProxyData *s = JS_GetOpaque(proxy, JS_CLASS_PROXY);
+            if (s->is_revoked)
+                return JS_ThrowTypeErrorRevokedProxy(ctx);
+            return js_dup(*(JSValue *)((char *)s + offset));
+        }
+    }
+    return JS_ThrowTypeError(ctx, "not a proxy");
+}
+
+JSValue JS_GetProxyTarget(JSContext *ctx, JSValue proxy)
+{
+    return js_get_proxy_field(ctx, proxy, offsetof(JSProxyData, target));
+}
+
+JSValue JS_GetProxyHandler(JSContext *ctx, JSValue proxy)
+{
+    return js_get_proxy_field(ctx, proxy, offsetof(JSProxyData, handler));
 }
 
 /* Symbol */
