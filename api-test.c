@@ -147,11 +147,45 @@ static void raw_context_global_var(void)
     JS_FreeRuntime(rt);
 }
 
+static void is_array(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    {
+        static const char code[] = "[]";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
+        assert(!JS_IsException(ret));
+        assert(JS_IsArray(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    {
+        static const char code[] = "new Proxy([], {})";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
+        assert(!JS_IsException(ret));
+        assert(!JS_IsArray(ret));
+        assert(JS_IsProxy(ret));
+        JSValue handler = JS_GetProxyHandler(ctx, ret);
+        JSValue target = JS_GetProxyTarget(ctx, ret);
+        assert(!JS_IsException(handler));
+        assert(!JS_IsException(target));
+        assert(!JS_IsProxy(handler));
+        assert(!JS_IsProxy(target));
+        assert(JS_IsObject(handler));
+        assert(JS_IsArray(target));
+        JS_FreeValue(ctx, handler);
+        JS_FreeValue(ctx, target);
+        JS_FreeValue(ctx, ret);
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
     async_call();
     async_call_stack_overflow();
     raw_context_global_var();
+    is_array();
     return 0;
 }

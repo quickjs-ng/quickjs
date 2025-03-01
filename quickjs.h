@@ -748,7 +748,15 @@ JS_EXTERN JSValue JS_NewArray(JSContext *ctx);
 // takes ownership of the values
 JS_EXTERN JSValue JS_NewArrayFrom(JSContext *ctx, int count,
                                   const JSValue *values);
-JS_EXTERN int JS_IsArray(JSContext *ctx, JSValue val);
+// reader beware: JS_IsArray used to "punch" through proxies and check
+// if the target object is an array but it no longer does; use JS_IsProxy
+// and JS_GetProxyTarget instead, and remember that the target itself can
+// also be a proxy, ad infinitum
+JS_EXTERN bool JS_IsArray(JSValue val);
+
+JS_EXTERN bool JS_IsProxy(JSValue val);
+JS_EXTERN JSValue JS_GetProxyTarget(JSContext *ctx, JSValue proxy);
+JS_EXTERN JSValue JS_GetProxyHandler(JSContext *ctx, JSValue proxy);
 
 JS_EXTERN JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
 JS_EXTERN bool JS_IsDate(JSValue v);
