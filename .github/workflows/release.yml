@@ -133,7 +133,6 @@ jobs:
       - name: get assets
         uses: actions/download-artifact@v4
         with:
-          pattern: *
           path: build
           merge-multiple: true
       - run: ls -R build
