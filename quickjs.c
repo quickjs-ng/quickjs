@@ -46734,7 +46734,7 @@ static JSValue js_get_proxy_field(JSContext *ctx, JSValue proxy, int offset)
             JSProxyData *s = JS_GetOpaque(proxy, JS_CLASS_PROXY);
             if (s->is_revoked)
                 return JS_ThrowTypeErrorRevokedProxy(ctx);
-            return *(JSValue *)((char *)s + offset);
+            return js_dup(*(JSValue *)((char *)s + offset));
         }
     }
     return JS_ThrowTypeError(ctx, "not a proxy");
