@@ -2382,6 +2382,10 @@ static void JS_MarkContext(JSRuntime *rt, JSContext *ctx,
     JS_MarkValue(rt, ctx->function_ctor, mark_func);
     JS_MarkValue(rt, ctx->function_proto, mark_func);
 
+    JS_MarkValue(rt, ctx->regexp_last_match_str, mark_func);
+    JS_MarkValue(rt, ctx->regexp_left_ctx, mark_func);
+    JS_MarkValue(rt, ctx->regexp_right_ctx, mark_func);
+
     if (ctx->array_shape)
         mark_func(rt, &ctx->array_shape->header);
 }
@@ -43836,18 +43840,25 @@ static JSValue js_regexp_escape(JSContext *ctx, JSValue this_val,
 }
 
 static JSValue js_regexp_get_leftContext(JSContext *ctx, JSValue this_val) {
-    if (ctx->regexp_last_match_start >= 0) {
+    if (ctx->regexp_last_match_start >= 0 && JS_IsString(ctx->regexp_last_match_str)) {
+        JSString* p;
         JS_FreeValue(ctx, ctx->regexp_left_ctx);
-        ctx->regexp_left_ctx = js_sub_string(ctx, JS_VALUE_GET_STRING(ctx->regexp_last_match_str), 0, ctx->regexp_last_match_start);
+        ctx->regexp_left_ctx = JS_UNDEFINED;
+        p = JS_VALUE_GET_STRING(ctx->regexp_last_match_str);
+        ctx->regexp_left_ctx = js_sub_string(ctx, p, 0, ctx->regexp_last_match_start);
         ctx->regexp_last_match_start = -1; // Reset to avoid recomputation
     }
     return JS_DupValue(ctx, ctx->regexp_left_ctx);
 }
 
 static JSValue js_regexp_get_rightContext(JSContext *ctx, JSValue this_val) {
-    if (ctx->regexp_last_match_end >= 0) {
+    if (ctx->regexp_last_match_end >= 0 && JS_IsString(ctx->regexp_last_match_str)) {
+        JSString* p;
         JS_FreeValue(ctx, ctx->regexp_right_ctx);
-        ctx->regexp_right_ctx = js_sub_string(ctx, JS_VALUE_GET_STRING(ctx->regexp_last_match_str), ctx->regexp_last_match_end, JS_VALUE_GET_STRING(ctx->regexp_last_match_str)->len);
+        ctx->regexp_right_ctx = JS_UNDEFINED;
+        
+        p = JS_VALUE_GET_STRING(ctx->regexp_last_match_str);
+        ctx->regexp_right_ctx = js_sub_string(ctx, p, ctx->regexp_last_match_end, p->len);
         ctx->regexp_last_match_end = -1; // Reset to avoid recomputation
     }
     return JS_DupValue(ctx, ctx->regexp_right_ctx);
