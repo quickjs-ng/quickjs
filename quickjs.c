@@ -35150,7 +35150,20 @@ static JSValue JS_ReadModule(BCReaderState *s)
             goto fail;
         for(i = 0; i < m->req_module_entries_count; i++) {
             JSReqModuleEntry *rme = &m->req_module_entries[i];
+            JSModuleDef **pm = &rme->module;
             if (bc_get_atom(s, &rme->module_name))
+                goto fail;
+            // Resolves a module either from the cache or by requesting
+            // it from the module loader. From cache is not ideal because
+            // the module may not be the one it was a time of serialization
+            // but directly petitioning the module loader is not correct
+            // either because then the same module can get loaded twice.
+            // JS_WriteModule() does not serialize modules transitively
+            // because that doesn't work for C modules and is also prone
+            // to loading the same JS module twice.
+            *pm = js_host_resolve_imported_module_atom(s->ctx, m->module_name,
+                                                       rme->module_name);
+            if (!*pm)
                 goto fail;
         }
     }

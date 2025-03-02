@@ -3,6 +3,7 @@
 #endif
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include "quickjs.h"
 
 #define MAX_TIME 10
@@ -180,6 +181,59 @@ static void is_array(void)
     JS_FreeRuntime(rt);
 }
 
+static int loader_calls;
+
+static JSModuleDef *loader(JSContext *ctx, const char *name, void *opaque)
+{
+    loader_calls++;
+    assert(!strcmp(name, "b"));
+    static const char code[] = "export function f(x){}";
+    JSValue ret = JS_Eval(ctx, code, strlen(code), "b",
+                          JS_EVAL_TYPE_MODULE|JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(!JS_IsException(ret));
+    JSModuleDef *m = JS_VALUE_GET_PTR(ret);
+    assert(m);
+    JS_FreeValue(ctx, ret);
+    return m;
+}
+
+static void module_serde(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JS_SetDumpFlags(rt, JS_DUMP_MODULE_RESOLVE);
+    JS_SetModuleLoaderFunc(rt, NULL, loader, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+    static const char code[] = "import {f} from 'b'; f()";
+    assert(loader_calls == 0);
+    JSValue mod = JS_Eval(ctx, code, strlen(code), "a",
+                          JS_EVAL_TYPE_MODULE|JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(loader_calls == 1);
+    assert(!JS_IsException(mod));
+    assert(JS_IsModule(mod));
+    size_t len = 0;
+    uint8_t *buf = JS_WriteObject(ctx, &len, mod,
+                                  JS_WRITE_OBJ_BYTECODE|JS_WRITE_OBJ_REFERENCE);
+    assert(buf);
+    assert(len > 0);
+    JS_FreeValue(ctx, mod);
+    assert(loader_calls == 1);
+    mod = JS_ReadObject(ctx, buf, len, JS_READ_OBJ_BYTECODE);
+    free(buf);
+    assert(loader_calls == 1); // 'b' is returned from cache
+    assert(!JS_IsException(mod));
+    JSValue ret = JS_EvalFunction(ctx, mod);
+    assert(!JS_IsException(ret));
+    assert(JS_IsPromise(ret));
+    JSValue result = JS_PromiseResult(ctx, ret);
+    assert(!JS_IsException(result));
+    assert(JS_IsUndefined(result));
+    JS_FreeValue(ctx, result);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, mod);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -187,5 +241,6 @@ int main(void)
     async_call_stack_overflow();
     raw_context_global_var();
     is_array();
+    module_serde();
     return 0;
 }
