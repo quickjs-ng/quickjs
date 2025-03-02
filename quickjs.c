@@ -14945,7 +14945,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
         int n = min_int(argc, b->arg_count);
         arg_buf = local_buf;
         for(i = 0; i < n; i++)
-            arg_buf[i] = JS_DupValue(caller_ctx, argv[i]);
+            arg_buf[i] = js_dup(argv[i]);
         for(; i < b->arg_count; i++)
             arg_buf[i] = JS_UNDEFINED;
         sf->arg_count = b->arg_count;
@@ -20437,7 +20437,7 @@ static __exception int emit_push_const(JSParseState *s, JSValue val,
     if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING && as_atom) {
         JSAtom atom;
         /* warning: JS_NewAtomStr frees the string value */
-        JS_DupValue(s->ctx, val);
+        js_dup(val);
         atom = JS_NewAtomStr(s->ctx, JS_VALUE_GET_STRING(val));
         if (atom != JS_ATOM_NULL && !__JS_AtomIsTaggedInt(atom)) {
             emit_op(s, OP_push_atom_value);
@@ -20446,7 +20446,7 @@ static __exception int emit_push_const(JSParseState *s, JSValue val,
         }
     }
 
-    idx = cpool_add(s, JS_DupValue(s->ctx, val));
+    idx = cpool_add(s, js_dup(val));
     if (idx < 0)
         return -1;
     emit_op(s, OP_push_const);
@@ -27334,7 +27334,7 @@ static JSValue js_import_meta(JSContext *ctx)
 
 static JSValue JS_NewModuleValue(JSContext *ctx, JSModuleDef *m)
 {
-    return JS_DupValue(ctx, JS_MKPTR(JS_TAG_MODULE, m));
+    return js_dup(JS_MKPTR(JS_TAG_MODULE, m));
 }
 
 static JSValue js_load_module_rejected(JSContext *ctx, JSValue this_val,
@@ -27603,7 +27603,7 @@ static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValue this_v
     assert(module->async_evaluation);
 
     module->eval_has_exception = true;
-    module->eval_exception = JS_DupValue(ctx, error);
+    module->eval_exception = js_dup(error);
     module->status = JS_MODULE_STATUS_EVALUATED;
 
     for(i = 0; i < module->async_parent_modules_count; i++) {
@@ -27756,7 +27756,7 @@ static int js_inner_module_evaluation(JSContext *ctx, JSModuleDef *m,
     if (m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
         m->status == JS_MODULE_STATUS_EVALUATED) {
         if (m->eval_has_exception) {
-            *pvalue = JS_DupValue(ctx, m->eval_exception);
+            *pvalue = js_dup(m->eval_exception);
             return -1;
         } else {
             *pvalue = JS_UNDEFINED;
@@ -27795,7 +27795,7 @@ static int js_inner_module_evaluation(JSContext *ctx, JSModuleDef *m,
             assert(m1->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
                    m1->status == JS_MODULE_STATUS_EVALUATED);
             if (m1->eval_has_exception) {
-                *pvalue = JS_DupValue(ctx, m1->eval_exception);
+                *pvalue = js_dup(m1->eval_exception);
                 return -1;
             }
         }
@@ -27862,7 +27862,7 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
     }
     /* a promise may be created only on the cycle_root of a cycle */
     if (!JS_IsUndefined(m->promise))
-        return JS_DupValue(ctx, m->promise);
+        return js_dup(m->promise);
     m->promise = JS_NewPromiseCapability(ctx, m->resolving_funcs);
     if (JS_IsException(m->promise))
         return JS_EXCEPTION;
@@ -27874,7 +27874,7 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
             assert(m1->status == JS_MODULE_STATUS_EVALUATING);
             m1->status = JS_MODULE_STATUS_EVALUATED;
             m1->eval_has_exception = true;
-            m1->eval_exception = JS_DupValue(ctx, result);
+            m1->eval_exception = js_dup(result);
             m1->cycle_root = m; /* spec bug: should be present */
             stack_top = m1->stack_prev;
         }
@@ -27898,7 +27898,7 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
         }
         assert(stack_top == NULL);
     }
-    return JS_DupValue(ctx, m->promise);
+    return js_dup(m->promise);
 }
 
 static __exception JSAtom js_parse_from_clause(JSParseState *s)
@@ -48469,7 +48469,7 @@ JSValue JS_PromiseResult(JSContext *ctx, JSValue promise)
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)
         return JS_UNDEFINED;
-    return JS_DupValue(ctx, s->promise_result);
+    return js_dup(s->promise_result);
 }
 
 bool JS_IsPromise(JSValue val)
