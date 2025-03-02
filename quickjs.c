@@ -35150,7 +35150,12 @@ static JSValue JS_ReadModule(BCReaderState *s)
             goto fail;
         for(i = 0; i < m->req_module_entries_count; i++) {
             JSReqModuleEntry *rme = &m->req_module_entries[i];
+            JSModuleDef **pm = &rme->module;
             if (bc_get_atom(s, &rme->module_name))
+                goto fail;
+            *pm = js_host_resolve_imported_module_atom(s->ctx, m->module_name,
+                                                       rme->module_name);
+            if (!*pm)
                 goto fail;
         }
     }
