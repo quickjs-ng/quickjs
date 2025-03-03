@@ -662,6 +662,11 @@ static inline bool JS_IsObject(JSValue v)
     return JS_VALUE_GET_TAG(v) == JS_TAG_OBJECT;
 }
 
+static inline bool JS_IsModule(JSValue v)
+{
+    return JS_VALUE_GET_TAG(v) == JS_TAG_MODULE;
+}
+
 JS_EXTERN JSValue JS_Throw(JSContext *ctx, JSValue obj);
 JS_EXTERN JSValue JS_GetException(JSContext *ctx);
 JS_EXTERN bool JS_HasException(JSContext *ctx);
