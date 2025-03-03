@@ -120,7 +120,9 @@ static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
         val = JS_Eval(ctx, buf, buf_len, filename,
                       eval_flags | JS_EVAL_FLAG_COMPILE_ONLY);
         if (!JS_IsException(val)) {
-            use_realpath = (*filename != '<'); // ex. "<cmdline>"
+            // ex. "<cmdline>" pr "/dev/stdin"
+            use_realpath =
+                !(*filename == '<' || !strncmp(filename, "/dev/", 5));
             if (js_module_set_import_meta(ctx, val, use_realpath, true) < 0) {
                 js_std_dump_error(ctx);
                 ret = -1;
