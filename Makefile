@@ -51,6 +51,8 @@ amalgam: $(QJS)
 	cp quickjs.h quickjs-libc.h $(TEMP)
 	cd $(TEMP) && zip -9 quickjs-amalgam.zip quickjs-amalgam.c quickjs.h quickjs-libc.h
 	cp $(TEMP)/quickjs-amalgam.zip $(BUILD_DIR)
+	cd $(TEMP) && $(RM) quickjs-amalgam.zip quickjs-amalgam.c quickjs.h quickjs-libc.h
+	$(RM) -d $(TEMP)
 
 fuzz:
 	clang -g -O1 -fsanitize=address,undefined,fuzzer -o fuzz fuzz.c
