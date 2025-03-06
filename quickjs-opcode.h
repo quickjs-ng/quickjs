@@ -362,8 +362,15 @@ DEF(          call3, 1, 1, 1, npopx)
 
 DEF(   is_undefined, 1, 1, 1, none)
 DEF(        is_null, 1, 1, 1, none)
+
 DEF(typeof_is_undefined, 1, 1, 1, none)
 DEF( typeof_is_function, 1, 1, 1, none)
+DEF(   typeof_is_number, 1, 1, 1, none)
+DEF(  typeof_is_boolean, 1, 1, 1, none)
+DEF(   typeof_is_string, 1, 1, 1, none)
+DEF(   typeof_is_object, 1, 1, 1, none)
+DEF(   typeof_is_symbol, 1, 1, 1, none)
+DEF(   typeof_is_bigint, 1, 1, 1, none)
 
 #undef DEF
 #undef def

@@ -17296,6 +17296,42 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValue func_obj,
             } else {
                 goto free_and_set_false;
             }
+        CASE(OP_typeof_is_number):
+            if (js_operator_typeof(ctx, sp[-1]) == JS_ATOM_number) {
+                goto free_and_set_true;
+            } else {
+                goto free_and_set_false;
+            }
+        CASE(OP_typeof_is_boolean):
+            if (js_operator_typeof(ctx, sp[-1]) == JS_ATOM_boolean) {
+                goto free_and_set_true;
+            } else {
+                goto free_and_set_false;
+            }
+        CASE(OP_typeof_is_string):
+            if (js_operator_typeof(ctx, sp[-1]) == JS_ATOM_string) {
+                goto free_and_set_true;
+            } else {
+                goto free_and_set_false;
+            }
+        CASE(OP_typeof_is_object):
+            if (js_operator_typeof(ctx, sp[-1]) == JS_ATOM_object) {
+                goto free_and_set_true;
+            } else {
+                goto free_and_set_false;
+            }
+        CASE(OP_typeof_is_symbol):
+            if (js_operator_typeof(ctx, sp[-1]) == JS_ATOM_symbol) {
+                goto free_and_set_true;
+            } else {
+                goto free_and_set_false;
+            }
+        CASE(OP_typeof_is_bigint):
+            if (js_operator_typeof(ctx, sp[-1]) == JS_ATOM_bigint) {
+                goto free_and_set_true;
+            } else {
+                goto free_and_set_false;
+            }
         free_and_set_true:
             JS_FreeValue(ctx, sp[-1]);
         set_true:
@@ -31711,6 +31747,24 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                     break;
                 case JS_ATOM_function:
                     op2 = OP_typeof_is_function;
+                    break;
+                case JS_ATOM_number:
+                    op2 = OP_typeof_is_number;
+                    break;
+                case JS_ATOM_boolean:
+                    op2 = OP_typeof_is_boolean;
+                    break;
+                case JS_ATOM_string:
+                    op2 = OP_typeof_is_string;
+                    break;
+                case JS_ATOM_object:
+                    op2 = OP_typeof_is_object;
+                    break;
+                case JS_ATOM_symbol:
+                    op2 = OP_typeof_is_symbol;
+                    break;
+                case JS_ATOM_bigint:
+                    op2 = OP_typeof_is_bigint;
                     break;
                 }
                 if (op2 >= 0) {
