@@ -74,7 +74,8 @@ static void async_call(void)
     JS_FreeRuntime(rt);
 }
 
-static JSValue save_value(JSContext *ctx, JSValue this_val, int argc, JSValue *argv)
+static JSValue save_value(JSContext *ctx, JSValueConst this_val,
+                          int argc, JSValueConst *argv)
 {
     assert(argc == 1);
     JSValue *p = (JSValue *)JS_GetContextOpaque(ctx);
