@@ -582,9 +582,10 @@ jobs:
           make
       - name: create amalgamation
         run: |
-          build/qjs amalgam.js $RUNNER_TEMP/quickjs-amalgam.c
+          make amalgam
       - name: build amalgamation
         run: |
+          unzip -d $RUNNER_TEMP build/quickjs-amalgam.zip
           cc -Wall -I. -o $RUNNER_TEMP/run-test262.o -c run-test262.c
           cc -Wall -I/ -DQJS_BUILD_LIBC -o $RUNNER_TEMP/quickjs-amalgam.o -c $RUNNER_TEMP/quickjs-amalgam.c
           cc -o $RUNNER_TEMP/run-test262 $RUNNER_TEMP/run-test262.o $RUNNER_TEMP/quickjs-amalgam.o -lm
