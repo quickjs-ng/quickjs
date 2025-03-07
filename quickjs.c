@@ -103,6 +103,15 @@ static inline JSValueConst *vc(JSValue *vals)
     return (JSValueConst *)vals;
 }
 
+static inline JSValue const_cast(JSValueConst v)
+{
+#ifdef JS_CHECK_JSVALUE
+    return (JSValue)v;
+#else
+    return v;
+#endif
+}
+
 enum {
     /* classid tag        */    /* union usage   | properties */
     JS_CLASS_OBJECT = 1,        /* must be first */
@@ -1335,7 +1344,7 @@ static JSValue js_dup(JSValueConst v)
         JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
         p->ref_count++;
     }
-    return (JSValue)v;
+    return const_cast(v);
 }
 
 JSValue JS_DupValue(JSContext *ctx, JSValueConst v)
@@ -14678,7 +14687,7 @@ static JSValue js_call_c_function(JSContext *ctx, JSValueConst func_obj,
     ctx = p->u.cfunc.realm; /* change the current realm */
 
     sf->is_strict_mode = false;
-    sf->cur_func = (JSValue)func_obj;
+    sf->cur_func = const_cast(func_obj);
     sf->arg_count = argc;
     arg_buf = argv;
 
@@ -14943,7 +14952,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     sf->is_strict_mode = b->is_strict_mode;
     arg_buf = (JSValue *)argv;
     sf->arg_count = argc;
-    sf->cur_func = (JSValue)func_obj;
+    sf->cur_func = const_cast(func_obj);
     init_list_head(&sf->var_ref_list);
     var_refs = p->u.func.var_refs;
 
@@ -27509,7 +27518,7 @@ static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier)
     args[0] = resolving_funcs[0];
     args[1] = resolving_funcs[1];
     args[2] = basename_val;
-    args[3] = (JSValue)specifier;
+    args[3] = const_cast(specifier);
 
     /* cannot run JS_LoadModuleInternal synchronously because it would
        cause an unexpected recursion in js_evaluate_module() */
@@ -46682,7 +46691,7 @@ static JSValue js_proxy_revoke(JSContext *ctx, JSValueConst this_val,
         /* We do not free the handler and target in case they are
            referenced as constants in the C call stack */
         s->is_revoked = true;
-        JS_FreeValue(ctx, (JSValue)func_data[0]);
+        JS_FreeValue(ctx, const_cast(func_data[0]));
         func_data[0] = JS_NULL;
     }
     return JS_UNDEFINED;
@@ -47040,7 +47049,14 @@ static JSValue map_normalize_key(JSContext *ctx, JSValue key)
 
 static JSValueConst map_normalize_key_const(JSContext *ctx, JSValueConst key)
 {
-    return (JSValueConst)map_normalize_key(ctx, (JSValue)key);
+    // convoluted approach appeases msvc
+    union {
+        JSValueConst c;
+        JSValue v;
+    } k, r;
+    k.c = key;
+    r.v = map_normalize_key(ctx, k.v);
+    return r.c;
 }
 
 /* XXX: better hash ? */
@@ -47177,7 +47193,7 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
         wr->kind = JS_WEAK_REF_KIND_MAP;
         wr->u.map_record = mr;
         insert_weakref_record(key, wr);
-        mr->key = (JSValue)key;
+        mr->key = const_cast(key);
     } else {
         mr->key = js_dup(key);
     }
@@ -47377,7 +47393,7 @@ static JSValue js_map_forEach(JSContext *ctx, JSValueConst this_val,
                 args[0] = args[1];
             else
                 args[0] = js_dup(mr->value);
-            args[2] = (JSValue)this_val;
+            args[2] = const_cast(this_val);
             ret = JS_Call(ctx, func, this_arg, 3, vc(args));
             JS_FreeValue(ctx, args[0]);
             if (!magic)
