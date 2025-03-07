@@ -70,6 +70,18 @@ if(MSVC)
     xcheck_add_c_compiler_flag(/wd5045) # Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
 endif()
 
+# Set a 8MB default stack size on Windows.
+# It defaults to 1MB on MSVC, which is the same as our current JS stack size,
+# so it will overflow and crash otherwise.
+# On MinGW it defaults to 2MB.
+if(WIN32)
+    if(MSVC)
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:8388608")
+    else()
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack,8388608")
+    endif()
+endif()
+
 # MacOS and GCC 11 or later need -Wno-maybe-uninitialized
 # https://github.com/quickjs-ng/quickjs/issues/453
 if(APPLE AND CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
