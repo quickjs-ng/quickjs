@@ -39579,11 +39579,12 @@ static int64_t JS_FlattenIntoArray(JSContext *ctx, JSValueConst target,
         if (!JS_IsUndefined(mapperFunction)) {
             JSValue index = js_int64(sourceIndex);
             JSValueConst args[3] = { element, index, source };
-            element = JS_Call(ctx, mapperFunction, thisArg, 3, args);
+            JSValue ret = JS_Call(ctx, mapperFunction, thisArg, 3, args);
             JS_FreeValue(ctx, element);
             JS_FreeValue(ctx, index);
-            if (JS_IsException(element))
+            if (JS_IsException(ret))
                 return -1;
+            element = ret;
         }
         if (depth > 0) {
             is_array = js_is_array(ctx, element);
