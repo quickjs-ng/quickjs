@@ -199,14 +199,14 @@ static int64_t parse_limit(const char *arg) {
     return (int64_t)(d * unit);
 }
 
-static JSValue js_gc(JSContext *ctx, JSValue this_val,
-                     int argc, JSValue *argv)
+static JSValue js_gc(JSContext *ctx, JSValueConst this_val,
+                     int argc, JSValueConst *argv)
 {
     JS_RunGC(JS_GetRuntime(ctx));
     return JS_UNDEFINED;
 }
 
-static JSValue js_navigator_get_userAgent(JSContext *ctx, JSValue this_val)
+static JSValue js_navigator_get_userAgent(JSContext *ctx, JSValueConst this_val)
 {
     char version[32];
     snprintf(version, sizeof(version), "quickjs-ng/%s", JS_GetVersion());
@@ -667,7 +667,7 @@ start:
             args[0] = JS_NewString(ctx, compile_file);
             args[1] = JS_NewString(ctx, out);
             args[2] = JS_NewString(ctx, exe != NULL ? exe : argv[0]);
-            ret = JS_Call(ctx, func, JS_UNDEFINED, countof(args), args);
+            ret = JS_Call(ctx, func, JS_UNDEFINED, 3, (JSValueConst *)args);
             JS_FreeValue(ctx, func);
             JS_FreeValue(ctx, args[0]);
             JS_FreeValue(ctx, args[1]);
