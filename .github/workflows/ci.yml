@@ -585,13 +585,13 @@ jobs:
           make amalgam
       - name: build amalgamation
         run: |
-          unzip -d $RUNNER_TEMP build/quickjs-amalgam.zip
-          cc -Wall -I. -o $RUNNER_TEMP/run-test262.o -c run-test262.c
-          cc -Wall -I/ -DQJS_BUILD_LIBC -o $RUNNER_TEMP/quickjs-amalgam.o -c $RUNNER_TEMP/quickjs-amalgam.c
-          cc -o $RUNNER_TEMP/run-test262 $RUNNER_TEMP/run-test262.o $RUNNER_TEMP/quickjs-amalgam.o -lm
+          unzip -d "$RUNNER_TEMP" build/quickjs-amalgam.zip
+          cc -Wall -I. -o "$RUNNER_TEMP/run-test262.o" -c run-test262.c
+          cc -Wall -I/ -DQJS_BUILD_LIBC -o "$RUNNER_TEMP/quickjs-amalgam.o" -c "$RUNNER_TEMP/quickjs-amalgam.c"
+          cc -o "$RUNNER_TEMP/run-test262" "$RUNNER_TEMP/run-test262.o" "$RUNNER_TEMP/quickjs-amalgam.o" -lm
       - name: test
         run: |
-          make test RUN262=$RUNNER_TEMP/run-test262
+          make test RUN262="$RUNNER_TEMP/run-test262"
 
   jscheck:
     runs-on: ubuntu-latest
@@ -617,6 +617,8 @@ jobs:
             args: -Dlibc=true
           - name: mimalloc
             args: -Dcli_mimalloc=auto
+          - name: jscheck
+            args: -Djscheck=true
         mode:
           - name: default
             args: -Dtests=enabled
