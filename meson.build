@@ -80,6 +80,19 @@ else
   )
 endif
 
+if host_system == 'windows'
+  # Set a 8MB default stack size on Windows.
+  # It defaults to 1MB on MSVC, which is the same as our current JS stack size,
+  # so it will overflow and crash otherwise.
+  # On MinGW it defaults to 2MB.
+  stack_size = 8 * 1024 * 1024
+  if cc.get_argument_syntax() == 'msvc'
+    add_project_link_arguments(f'/STACK:@stack_size@', language: 'c')
+  else
+    add_project_link_arguments(f'-Wl,--stack,@stack_size@', language: 'c')
+  endif
+endif
+
 if meson.is_cross_build()
   native_cc = meson.get_compiler('c', native: true)
 
