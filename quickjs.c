@@ -1042,58 +1042,59 @@ static __maybe_unused void JS_DumpShapes(JSRuntime *rt);
 
 static JSValue js_function_apply(JSContext *ctx, JSValueConst this_val,
                                  int argc, JSValueConst *argv, int magic);
-static void js_array_finalizer(JSRuntime *rt, JSValue val);
-static void js_array_mark(JSRuntime *rt, JSValue val,
+static void js_array_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_array_mark(JSRuntime *rt, JSValueConst val,
                           JS_MarkFunc *mark_func);
-static void js_object_data_finalizer(JSRuntime *rt, JSValue val);
-static void js_object_data_mark(JSRuntime *rt, JSValue val,
+static void js_object_data_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_object_data_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_c_function_finalizer(JSRuntime *rt, JSValue val);
-static void js_c_function_mark(JSRuntime *rt, JSValue val,
+static void js_c_function_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_c_function_mark(JSRuntime *rt, JSValueConst val,
                                JS_MarkFunc *mark_func);
-static void js_bytecode_function_finalizer(JSRuntime *rt, JSValue val);
-static void js_bytecode_function_mark(JSRuntime *rt, JSValue val,
+static void js_bytecode_function_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_bytecode_function_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_bound_function_finalizer(JSRuntime *rt, JSValue val);
-static void js_bound_function_mark(JSRuntime *rt, JSValue val,
+static void js_bound_function_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_bound_function_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_for_in_iterator_finalizer(JSRuntime *rt, JSValue val);
-static void js_for_in_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_for_in_iterator_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_for_in_iterator_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_regexp_finalizer(JSRuntime *rt, JSValue val);
-static void js_array_buffer_finalizer(JSRuntime *rt, JSValue val);
-static void js_typed_array_finalizer(JSRuntime *rt, JSValue val);
-static void js_typed_array_mark(JSRuntime *rt, JSValue val,
+static void js_regexp_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_array_buffer_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_typed_array_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_typed_array_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_proxy_finalizer(JSRuntime *rt, JSValue val);
-static void js_proxy_mark(JSRuntime *rt, JSValue val,
+static void js_proxy_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_proxy_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_map_finalizer(JSRuntime *rt, JSValue val);
-static void js_map_mark(JSRuntime *rt, JSValue val,
+static void js_map_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_map_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_map_iterator_finalizer(JSRuntime *rt, JSValue val);
-static void js_map_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_map_iterator_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_map_iterator_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_array_iterator_finalizer(JSRuntime *rt, JSValue val);
-static void js_array_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_array_iterator_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_array_iterator_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_iterator_helper_finalizer(JSRuntime *rt, JSValue val);
-static void js_iterator_helper_mark(JSRuntime *rt, JSValue val,
+static void js_iterator_helper_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_iterator_helper_mark(JSRuntime *rt, JSValueConst val,
                                     JS_MarkFunc *mark_func);
-static void js_iterator_wrap_finalizer(JSRuntime *rt, JSValue val);
-static void js_iterator_wrap_mark(JSRuntime *rt, JSValue val,
+static void js_iterator_wrap_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_iterator_wrap_mark(JSRuntime *rt, JSValueConst val,
                                   JS_MarkFunc *mark_func);
-static void js_regexp_string_iterator_finalizer(JSRuntime *rt, JSValue val);
-static void js_regexp_string_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_regexp_string_iterator_finalizer(JSRuntime *rt,
+                                                JSValueConst val);
+static void js_regexp_string_iterator_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_generator_finalizer(JSRuntime *rt, JSValue obj);
-static void js_generator_mark(JSRuntime *rt, JSValue val,
+static void js_generator_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_generator_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_promise_finalizer(JSRuntime *rt, JSValue val);
-static void js_promise_mark(JSRuntime *rt, JSValue val,
+static void js_promise_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_promise_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
-static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValue val);
-static void js_promise_resolve_function_mark(JSRuntime *rt, JSValue val,
+static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_promise_resolve_function_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func);
 
 #define HINT_STRING  0
@@ -1189,8 +1190,9 @@ static JSValue js_generator_function_call(JSContext *ctx, JSValueConst func_obj,
                                           JSValueConst this_obj,
                                           int argc, JSValueConst *argv,
                                           int flags);
-static void js_async_function_resolve_finalizer(JSRuntime *rt, JSValue val);
-static void js_async_function_resolve_mark(JSRuntime *rt, JSValue val,
+static void js_async_function_resolve_finalizer(JSRuntime *rt,
+                                                JSValueConst val);
+static void js_async_function_resolve_mark(JSRuntime *rt, JSValueConst val,
                                            JS_MarkFunc *mark_func);
 static JSValue JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
                                const char *input, size_t input_len,
@@ -1245,8 +1247,8 @@ static bool js_get_fast_array(JSContext *ctx, JSValue obj,
 static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len);
 static JSValue JS_CreateAsyncFromSyncIterator(JSContext *ctx,
                                               JSValue sync_iter);
-static void js_c_function_data_finalizer(JSRuntime *rt, JSValue val);
-static void js_c_function_data_mark(JSRuntime *rt, JSValue val,
+static void js_c_function_data_finalizer(JSRuntime *rt, JSValueConst val);
+static void js_c_function_data_mark(JSRuntime *rt, JSValueConst val,
                                     JS_MarkFunc *mark_func);
 static JSValue js_c_function_data_call(JSContext *ctx, JSValueConst func_obj,
                                        JSValueConst this_val,
@@ -5247,7 +5249,7 @@ typedef struct JSCFunctionDataRecord {
     JSValue data[];
 } JSCFunctionDataRecord;
 
-static void js_c_function_data_finalizer(JSRuntime *rt, JSValue val)
+static void js_c_function_data_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSCFunctionDataRecord *s = JS_GetOpaque(val, JS_CLASS_C_FUNCTION_DATA);
     int i;
@@ -5260,7 +5262,7 @@ static void js_c_function_data_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_c_function_data_mark(JSRuntime *rt, JSValue val,
+static void js_c_function_data_mark(JSRuntime *rt, JSValueConst val,
                                     JS_MarkFunc *mark_func)
 {
     JSCFunctionDataRecord *s = JS_GetOpaque(val, JS_CLASS_C_FUNCTION_DATA);
@@ -5428,7 +5430,7 @@ static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
     }
 }
 
-static void js_array_finalizer(JSRuntime *rt, JSValue val)
+static void js_array_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     int i;
@@ -5439,7 +5441,7 @@ static void js_array_finalizer(JSRuntime *rt, JSValue val)
     js_free_rt(rt, p->u.array.u.values);
 }
 
-static void js_array_mark(JSRuntime *rt, JSValue val,
+static void js_array_mark(JSRuntime *rt, JSValueConst val,
                           JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -5450,21 +5452,21 @@ static void js_array_mark(JSRuntime *rt, JSValue val,
     }
 }
 
-static void js_object_data_finalizer(JSRuntime *rt, JSValue val)
+static void js_object_data_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JS_FreeValueRT(rt, p->u.object_data);
     p->u.object_data = JS_UNDEFINED;
 }
 
-static void js_object_data_mark(JSRuntime *rt, JSValue val,
+static void js_object_data_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JS_MarkValue(rt, p->u.object_data, mark_func);
 }
 
-static void js_c_function_finalizer(JSRuntime *rt, JSValue val)
+static void js_c_function_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
 
@@ -5472,7 +5474,7 @@ static void js_c_function_finalizer(JSRuntime *rt, JSValue val)
         JS_FreeContext(p->u.cfunc.realm);
 }
 
-static void js_c_function_mark(JSRuntime *rt, JSValue val,
+static void js_c_function_mark(JSRuntime *rt, JSValueConst val,
                                JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -5481,7 +5483,7 @@ static void js_c_function_mark(JSRuntime *rt, JSValue val,
         mark_func(rt, &p->u.cfunc.realm->header);
 }
 
-static void js_bytecode_function_finalizer(JSRuntime *rt, JSValue val)
+static void js_bytecode_function_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p1, *p = JS_VALUE_GET_OBJ(val);
     JSFunctionBytecode *b;
@@ -5504,7 +5506,7 @@ static void js_bytecode_function_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_bytecode_function_mark(JSRuntime *rt, JSValue val,
+static void js_bytecode_function_mark(JSRuntime *rt, JSValueConst val,
                                       JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -5531,7 +5533,7 @@ static void js_bytecode_function_mark(JSRuntime *rt, JSValue val,
     }
 }
 
-static void js_bound_function_finalizer(JSRuntime *rt, JSValue val)
+static void js_bound_function_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSBoundFunction *bf = p->u.bound_function;
@@ -5545,7 +5547,7 @@ static void js_bound_function_finalizer(JSRuntime *rt, JSValue val)
     js_free_rt(rt, bf);
 }
 
-static void js_bound_function_mark(JSRuntime *rt, JSValue val,
+static void js_bound_function_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -5558,7 +5560,7 @@ static void js_bound_function_mark(JSRuntime *rt, JSValue val,
         JS_MarkValue(rt, bf->argv[i], mark_func);
 }
 
-static void js_for_in_iterator_finalizer(JSRuntime *rt, JSValue val)
+static void js_for_in_iterator_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSForInIterator *it = p->u.for_in_iterator;
@@ -5566,7 +5568,7 @@ static void js_for_in_iterator_finalizer(JSRuntime *rt, JSValue val)
     js_free_rt(rt, it);
 }
 
-static void js_for_in_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_for_in_iterator_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -5752,7 +5754,7 @@ static void remove_gc_object(JSGCObjectHeader *h)
     list_del(&h->link);
 }
 
-void JS_MarkValue(JSRuntime *rt, JSValue val, JS_MarkFunc *mark_func)
+void JS_MarkValue(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
 {
     if (JS_VALUE_HAS_REF_COUNT(val)) {
         switch(JS_VALUE_GET_TAG(val)) {
@@ -5997,7 +5999,7 @@ void JS_RunGC(JSRuntime *rt)
 /* Return false if not an object or if the object has already been
    freed (zombie objects are visible in finalizers when freeing
    cycles). */
-bool JS_IsLiveObject(JSRuntime *rt, JSValue obj)
+bool JS_IsLiveObject(JSRuntime *rt, JSValueConst obj)
 {
     JSObject *p;
     if (!JS_IsObject(obj))
@@ -7214,7 +7216,7 @@ int JS_SetPrototype(JSContext *ctx, JSValueConst obj, JSValue proto_val)
 }
 
 /* Only works for primitive types, otherwise return JS_NULL. */
-static JSValue JS_GetPrototypePrimitive(JSContext *ctx, JSValueConst val)
+static JSValueConst JS_GetPrototypePrimitive(JSContext *ctx, JSValueConst val)
 {
     JSValue ret;
     switch(JS_VALUE_GET_NORM_TAG(val)) {
@@ -7987,7 +7989,7 @@ static int __exception JS_GetOwnPropertyNamesInternal(JSContext *ctx,
 }
 
 int JS_GetOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
-                           uint32_t *plen, JSValue obj, int flags)
+                           uint32_t *plen, JSValueConst obj, int flags)
 {
     if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT) {
         JS_ThrowTypeErrorNotAnObject(ctx);
@@ -17682,7 +17684,7 @@ static void free_generator_stack_rt(JSRuntime *rt, JSGeneratorData *s)
     s->state = JS_GENERATOR_STATE_COMPLETED;
 }
 
-static void js_generator_finalizer(JSRuntime *rt, JSValue obj)
+static void js_generator_finalizer(JSRuntime *rt, JSValueConst obj)
 {
     JSGeneratorData *s = JS_GetOpaque(obj, JS_CLASS_GENERATOR);
 
@@ -17697,7 +17699,7 @@ static void free_generator_stack(JSContext *ctx, JSGeneratorData *s)
     free_generator_stack_rt(ctx->rt, s);
 }
 
-static void js_generator_mark(JSRuntime *rt, JSValue val,
+static void js_generator_mark(JSRuntime *rt, JSValueConst val,
                               JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -17860,7 +17862,8 @@ static void js_async_function_free(JSRuntime *rt, JSAsyncFunctionData *s)
     }
 }
 
-static void js_async_function_resolve_finalizer(JSRuntime *rt, JSValue val)
+static void js_async_function_resolve_finalizer(JSRuntime *rt,
+                                                JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSAsyncFunctionData *s = p->u.async_function_data;
@@ -17869,7 +17872,7 @@ static void js_async_function_resolve_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_async_function_resolve_mark(JSRuntime *rt, JSValue val,
+static void js_async_function_resolve_mark(JSRuntime *rt, JSValueConst val,
                                            JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -18083,7 +18086,7 @@ static void js_async_generator_free(JSRuntime *rt,
     js_free_rt(rt, s);
 }
 
-static void js_async_generator_finalizer(JSRuntime *rt, JSValue obj)
+static void js_async_generator_finalizer(JSRuntime *rt, JSValueConst obj)
 {
     JSAsyncGeneratorData *s = JS_GetOpaque(obj, JS_CLASS_ASYNC_GENERATOR);
 
@@ -18092,7 +18095,7 @@ static void js_async_generator_finalizer(JSRuntime *rt, JSValue obj)
     }
 }
 
-static void js_async_generator_mark(JSRuntime *rt, JSValue val,
+static void js_async_generator_mark(JSRuntime *rt, JSValueConst val,
                                     JS_MarkFunc *mark_func)
 {
     JSAsyncGeneratorData *s = JS_GetOpaque(val, JS_CLASS_ASYNC_GENERATOR);
@@ -39920,7 +39923,7 @@ typedef struct JSArrayIteratorData {
     uint32_t idx;
 } JSArrayIteratorData;
 
-static void js_array_iterator_finalizer(JSRuntime *rt, JSValue val)
+static void js_array_iterator_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSArrayIteratorData *it = p->u.array_iterator_data;
@@ -39930,7 +39933,7 @@ static void js_array_iterator_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_array_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_array_iterator_mark(JSRuntime *rt, JSValueConst val,
                                    JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -40059,7 +40062,7 @@ typedef struct JSIteratorWrapData {
     JSValue wrapped_next;
 } JSIteratorWrapData;
 
-static void js_iterator_wrap_finalizer(JSRuntime *rt, JSValue val)
+static void js_iterator_wrap_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSIteratorWrapData *it = p->u.iterator_wrap_data;
@@ -40070,7 +40073,7 @@ static void js_iterator_wrap_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_iterator_wrap_mark(JSRuntime *rt, JSValue val,
+static void js_iterator_wrap_mark(JSRuntime *rt, JSValueConst val,
                                   JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -40563,7 +40566,7 @@ static JSValue js_iterator_proto_set_toStringTag(JSContext *ctx, JSValueConst th
     return JS_UNDEFINED;
 }
 
-static void js_iterator_helper_finalizer(JSRuntime *rt, JSValue val)
+static void js_iterator_helper_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSIteratorHelperData *it = p->u.iterator_helper_data;
@@ -40576,7 +40579,7 @@ static void js_iterator_helper_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_iterator_helper_mark(JSRuntime *rt, JSValue val,
+static void js_iterator_helper_mark(JSRuntime *rt, JSValueConst val,
                                    JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -43390,7 +43393,7 @@ static int getTimezoneOffset(int64_t time) {
 
 /* RegExp */
 
-static void js_regexp_finalizer(JSRuntime *rt, JSValue val)
+static void js_regexp_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSRegExp *re = &p->u.regexp;
@@ -44307,7 +44310,8 @@ typedef struct JSRegExpStringIteratorData {
     int done;
 } JSRegExpStringIteratorData;
 
-static void js_regexp_string_iterator_finalizer(JSRuntime *rt, JSValue val)
+static void js_regexp_string_iterator_finalizer(JSRuntime *rt,
+                                                JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSRegExpStringIteratorData *it = p->u.regexp_string_iterator_data;
@@ -44318,7 +44322,7 @@ static void js_regexp_string_iterator_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_regexp_string_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_regexp_string_iterator_mark(JSRuntime *rt, JSValueConst val,
                                            JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -45805,7 +45809,7 @@ static const JSCFunctionListEntry js_reflect_obj[] = {
 
 /* Proxy */
 
-static void js_proxy_finalizer(JSRuntime *rt, JSValue val)
+static void js_proxy_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSProxyData *s = JS_GetOpaque(val, JS_CLASS_PROXY);
     if (s) {
@@ -45815,7 +45819,7 @@ static void js_proxy_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_proxy_mark(JSRuntime *rt, JSValue val,
+static void js_proxy_mark(JSRuntime *rt, JSValueConst val,
                           JS_MarkFunc *mark_func)
 {
     JSProxyData *s = JS_GetOpaque(val, JS_CLASS_PROXY);
@@ -47498,7 +47502,7 @@ exception:
     return JS_EXCEPTION;
 }
 
-static void js_map_finalizer(JSRuntime *rt, JSValue val)
+static void js_map_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p;
     JSMapState *s;
@@ -47526,7 +47530,8 @@ static void js_map_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_map_mark(JSRuntime *rt, JSValue val, JS_MarkFunc *mark_func)
+static void js_map_mark(JSRuntime *rt, JSValueConst val,
+                        JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSMapState *s;
@@ -47552,7 +47557,7 @@ typedef struct JSMapIteratorData {
     JSMapRecord *cur_record;
 } JSMapIteratorData;
 
-static void js_map_iterator_finalizer(JSRuntime *rt, JSValue val)
+static void js_map_iterator_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p;
     JSMapIteratorData *it;
@@ -47570,7 +47575,7 @@ static void js_map_iterator_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_map_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_map_iterator_mark(JSRuntime *rt, JSValueConst val,
                                  JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -48513,7 +48518,7 @@ typedef struct JSPromiseReactionData {
     JSValue handler;
 } JSPromiseReactionData;
 
-  JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise)
+JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValueConst promise)
 {
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)
@@ -48521,7 +48526,7 @@ typedef struct JSPromiseReactionData {
     return s->promise_state;
 }
 
-JSValue JS_PromiseResult(JSContext *ctx, JSValue promise)
+JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise)
 {
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)
@@ -48529,7 +48534,7 @@ JSValue JS_PromiseResult(JSContext *ctx, JSValue promise)
     return js_dup(s->promise_result);
 }
 
-bool JS_IsPromise(JSValue val)
+bool JS_IsPromise(JSValueConst val)
 {
     if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
         return false;
@@ -48733,7 +48738,8 @@ static int js_create_resolving_functions(JSContext *ctx,
     return ret;
 }
 
-static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValue val)
+static void js_promise_resolve_function_finalizer(JSRuntime *rt,
+                                                  JSValueConst val)
 {
     JSPromiseFunctionData *s = JS_VALUE_GET_OBJ(val)->u.promise_function_data;
     if (s) {
@@ -48743,7 +48749,7 @@ static void js_promise_resolve_function_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_promise_resolve_function_mark(JSRuntime *rt, JSValue val,
+static void js_promise_resolve_function_mark(JSRuntime *rt, JSValueConst val,
                                              JS_MarkFunc *mark_func)
 {
     JSPromiseFunctionData *s = JS_VALUE_GET_OBJ(val)->u.promise_function_data;
@@ -48808,7 +48814,7 @@ static JSValue js_promise_resolve_function_call(JSContext *ctx,
     return JS_UNDEFINED;
 }
 
-static void js_promise_finalizer(JSRuntime *rt, JSValue val)
+static void js_promise_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSPromiseData *s = JS_GetOpaque(val, JS_CLASS_PROMISE);
     struct list_head *el, *el1;
@@ -48827,7 +48833,7 @@ static void js_promise_finalizer(JSRuntime *rt, JSValue val)
     js_free_rt(rt, s);
 }
 
-static void js_promise_mark(JSRuntime *rt, JSValue val,
+static void js_promise_mark(JSRuntime *rt, JSValueConst val,
                             JS_MarkFunc *mark_func)
 {
     JSPromiseData *s = JS_GetOpaque(val, JS_CLASS_PROMISE);
@@ -49576,7 +49582,8 @@ typedef struct JSAsyncFromSyncIteratorData {
     JSValue next_method;
 } JSAsyncFromSyncIteratorData;
 
-static void js_async_from_sync_iterator_finalizer(JSRuntime *rt, JSValue val)
+static void js_async_from_sync_iterator_finalizer(JSRuntime *rt,
+                                                  JSValueConst val)
 {
     JSAsyncFromSyncIteratorData *s =
         JS_GetOpaque(val, JS_CLASS_ASYNC_FROM_SYNC_ITERATOR);
@@ -49587,7 +49594,7 @@ static void js_async_from_sync_iterator_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_async_from_sync_iterator_mark(JSRuntime *rt, JSValue val,
+static void js_async_from_sync_iterator_mark(JSRuntime *rt, JSValueConst val,
                                              JS_MarkFunc *mark_func)
 {
     JSAsyncFromSyncIteratorData *s =
@@ -51958,7 +51965,7 @@ static JSValue js_shared_array_buffer_constructor(JSContext *ctx,
 }
 
 /* also used for SharedArrayBuffer */
-static void js_array_buffer_finalizer(JSRuntime *rt, JSValue val)
+static void js_array_buffer_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSArrayBuffer *abuf = p->u.array_buffer;
@@ -54320,7 +54327,7 @@ static JSValue js_typed_array_constructor(JSContext *ctx,
     return obj;
 }
 
-static void js_typed_array_finalizer(JSRuntime *rt, JSValue val)
+static void js_typed_array_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
     JSTypedArray *ta = p->u.typed_array;
@@ -54335,7 +54342,7 @@ static void js_typed_array_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_typed_array_mark(JSRuntime *rt, JSValue val,
+static void js_typed_array_mark(JSRuntime *rt, JSValueConst val,
                                 JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
@@ -55377,7 +55384,7 @@ void JS_AddPerformance(JSContext *ctx)
 }
 
 /* Equality comparisons and sameness */
-int JS_IsEqual(JSContext *ctx, JSValue op1, JSValue op2)
+int JS_IsEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2)
 {
     JSValue sp[2] = { js_dup(op1), js_dup(op2) };
     if (js_eq_slow(ctx, endof(sp), 0))
@@ -55385,17 +55392,17 @@ int JS_IsEqual(JSContext *ctx, JSValue op1, JSValue op2)
     return JS_VALUE_GET_BOOL(sp[0]);
 }
 
-bool JS_IsStrictEqual(JSContext *ctx, JSValue op1, JSValue op2)
+bool JS_IsStrictEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2)
 {
     return js_strict_eq2(ctx, js_dup(op1), js_dup(op2), JS_EQ_STRICT);
 }
 
-bool JS_IsSameValue(JSContext *ctx, JSValue op1, JSValue op2)
+bool JS_IsSameValue(JSContext *ctx, JSValueConst op1, JSValueConst op2)
 {
     return js_same_value(ctx, op1, op2);
 }
 
-bool JS_IsSameValueZero(JSContext *ctx, JSValue op1, JSValue op2)
+bool JS_IsSameValueZero(JSContext *ctx, JSValueConst op1, JSValueConst op2)
 {
     return js_same_value_zero(ctx, op1, op2);
 }
@@ -55409,7 +55416,7 @@ typedef struct JSWeakRefData {
 
 static JSWeakRefData js_weakref_sentinel;
 
-static void js_weakref_finalizer(JSRuntime *rt, JSValue val)
+static void js_weakref_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSWeakRefData *wrd = JS_GetOpaque(val, JS_CLASS_WEAK_REF);
     if (!wrd || wrd == &js_weakref_sentinel)
@@ -55513,7 +55520,7 @@ static void delete_finrec_weakref(JSRuntime *rt, JSFinRecEntry *fre)
     js_free_rt(rt, wr);
 }
 
-static void js_finrec_finalizer(JSRuntime *rt, JSValue val)
+static void js_finrec_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSFinalizationRegistryData *frd = JS_GetOpaque(val, JS_CLASS_FINALIZATION_REGISTRY);
     if (frd) {
@@ -55537,7 +55544,8 @@ static void js_finrec_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_finrec_mark(JSRuntime *rt, JSValue val, JS_MarkFunc *mark_func)
+static void js_finrec_mark(JSRuntime *rt, JSValueConst val,
+                           JS_MarkFunc *mark_func)
 {
     JSFinalizationRegistryData *frd = JS_GetOpaque(val, JS_CLASS_FINALIZATION_REGISTRY);
     if (frd) {
@@ -55790,7 +55798,7 @@ static void insert_weakref_record(JSValueConst target,
 
 /* CallSite */
 
-static void js_callsite_finalizer(JSRuntime *rt, JSValue val)
+static void js_callsite_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSCallSiteData *csd = JS_GetOpaque(val, JS_CLASS_CALL_SITE);
     if (csd) {
@@ -55801,7 +55809,8 @@ static void js_callsite_finalizer(JSRuntime *rt, JSValue val)
     }
 }
 
-static void js_callsite_mark(JSRuntime *rt, JSValue val, JS_MarkFunc *mark_func)
+static void js_callsite_mark(JSRuntime *rt, JSValueConst val,
+                             JS_MarkFunc *mark_func)
 {
     JSCallSiteData *csd = JS_GetOpaque(val, JS_CLASS_CALL_SITE);
     if (csd) {

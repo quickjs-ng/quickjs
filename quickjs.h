@@ -116,16 +116,17 @@ enum {
 //
 // rules:
 //
-// - function with JSValue parameter takes ownership;
+// - a function with a JSValue parameter takes ownership;
 //   caller must *not* call JS_FreeValue
 //
-// - function with JSValueConst parameter does not take ownership;
+// - a function with a JSValueConst parameter does not take ownership;
 //   caller *must* call JS_FreeValue
 //
-// - function returning JSValue transfers ownership to caller;
+// - a function returning a JSValue transfers ownership to caller;
 //   caller *must* call JS_FreeValue
 //
-// - functions don't return JSValueConst; it hardly ever makes sense to do so
+// - a function returning a JSValueConst does *not* transfer ownership;
+//   caller must *not* call JS_FreeValue
 #if defined(JS_CHECK_JSVALUE)
 
 typedef struct JSValue *JSValue;
@@ -427,9 +428,10 @@ JS_EXTERN void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);
 JS_EXTERN int JS_AddRuntimeFinalizer(JSRuntime *rt,
                                      JSRuntimeFinalizer *finalizer, void *arg);
 typedef void JS_MarkFunc(JSRuntime *rt, JSGCObjectHeader *gp);
-JS_EXTERN void JS_MarkValue(JSRuntime *rt, JSValue val, JS_MarkFunc *mark_func);
+JS_EXTERN void JS_MarkValue(JSRuntime *rt, JSValueConst val,
+                            JS_MarkFunc *mark_func);
 JS_EXTERN void JS_RunGC(JSRuntime *rt);
-JS_EXTERN bool JS_IsLiveObject(JSRuntime *rt, JSValue obj);
+JS_EXTERN bool JS_IsLiveObject(JSRuntime *rt, JSValueConst obj);
 
 JS_EXTERN JSContext *JS_NewContext(JSRuntime *rt);
 JS_EXTERN void JS_FreeContext(JSContext *s);
@@ -459,11 +461,11 @@ JS_EXTERN void JS_AddIntrinsicWeakRef(JSContext *ctx);
 JS_EXTERN void JS_AddPerformance(JSContext *ctx);
 
 /* for equality comparisons and sameness */
-JS_EXTERN int JS_IsEqual(JSContext *ctx, JSValue op1, JSValue op2);
-JS_EXTERN bool JS_IsStrictEqual(JSContext *ctx, JSValue op1, JSValue op2);
-JS_EXTERN bool JS_IsSameValue(JSContext *ctx, JSValue op1, JSValue op2);
+JS_EXTERN int JS_IsEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2);
+JS_EXTERN bool JS_IsStrictEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2);
+JS_EXTERN bool JS_IsSameValue(JSContext *ctx, JSValueConst op1, JSValueConst op2);
 /* Similar to same-value equality, but +0 and -0 are considered equal. */
-JS_EXTERN bool JS_IsSameValueZero(JSContext *ctx, JSValue op1, JSValue op2);
+JS_EXTERN bool JS_IsSameValueZero(JSContext *ctx, JSValueConst op1, JSValueConst op2);
 
 /* Only used for running 262 tests. TODO(saghul) add build time flag. */
 JS_EXTERN JSValue js_string_codePointRange(JSContext *ctx, JSValueConst this_val,
@@ -562,8 +564,8 @@ typedef struct JSClassExoticMethods {
                         JSValueConst value, JSValueConst receiver, int flags);
 } JSClassExoticMethods;
 
-typedef void JSClassFinalizer(JSRuntime *rt, JSValue val);
-typedef void JSClassGCMark(JSRuntime *rt, JSValue val,
+typedef void JSClassFinalizer(JSRuntime *rt, JSValueConst val);
+typedef void JSClassGCMark(JSRuntime *rt, JSValueConst val,
                            JS_MarkFunc *mark_func);
 #define JS_CALL_FLAG_CONSTRUCTOR (1 << 0)
 typedef JSValue JSClassCall(JSContext *ctx, JSValueConst func_obj,
@@ -849,7 +851,8 @@ JS_EXTERN int JS_FreezeObject(JSContext *ctx, JSValueConst obj);
 #define JS_GPN_SET_ENUM     (1 << 5)
 
 JS_EXTERN int JS_GetOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
-                                     uint32_t *plen, JSValue obj, int flags);
+                                     uint32_t *plen, JSValueConst obj,
+                                     int flags);
 JS_EXTERN int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
                                 JSValueConst obj, JSAtom prop);
 JS_EXTERN void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
@@ -961,9 +964,10 @@ typedef enum JSPromiseStateEnum {
 } JSPromiseStateEnum;
 
 JS_EXTERN JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs);
-JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValue promise);
-JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValue promise);
-JS_EXTERN bool JS_IsPromise(JSValue val);
+JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx,
+                                             JSValueConst promise);
+JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise);
+JS_EXTERN bool JS_IsPromise(JSValueConst val);
 
 JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global);
 

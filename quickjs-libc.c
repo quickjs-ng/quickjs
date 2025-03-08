@@ -1015,7 +1015,7 @@ static bool is_stdio(FILE *f)
     return f == stdin || f == stdout || f == stderr;
 }
 
-static void js_std_file_finalizer(JSRuntime *rt, JSValue val)
+static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSThreadState *ts = js_get_thread_state(rt);
     JSSTDFile *s = JS_GetOpaque(val, ts->std_file_class_id);
@@ -3550,7 +3550,7 @@ static void js_free_port(JSRuntime *rt, JSWorkerMessageHandler *port)
     }
 }
 
-static void js_worker_finalizer(JSRuntime *rt, JSValue val)
+static void js_worker_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSThreadState *ts = js_get_thread_state(rt);
     JSWorkerData *worker = JS_GetOpaque(val, ts->worker_class_id);
