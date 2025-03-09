@@ -12095,7 +12095,7 @@ bool JS_IsArray(JSValueConst val)
     return false;
 }
 
-bool JS_IsActualObject(JSValueConst val)
+bool JS_IsPlainObject(JSValueConst val)
 {
     if (JS_VALUE_GET_TAG(val) == JS_TAG_OBJECT) {
         JSObject *p = JS_VALUE_GET_OBJ(val);

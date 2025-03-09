@@ -807,7 +807,7 @@ JS_EXTERN JSValue JS_NewArrayFrom(JSContext *ctx, int count,
 // and JS_GetProxyTarget instead, and remember that the target itself can
 // also be a proxy, ad infinitum
 JS_EXTERN bool JS_IsArray(JSValueConst val);
-JS_EXTERN bool JS_IsActualObject(JSValueConst val);
+JS_EXTERN bool JS_IsPlainObject(JSValueConst val);
 
 JS_EXTERN bool JS_IsProxy(JSValueConst val);
 JS_EXTERN JSValue JS_GetProxyTarget(JSContext *ctx, JSValueConst proxy);
