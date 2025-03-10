@@ -208,7 +208,7 @@ function test_os_exec()
     ret = os.exec(["true"]);
     assert(ret, 0);
 
-    ret = os.exec(["/bin/sh", "-c", "exit 1"], { usePath: false });
+    ret = os.exec(["/usr/bin/env", "sh", "-c", "exit 1"], { usePath: false });
     assert(ret, 1);
 
     fds = os.pipe();
