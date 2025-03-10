@@ -158,7 +158,7 @@ jobs:
         if: ${{ matrix.config.runTest262 }}
         run: |
           git submodule update --init --checkout --depth 1
-          time make test262
+          make test262
 
       - name: test standalone
         run: |
