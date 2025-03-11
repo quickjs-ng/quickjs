@@ -2,6 +2,7 @@ import {loadFile, writeFile} from "qjs:std"
 
 const cutils_c = loadFile("cutils.c")
 const cutils_h = loadFile("cutils.h")
+const dirent_compat_h = loadFile("dirent_compat.h")
 const libbf_c = loadFile("libbf.c")
 const libbf_h = loadFile("libbf.h")
 const libregexp_c = loadFile("libregexp.c")
@@ -36,6 +37,7 @@ let source = "#if defined(QJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU
            + libregexp_c
            + libunicode_c
            + "#ifdef QJS_BUILD_LIBC\n"
+           + dirent_compat_h
            + quickjs_libc_h
            + quickjs_libc_c
            + "#endif // QJS_BUILD_LIBC\n"
