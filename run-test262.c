@@ -405,13 +405,22 @@ static int add_test_file(const char *filename)
 
 static void find_test_files(const char *path);
 
+static bool ispathsep(int c)
+{
+    return c == '/' || c == '\\';
+}
+
 static void consider_test_file(const char *path, const char *name, int is_dir)
 {
+    size_t pathlen;
     char s[1024];
 
     if (str_equal(name, ".") || str_equal(name, ".."))
         return;
-    snprintf(s, sizeof(s), "%s/%s", path, name);
+    pathlen = strlen(path);
+    while (pathlen > 0 && ispathsep(path[pathlen-1]))
+        pathlen--;
+    snprintf(s, sizeof(s), "%.*s/%s", (int)pathlen, path, name);
     if (is_dir)
         find_test_files(s);
     else
