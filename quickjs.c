@@ -5205,7 +5205,7 @@ static int js_method_set_properties(JSContext *ctx, JSValue func_obj,
 JSValue JS_NewCFunction3(JSContext *ctx, JSCFunction *func,
                          const char *name,
                          int length, JSCFunctionEnum cproto, int magic,
-                         JSValue proto_val)
+                         JSValueConst proto_val)
 {
     JSValue func_obj;
     JSObject *p;
@@ -35891,7 +35891,7 @@ static JSValue JS_InstantiateFunctionListItem2(JSContext *ctx, JSObject *p,
     return val;
 }
 
-static int JS_InstantiateFunctionListItem(JSContext *ctx, JSValue obj,
+static int JS_InstantiateFunctionListItem(JSContext *ctx, JSValueConst obj,
                                           JSAtom atom,
                                           const JSCFunctionListEntry *e)
 {
@@ -35984,7 +35984,7 @@ static int JS_InstantiateFunctionListItem(JSContext *ctx, JSValue obj,
     return 0;
 }
 
-void JS_SetPropertyFunctionList(JSContext *ctx, JSValue obj,
+void JS_SetPropertyFunctionList(JSContext *ctx, JSValueConst obj,
                                 const JSCFunctionListEntry *tab, int len)
 {
     int i;
