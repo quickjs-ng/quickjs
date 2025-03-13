@@ -1,3 +1,9 @@
+test262/test/built-ins/Array/fromAsync/builtin.js:24: Test262Error: Prototype of Array.fromAsync is Function.prototype Expected SameValue(«[object AsyncFunction]», «function () {
+    [native code]
+}») to be true
+test262/test/built-ins/Array/fromAsync/builtin.js:24: strict mode: Test262Error: Prototype of Array.fromAsync is Function.prototype Expected SameValue(«[object AsyncFunction]», «function () {
+    [native code]
+}») to be true
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/iterator-result-poisoned-wrapper.js:64: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/iterator-result-poisoned-wrapper.js:64: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/next/next-result-poisoned-wrapper.js:69: TypeError: $DONE() not called
