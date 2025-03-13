@@ -395,7 +395,12 @@ typedef enum {
     JS_AUTOINIT_ID_PROTOTYPE,
     JS_AUTOINIT_ID_MODULE_NS,
     JS_AUTOINIT_ID_PROP,
+    JS_AUTOINIT_ID_BYTECODE,
 } JSAutoInitIDEnum;
+
+enum {
+    JS_BUILTIN_ARRAY_FROMASYNC = 1,
+};
 
 /* must be large enough to have a negligible runtime cost and small
    enough to call the interrupt callback often. */
@@ -1117,6 +1122,12 @@ static int JS_NewClass1(JSRuntime *rt, JSClassID class_id,
                         const JSClassDef *class_def, JSAtom name);
 static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv, int unshift);
+static JSValue js_array_constructor(JSContext *ctx, JSValueConst new_target,
+                                    int argc, JSValueConst *argv);
+static JSValue js_error_constructor(JSContext *ctx, JSValueConst new_target,
+                                    int argc, JSValueConst *argv, int magic);
+static JSValue js_object_defineProperty(JSContext *ctx, JSValueConst this_val,
+                                        int argc, JSValueConst *argv, int magic);
 
 typedef enum JSStrictEqModeEnum {
     JS_EQ_STRICT,
@@ -7383,6 +7394,51 @@ int JS_IsInstanceOf(JSContext *ctx, JSValueConst val, JSValueConst obj)
     return JS_OrdinaryIsInstanceOf(ctx, val, obj);
 }
 
+#include "gen/builtin-array-fromasync.h"
+
+static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
+                                    void *opaque)
+{
+    switch ((uintptr_t)opaque) {
+    default:
+        abort();
+    case JS_BUILTIN_ARRAY_FROMASYNC:
+        JSValue obj = JS_ReadObject(ctx, qjsc_builtin_array_fromasync,
+                                    sizeof(qjsc_builtin_array_fromasync),
+                                    JS_READ_OBJ_BYTECODE);
+        if (JS_IsException(obj))
+            return JS_EXCEPTION;
+        JSValue mod = JS_EvalFunction(ctx, obj);
+        JS_FreeValue(ctx, obj);
+        if (JS_IsException(mod))
+            return JS_EXCEPTION;
+        assert(JS_IsModule(obj));
+        JSModuleDef *m = JS_VALUE_GET_PTR(obj);
+        assert(m->export_entries_count == 1);
+        JSExportEntry *e = &m->export_entries[0];
+        assert(e->export_type == JS_EXPORT_TYPE_LOCAL);
+        JSVarRef *v = e->u.local.var_ref;
+        JSValue args[] = {
+            JS_NewCFunction(ctx, js_array_constructor, "Array", 0),
+            JS_NewCFunctionMagic(ctx, js_error_constructor, "TypeError", 1,
+                                 JS_CFUNC_constructor_or_func_magic,
+                                 JS_TYPE_ERROR),
+            JS_AtomToValue(ctx, JS_ATOM_Symbol_asyncIterator),
+            JS_NewCFunctionMagic(ctx, js_object_defineProperty,
+                                 "Object.defineProperty", 3,
+                                 JS_CFUNC_generic_magic, 0),
+            JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
+        };
+        JSValue result = JS_Call(ctx, v->value, JS_UNDEFINED,
+                                 countof(args), args);
+        for (size_t i = 0; i < countof(args); i++)
+            JS_FreeValue(ctx, args[i]);
+        JS_FreeValue(ctx, mod);
+        return result;
+    }
+    return JS_UNDEFINED;
+}
+
 /* return the value associated to the autoinit property or an exception */
 typedef JSValue JSAutoInitFunc(JSContext *ctx, JSObject *p, JSAtom atom, void *opaque);
 
@@ -7390,6 +7446,7 @@ static JSAutoInitFunc *const js_autoinit_func_table[] = {
     js_instantiate_prototype, /* JS_AUTOINIT_ID_PROTOTYPE */
     js_module_ns_autoinit, /* JS_AUTOINIT_ID_MODULE_NS */
     JS_InstantiateFunctionListItem2, /* JS_AUTOINIT_ID_PROP */
+    js_bytecode_autoinit, /* JS_AUTOINIT_ID_BYTECODE */
 };
 
 /* warning: 'prs' is reallocated after it */
@@ -51644,6 +51701,10 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     ctx->array_ctor = js_dup(obj);
     JS_SetPropertyFunctionList(ctx, obj, js_array_funcs,
                                countof(js_array_funcs));
+    JS_DefineAutoInitProperty(ctx, obj, JS_ATOM_fromAsync,
+                              JS_AUTOINIT_ID_BYTECODE,
+                              (void *)(uintptr_t)JS_BUILTIN_ARRAY_FROMASYNC,
+                              JS_PROP_WRITABLE|JS_PROP_CONFIGURABLE);
 
     /* XXX: create auto_initializer */
     {
