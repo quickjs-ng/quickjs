@@ -37,7 +37,9 @@ let source = "#if defined(QJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU
            + libregexp_c
            + libunicode_c
            + "#ifdef QJS_BUILD_LIBC\n"
+           + "#ifdef _MSC_VER\n"
            + dirent_compat_h
+           + "#endif\n"
            + quickjs_libc_h
            + quickjs_libc_c
            + "#endif // QJS_BUILD_LIBC\n"
