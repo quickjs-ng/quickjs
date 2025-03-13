@@ -7431,7 +7431,7 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                 JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
             };
             JSValue result = JS_Call(ctx, v->value, JS_UNDEFINED,
-                                     countof(args), args);
+                                     countof(args), vc(args));
             for (size_t i = 0; i < countof(args); i++)
                 JS_FreeValue(ctx, args[i]);
             JS_FreeValue(ctx, mod);
