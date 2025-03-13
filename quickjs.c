@@ -7403,38 +7403,40 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
     default:
         abort();
     case JS_BUILTIN_ARRAY_FROMASYNC:
-        JSValue obj = JS_ReadObject(ctx, qjsc_builtin_array_fromasync,
-                                    sizeof(qjsc_builtin_array_fromasync),
-                                    JS_READ_OBJ_BYTECODE);
-        if (JS_IsException(obj))
-            return JS_EXCEPTION;
-        JSValue mod = JS_EvalFunction(ctx, obj);
-        JS_FreeValue(ctx, obj);
-        if (JS_IsException(mod))
-            return JS_EXCEPTION;
-        assert(JS_IsModule(obj));
-        JSModuleDef *m = JS_VALUE_GET_PTR(obj);
-        assert(m->export_entries_count == 1);
-        JSExportEntry *e = &m->export_entries[0];
-        assert(e->export_type == JS_EXPORT_TYPE_LOCAL);
-        JSVarRef *v = e->u.local.var_ref;
-        JSValue args[] = {
-            JS_NewCFunction(ctx, js_array_constructor, "Array", 0),
-            JS_NewCFunctionMagic(ctx, js_error_constructor, "TypeError", 1,
-                                 JS_CFUNC_constructor_or_func_magic,
-                                 JS_TYPE_ERROR),
-            JS_AtomToValue(ctx, JS_ATOM_Symbol_asyncIterator),
-            JS_NewCFunctionMagic(ctx, js_object_defineProperty,
-                                 "Object.defineProperty", 3,
-                                 JS_CFUNC_generic_magic, 0),
-            JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
-        };
-        JSValue result = JS_Call(ctx, v->value, JS_UNDEFINED,
-                                 countof(args), args);
-        for (size_t i = 0; i < countof(args); i++)
-            JS_FreeValue(ctx, args[i]);
-        JS_FreeValue(ctx, mod);
-        return result;
+        {
+            JSValue obj = JS_ReadObject(ctx, qjsc_builtin_array_fromasync,
+                                        sizeof(qjsc_builtin_array_fromasync),
+                                        JS_READ_OBJ_BYTECODE);
+            if (JS_IsException(obj))
+                return JS_EXCEPTION;
+            JSValue mod = JS_EvalFunction(ctx, obj);
+            JS_FreeValue(ctx, obj);
+            if (JS_IsException(mod))
+                return JS_EXCEPTION;
+            assert(JS_IsModule(obj));
+            JSModuleDef *m = JS_VALUE_GET_PTR(obj);
+            assert(m->export_entries_count == 1);
+            JSExportEntry *e = &m->export_entries[0];
+            assert(e->export_type == JS_EXPORT_TYPE_LOCAL);
+            JSVarRef *v = e->u.local.var_ref;
+            JSValue args[] = {
+                JS_NewCFunction(ctx, js_array_constructor, "Array", 0),
+                JS_NewCFunctionMagic(ctx, js_error_constructor, "TypeError", 1,
+                                     JS_CFUNC_constructor_or_func_magic,
+                                     JS_TYPE_ERROR),
+                JS_AtomToValue(ctx, JS_ATOM_Symbol_asyncIterator),
+                JS_NewCFunctionMagic(ctx, js_object_defineProperty,
+                                     "Object.defineProperty", 3,
+                                     JS_CFUNC_generic_magic, 0),
+                JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
+            };
+            JSValue result = JS_Call(ctx, v->value, JS_UNDEFINED,
+                                     countof(args), args);
+            for (size_t i = 0; i < countof(args); i++)
+                JS_FreeValue(ctx, args[i]);
+            JS_FreeValue(ctx, mod);
+            return result;
+        }
     }
     return JS_UNDEFINED;
 }
