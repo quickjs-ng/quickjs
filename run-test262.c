@@ -405,13 +405,22 @@ static int add_test_file(const char *filename)
 
 static void find_test_files(const char *path);
 
+static bool ispathsep(int c)
+{
+    return c == '/' || c == '\\';
+}
+
 static void consider_test_file(const char *path, const char *name, int is_dir)
 {
+    size_t pathlen;
     char s[1024];
 
     if (str_equal(name, ".") || str_equal(name, ".."))
         return;
-    snprintf(s, sizeof(s), "%s/%s", path, name);
+    pathlen = strlen(path);
+    while (pathlen > 0 && ispathsep(path[pathlen-1]))
+        pathlen--;
+    snprintf(s, sizeof(s), "%.*s/%s", (int)pathlen, path, name);
     if (is_dir)
         find_test_files(s);
     else
@@ -459,12 +468,12 @@ static void enumerate_tests(const char *path)
           namelist_cmp_indirect);
 }
 
-static JSValue js_print_262(JSContext *ctx, JSValue this_val,
-                        int argc, JSValue *argv)
+static JSValue js_print_262(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv)
 {
     ThreadLocalStorage *tls = JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
     const char *s;
-    JSValue v;
+    JSValueConst v;
     int i;
 
     for (i = 0; i < argc; i++) {
@@ -473,9 +482,9 @@ static JSValue js_print_262(JSContext *ctx, JSValue this_val,
         // same logic as js_print in quickjs-libc.c
         if (local && !s && JS_IsObject(v)) {
             JS_FreeValue(ctx, JS_GetException(ctx));
-            v = JS_ToObjectString(ctx, v);
-            s = JS_ToCString(ctx, v);
-            JS_FreeValue(ctx, v);
+            JSValue t = JS_ToObjectString(ctx, v);
+            s = JS_ToCString(ctx, t);
+            JS_FreeValue(ctx, t);
         }
         if (!s)
             return JS_EXCEPTION;
@@ -500,15 +509,15 @@ static JSValue js_print_262(JSContext *ctx, JSValue this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue js_detachArrayBuffer(JSContext *ctx, JSValue this_val,
-                                    int argc, JSValue *argv)
+static JSValue js_detachArrayBuffer(JSContext *ctx, JSValueConst this_val,
+                                    int argc, JSValueConst *argv)
 {
     JS_DetachArrayBuffer(ctx, argv[0]);
     return JS_UNDEFINED;
 }
 
-static JSValue js_evalScript_262(JSContext *ctx, JSValue this_val,
-                             int argc, JSValue *argv)
+static JSValue js_evalScript_262(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
 {
     const char *str;
     size_t len;
@@ -673,7 +682,7 @@ static void *agent_start(void *arg)
                                             NULL, NULL, true);
                 args[1] = JS_NewInt32(ctx, agent->broadcast_val);
                 ret_val = JS_Call(ctx, agent->broadcast_func, JS_UNDEFINED,
-                                  2, args);
+                                  2, (JSValueConst *)args);
                 JS_FreeValue(ctx, args[0]);
                 JS_FreeValue(ctx, args[1]);
                 if (JS_IsException(ret_val))
@@ -691,8 +700,8 @@ static void *agent_start(void *arg)
     return NULL;
 }
 
-static JSValue js_agent_start(JSContext *ctx, JSValue this_val,
-                              int argc, JSValue *argv)
+static JSValue js_agent_start(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
 {
     ThreadLocalStorage *tls = JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
     const char *script;
@@ -731,8 +740,8 @@ static void js_agent_free(JSContext *ctx)
     }
 }
 
-static JSValue js_agent_leaving(JSContext *ctx, JSValue this_val,
-                                int argc, JSValue *argv)
+static JSValue js_agent_leaving(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
 {
     Test262Agent *agent = JS_GetContextOpaque(ctx);
     if (!agent)
@@ -753,11 +762,11 @@ static bool is_broadcast_pending(ThreadLocalStorage *tls)
     return false;
 }
 
-static JSValue js_agent_broadcast(JSContext *ctx, JSValue this_val,
-                                  int argc, JSValue *argv)
+static JSValue js_agent_broadcast(JSContext *ctx, JSValueConst this_val,
+                                  int argc, JSValueConst *argv)
 {
     ThreadLocalStorage *tls = JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
-    JSValue sab = argv[0];
+    JSValueConst sab = argv[0];
     struct list_head *el;
     Test262Agent *agent;
     uint8_t *buf;
@@ -795,8 +804,8 @@ static JSValue js_agent_broadcast(JSContext *ctx, JSValue this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue js_agent_receiveBroadcast(JSContext *ctx, JSValue this_val,
-                                         int argc, JSValue *argv)
+static JSValue js_agent_receiveBroadcast(JSContext *ctx, JSValueConst this_val,
+                                         int argc, JSValueConst *argv)
 {
     Test262Agent *agent = JS_GetContextOpaque(ctx);
     if (!agent)
@@ -808,8 +817,8 @@ static JSValue js_agent_receiveBroadcast(JSContext *ctx, JSValue this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue js_agent_sleep(JSContext *ctx, JSValue this_val,
-                              int argc, JSValue *argv)
+static JSValue js_agent_sleep(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
 {
     uint32_t duration;
     if (JS_ToUint32(ctx, &duration, argv[0]))
@@ -833,14 +842,14 @@ static int64_t get_clock_ms(void)
 #endif
 }
 
-static JSValue js_agent_monotonicNow(JSContext *ctx, JSValue this_val,
-                                     int argc, JSValue *argv)
+static JSValue js_agent_monotonicNow(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv)
 {
     return JS_NewInt64(ctx, get_clock_ms());
 }
 
-static JSValue js_agent_getReport(JSContext *ctx, JSValue this_val,
-                                  int argc, JSValue *argv)
+static JSValue js_agent_getReport(JSContext *ctx, JSValueConst this_val,
+                                  int argc, JSValueConst *argv)
 {
     ThreadLocalStorage *tls = JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
     AgentReport *rep;
@@ -864,8 +873,8 @@ static JSValue js_agent_getReport(JSContext *ctx, JSValue this_val,
     return ret;
 }
 
-static JSValue js_agent_report(JSContext *ctx, JSValue this_val,
-                               int argc, JSValue *argv)
+static JSValue js_agent_report(JSContext *ctx, JSValueConst this_val,
+                               int argc, JSValueConst *argv)
 {
     ThreadLocalStorage *tls = JS_GetRuntimeOpaque(JS_GetRuntime(ctx));
     const char *str;
@@ -907,8 +916,8 @@ static JSValue js_new_agent(JSContext *ctx)
     return agent;
 }
 
-static JSValue js_createRealm(JSContext *ctx, JSValue this_val,
-                              int argc, JSValue *argv)
+static JSValue js_createRealm(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
 {
     JSContext *ctx1;
     JSValue ret;
@@ -922,8 +931,8 @@ static JSValue js_createRealm(JSContext *ctx, JSValue this_val,
     return ret;
 }
 
-static JSValue js_IsHTMLDDA(JSContext *ctx, JSValue this_val,
-                            int argc, JSValue *argv)
+static JSValue js_IsHTMLDDA(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv)
 {
     return JS_NULL;
 }
@@ -1062,8 +1071,9 @@ void update_exclude_dirs(void)
     namelist_t *lp = &test_list;
     namelist_t *ep = &exclude_list;
     namelist_t *dp = &exclude_dir_list;
-    char *name;
+    char *name, *path;
     int i, j, count;
+    size_t include, exclude;
 
     /* split directpries from exclude_list */
     for (count = i = 0; i < ep->count; i++) {
@@ -1082,15 +1092,19 @@ void update_exclude_dirs(void)
     /* filter out excluded directories */
     for (count = i = 0; i < lp->count; i++) {
         name = lp->array[i];
+        include = exclude = 0;
         for (j = 0; j < dp->count; j++) {
-            if (has_prefix(name, dp->array[j])) {
-                test_excluded++;
-                free(name);
-                name = NULL;
-                break;
-            }
+            path = dp->array[j];
+            if (has_prefix(name, path))
+                exclude = strlen(path);
+            if (*path == '!' && has_prefix(name, &path[1]))
+                include = strlen(&path[1]);
         }
-        if (name) {
+        // most specific include/exclude wins
+        if (exclude > include) {
+            test_excluded++;
+            free(name);
+        } else {
             lp->array[count++] = name;
         }
     }
@@ -1423,7 +1437,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
     if (JS_IsException(res_val)) {
         exception_val = JS_GetException(ctx);
         is_error = JS_IsError(ctx, exception_val);
-        js_print_262(ctx, JS_NULL, 1, &exception_val);
+        js_print_262(ctx, JS_NULL, 1, (JSValueConst *)&exception_val);
         if (is_error) {
             JSValue name, stack;
             const char *stack_str;
@@ -1543,7 +1557,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
                 }
             }
         }
-        if (is_unexpected_error && verbose > 1) {
+        if (is_unexpected_error && verbose > 1 && JS_IsException(exception_val)) {
             JSValue val = JS_GetPropertyStr(ctx, exception_val, "stack");
             if (!JS_IsException(val) &&
                 !JS_IsUndefined(val) &&

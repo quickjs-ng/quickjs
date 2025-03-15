@@ -355,6 +355,18 @@ encoding. Return `null` in case of I/O error.
 
 If `options.binary` is set to `true` a `Uint8Array` is returned instead.
 
+### `writeFile(filename, data)`
+
+Create the file `filename` and write `data` into it.
+
+`data` can be a string, a typed array or an `ArrayBuffer`. `undefined` is
+treated as the empty string.
+
+When `data` is a string, the file is opened in text mode; otherwise it is
+opened in binary mode. (This distinction is only relevant on Windows.)
+
+Throws an exception if the file cannot be created or written to.
+
 ### `open(filename, flags, errorObj = undefined)`
 
 Open a file (wrapper to the libc `fopen()`). Return the FILE

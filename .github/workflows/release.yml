@@ -8,7 +8,7 @@ on:
 
 jobs:
   linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +24,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -DBUILD_STATIC_QJS_EXE=ON ..
+          cmake -DQJS_BUILD_CLI_STATIC=ON ..
           cd ..
           cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
           cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
@@ -50,11 +50,18 @@ jobs:
           cd build
           cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ..
           make -j$(getconf _NPROCESSORS_ONLN)
+          make -C .. amalgam # writes build/quickjs-amalgam.zip
           mv qjs qjs-darwin
           mv qjsc qjsc-darwin
       - name: check
         run: |
           lipo -info build/qjs-darwin build/qjsc-darwin
+      - name: upload amalgamation
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickjs-amalgam.zip
+          path: build/quickjs-amalgam.zip
+          compression-level: 0 # already compressed
       - name: upload
         uses: actions/upload-artifact@v4
         with:
@@ -99,7 +106,7 @@ jobs:
           path: build/*-windows-${{matrix.arch}}.exe
 
   wasi:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: setup wasi-sdk
@@ -119,12 +126,11 @@ jobs:
 
   upload-to-release:
     needs: [linux, macos, windows, wasi]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: get assets
         uses: actions/download-artifact@v4
         with:
-          pattern: qjs-*
           path: build
           merge-multiple: true
       - run: ls -R build

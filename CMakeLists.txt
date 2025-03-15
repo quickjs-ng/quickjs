@@ -37,6 +37,8 @@ xcheck_add_c_compiler_flag(-Wno-sign-compare)
 xcheck_add_c_compiler_flag(-Wno-missing-field-initializers)
 xcheck_add_c_compiler_flag(-Wno-unused-parameter)
 xcheck_add_c_compiler_flag(-Wno-unused-but-set-variable)
+xcheck_add_c_compiler_flag(-Wno-unused-result)
+xcheck_add_c_compiler_flag(-Wno-stringop-truncation)
 xcheck_add_c_compiler_flag(-Wno-array-bounds)
 xcheck_add_c_compiler_flag(-funsigned-char)
 
@@ -68,6 +70,18 @@ if(MSVC)
     xcheck_add_c_compiler_flag(/wd5045) # Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
 endif()
 
+# Set a 8MB default stack size on Windows.
+# It defaults to 1MB on MSVC, which is the same as our current JS stack size,
+# so it will overflow and crash otherwise.
+# On MinGW it defaults to 2MB.
+if(WIN32)
+    if(MSVC)
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:8388608")
+    else()
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack,8388608")
+    endif()
+endif()
+
 # MacOS and GCC 11 or later need -Wno-maybe-uninitialized
 # https://github.com/quickjs-ng/quickjs/issues/453
 if(APPLE AND CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
@@ -86,7 +100,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
 endif()
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    add_compile_options(-O0)
+    xcheck_add_c_compiler_flag(/Od)
+    xcheck_add_c_compiler_flag(-O0)
     xcheck_add_c_compiler_flag(-ggdb)
     xcheck_add_c_compiler_flag(-fno-omit-frame-pointer)
 endif()
@@ -108,20 +123,20 @@ if(BUILD_SHARED_LIBS)
     message(STATUS "Building a shared library")
 endif()
 
-# note: CONFIG_TSAN is currently incompatible with the other sanitizers but we
+# note: QJS_ENABLE_TSAN is currently incompatible with the other sanitizers but we
 # don't explicitly check for that because who knows what the future will bring?
-# CONFIG_MSAN only works with clang at the time of writing; also not checked
+# QJS_ENABLE_MSAN only works with clang at the time of writing; also not checked
 # for the same reason
-xoption(BUILD_EXAMPLES "Build examples" OFF)
-xoption(BUILD_STATIC_QJS_EXE "Build a static qjs executable" OFF)
-xoption(BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
-xoption(BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
-xoption(CONFIG_ASAN "Enable AddressSanitizer (ASan)" OFF)
-xoption(CONFIG_MSAN "Enable MemorySanitizer (MSan)" OFF)
-xoption(CONFIG_TSAN "Enable ThreadSanitizer (TSan)" OFF)
-xoption(CONFIG_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
+xoption(QJS_BUILD_EXAMPLES "Build examples" OFF)
+xoption(QJS_BUILD_CLI_STATIC "Build a static qjs executable" OFF)
+xoption(QJS_BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
+xoption(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
+xoption(QJS_ENABLE_ASAN "Enable AddressSanitizer (ASan)" OFF)
+xoption(QJS_ENABLE_MSAN "Enable MemorySanitizer (MSan)" OFF)
+xoption(QJS_ENABLE_TSAN "Enable ThreadSanitizer (TSan)" OFF)
+xoption(QJS_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 
-if(CONFIG_ASAN)
+if(QJS_ENABLE_ASAN)
 message(STATUS "Building with ASan")
 add_compile_options(
     -fsanitize=address
@@ -135,7 +150,7 @@ add_link_options(
 )
 endif()
 
-if(CONFIG_MSAN)
+if(QJS_ENABLE_MSAN)
 message(STATUS "Building with MSan")
 add_compile_options(
     -fsanitize=memory
@@ -149,7 +164,7 @@ add_link_options(
 )
 endif()
 
-if(CONFIG_TSAN)
+if(QJS_ENABLE_TSAN)
 message(STATUS "Building with TSan")
 add_compile_options(
     -fsanitize=thread
@@ -163,7 +178,7 @@ add_link_options(
 )
 endif()
 
-if(CONFIG_UBSAN)
+if(QJS_ENABLE_UBSAN)
 message(STATUS "Building with UBSan")
 add_compile_options(
     -fsanitize=undefined
@@ -181,14 +196,14 @@ endif()
 # QuickJS library
 #
 
-xoption(BUILD_QJS_LIBC "Build standard library modules as part of the library" OFF)
+xoption(QJS_BUILD_LIBC "Build standard library modules as part of the library" OFF)
 macro(add_qjs_libc_if_needed target)
-    if(NOT BUILD_QJS_LIBC)
+    if(NOT QJS_BUILD_LIBC)
         target_sources(${target} PRIVATE quickjs-libc.c)
     endif()
 endmacro()
 macro(add_static_if_needed target)
-    if(BUILD_STATIC_QJS_EXE OR MINGW)
+    if(QJS_BUILD_CLI_STATIC OR MINGW)
         target_link_options(${target} PRIVATE -static)
         if(MINGW)
             target_link_options(${target} PRIVATE -static-libgcc)
@@ -204,12 +219,13 @@ set(qjs_sources
     quickjs.c
 )
 
-if(BUILD_QJS_LIBC)
+if(QJS_BUILD_LIBC)
     list(APPEND qjs_sources quickjs-libc.c)
 endif()
 list(APPEND qjs_defines _GNU_SOURCE)
 if(WIN32)
-    list(APPEND qjs_defines WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0602)
+    # NB: Windows 7 is EOL and we are only supporting in so far as it doesn't interfere with progress.
+    list(APPEND qjs_defines WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0601)
 endif()
 list(APPEND qjs_libs ${CMAKE_DL_LIBS})
 find_package(Threads)
@@ -280,10 +296,10 @@ target_link_libraries(qjs_exe qjs)
 if(NOT WIN32)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
-if(BUILD_CLI_WITH_MIMALLOC OR BUILD_CLI_WITH_STATIC_MIMALLOC)
+if(QJS_BUILD_CLI_WITH_MIMALLOC OR QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
     find_package(mimalloc REQUIRED)
     # Upstream mimalloc doesn't provide a way to know if both libraries are supported.
-    if(BUILD_CLI_WITH_STATIC_MIMALLOC)
+    if(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
         target_link_libraries(qjs_exe mimalloc-static)
     else()
         target_link_libraries(qjs_exe mimalloc)
@@ -305,11 +321,11 @@ endif()
 # Interrupt test
 #
 
-add_executable(interrupt-test
-    interrupt-test.c
+add_executable(api-test
+    api-test.c
 )
-target_compile_definitions(interrupt-test PRIVATE ${qjs_defines})
-target_link_libraries(interrupt-test qjs)
+target_compile_definitions(api-test PRIVATE ${qjs_defines})
+target_link_libraries(api-test qjs)
 
 # Unicode generator
 #
@@ -332,7 +348,7 @@ target_link_libraries(function_source qjs)
 # Examples
 #
 
-if(BUILD_EXAMPLES)
+if(QJS_BUILD_EXAMPLES)
     add_executable(hello
         gen/hello.c
     )
@@ -397,7 +413,7 @@ if(NOT IOS)
         SOVERSION ${QJS_VERSION_MAJOR}
     )
     install(FILES quickjs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-    if(BUILD_QJS_LIBC)
+    if(QJS_BUILD_LIBC)
         install(FILES quickjs-libc.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     endif()
     install(TARGETS qjs_exe RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

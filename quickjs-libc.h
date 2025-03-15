@@ -44,14 +44,14 @@ void js_std_init_handlers(JSRuntime *rt);
 void js_std_free_handlers(JSRuntime *rt);
 void js_std_dump_error(JSContext *ctx);
 uint8_t *js_load_file(JSContext *ctx, size_t *pbuf_len, const char *filename);
-int js_module_set_import_meta(JSContext *ctx, JSValue func_val,
+int js_module_set_import_meta(JSContext *ctx, JSValueConst func_val,
                               bool use_realpath, bool is_main);
 JSModuleDef *js_module_loader(JSContext *ctx,
                               const char *module_name, void *opaque);
 void js_std_eval_binary(JSContext *ctx, const uint8_t *buf, size_t buf_len,
                         int flags);
-void js_std_promise_rejection_tracker(JSContext *ctx, JSValue promise,
-                                      JSValue reason,
+void js_std_promise_rejection_tracker(JSContext *ctx, JSValueConst promise,
+                                      JSValueConst reason,
                                       bool is_handled, void *opaque);
 void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt));
 
