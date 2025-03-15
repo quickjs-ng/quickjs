@@ -1,4 +1,5 @@
-export function go(Array, TypeError, asyncIterator, defineProperty, iterator) {
+;(function(Array, TypeError, asyncIterator, defineProperty, iterator) {
+    "use strict" // result.length=i should throw if .length is not writable
     return async function fromAsync(arrayLike, mapFn=undefined, thisArg=undefined) {
         if (mapFn !== undefined && typeof mapFn !== "function") throw new TypeError("not a function")
         let result, i = 0, isConstructor = typeof this === "function"
@@ -32,4 +33,4 @@ export function go(Array, TypeError, asyncIterator, defineProperty, iterator) {
         result.length = i
         return result
     }
-}
+})

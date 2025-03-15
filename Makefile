@@ -80,7 +80,7 @@ codegen: $(QJSC)
 	$(QJSC) -e -o gen/hello.c examples/hello.js
 	$(QJSC) -e -o gen/hello_module.c -m examples/hello_module.js
 	$(QJSC) -e -o gen/test_fib.c -M examples/fib.so,fib -m examples/test_fib.js
-	$(QJSC) -m -ss -o gen/builtin-array-fromasync.h builtin-array-fromasync.js
+	$(QJSC) -C -ss -o gen/builtin-array-fromasync.h builtin-array-fromasync.js
 
 debug:
 	BUILD_TYPE=Debug $(MAKE)
