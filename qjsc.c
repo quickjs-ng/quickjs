@@ -347,7 +347,8 @@ void help(void)
            "-o output   set the output filename\n"
            "-n script_name    set the script name (as used in stack traces)\n"
            "-N cname    set the C name of the generated data\n"
-           "-m          compile as Javascript module (default=autodetect)\n"
+           "-C          compile as JS classic script (default=autodetect)\n"
+           "-m          compile as ES module (default=autodetect)\n"
            "-D module_name         compile a dynamically loaded module or worker\n"
            "-M module_name[,cname] add initialization code for an external C module\n"
            "-p prefix   set the prefix of the generated C names\n"
@@ -390,7 +391,7 @@ int main(int argc, char **argv)
     namelist_add(&cmodule_list, "bjson", "bjson", 0);
 
     for(;;) {
-        c = getopt(argc, argv, "ho:N:mn:bxesvM:p:S:D:");
+        c = getopt(argc, argv, "ho:N:Cmn:bxesvM:p:S:D:");
         if (c == -1)
             break;
         switch(c) {
@@ -410,6 +411,9 @@ int main(int argc, char **argv)
             break;
         case 'N':
             cname = optarg;
+            break;
+        case 'C':
+            module = 0;
             break;
         case 'm':
             module = 1;

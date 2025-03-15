@@ -382,8 +382,8 @@ void help(void)
            "-h  --help         list options\n"
            "-e  --eval EXPR    evaluate EXPR\n"
            "-i  --interactive  go to interactive mode\n"
-           "-m  --module       load as ES6 module (default=autodetect)\n"
-           "    --script       load as ES6 script (default=autodetect)\n"
+           "-C  --script       load as JS classic script (default=autodetect)\n"
+           "-m  --module       load as ES module (default=autodetect)\n"
            "-I  --include file include an additional file\n"
            "    --std          make 'std', 'os' and 'bjson' available to script\n"
            "-T  --trace        trace memory allocation\n"
@@ -498,7 +498,7 @@ int main(int argc, char **argv)
                 module = 1;
                 continue;
             }
-            if (!strcmp(longopt, "script")) {
+            if (opt == 'C' || !strcmp(longopt, "script")) {
                 module = 0;
                 continue;
             }
