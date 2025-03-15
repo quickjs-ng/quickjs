@@ -256,8 +256,8 @@ jobs:
           build\qjs.exe -qd
       - name: cxxtest
         run: |
-          clang.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
-          clang.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
+          clang.exe -D JS_NAN_BOXING=0 -fsyntax-only cxxtest.cc
+          clang.exe -D JS_NAN_BOXING=1 -fsyntax-only cxxtest.cc
       - name: test
         run: |
           cp build\fib.dll examples\
