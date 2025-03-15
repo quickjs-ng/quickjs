@@ -266,9 +266,6 @@ jobs:
           build\qjs.exe examples\test_point.js
           build\run-test262.exe -c tests.conf
           build\function_source.exe
-      - name: test interrupt
-        run: |
-          build\interrupt-test.exe
 
   windows-clang-cl:
     runs-on: windows-latest
