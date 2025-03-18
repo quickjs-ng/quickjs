@@ -68,8 +68,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <windows.h>
-/* Required for JS_PRINTF_FORMAT */
-#include "cutils.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -146,17 +144,25 @@ static const char noarg[] = "option doesn't take an argument -- %.*s";
 static const char illoptchar[] = "unknown option -- %c";
 static const char illoptstring[] = "unknown option -- %s";
 
+// Non-CL Clang on Windows does not define __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif // __GNUC__ || __clang__
 static void
-JS_PRINTF_FORMAT_ATTR(1, 0) _vwarnx(JS_PRINTF_FORMAT const char *fmt,va_list ap)
+_vwarnx(const char *fmt,va_list ap)
 {
   (void)fprintf(stderr,"%s: ",__progname);
   if (fmt != NULL)
     (void)vfprintf(stderr,fmt,ap);
   (void)fprintf(stderr,"\n");
 }
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop // ignored "-Wformat-nonliteral"
+#endif // __GNUC__ || __clang__
 
 static void
-JS_PRINTF_FORMAT_ATTR(1, 2) warnx(JS_PRINTF_FORMAT const char *fmt,...)
+warnx(const char *fmt,...)
 {
   va_list ap;
   va_start(ap,fmt);

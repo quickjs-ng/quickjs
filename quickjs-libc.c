@@ -198,6 +198,7 @@ static void js_set_thread_state(JSRuntime *rt, JSThreadState *ts)
     js_std_cmd(/*SetOpaque*/1, rt, ts);
 }
 
+// Non-CL Clang on Windows does not define __GNUC__
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"

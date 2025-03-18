@@ -44,9 +44,9 @@ xcheck_add_c_compiler_flag(-funsigned-char)
 
 # Clang on Windows without MSVC command line fails because the codebase uses 
 # functions like strcpy over strcpy_s
-if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND WIN32)
-add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE)
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND WIN32 AND NOT MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE)
 endif()
 
 # ClangCL is command line compatible with MSVC, so 'MSVC' is set.
@@ -84,7 +84,11 @@ endif()
 if(WIN32)
     if(MSVC)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:8388608")
-    elseif(MINGW)
+    elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        # Clang on Windows uses Windows' default linker, but requires GCC-style 
+        # -Wl to specify a linker argument
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,/STACK:8388608")
+    else()
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack,8388608")
     endif()
 endif()

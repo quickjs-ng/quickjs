@@ -234,7 +234,7 @@ jobs:
           cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
           cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
 
-  windows-ninja-clang:
+  windows-clang:
     runs-on: windows-latest
     strategy:
       fail-fast: false
