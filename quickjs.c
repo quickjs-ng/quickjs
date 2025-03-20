@@ -54560,12 +54560,40 @@ static JSValue js_dataview_get_byteOffset(JSContext *ctx, JSValueConst this_val)
     return js_uint32(ta->offset);
 }
 
+static void *js_dataview_get_pointer(JSContext *ctx, JSTypedArray *ta,
+                                     uint64_t pos, int size)
+{
+    JSArrayBuffer *abuf;
+    uint64_t end;
+
+    abuf = ta->buffer->u.array_buffer;
+    if (abuf->detached) {
+        JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
+        return NULL;
+    }
+    end = pos + size;
+    if (ta->track_rab) {
+        if (ta->offset + end > abuf->byte_length) {
+        type_error:
+            JS_ThrowTypeError(ctx, "out of bound");
+            return NULL;
+        }
+    } else {
+        if (end > ta->length) {
+            JS_ThrowRangeError(ctx, "out of bound"); // yes, RangeError
+            return NULL;
+        }
+        if ((int64_t)ta->offset + ta->length > abuf->byte_length)
+            goto type_error;
+    }
+    return abuf->data + ta->offset + pos;
+}
+
 static JSValue js_dataview_getValue(JSContext *ctx,
                                     JSValueConst this_obj,
                                     int argc, JSValueConst *argv, int class_id)
 {
     JSTypedArray *ta;
-    JSArrayBuffer *abuf;
     bool littleEndian, is_swap;
     int size;
     uint8_t *ptr;
@@ -54580,18 +54608,9 @@ static JSValue js_dataview_getValue(JSContext *ctx,
         return JS_EXCEPTION;
     littleEndian = argc > 1 && JS_ToBool(ctx, argv[1]);
     is_swap = littleEndian ^ !is_be();
-    abuf = ta->buffer->u.array_buffer;
-    if (abuf->detached)
-        return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
-    // order matters: this check should come before the next one
-    if ((pos + size) > ta->length)
-        return JS_ThrowRangeError(ctx, "out of bound");
-    // test262 expects a TypeError for this and V8, in its infinite wisdom,
-    // throws a "detached array buffer" exception, but IMO that doesn't make
-    // sense because the buffer is not in fact detached, it's still there
-    if ((int64_t)ta->offset + ta->length > abuf->byte_length)
-        return JS_ThrowTypeError(ctx, "out of bound");
-    ptr = abuf->data + ta->offset + pos;
+    ptr = js_dataview_get_pointer(ctx, ta, pos, size);
+    if (!ptr)
+        return JS_EXCEPTION;
 
     switch(class_id) {
     case JS_CLASS_INT8_ARRAY:
@@ -54678,7 +54697,6 @@ static JSValue js_dataview_setValue(JSContext *ctx,
                                     int argc, JSValueConst *argv, int class_id)
 {
     JSTypedArray *ta;
-    JSArrayBuffer *abuf;
     bool littleEndian, is_swap;
     int size;
     uint8_t *ptr;
@@ -54724,18 +54742,9 @@ static JSValue js_dataview_setValue(JSContext *ctx,
     }
     littleEndian = argc > 2 && JS_ToBool(ctx, argv[2]);
     is_swap = littleEndian ^ !is_be();
-    abuf = ta->buffer->u.array_buffer;
-    if (abuf->detached)
-        return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
-    // order matters: this check should come before the next one
-    if ((pos + size) > ta->length)
-        return JS_ThrowRangeError(ctx, "out of bound");
-    // test262 expects a TypeError for this and V8, in its infinite wisdom,
-    // throws a "detached array buffer" exception, but IMO that doesn't make
-    // sense because the buffer is not in fact detached, it's still there
-    if ((int64_t)ta->offset + ta->length > abuf->byte_length)
-        return JS_ThrowTypeError(ctx, "out of bound");
-    ptr = abuf->data + ta->offset + pos;
+    ptr = js_dataview_get_pointer(ctx, ta, pos, size);
+    if (!ptr)
+        return JS_EXCEPTION;
 
     switch(class_id) {
     case JS_CLASS_INT8_ARRAY:
