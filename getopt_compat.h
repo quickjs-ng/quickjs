@@ -144,6 +144,11 @@ static const char noarg[] = "option doesn't take an argument -- %.*s";
 static const char illoptchar[] = "unknown option -- %c";
 static const char illoptstring[] = "unknown option -- %s";
 
+// Non-CL Clang on Windows does not define __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif // __GNUC__ || __clang__
 static void
 _vwarnx(const char *fmt,va_list ap)
 {
@@ -152,6 +157,9 @@ _vwarnx(const char *fmt,va_list ap)
     (void)vfprintf(stderr,fmt,ap);
   (void)fprintf(stderr,"\n");
 }
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop // ignored "-Wformat-nonliteral"
+#endif // __GNUC__ || __clang__
 
 static void
 warnx(const char *fmt,...)
