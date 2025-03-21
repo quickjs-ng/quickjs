@@ -407,6 +407,13 @@ typedef void JSRuntimeFinalizer(JSRuntime *rt, void *arg);
 
 typedef struct JSGCObjectHeader JSGCObjectHeader;
 
+/* Engine hooks */
+typedef enum JSRuntimeHooks{
+    JS_HOOK_NONE,           //Don't use, just to catch potential bugs
+    JS_HOOK_GC_BEFORE,      //Run before a GC event takes place. No payload. Return false if the hooks opposes the GC event to take place.
+    JS_HOOK_GC_AFTER,       //Run after a GC event took place. No payload. Return value ignored.
+} JSRuntimeHooks;
+
 JS_EXTERN JSRuntime *JS_NewRuntime(void);
 /* info lifetime must exceed that of rt */
 JS_EXTERN void JS_SetRuntimeInfo(JSRuntime *rt, const char *info);
@@ -416,6 +423,8 @@ JS_EXTERN void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
 JS_EXTERN uint64_t JS_GetDumpFlags(JSRuntime *rt);
 JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
 JS_EXTERN void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
+/* register a hook dispatcher for this runtime. The handler should always return true for hooks which are not supported. */
+JS_EXTERN void JS_SetHooksHandler(JSRuntime *rt, JS_BOOL (*fn)(JSRuntimeHooks type, void* opaque));
 /* use 0 to disable maximum stack size check */
 JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
 /* should be called when changing thread to update the stack top value
