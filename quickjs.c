@@ -364,15 +364,7 @@ typedef struct JSVarRef {
         struct {
             int __gc_ref_count; /* corresponds to header.ref_count */
             uint8_t __gc_mark; /* corresponds to header.mark/gc_obj_type */
-
-            /* 0 : the JSVarRef is on the stack. header.link is an element
-               of JSStackFrame.var_ref_list.
-               1 : the JSVarRef is detached. header.link has the normal meanning
-            */
-            uint8_t is_detached : 1;
-            uint8_t is_arg : 1;
-            uint16_t var_idx; /* index of the corresponding function variable on
-                                 the stack */
+            bool is_detached;
         };
     };
     JSValue *pvalue; /* pointer to the value, either on the stack or
@@ -14440,10 +14432,16 @@ static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf,
 {
     JSVarRef *var_ref;
     struct list_head *el;
+    JSValue *pvalue;
+
+    if (is_arg)
+        pvalue = &sf->arg_buf[var_idx];
+    else
+        pvalue = &sf->var_buf[var_idx];
 
     list_for_each(el, &sf->var_ref_list) {
         var_ref = list_entry(el, JSVarRef, header.link);
-        if (var_ref->var_idx == var_idx && var_ref->is_arg == is_arg) {
+        if (var_ref->pvalue == pvalue) {
             var_ref->header.ref_count++;
             return var_ref;
         }
@@ -14454,13 +14452,8 @@ static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf,
         return NULL;
     var_ref->header.ref_count = 1;
     var_ref->is_detached = false;
-    var_ref->is_arg = is_arg;
-    var_ref->var_idx = var_idx;
     list_add_tail(&var_ref->header.link, &sf->var_ref_list);
-    if (is_arg)
-        var_ref->pvalue = &sf->arg_buf[var_idx];
-    else
-        var_ref->pvalue = &sf->var_buf[var_idx];
+    var_ref->pvalue = pvalue;
     var_ref->value = JS_UNDEFINED;
     return var_ref;
 }
@@ -14689,15 +14682,10 @@ static void close_var_refs(JSRuntime *rt, JSStackFrame *sf)
 {
     struct list_head *el, *el1;
     JSVarRef *var_ref;
-    int var_idx;
 
     list_for_each_safe(el, el1, &sf->var_ref_list) {
         var_ref = list_entry(el, JSVarRef, header.link);
-        var_idx = var_ref->var_idx;
-        if (var_ref->is_arg)
-            var_ref->value = js_dup(sf->arg_buf[var_idx]);
-        else
-            var_ref->value = js_dup(sf->var_buf[var_idx]);
+        var_ref->value = js_dup(*var_ref->pvalue);
         var_ref->pvalue = &var_ref->value;
         /* the reference is no longer to a local variable */
         var_ref->is_detached = true;
@@ -14705,16 +14693,17 @@ static void close_var_refs(JSRuntime *rt, JSStackFrame *sf)
     }
 }
 
-static void close_lexical_var(JSContext *ctx, JSStackFrame *sf, int idx, int is_arg)
+static void close_lexical_var(JSContext *ctx, JSStackFrame *sf, int var_idx)
 {
+    JSValue *pvalue;
     struct list_head *el, *el1;
     JSVarRef *var_ref;
-    int var_idx = idx;
 
+    pvalue = &sf->var_buf[var_idx];
     list_for_each_safe(el, el1, &sf->var_ref_list) {
         var_ref = list_entry(el, JSVarRef, header.link);
-        if (var_idx == var_ref->var_idx && var_ref->is_arg == is_arg) {
-            var_ref->value = js_dup(sf->var_buf[var_idx]);
+        if (var_ref->pvalue == pvalue) {
+            var_ref->value = js_dup(*var_ref->pvalue);
             var_ref->pvalue = &var_ref->value;
             list_del(&var_ref->header.link);
             /* the reference is no longer to a local variable */
@@ -15976,7 +15965,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 int idx;
                 idx = get_u16(pc);
                 pc += 2;
-                close_lexical_var(ctx, sf, idx, FALSE);
+                close_lexical_var(ctx, sf, idx);
             }
             BREAK;
 
