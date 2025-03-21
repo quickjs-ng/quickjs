@@ -14705,14 +14705,15 @@ static void close_var_refs(JSRuntime *rt, JSStackFrame *sf)
     }
 }
 
-static void close_lexical_var(JSContext *ctx, JSStackFrame *sf, int var_idx)
+static void close_lexical_var(JSContext *ctx, JSStackFrame *sf, int idx, int is_arg)
 {
     struct list_head *el, *el1;
     JSVarRef *var_ref;
+    int var_idx = idx;
 
     list_for_each_safe(el, el1, &sf->var_ref_list) {
         var_ref = list_entry(el, JSVarRef, header.link);
-        if (var_idx == var_ref->var_idx && !var_ref->is_arg) {
+        if (var_idx == var_ref->var_idx && var_ref->is_arg == is_arg) {
             var_ref->value = js_dup(sf->var_buf[var_idx]);
             var_ref->pvalue = &var_ref->value;
             list_del(&var_ref->header.link);
@@ -15975,7 +15976,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 int idx;
                 idx = get_u16(pc);
                 pc += 2;
-                close_lexical_var(ctx, sf, idx);
+                close_lexical_var(ctx, sf, idx, FALSE);
             }
             BREAK;
 
