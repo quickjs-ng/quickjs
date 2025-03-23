@@ -52312,8 +52312,12 @@ static JSValue js_array_buffer_resize(JSContext *ctx, JSValueConst this_val,
     list_for_each(el, &abuf->array_list) {
         ta = list_entry(el, JSTypedArray, link);
         p = ta->obj;
-        if (p->class_id == JS_CLASS_DATAVIEW)
+        if (p->class_id == JS_CLASS_DATAVIEW) {
+            if (ta->track_rab && ta->offset < len)
+                ta->length = len - ta->offset;
+
             continue;
+        }
         p->u.array.count = 0;
         p->u.array.u.ptr = NULL;
         size_log2 = typed_array_size_log2(p->class_id);
@@ -54702,8 +54706,7 @@ static JSValue js_dataview_setValue(JSContext *ctx,
     if (class_id <= JS_CLASS_UINT32_ARRAY) {
         if (JS_ToUint32(ctx, &v, val))
             return JS_EXCEPTION;
-    } else
-    if (class_id <= JS_CLASS_BIG_UINT64_ARRAY) {
+    } else if (class_id <= JS_CLASS_BIG_UINT64_ARRAY) {
         if (JS_ToBigInt64(ctx, (int64_t *)&v64, val))
             return JS_EXCEPTION;
     } else {
