@@ -28,9 +28,6 @@
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
-#if !defined(_MSC_VER)
-#include <unistd.h>
-#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <time.h>
@@ -441,16 +438,16 @@ int main(int argc, char **argv)
     while (optind < argc && *argv[optind] == '-') {
         char *arg = argv[optind] + 1;
         const char *longopt = "";
-        char *opt_arg = NULL;
+        char *optarg = NULL;
         /* a single - is not an option, it also stops argument scanning */
         if (!*arg)
             break;
         optind++;
         if (*arg == '-') {
             longopt = arg + 1;
-            opt_arg = strchr(longopt, '=');
-            if (opt_arg)
-                *opt_arg++ = '\0';
+            optarg = strchr(longopt, '=');
+            if (optarg)
+                *optarg++ = '\0';
             arg += strlen(arg);
             /* -- stops argument scanning */
             if (!*longopt)
@@ -460,22 +457,22 @@ int main(int argc, char **argv)
             char opt = *arg;
             if (opt) {
                 arg++;
-                if (!opt_arg && *arg)
-                    opt_arg = arg;
+                if (!optarg && *arg)
+                    optarg = arg;
             }
             if (opt == 'h' || opt == '?' || !strcmp(longopt, "help")) {
                 help();
                 continue;
             }
             if (opt == 'e' || !strcmp(longopt, "eval")) {
-                if (!opt_arg) {
+                if (!optarg) {
                     if (optind >= argc) {
                         fprintf(stderr, "qjs: missing expression for -e\n");
                         exit(1);
                     }
-                    opt_arg = argv[optind++];
+                    optarg = argv[optind++];
                 }
-                expr = opt_arg;
+                expr = optarg;
                 break;
             }
             if (opt == 'I' || !strcmp(longopt, "include")) {
@@ -507,7 +504,7 @@ int main(int argc, char **argv)
                 continue;
             }
             if (opt == 'D' || !strcmp(longopt, "dump-flags")) {
-                dump_flags = opt_arg ? strtol(opt_arg, NULL, 16) : 0;
+                dump_flags = optarg ? strtol(optarg, NULL, 16) : 0;
                 break;
             }
             if (opt == 'T' || !strcmp(longopt, "trace")) {
@@ -523,58 +520,58 @@ int main(int argc, char **argv)
                 continue;
             }
             if (!strcmp(longopt, "memory-limit")) {
-                if (!opt_arg) {
+                if (!optarg) {
                     if (optind >= argc) {
                         fprintf(stderr, "expecting memory limit");
                         exit(1);
                     }
-                    opt_arg = argv[optind++];
+                    optarg = argv[optind++];
                 }
-                memory_limit = parse_limit(opt_arg);
+                memory_limit = parse_limit(optarg);
                 break;
             }
             if (!strcmp(longopt, "stack-size")) {
-                if (!opt_arg) {
+                if (!optarg) {
                     if (optind >= argc) {
                         fprintf(stderr, "expecting stack size");
                         exit(1);
                     }
-                    opt_arg = argv[optind++];
+                    optarg = argv[optind++];
                 }
-                stack_size = parse_limit(opt_arg);
+                stack_size = parse_limit(optarg);
                 break;
             }
             if (opt == 'c' || !strcmp(longopt, "compile")) {
-                if (!opt_arg) {
+                if (!optarg) {
                     if (optind >= argc) {
                         fprintf(stderr, "qjs: missing file for -c\n");
                         exit(1);
                     }
-                    opt_arg = argv[optind++];
+                    optarg = argv[optind++];
                 }
-                compile_file = opt_arg;
+                compile_file = optarg;
                 break;
             }
             if (opt == 'o' || !strcmp(longopt, "out")) {
-                if (!opt_arg) {
+                if (!optarg) {
                     if (optind >= argc) {
                         fprintf(stderr, "qjs: missing file for -o\n");
                         exit(1);
                     }
-                    opt_arg = argv[optind++];
+                    optarg = argv[optind++];
                 }
-                out = opt_arg;
+                out = optarg;
                 break;
             }
             if (!strcmp(longopt, "exe")) {
-                if (!opt_arg) {
+                if (!optarg) {
                     if (optind >= argc) {
                         fprintf(stderr, "qjs: missing file for --exe\n");
                         exit(1);
                     }
-                    opt_arg = argv[optind++];
+                    optarg = argv[optind++];
                 }
-                exe = opt_arg;
+                exe = optarg;
                 break;
             }
             if (opt) {
