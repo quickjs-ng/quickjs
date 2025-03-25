@@ -407,7 +407,7 @@ typedef struct JSBigInt {
 
 /* this bigint structure can hold a 64 bit integer */
 typedef struct {
-    JSBigInt big_int;
+    js_limb_t big_int_buf[sizeof(JSBigInt) / sizeof(js_limb_t)]; /* for JSBigInt */
     /* must come just after */
     js_limb_t tab[(64 + JS_LIMB_BITS - 1) / JS_LIMB_BITS];
 } JSBigIntBuf;
@@ -11069,7 +11069,7 @@ static JSBigInt *js_bigint_mul(JSContext *ctx, const JSBigInt *a,
 /* return the division or the remainder. 'b' must be != 0. return NULL
    in case of exception (division by zero or memory error) */
 static JSBigInt *js_bigint_divrem(JSContext *ctx, const JSBigInt *a,
-                                  const JSBigInt *b, BOOL is_rem)
+                                  const JSBigInt *b, bool is_rem)
 {
     JSBigInt *r, *q;
     js_limb_t *tabb, h;
@@ -11309,7 +11309,7 @@ static JSBigInt *js_bigint_pow(JSContext *ctx, const JSBigInt *a, JSBigInt *b)
         return js_bigint_new_si(ctx, 1);
     } else if (a->len == 1) {
         js_limb_t v;
-        BOOL is_neg;
+        bool is_neg;
 
         v = a->tab[0];
         if (v <= 1)
@@ -11822,7 +11822,7 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValueConst val, int radix)
         JSBigInt *r, *tmp = NULL;
         char *buf, *q, *buf_end;
         int is_neg, n_bits, log2_radix, n_digits;
-        BOOL is_binary_radix;
+        bool is_binary_radix;
         JSValue res;
 
         assert(JS_VALUE_GET_TAG(val) == JS_TAG_BIG_INT);
@@ -11923,7 +11923,7 @@ static JSValue JS_CompactBigInt(JSContext *ctx, JSBigInt *p)
 }
 
 /* XXX: remove */
-static double js_strtod(const char *str, int radix, BOOL is_float)
+static double js_strtod(const char *str, int radix, bool is_float)
 {
     double d;
     int c;

@@ -244,6 +244,11 @@ typedef union JSValueUnion {
     int32_t int32;
     double float64;
     void *ptr;
+#if JS_SHORT_BIG_INT_BITS == 32
+    int32_t short_big_int;
+#else
+    int64_t short_big_int;
+#endif
 } JSValueUnion;
 
 typedef struct JSValue {
