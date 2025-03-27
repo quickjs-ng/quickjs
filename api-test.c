@@ -233,6 +233,42 @@ static void module_serde(void)
     JS_FreeRuntime(rt);
 }
 
+static void two_byte_string(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    {
+        JSValue v = JS_NewTwoByteString(ctx, NULL, 0);
+        assert(!JS_IsException(v));
+        const char *s = JS_ToCString(ctx, v);
+        assert(s);
+        assert(!strcmp(s, ""));
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, v);
+    }
+    {
+        JSValue v = JS_NewTwoByteString(ctx, (uint16_t[]){'o','k'}, 2);
+        assert(!JS_IsException(v));
+        const char *s = JS_ToCString(ctx, v);
+        assert(s);
+        assert(!strcmp(s, "ok"));
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, v);
+    }
+    {
+        JSValue v = JS_NewTwoByteString(ctx, (uint16_t[]){0xD800}, 1);
+        assert(!JS_IsException(v));
+        const char *s = JS_ToCString(ctx, v);
+        assert(s);
+        // questionable but surrogates don't map to UTF-8 without WTF-8
+        assert(!strcmp(s, "\xED\xA0\x80"));
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, v);
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -241,5 +277,6 @@ int main(void)
     raw_context_global_var();
     is_array();
     module_serde();
+    two_byte_string();
     return 0;
 }
