@@ -4030,6 +4030,19 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
     return JS_MKPTR(JS_TAG_STRING, str);
 }
 
+JSValue JS_NewTwoByteString(JSContext *ctx, const uint16_t *buf, size_t len)
+{
+    JSString *str;
+
+    if (!len)
+        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+    str = js_alloc_string(ctx, len, 1);
+    if (!str)
+        return JS_EXCEPTION;
+    memcpy(str16(str), buf, len * sizeof(*buf));
+    return JS_MKPTR(JS_TAG_STRING, str);
+}
+
 static JSValue JS_ConcatString3(JSContext *ctx, const char *str1,
                                 JSValue str2, const char *str3)
 {
