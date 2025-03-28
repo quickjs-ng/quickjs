@@ -242,6 +242,7 @@ DEF(SyntaxError, "SyntaxError")
 DEF(TypeError, "TypeError")
 DEF(URIError, "URIError")
 DEF(InternalError, "InternalError")
+DEF(DOMException, "DOMException")
 DEF(CallSite, "CallSite")
 /* private symbols */
 DEF(Private_brand, "<brand>")
