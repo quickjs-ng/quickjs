@@ -14387,6 +14387,28 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
     return -1;
 }
 
+/* op1 must be a bigint or int. */
+static JSBigInt *JS_ToBigIntBuf(JSContext *ctx, JSBigIntBuf *buf1,
+                                JSValue op1)
+{
+    JSBigInt *p1;
+
+    switch(JS_VALUE_GET_TAG(op1)) {
+    case JS_TAG_INT:
+        p1 = js_bigint_set_si(buf1, JS_VALUE_GET_INT(op1));
+        break;
+    case JS_TAG_SHORT_BIG_INT:
+        p1 = js_bigint_set_short(buf1, op1);
+        break;
+    case JS_TAG_BIG_INT:
+        p1 = JS_VALUE_GET_PTR(op1);
+        break;
+    default:
+        abort();
+    }
+    return p1;
+}
+
 /* op1 and op2 must be numeric types and at least one must be a
    bigint. No exception is generated. */
 static int js_compare_bigint(JSContext *ctx, OPCodeEnum op,
@@ -14838,20 +14860,27 @@ static bool js_strict_eq2(JSContext *ctx, JSValue op1, JSValue op2,
             res = (d1 == d2); /* if NaN return false and +0 == -0 */
         }
         goto done_no_free;
+    case JS_TAG_SHORT_BIG_INT:
     case JS_TAG_BIG_INT:
         {
-            bf_t a_s, *a, b_s, *b;
-            if (tag1 != tag2) {
-                res = false;
+            JSBigIntBuf buf1, buf2;
+            JSBigInt *p1, *p2;
+
+            if (tag2 != JS_TAG_SHORT_BIG_INT &&
+                tag2 != JS_TAG_BIG_INT) {
+                res = FALSE;
                 break;
             }
-            a = JS_ToBigInt1(ctx, &a_s, op1);
-            b = JS_ToBigInt1(ctx, &b_s, op2);
-            res = bf_cmp_eq(a, b);
-            if (a == &a_s)
-                bf_delete(a);
-            if (b == &b_s)
-                bf_delete(b);
+
+            if (JS_VALUE_GET_TAG(op1) == JS_TAG_SHORT_BIG_INT)
+                p1 = js_bigint_set_short(&buf1, op1);
+            else
+                p1 = JS_VALUE_GET_PTR(op1);
+            if (JS_VALUE_GET_TAG(op2) == JS_TAG_SHORT_BIG_INT)
+                p2 = js_bigint_set_short(&buf2, op2);
+            else
+                p2 = JS_VALUE_GET_PTR(op2);
+            res = (js_bigint_cmp(ctx, p1, p2) == 0);
         }
         break;
     default:
@@ -16509,6 +16538,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         SWITCH(pc) {
         CASE(OP_push_i32):
             *sp++ = js_int32(get_u32(pc));
+            pc += 4;
+            BREAK;
+        CASE(OP_push_bigint_i32):
+            *sp++ = __JS_NewShortBigInt(ctx, (int)get_u32(pc));
             pc += 4;
             BREAK;
         CASE(OP_push_const):
@@ -32920,6 +32953,25 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             add_pc2line_info(s, bc_out.size, line_num, col_num);
             push_short_int(&bc_out, val);
             break;
+
+        case OP_push_bigint_i32:
+                /* transform i32(val) neg -> i32(-val) */
+                val = get_i32(bc_buf + pos + 1);
+                if (val != INT32_MIN
+                &&  code_match(&cc, pos_next, OP_neg, -1)) {
+                    if (cc.line_num >= 0) line_num = cc.line_num;
+                    if (cc.col_num >= 0) col_num = cc.col_num;
+                    if (code_match(&cc, cc.pos, OP_drop, -1)) {
+                        if (cc.line_num >= 0) line_num = cc.line_num;
+                        if (cc.col_num >= 0) col_num = cc.col_num;
+                    } else {
+                        add_pc2line_info(s, bc_out.size, line_num, col_num);
+                        dbuf_putc(&bc_out, OP_push_bigint_i32);
+                        dbuf_put_u32(&bc_out, -val);
+                    }
+                    pos_next = cc.pos;
+                    break;
+                }
 
         case OP_push_const:
         case OP_fclosure:
