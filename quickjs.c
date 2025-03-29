@@ -14125,7 +14125,7 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         double d1, d2;
         d1 = JS_VALUE_GET_FLOAT64(op1);
         d2 = JS_VALUE_GET_FLOAT64(op2);
-        sp[-2] = __JS_NewFloat64(ctx, d1 + d2);
+        sp[-2] = __JS_NewFloat64(d1 + d2);
         return 0;
     }
     /* fast path for short bigint */
@@ -14239,6 +14239,62 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
     tag1 = JS_VALUE_GET_NORM_TAG(op1);
     tag2 = JS_VALUE_GET_NORM_TAG(op2);
 
+    if (tag1 == JS_TAG_SHORT_BIG_INT && tag2 == JS_TAG_SHORT_BIG_INT) {
+        js_slimb_t v1, v2, v;
+        js_sdlimb_t vd;
+        v1 = JS_VALUE_GET_SHORT_BIG_INT(op1);
+        v2 = JS_VALUE_GET_SHORT_BIG_INT(op2);
+        /* bigint fast path */
+        switch(op) {
+        case OP_and:
+            v = v1 & v2;
+            break;
+        case OP_or:
+            v = v1 | v2;
+            break;
+        case OP_xor:
+            v = v1 ^ v2;
+            break;
+        case OP_sar:
+            if (v2 > (JS_LIMB_BITS - 1)) {
+                goto slow_big_int;
+            } else if (v2 < 0) {
+                if (v2 < -(JS_LIMB_BITS - 1))
+                    goto slow_big_int;
+                v2 = -v2;
+                goto bigint_shl;
+            }
+        bigint_sar:
+            v = v1 >> v2;
+            break;
+        case OP_shl:
+            if (v2 > (JS_LIMB_BITS - 1)) {
+                goto slow_big_int;
+            } else if (v2 < 0) {
+                if (v2 < -(JS_LIMB_BITS - 1))
+                    goto slow_big_int;
+                v2 = -v2;
+                goto bigint_sar;
+            }
+        bigint_shl:
+            vd = (js_sdlimb_t)v1 << v2;
+            if (likely(vd >= JS_SHORT_BIG_INT_MIN &&
+                       vd <= JS_SHORT_BIG_INT_MAX)) {
+                v = vd;
+            } else {
+                JSBigInt *r = js_bigint_new_di(ctx, vd);
+                if (!r)
+                    goto exception;
+                sp[-2] = JS_MKPTR(JS_TAG_BIG_INT, r);
+                return 0;
+            }
+            break;
+        default:
+            abort();
+        }
+        sp[-2] = __JS_NewShortBigInt(ctx, v);
+        return 0;
+    }
     op1 = JS_ToNumericFree(ctx, op1);
     if (JS_IsException(op1)) {
         JS_FreeValue(ctx, op2);
@@ -14252,15 +14308,50 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
 
     tag1 = JS_VALUE_GET_TAG(op1);
     tag2 = JS_VALUE_GET_TAG(op2);
-    if (tag1 == JS_TAG_BIG_INT || tag2 == JS_TAG_BIG_INT) {
-        if (tag1 != tag2) {
-            JS_FreeValue(ctx, op1);
-            JS_FreeValue(ctx, op2);
-            JS_ThrowTypeError(ctx, "both operands must be BigInt");
-            goto exception;
-        } else if (js_binary_arith_bigint(ctx, op, sp - 2, op1, op2)) {
-            goto exception;
+    if ((tag1 == JS_TAG_BIG_INT || tag1 == JS_TAG_SHORT_BIG_INT) &&
+        (tag2 == JS_TAG_BIG_INT || tag2 == JS_TAG_SHORT_BIG_INT)) {
+        JSBigInt *p1, *p2, *r;
+        JSBigIntBuf buf1, buf2;
+    slow_big_int:
+        if (JS_VALUE_GET_TAG(op1) == JS_TAG_SHORT_BIG_INT)
+            p1 = js_bigint_set_short(&buf1, op1);
+        else
+            p1 = JS_VALUE_GET_PTR(op1);
+        if (JS_VALUE_GET_TAG(op2) == JS_TAG_SHORT_BIG_INT)
+            p2 = js_bigint_set_short(&buf2, op2);
+        else
+            p2 = JS_VALUE_GET_PTR(op2);
+        switch(op) {
+        case OP_and:
+        case OP_or:
+        case OP_xor:
+            r = js_bigint_logic(ctx, p1, p2, op);
+            break;
+        case OP_shl:
+        case OP_sar:
+            {
+                js_slimb_t shift;
+                shift = js_bigint_get_si_sat(p2);
+                if (shift > INT32_MAX)
+                    shift = INT32_MAX;
+                else if (shift < -INT32_MAX)
+                    shift = -INT32_MAX;
+                if (op == OP_sar)
+                    shift = -shift;
+                if (shift >= 0)
+                    r = js_bigint_shl(ctx, p1, shift);
+                else
+                    r = js_bigint_shr(ctx, p1, -shift);
+            }
+            break;
+        default:
+            abort();
         }
+        JS_FreeValue(ctx, op1);
+        JS_FreeValue(ctx, op2);
+        if (!r)
+            goto exception;
+        sp[-2] = JS_CompactBigInt(ctx, r);
     } else {
         if (unlikely(JS_ToInt32Free(ctx, (int32_t *)&v1, op1))) {
             JS_FreeValue(ctx, op2);
@@ -14287,7 +14378,7 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
         default:
             abort();
         }
-        sp[-2] = js_int32(r);
+        sp[-2] = JS_NewInt32(ctx, r);
     }
     return 0;
  exception:
@@ -14296,49 +14387,74 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
     return -1;
 }
 
+/* op1 and op2 must be numeric types and at least one must be a
+   bigint. No exception is generated. */
 static int js_compare_bigint(JSContext *ctx, OPCodeEnum op,
                              JSValue op1, JSValue op2)
 {
-    bf_t a_s, b_s, *a, *b;
-    int res;
+    int res, val, tag1, tag2;
+    JSBigIntBuf buf1, buf2;
+    JSBigInt *p1, *p2;
 
-    a = JS_ToBigInt1(ctx, &a_s, op1);
-    if (!a) {
-        JS_FreeValue(ctx, op2);
-        return -1;
-    }
-    b = JS_ToBigInt1(ctx, &b_s, op2);
-    if (!b) {
-        if (a == &a_s)
-            bf_delete(a);
+    tag1 = JS_VALUE_GET_NORM_TAG(op1);
+    tag2 = JS_VALUE_GET_NORM_TAG(op2);
+    if ((tag1 == JS_TAG_SHORT_BIG_INT || tag1 == JS_TAG_INT) &&
+        (tag2 == JS_TAG_SHORT_BIG_INT || tag2 == JS_TAG_INT)) {
+        /* fast path */
+        js_slimb_t v1, v2;
+        if (tag1 == JS_TAG_INT)
+            v1 = JS_VALUE_GET_INT(op1);
+        else
+            v1 = JS_VALUE_GET_SHORT_BIG_INT(op1);
+        if (tag2 == JS_TAG_INT)
+            v2 = JS_VALUE_GET_INT(op2);
+        else
+            v2 = JS_VALUE_GET_SHORT_BIG_INT(op2);
+        val = (v1 > v2) - (v1 < v2);
+    } else {
+        if (tag1 == JS_TAG_FLOAT64) {
+            p2 = JS_ToBigIntBuf(ctx, &buf2, op2);
+            val = js_bigint_float64_cmp(ctx, p2, JS_VALUE_GET_FLOAT64(op1));
+            if (val == 2)
+                goto unordered;
+            val = -val;
+        } else if (tag2 == JS_TAG_FLOAT64) {
+            p1 = JS_ToBigIntBuf(ctx, &buf1, op1);
+            val = js_bigint_float64_cmp(ctx, p1, JS_VALUE_GET_FLOAT64(op2));
+            if (val == 2) {
+            unordered:
+                JS_FreeValue(ctx, op1);
+                JS_FreeValue(ctx, op2);
+                return FALSE;
+            }
+        } else {
+            p1 = JS_ToBigIntBuf(ctx, &buf1, op1);
+            p2 = JS_ToBigIntBuf(ctx, &buf2, op2);
+            val = js_bigint_cmp(ctx, p1, p2);
+        }
         JS_FreeValue(ctx, op1);
-        return -1;
+        JS_FreeValue(ctx, op2);
     }
+
     switch(op) {
     case OP_lt:
-        res = bf_cmp_lt(a, b); /* if NaN return false */
+        res = val < 0;
         break;
     case OP_lte:
-        res = bf_cmp_le(a, b); /* if NaN return false */
+        res = val <= 0;
         break;
     case OP_gt:
-        res = bf_cmp_lt(b, a); /* if NaN return false */
+        res = val > 0;
         break;
     case OP_gte:
-        res = bf_cmp_le(b, a); /* if NaN return false */
+        res = val >= 0;
         break;
     case OP_eq:
-        res = bf_cmp_eq(a, b); /* if NaN return false */
+        res = val == 0;
         break;
     default:
         abort();
     }
-    if (a == &a_s)
-        bf_delete(a);
-    if (b == &b_s)
-        bf_delete(b);
-    JS_FreeValue(ctx, op1);
-    JS_FreeValue(ctx, op2);
     return res;
 }
 
