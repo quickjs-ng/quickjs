@@ -264,6 +264,7 @@ DEF(      strict_eq, 1, 2, 1, none)
 DEF(     strict_neq, 1, 2, 1, none)
 DEF(is_undefined_or_null, 1, 1, 1, none)
 DEF(     private_in, 1, 2, 1, none)
+DEF(push_bigint_i32, 5, 0, 1, i32)
 /* must be the last non short and non temporary opcode */
 DEF(            nop, 1, 0, 0, none)
 
