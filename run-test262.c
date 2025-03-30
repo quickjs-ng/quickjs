@@ -1726,6 +1726,7 @@ int run_test_buf(ThreadLocalStorage *tls, const char *filename, char *harness,
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }
+    JS_SetDumpFlags(rt, JS_DUMP_LEAKS);
     JS_SetRuntimeOpaque(rt, tls);
     js_std_init_handlers(rt);
     ctx = JS_NewCustomContext(rt);
@@ -1971,6 +1972,7 @@ int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }
+    JS_SetDumpFlags(rt, JS_DUMP_LEAKS);
     JS_SetRuntimeOpaque(rt, tls);
     ctx = JS_NewContext(rt);
     if (ctx == NULL) {

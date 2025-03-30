@@ -135,18 +135,22 @@ typedef struct {
     size_t sab_tab_len;
 } JSWorkerMessage;
 
+typedef struct JSWaker {
+#ifdef _WIN32
+    HANDLE handle;
+#else
+    int read_fd;
+    int write_fd;
+#endif
+} JSWaker;
+
 typedef struct {
     int ref_count;
 #ifdef USE_WORKER
     js_mutex_t mutex;
 #endif
     struct list_head msg_queue; /* list of JSWorkerMessage.link */
-#ifdef _WIN32
-    HANDLE event_handle;
-#else
-    int read_fd;
-    int write_fd;
-#endif
+    JSWaker waker;
 } JSWorkerMessagePipe;
 
 typedef struct {
@@ -2392,6 +2396,78 @@ static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts, in
     return 0;
 }
 
+#ifdef _WIN32
+
+static int js_waker_init(JSWaker *w)
+{
+    w->handle = CreateEvent(NULL, TRUE, FALSE, NULL);
+    return w->handle ? 0 : -1;
+}
+
+static void js_waker_signal(JSWaker *w)
+{
+    SetEvent(w->handle);
+}
+
+static void js_waker_clear(JSWaker *w)
+{
+    ResetEvent(w->handle);
+}
+
+static void js_waker_close(JSWaker *w)
+{
+    CloseHandle(w->handle);
+    w->handle = INVALID_HANDLE_VALUE;
+}
+
+#else // !_WIN32
+
+static int js_waker_init(JSWaker *w)
+{
+    int fds[2];
+
+    if (pipe(fds) < 0)
+        return -1;
+    w->read_fd = fds[0];
+    w->write_fd = fds[1];
+    return 0;
+}
+
+static void js_waker_signal(JSWaker *w)
+{
+    int ret;
+
+    for(;;) {
+        ret = write(w->write_fd, "", 1);
+        if (ret == 1)
+            break;
+        if (ret < 0 && (errno != EAGAIN || errno != EINTR))
+            break;
+    }
+}
+
+static void js_waker_clear(JSWaker *w)
+{
+    uint8_t buf[16];
+    int ret;
+
+    for(;;) {
+        ret = read(w->read_fd, buf, sizeof(buf));
+        if (ret >= 0)
+            break;
+        if (errno != EAGAIN && errno != EINTR)
+            break;
+    }
+}
+
+static void js_waker_close(JSWaker *w)
+{
+    close(w->read_fd);
+    close(w->write_fd);
+}
+
+#endif // _WIN32
+
 #ifdef USE_WORKER
 static void js_free_message(JSWorkerMessage *msg);
 
@@ -2413,20 +2489,9 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
         /* remove the message from the queue */
         list_del(&msg->link);
 
-#ifndef _WIN32
         // drain read end of pipe
-        if (list_empty(&ps->msg_queue)) {
-            uint8_t buf[16];
-            int ret;
-            for(;;) {
-                ret = read(ps->read_fd, buf, sizeof(buf));
-                if (ret >= 0)
-                    break;
-                if (errno != EAGAIN && errno != EINTR)
-                    break;
-            }
-        }
-#endif // !defined(_WIN32)
+        if (list_empty(&ps->msg_queue))
+            js_waker_clear(&ps->waker);
 
         js_mutex_unlock(&ps->mutex);
 
@@ -2476,7 +2541,7 @@ static int js_os_poll(JSContext *ctx)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
-    int min_delay, count, rwcount;
+    int min_delay, count;
     JSOSRWHandler *rh;
     struct list_head *el;
     HANDLE handles[MAXIMUM_WAIT_OBJECTS]; // 64
@@ -2488,7 +2553,7 @@ static int js_os_poll(JSContext *ctx)
     if (min_delay == 0)
         return 0; // expired timer
     if (min_delay < 0)
-        if (list_empty(&ts->os_rw_handlers))
+        if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))
             return -1; /* no more events */
 
     count = 0;
@@ -2499,25 +2564,22 @@ static int js_os_poll(JSContext *ctx)
         if (count == (int)countof(handles))
             break;
     }
-    rwcount = count;
 
     list_for_each(el, &ts->port_list) {
         JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
         if (JS_IsNull(port->on_message_func))
             continue;
-        handles[count++] = port->recv_pipe->event_handle;
+        handles[count++] = port->recv_pipe->waker.handle;
         if (count == (int)countof(handles))
             break;
     }
 
     if (count > 0) {
-        DWORD ti, ret;
-        if (min_delay == -1)
-            ti = INFINITE;
-        else
-            ti = min_delay;
-        ret = WaitForMultipleObjects(count, handles, FALSE, ti);
-        if (ret < WAIT_OBJECT_0+rwcount) {
+        DWORD ret, timeout = INFINITE;
+        if (min_delay != -1)
+            timeout = min_delay;
+        ret = WaitForMultipleObjects(count, handles, FALSE, timeout);
+        if (ret < count) {
             list_for_each(el, &ts->os_rw_handlers) {
                 rh = list_entry(el, JSOSRWHandler, link);
                 if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0])) {
@@ -2525,21 +2587,22 @@ static int js_os_poll(JSContext *ctx)
                     /* must stop because the list may have been modified */
                 }
             }
-        } else if (ret < WAIT_OBJECT_0+count) {
+
             list_for_each(el, &ts->port_list) {
                 JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
-                if (JS_IsNull(port->on_message_func))
-                    continue;
-                if (port->recv_pipe->event_handle == handles[ret]) {
-                    if (handle_posted_message(rt, ctx, port))
-                        return 0;
-                    /* must stop because the list may have been modified */
+                if (!JS_IsNull(port->on_message_func)) {
+                    JSWorkerMessagePipe *ps = port->recv_pipe;
+                    if (ps->waker.handle == handles[ret]) {
+                        if (handle_posted_message(rt, ctx, port))
+                            goto done;
+                    }
                 }
             }
         }
     } else {
         Sleep(min_delay);
     }
+done:
     return 0;
 }
 #else // !defined(_WIN32)
@@ -2600,8 +2663,8 @@ static int js_os_poll(JSContext *ctx)
         JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
         if (!JS_IsNull(port->on_message_func)) {
             JSWorkerMessagePipe *ps = port->recv_pipe;
-            fd_max = max_int(fd_max, ps->read_fd);
-            FD_SET(ps->read_fd, &rfds);
+            fd_max = max_int(fd_max, ps->waker.read_fd);
+            FD_SET(ps->waker.read_fd, &rfds);
         }
     }
 
@@ -2625,14 +2688,14 @@ static int js_os_poll(JSContext *ctx)
             JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
             if (!JS_IsNull(port->on_message_func)) {
                 JSWorkerMessagePipe *ps = port->recv_pipe;
-                if (FD_ISSET(ps->read_fd, &rfds)) {
+                if (FD_ISSET(ps->waker.read_fd, &rfds)) {
                     if (handle_posted_message(rt, ctx, port))
                         goto done;
                 }
             }
         }
     }
-    done:
+done:
     return 0;
 }
 #endif // defined(_WIN32)
@@ -3505,43 +3568,19 @@ static void js_sab_dup(void *opaque, void *ptr)
 
 static JSWorkerMessagePipe *js_new_message_pipe(void)
 {
-#ifdef _WIN32
     JSWorkerMessagePipe *ps;
-    HANDLE event_handle;
 
-    event_handle = CreateEvent(NULL, FALSE, FALSE, NULL);
-    if (!event_handle)
-        return NULL;
     ps = malloc(sizeof(*ps));
-    if (!ps) {
-        CloseHandle(event_handle);
+    if (!ps)
+        return NULL;
+    if (js_waker_init(&ps->waker)) {
+        free(ps);
         return NULL;
     }
     ps->ref_count = 1;
     init_list_head(&ps->msg_queue);
     js_mutex_init(&ps->mutex);
-    ps->event_handle = event_handle;
     return ps;
-#else // !defined(_WIN32)
-    JSWorkerMessagePipe *ps;
-    int pipe_fds[2];
-
-    if (pipe(pipe_fds) < 0)
-        return NULL;
-
-    ps = malloc(sizeof(*ps));
-    if (!ps) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        return NULL;
-    }
-    ps->ref_count = 1;
-    init_list_head(&ps->msg_queue);
-    js_mutex_init(&ps->mutex);
-    ps->read_fd = pipe_fds[0];
-    ps->write_fd = pipe_fds[1];
-    return ps;
-#endif // defined(_WIN32)
 }
 
 static JSWorkerMessagePipe *js_dup_message_pipe(JSWorkerMessagePipe *ps)
@@ -3579,12 +3618,7 @@ static void js_free_message_pipe(JSWorkerMessagePipe *ps)
             js_free_message(msg);
         }
         js_mutex_destroy(&ps->mutex);
-#ifdef _WIN32
-        CloseHandle(ps->event_handle);
-#else
-        close(ps->read_fd);
-        close(ps->write_fd);
-#endif
+        js_waker_close(&ps->waker);
         free(ps);
     }
 }
@@ -3828,21 +3862,8 @@ static JSValue js_worker_postMessage(JSContext *ctx, JSValueConst this_val,
     ps = worker->send_pipe;
     js_mutex_lock(&ps->mutex);
     /* indicate that data is present */
-    if (list_empty(&ps->msg_queue)) {
-#ifdef _WIN32
-        SetEvent(ps->event_handle);
-#else // !defined(_WIN32)
-        uint8_t ch = '\0';
-        int ret;
-        for(;;) {
-            ret = write(ps->write_fd, &ch, 1);
-            if (ret == 1)
-                break;
-            if (ret < 0 && (errno != EAGAIN || errno != EINTR))
-                break;
-        }
-#endif // defined(_WIN32)
-    }
+    if (list_empty(&ps->msg_queue))
+        js_waker_signal(&ps->waker);
     list_add_tail(&msg->link, &ps->msg_queue);
     js_mutex_unlock(&ps->mutex);
     return JS_UNDEFINED;

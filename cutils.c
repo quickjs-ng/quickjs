@@ -1278,18 +1278,19 @@ int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
     *thrd = INVALID_HANDLE_VALUE;
     if (flags & ~JS_THREAD_CREATE_DETACHED)
         return -1;
-    cp = GetCurrentProcess();
     h = (HANDLE)_beginthread(start, /*stacksize*/2<<20, arg);
     if (!h)
         return -1;
+    if (flags & JS_THREAD_CREATE_DETACHED)
+        return 0;
     // _endthread() automatically closes the handle but we want to wait on
     // it so make a copy. Race-y for very short-lived threads. Can be solved
     // by switching to _beginthreadex(CREATE_SUSPENDED) but means changing
     // |start| from __cdecl to __stdcall.
-    if (!(flags & JS_THREAD_CREATE_DETACHED))
-        if (!DuplicateHandle(cp, h, cp, thrd, 0, false, DUPLICATE_SAME_ACCESS))
-            return -1;
-    return 0;
+    cp = GetCurrentProcess();
+    if (DuplicateHandle(cp, h, cp, thrd, 0, FALSE, DUPLICATE_SAME_ACCESS))
+        return 0;
+    return -1;
 }
 
 int js_thread_join(js_thread_t thrd)
