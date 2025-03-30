@@ -139,7 +139,7 @@ typedef struct {
 } JSWorkerMessage;
 
 typedef struct {
-    _Atomic int ref_count;
+    int ref_count;
 #ifdef USE_WORKER
     js_mutex_t mutex;
 #endif
@@ -3440,15 +3440,15 @@ typedef struct {
 } WorkerFuncArgs;
 
 typedef struct {
-    _Atomic int ref_count;
+    int ref_count;
     uint64_t buf[];
 } JSSABHeader;
 
 static JSContext *(*js_worker_new_context_func)(JSRuntime *rt);
 
-static int atomic_add_int(_Atomic int *ptr, int v)
+static int atomic_add_int(int *ptr, int v)
 {
-    return atomic_fetch_add(ptr, v) + v;
+    return atomic_fetch_add((_Atomic uint32_t*)ptr, v) + v;
 }
 
 /* shared array buffer allocator */
