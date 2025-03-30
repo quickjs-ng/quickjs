@@ -2392,9 +2392,19 @@ static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts, in
     return 0;
 }
 
-#ifdef USE_WORKER
-static void js_free_message(JSWorkerMessage *msg);
+static void js_free_message(JSWorkerMessage *msg)
+{
+    size_t i;
+    /* free the SAB */
+    for(i = 0; i < msg->sab_tab_len; i++) {
+        js_sab_free(NULL, msg->sab_tab[i]);
+    }
+    free(msg->sab_tab);
+    free(msg->data);
+    free(msg);
+}
 
+#ifdef USE_WORKER
 /* return 1 if a message was handled, 0 if no message */
 static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
                                  JSWorkerMessageHandler *port)
@@ -2462,6 +2472,12 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
         ret = 0;
     }
     return ret;
+}
+#else // !USE_WORKER
+static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
+                                 JSWorkerMessageHandler *port)
+{
+    return 0;
 }
 #endif // USE_WORKER
 
@@ -3542,18 +3558,6 @@ static JSWorkerMessagePipe *js_dup_message_pipe(JSWorkerMessagePipe *ps)
 {
     atomic_add_int(&ps->ref_count, 1);
     return ps;
-}
-
-static void js_free_message(JSWorkerMessage *msg)
-{
-    size_t i;
-    /* free the SAB */
-    for(i = 0; i < msg->sab_tab_len; i++) {
-        js_sab_free(NULL, msg->sab_tab[i]);
-    }
-    free(msg->sab_tab);
-    free(msg->data);
-    free(msg);
 }
 
 static void js_free_message_pipe(JSWorkerMessagePipe *ps)
