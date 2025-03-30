@@ -1199,8 +1199,7 @@ int64_t js__gettimeofday_us(void) {
 
 /*--- Cross-platform threading APIs. ----*/
 
-#if !defined(EMSCRIPTEN) && !defined(__wasi__)
-
+#if JS_HAVE_THREADS
 #if defined(_WIN32)
 typedef void (*js__once_cb)(void);
 
@@ -1437,8 +1436,6 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     return -1;
 }
 
-#endif
-
 int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
                      int flags)
 {
@@ -1474,7 +1471,8 @@ int js_thread_join(js_thread_t thrd)
     return 0;
 }
 
-#endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
+#endif /* !defined(_WIN32) */
+#endif /* JS_HAVE_THREADS */
 
 #ifdef __GNUC__
 #pragma GCC visibility pop
