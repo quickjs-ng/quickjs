@@ -148,9 +148,9 @@ typedef struct {
     int ref_count;
 #ifdef USE_WORKER
     js_mutex_t mutex;
+    JSWaker waker;
 #endif
     struct list_head msg_queue; /* list of JSWorkerMessage.link */
-    JSWaker waker;
 } JSWorkerMessagePipe;
 
 typedef struct {
@@ -2396,6 +2396,8 @@ static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts, in
     return 0;
 }
 
+#ifdef USE_WORKER
+
 #ifdef _WIN32
 
 static int js_waker_init(JSWaker *w)
@@ -2468,7 +2470,6 @@ static void js_waker_close(JSWaker *w)
 
 #endif // _WIN32
 
-#ifdef USE_WORKER
 static void js_free_message(JSWorkerMessage *msg);
 
 /* return 1 if a message was handled, 0 if no message */
@@ -2528,12 +2529,15 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
     }
     return ret;
 }
+
 #else // !USE_WORKER
+
 static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
                                  JSWorkerMessageHandler *port)
 {
     return 0;
 }
+
 #endif // USE_WORKER
 
 #if defined(_WIN32)
