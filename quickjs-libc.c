@@ -2392,9 +2392,9 @@ static int js_os_run_timers(JSRuntime *rt, JSContext *ctx, JSThreadState *ts, in
     return 0;
 }
 
+#ifdef USE_WORKER
 static void js_free_message(JSWorkerMessage *msg);
 
-#ifdef USE_WORKER
 /* return 1 if a message was handled, 0 if no message */
 static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
                                  JSWorkerMessageHandler *port)
