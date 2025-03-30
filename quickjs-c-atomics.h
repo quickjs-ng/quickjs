@@ -49,6 +49,14 @@
 #define atomic_fetch_sub(obj, arg) \
     __atomic_fetch_sub(obj, arg, __ATOMIC_SEQ_CST)
 #define _Atomic
+#elif defined(_MSC_VER)
+#include <stdint.h>
+#include <winnt.h>
+#define _Atomic volatile
+static inline int atomic_fetch_add(_Atomic int *p, int v)
+{
+    return InterlockedExchangeAdd(p, v);
+}
 #else
 #include <stdatomic.h>
 #endif
