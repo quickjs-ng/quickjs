@@ -32,6 +32,7 @@
 #include <sys/time.h>
 #endif
 #if defined(_WIN32)
+#include <windows.h>
 #include <process.h> // _beginthread
 #endif
 
