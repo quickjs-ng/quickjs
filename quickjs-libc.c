@@ -148,9 +148,9 @@ typedef struct {
     int ref_count;
 #ifdef USE_WORKER
     js_mutex_t mutex;
-    JSWaker waker;
 #endif
     struct list_head msg_queue; /* list of JSWorkerMessage.link */
+    JSWaker waker;
 } JSWorkerMessagePipe;
 
 typedef struct {
