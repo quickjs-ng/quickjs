@@ -563,7 +563,13 @@ static inline size_t js__malloc_usable_size(const void *ptr)
 
 /* Cross-platform threading APIs. */
 
-#if !defined(EMSCRIPTEN) && !defined(__wasi__)
+#if defined(EMSCRIPTEN) || defined(__wasi__)
+
+#define JS_HAVE_THREADS 0
+
+#else
+
+#define JS_HAVE_THREADS 1
 
 #if defined(_WIN32)
 #define JS_ONCE_INIT INIT_ONCE_STATIC_INIT

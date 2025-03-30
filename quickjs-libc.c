@@ -80,18 +80,17 @@ extern char **environ;
 
 #endif /* _WIN32 */
 
-#if !defined(__wasi__)
-/* enable the os.Worker API. IT relies on POSIX threads */
-#define USE_WORKER
+#include "cutils.h"
+#include "list.h"
+#include "quickjs-libc.h"
+
+#if JS_HAVE_THREADS
+#define USE_WORKER // enable os.Worker
 #endif
 
 #ifdef USE_WORKER
 #include "quickjs-c-atomics.h"
 #endif
-
-#include "cutils.h"
-#include "list.h"
-#include "quickjs-libc.h"
 
 #ifndef MAX_SAFE_INTEGER // already defined in amalgamation builds
 #define MAX_SAFE_INTEGER (((int64_t) 1 << 53) - 1)
