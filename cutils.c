@@ -1267,6 +1267,36 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     return -1;
 }
 
+int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+                     int flags)
+{
+    HANDLE h, cp;
+
+    *thrd = INVALID_HANDLE_VALUE;
+    if (flags & ~JS_THREAD_CREATE_DETACHED)
+        return -1;
+    cp = GetCurrentProcess();
+    h = (HANDLE)_beginthread(start, /*stacksize*/2<<20, arg);
+    if (!h)
+        return -1;
+    // _endthread() automatically closes the handle but we want to wait on
+    // it so make a copy. Race-y for very short-lived threads. Can be solved
+    // by switching to _beginthreadex(CREATE_SUSPENDED) but means changing
+    // |start| from __cdecl to __stdcall.
+    if (!(flags & JS_THREAD_CREATE_DETACHED))
+        if (!DuplicateHandle(cp, h, cp, thrd, 0, false, DUPLICATE_SAME_ACCESS))
+            return -1;
+    return 0;
+}
+
+int js_thread_join(js_thread_t thrd)
+{
+    if (WaitForSingleObject(thrd, INFINITE))
+        return -1;
+    CloseHandle(thrd);
+    return 0;
+}
+
 #else /* !defined(_WIN32) */
 
 void js_once(js_once_t *guard, void (*callback)(void)) {
@@ -1408,6 +1438,41 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
 }
 
 #endif
+
+int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+                     int flags)
+{
+    union {
+        void (*x)(void *);
+        void *(*f)(void *);
+    } u = {start};
+    pthread_attr_t attr;
+    int ret;
+
+    if (flags & ~JS_THREAD_CREATE_DETACHED)
+        return -1;
+    if (pthread_attr_init(&attr))
+        return -1;
+    ret = -1;
+    if (pthread_attr_setstacksize(&attr, 2<<20))
+        goto fail;
+    if (flags & JS_THREAD_CREATE_DETACHED)
+        if (pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED))
+            goto fail;
+    if (pthread_create(thrd, &attr, u.f, arg))
+        goto fail;
+    ret = 0;
+fail:
+    pthread_attr_destroy(&attr);
+    return ret;
+}
+
+int js_thread_join(js_thread_t thrd)
+{
+    if (pthread_join(thrd, NULL))
+        return -1;
+    return 0;
+}
 
 #endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
 
