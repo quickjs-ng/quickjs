@@ -2466,6 +2466,8 @@ static void js_waker_close(JSWaker *w)
 {
     close(w->read_fd);
     close(w->write_fd);
+    w->read_fd = -1;
+    w->write_fd = -1;
 }
 
 #endif // _WIN32
