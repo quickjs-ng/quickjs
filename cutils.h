@@ -563,18 +563,26 @@ static inline size_t js__malloc_usable_size(const void *ptr)
 
 /* Cross-platform threading APIs. */
 
-#if !defined(EMSCRIPTEN) && !defined(__wasi__)
+#if defined(EMSCRIPTEN) || defined(__wasi__)
+
+#define JS_HAVE_THREADS 0
+
+#else
+
+#define JS_HAVE_THREADS 1
 
 #if defined(_WIN32)
 #define JS_ONCE_INIT INIT_ONCE_STATIC_INIT
 typedef INIT_ONCE js_once_t;
 typedef CRITICAL_SECTION js_mutex_t;
 typedef CONDITION_VARIABLE js_cond_t;
+typedef HANDLE js_thread_t;
 #else
 #define JS_ONCE_INIT PTHREAD_ONCE_INIT
 typedef pthread_once_t js_once_t;
 typedef pthread_mutex_t js_mutex_t;
 typedef pthread_cond_t js_cond_t;
+typedef pthread_t js_thread_t;
 #endif
 
 void js_once(js_once_t *guard, void (*callback)(void));
@@ -590,6 +598,15 @@ void js_cond_signal(js_cond_t *cond);
 void js_cond_broadcast(js_cond_t *cond);
 void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex);
 int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout);
+
+enum {
+    JS_THREAD_CREATE_DETACHED = 1,
+};
+
+// creates threads with 2 MB stacks (glibc default)
+int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+                     int flags);
+int js_thread_join(js_thread_t thrd);
 
 #endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
 

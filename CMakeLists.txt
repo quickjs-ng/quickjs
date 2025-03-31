@@ -10,6 +10,17 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
 
+# MINGW doesn't exist in older cmake versions, newer versions don't know
+# about CMAKE_COMPILER_IS_MINGW, and there is no unique CMAKE_C_COMPILER_ID
+# for mingw-based compilers...
+if(MINGW)
+    # do nothing
+elseif(CMAKE_C_COMPILER MATCHES "mingw")
+    set(MINGW TRUE)
+else()
+    set(MINGW FALSE)
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "No build type selected, default to Release")
     set(CMAKE_BUILD_TYPE "Release")

@@ -40,6 +40,4 @@ function test_worker()
     };
 }
 
-if (os.platform !== 'win32') {
-    test_worker();
-}
+test_worker();

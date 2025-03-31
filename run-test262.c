@@ -35,12 +35,9 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <process.h>
-typedef HANDLE js_thread_t;
 #else
 #include <dirent.h>
-#include <pthread.h>
 #include <unistd.h>
-typedef pthread_t js_thread_t;
 #endif
 
 #include "cutils.h"
@@ -530,49 +527,6 @@ static JSValue js_evalScript_262(JSContext *ctx, JSValueConst this_val,
     return ret;
 }
 
-static void start_thread(js_thread_t *thrd, void *(*start)(void *), void *arg)
-{
-    // musl libc gives threads 80 kb stacks, much smaller than
-    // JS_DEFAULT_STACK_SIZE (1 MB)
-    static const unsigned stacksize = 2 << 20; // 2 MB, glibc default
-#ifdef _WIN32
-    HANDLE h, cp;
-
-    cp = GetCurrentProcess();
-    h = (HANDLE)_beginthread((void (*)(void *))(void *)start, stacksize, arg);
-    if (!h)
-        fatal(1, "_beginthread error");
-    // _endthread() automatically closes the handle but we want to wait on
-    // it so make a copy. Race-y for very short-lived threads. Can be solved
-    // by switching to _beginthreadex(CREATE_SUSPENDED) but means changing
-    // |start| from __cdecl to __stdcall.
-    if (!DuplicateHandle(cp, h, cp, thrd, 0, false, DUPLICATE_SAME_ACCESS))
-        fatal(1, "DuplicateHandle error");
-#else
-    pthread_attr_t attr;
-
-    if (pthread_attr_init(&attr))
-        fatal(1, "pthread_attr_init");
-    if (pthread_attr_setstacksize(&attr, stacksize))
-        fatal(1, "pthread_attr_setstacksize");
-    if (pthread_create(thrd, &attr, start, arg))
-        fatal(1, "pthread_create error");
-    pthread_attr_destroy(&attr);
-#endif
-}
-
-static void join_thread(js_thread_t thrd)
-{
-#ifdef _WIN32
-    if (WaitForSingleObject(thrd, INFINITE))
-        fatal(1, "WaitForSingleObject error");
-    CloseHandle(thrd);
-#else
-    if (pthread_join(thrd, NULL))
-        fatal(1, "pthread_join error");
-#endif
-}
-
 static long cpu_count(void)
 {
 #ifdef _WIN32
@@ -621,7 +575,7 @@ typedef struct {
 static JSValue add_helpers1(JSContext *ctx);
 static void add_helpers(JSContext *ctx);
 
-static void *agent_start(void *arg)
+static void agent_start(void *arg)
 {
     ThreadLocalStorage *tls;
     Test262Agent *agent;
@@ -697,7 +651,6 @@ static void *agent_start(void *arg)
 
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
-    return NULL;
 }
 
 static JSValue js_agent_start(JSContext *ctx, JSValueConst this_val,
@@ -721,7 +674,7 @@ static JSValue js_agent_start(JSContext *ctx, JSValueConst this_val,
     agent->tls = tls;
     JS_FreeCString(ctx, script);
     list_add_tail(&agent->link, &tls->agent_list);
-    start_thread(&agent->tid, agent_start, agent);
+    js_thread_create(&agent->tid, agent_start, agent, /*flags*/0);
     return JS_UNDEFINED;
 }
 
@@ -733,7 +686,7 @@ static void js_agent_free(JSContext *ctx)
 
     list_for_each_safe(el, el1, &tls->agent_list) {
         agent = list_entry(el, Test262Agent, link);
-        join_thread(agent->tid);
+        js_thread_join(agent->tid);
         JS_FreeValue(ctx, agent->broadcast_sab);
         list_del(&agent->link);
         free(agent);
@@ -1773,6 +1726,7 @@ int run_test_buf(ThreadLocalStorage *tls, const char *filename, char *harness,
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }
+    JS_SetDumpFlags(rt, JS_DUMP_LEAKS);
     JS_SetRuntimeOpaque(rt, tls);
     js_std_init_handlers(rt);
     ctx = JS_NewCustomContext(rt);
@@ -2018,6 +1972,7 @@ int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }
+    JS_SetDumpFlags(rt, JS_DUMP_LEAKS);
     JS_SetRuntimeOpaque(rt, tls);
     ctx = JS_NewContext(rt);
     if (ctx == NULL) {
@@ -2083,7 +2038,7 @@ int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
 
 clock_t last_clock;
 
-void *show_progress(void *unused) {
+void show_progress(void *unused) {
     int interval = 1000*1000*1000 / 4; // 250 ms
 
     js_mutex_lock(&progress_mutex);
@@ -2096,7 +2051,6 @@ void *show_progress(void *unused) {
         fflush(stderr);
     }
     js_mutex_unlock(&progress_mutex);
-    return NULL;
 }
 
 enum { INCLUDE, EXCLUDE, SKIP };
@@ -2112,7 +2066,7 @@ int include_exclude_or_skip(int i) // naming is hard...
     return INCLUDE;
 }
 
-void *run_test_dir_list(void *arg)
+void run_test_dir_list(void *arg)
 {
     ThreadLocalStorage tls_s, *tls = &tls_s;
     const char *p;
@@ -2129,7 +2083,6 @@ void *run_test_dir_list(void *arg)
         if (verbose > 1 || (slow_test_threshold && msec >= slow_test_threshold))
             fprintf(stderr, "%s (%d ms)\n", p, msec);
     }
-    return NULL;
 }
 
 void help(void)
@@ -2304,15 +2257,17 @@ int main(int argc, char **argv)
         }
         js_cond_init(&progress_cond);
         js_mutex_init(&progress_mutex);
-        start_thread(&progress_thread, show_progress, NULL);
+        js_thread_create(&progress_thread, show_progress, NULL, /*flags*/0);
+        for (i = 0; i < nthreads; i++) {
+            js_thread_create(&threads[i], run_test_dir_list,
+                             (void *)(uintptr_t)i, /*flags*/0);
+        }
         for (i = 0; i < nthreads; i++)
-            start_thread(&threads[i], run_test_dir_list, (void *)(uintptr_t)i);
-        for (i = 0; i < nthreads; i++)
-            join_thread(threads[i]);
+            js_thread_join(threads[i]);
         js_mutex_lock(&progress_mutex);
         js_cond_signal(&progress_cond);
         js_mutex_unlock(&progress_mutex);
-        join_thread(progress_thread);
+        js_thread_join(progress_thread);
         js_mutex_destroy(&progress_mutex);
         js_cond_destroy(&progress_cond);
     } else {
