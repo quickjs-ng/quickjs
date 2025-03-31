@@ -126,6 +126,8 @@ typedef struct {
     JSValue func;
 } JSOSTimer;
 
+#ifdef USE_WORKER
+
 typedef struct {
     struct list_head link;
     uint8_t *data;
@@ -146,9 +148,7 @@ typedef struct JSWaker {
 
 typedef struct {
     int ref_count;
-#ifdef USE_WORKER
     js_mutex_t mutex;
-#endif
     struct list_head msg_queue; /* list of JSWorkerMessage.link */
     JSWaker waker;
 } JSWorkerMessagePipe;
@@ -159,6 +159,8 @@ typedef struct {
     JSValue on_message_func;
 } JSWorkerMessageHandler;
 
+#endif // USE_WORKER
+
 typedef struct JSThreadState {
     struct list_head os_rw_handlers; /* list of JSOSRWHandler.link */
     struct list_head os_signal_handlers; /* list JSOSSignalHandler.link */
@@ -168,7 +170,11 @@ typedef struct JSThreadState {
     int64_t next_timer_id; /* for setTimeout / setInterval */
     bool can_js_os_poll;
     /* not used in the main thread */
+#ifdef USE_WORKER
     JSWorkerMessagePipe *recv_pipe, *send_pipe;
+#else
+    void *recv_pipe;
+#endif // USE_WORKER
     JSClassID std_file_class_id;
     JSClassID worker_class_id;
 } JSThreadState;
@@ -2532,14 +2538,6 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
     return ret;
 }
 
-#else // !USE_WORKER
-
-static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
-                                 JSWorkerMessageHandler *port)
-{
-    return 0;
-}
-
 #endif // USE_WORKER
 
 #if defined(_WIN32)
@@ -2665,6 +2663,7 @@ static int js_os_poll(JSContext *ctx)
             FD_SET(rh->fd, &wfds);
     }
 
+#ifdef USE_WORKER
     list_for_each(el, &ts->port_list) {
         JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
         if (!JS_IsNull(port->on_message_func)) {
@@ -2673,6 +2672,7 @@ static int js_os_poll(JSContext *ctx)
             FD_SET(ps->waker.read_fd, &rfds);
         }
     }
+#endif // USE_WORKER
 
     ret = select(fd_max + 1, &rfds, &wfds, NULL, tvp);
     if (ret > 0) {
@@ -2689,7 +2689,7 @@ static int js_os_poll(JSContext *ctx)
                 /* must stop because the list may have been modified */
             }
         }
-
+#ifdef USE_WORKER
         list_for_each(el, &ts->port_list) {
             JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
             if (!JS_IsNull(port->on_message_func)) {
@@ -2700,6 +2700,7 @@ static int js_os_poll(JSContext *ctx)
                 }
             }
         }
+#endif // USE_WORKER
     }
 done:
     return 0;
