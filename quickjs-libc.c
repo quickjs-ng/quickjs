@@ -2702,6 +2702,7 @@ static int js_os_poll(JSContext *ctx)
         }
 #endif // USE_WORKER
     }
+    goto done; // silence unused label warning
 done:
     return 0;
 }
