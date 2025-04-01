@@ -395,7 +395,7 @@ static void check_hasarg(int optind, int argc, int opt)
 int main(int argc, char **argv)
 {
     int optind = 1;
-    int i, verbose;
+    int i;
     const char *out_filename, *cname, *script_name;
     char cfilename[1024];
     FILE *fo;
@@ -410,7 +410,6 @@ int main(int argc, char **argv)
     output_type = OUTPUT_C;
     cname = NULL;
     module = -1;
-    verbose = 0;
     strip = 0;
     stack_size = 0;
     memset(&dynamic_module_list, 0, sizeof(dynamic_module_list));
@@ -522,10 +521,6 @@ int main(int argc, char **argv)
             }
             if (opt == 's') {
                 strip++;
-                continue;
-            }
-            if (opt == 'v') {
-                verbose++;
                 continue;
             }
             if (opt == 'p') {
