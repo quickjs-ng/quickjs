@@ -44727,7 +44727,7 @@ static JSValue js_math_sumPrecise(JSContext *ctx, JSValueConst this_val,
     JSValue iter, next, item, ret;
     int done;
     double d;
-    xsum_large_accumulator lacc;
+    xsum_small_accumulator acc;
     SumPreciseStateEnum state;
 
     iter = JS_GetIterator(ctx, argv[0], /*async*/false);
@@ -44737,7 +44737,7 @@ static JSValue js_math_sumPrecise(JSContext *ctx, JSValueConst this_val,
     next = JS_GetProperty(ctx, iter, JS_ATOM_next);
     if (JS_IsException(next))
         goto fail;
-    xsum_large_init(&lacc);
+    xsum_small_init(&acc);
     state = SUM_PRECISE_STATE_MINUS_ZERO;
     for (;;) {
         item = JS_IteratorNext(ctx, iter, next, 0, NULL, &done);
@@ -44773,7 +44773,7 @@ static JSValue js_math_sumPrecise(JSContext *ctx, JSValueConst this_val,
                     state = SUM_PRECISE_STATE_MINUS_INFINITY;
             else if (!(d == 0.0 && signbit(d)) && (state == SUM_PRECISE_STATE_MINUS_ZERO || state == SUM_PRECISE_STATE_FINITE)) {
                 state = SUM_PRECISE_STATE_FINITE;
-                xsum_large_add1(&lacc, d);
+                xsum_small_add1(&acc, d);
             }
         }
     }
@@ -44792,7 +44792,7 @@ static JSValue js_math_sumPrecise(JSContext *ctx, JSValueConst this_val,
         d = -0.0;
         break;
     case SUM_PRECISE_STATE_FINITE:
-        d = xsum_large_round(&lacc);
+        d = xsum_small_round(&acc);
         break;
     default:
         abort();
