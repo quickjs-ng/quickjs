@@ -24930,7 +24930,17 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
                 emit_op(s, OP_push_i32);
                 emit_u32(s, JS_VALUE_GET_INT(val));
+            } else if (JS_VALUE_GET_TAG(val) == JS_TAG_SHORT_BIG_INT) {
+                int64_t v;
+                v = JS_VALUE_GET_SHORT_BIG_INT(val);
+                if (v >= INT32_MIN && v <= INT32_MAX) {
+                    emit_op(s, OP_push_bigint_i32);
+                    emit_u32(s, v);
+                } else {
+                    goto large_number;
+                }
             } else {
+            large_number:
                 if (emit_push_const(s, val, 0) < 0)
                     return -1;
             }
@@ -32993,6 +33003,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             break;
 
         case OP_push_bigint_i32:
+            {
                 /* transform i32(val) neg -> i32(-val) */
                 val = get_i32(bc_buf + pos + 1);
                 if (val != INT32_MIN
@@ -33010,6 +33021,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                     pos_next = cc.pos;
                     break;
                 }
+            }
+            goto no_change;
 
         case OP_push_const:
         case OP_fclosure:
