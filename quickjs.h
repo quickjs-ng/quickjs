@@ -85,14 +85,6 @@ typedef uint32_t JSAtom;
 #endif
 #endif
 
-#if defined(__SIZEOF_INT128__) && (INTPTR_MAX >= INT64_MAX) && !defined(_WIN32) && !defined(__TINYC__)
-#define JS_LIMB_BITS 64
-#else
-#define JS_LIMB_BITS 32
-#endif
-
-#define JS_SHORT_BIG_INT_BITS JS_LIMB_BITS
-
 enum {
     /* all tags with a reference count are negative */
     JS_TAG_FIRST       = -9, /* first negative tag */
@@ -246,11 +238,7 @@ typedef union JSValueUnion {
     int32_t int32;
     double float64;
     void *ptr;
-#if JS_SHORT_BIG_INT_BITS == 32
     int32_t short_big_int;
-#else
-    int64_t short_big_int;
-#endif
 } JSValueUnion;
 
 typedef struct JSValue {

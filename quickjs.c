@@ -376,8 +376,6 @@ typedef struct JSRefCountHeader {
 } JSRefCountHeader;
 
 /* bigint */
-#if JS_LIMB_BITS == 32
-
 typedef int32_t js_slimb_t;
 typedef uint32_t js_limb_t;
 typedef int64_t js_sdlimb_t;
@@ -385,18 +383,13 @@ typedef uint64_t js_dlimb_t;
 
 #define JS_LIMB_DIGITS 9
 
-#else
+/* Must match the size of short_big_int in JSValueUnion */
+#define JS_LIMB_BITS 32
+#define JS_SHORT_BIG_INT_BITS JS_LIMB_BITS
+#define JS_BIGINT_MAX_SIZE ((1024 * 1024) / JS_LIMB_BITS) /* in limbs */
+#define JS_SHORT_BIG_INT_MIN INT32_MIN
+#define JS_SHORT_BIG_INT_MAX INT32_MAX
 
-typedef __int128 int128_t;
-typedef unsigned __int128 uint128_t;
-typedef int64_t js_slimb_t;
-typedef uint64_t js_limb_t;
-typedef int128_t js_sdlimb_t;
-typedef uint128_t js_dlimb_t;
-
-#define JS_LIMB_DIGITS 19
-
-#endif
 
 typedef struct JSBigInt {
     JSRefCountHeader header; /* must come first, 32-bit */
@@ -10473,19 +10466,6 @@ static inline int to_digit(int c)
 
 /* bigint support */
 
-#define JS_BIGINT_MAX_SIZE ((1024 * 1024) / JS_LIMB_BITS) /* in limbs */
-
-/* it is currently assumed that JS_SHORT_BIG_INT_BITS = JS_LIMB_BITS */
-#if JS_SHORT_BIG_INT_BITS == 32
-#define JS_SHORT_BIG_INT_MIN INT32_MIN
-#define JS_SHORT_BIG_INT_MAX INT32_MAX
-#elif JS_SHORT_BIG_INT_BITS == 64
-#define JS_SHORT_BIG_INT_MIN INT64_MIN
-#define JS_SHORT_BIG_INT_MAX INT64_MAX
-#else
-#error unsupported
-#endif
-
 #define ADDC(res, carry_out, op1, op2, carry_in)        \
 do {                                                    \
     js_limb_t __v, __a, __k, __k1;                      \
@@ -10498,18 +10478,11 @@ do {                                                    \
     res = __a;                                          \
 } while (0)
 
-#if JS_LIMB_BITS == 32
 /* a != 0 */
 static inline js_limb_t js_limb_clz(js_limb_t a)
 {
     return clz32(a);
 }
-#else
-static inline js_limb_t js_limb_clz(js_limb_t a)
-{
-    return clz64(a);
-}
-#endif
 
 static js_limb_t mp_add(js_limb_t *res, const js_limb_t *op1, const js_limb_t *op2,
                      js_limb_t n, js_limb_t carry)
@@ -10815,9 +10788,6 @@ static JSBigInt *js_bigint_set_si(JSBigIntBuf *buf, js_slimb_t a)
 
 static JSBigInt *js_bigint_set_si64(JSBigIntBuf *buf, int64_t a)
 {
-#if JS_LIMB_BITS == 64
-    return js_bigint_set_si(buf, a);
-#else
     JSBigInt *r = (JSBigInt *)buf->big_int_buf;
     r->header.ref_count = 0; /* fail safe */
     if (a >= INT32_MIN && a <= INT32_MAX) {
@@ -10829,7 +10799,6 @@ static JSBigInt *js_bigint_set_si64(JSBigIntBuf *buf, int64_t a)
         r->tab[1] = a >> JS_LIMB_BITS;
     }
     return r;
-#endif
 }
 
 /* val must be a short big int */
@@ -10844,11 +10813,7 @@ static __maybe_unused void js_bigint_dump1(JSContext *ctx, const char *str,
     int i;
     printf("%s: ", str);
     for(i = len - 1; i >= 0; i--) {
-#if JS_LIMB_BITS == 32
         printf(" %08x", tab[i]);
-#else
-        printf(" %016" PRIx64, tab[i]);
-#endif
     }
     printf("\n");
 }
@@ -10871,9 +10836,6 @@ static JSBigInt *js_bigint_new_si(JSContext *ctx, js_slimb_t a)
 
 static JSBigInt *js_bigint_new_si64(JSContext *ctx, int64_t a)
 {
-#if JS_LIMB_BITS == 64
-    return js_bigint_new_si(ctx, a);
-#else
     if (a >= INT32_MIN && a <= INT32_MAX) {
         return js_bigint_new_si(ctx, a);
     } else {
@@ -10885,7 +10847,6 @@ static JSBigInt *js_bigint_new_si64(JSContext *ctx, int64_t a)
         r->tab[1] = a >> 32;
         return r;
     }
-#endif
 }
 
 static JSBigInt *js_bigint_new_ui64(JSContext *ctx, uint64_t a)
@@ -10897,14 +10858,9 @@ static JSBigInt *js_bigint_new_ui64(JSContext *ctx, uint64_t a)
         r = js_bigint_new(ctx, (65 + JS_LIMB_BITS - 1) / JS_LIMB_BITS);
         if (!r)
             return NULL;
-#if JS_LIMB_BITS == 64
-        r->tab[0] = a;
-        r->tab[1] = 0;
-#else
         r->tab[0] = a;
         r->tab[1] = a >> 32;
         r->tab[2] = 0;
-#endif
         return r;
     }
 }
@@ -10970,17 +10926,10 @@ static js_slimb_t js_bigint_get_si_sat(const JSBigInt *a)
     if (a->len == 1) {
         return a->tab[0];
     } else {
-#if JS_LIMB_BITS == 32
         if (js_bigint_sign(a))
             return INT32_MIN;
         else
             return INT32_MAX;
-#else
-        if (js_bigint_sign(a))
-            return INT64_MIN;
-        else
-            return INT64_MAX;
-#endif
     }
 }
 
@@ -11421,21 +11370,11 @@ static uint64_t js_bigint_get_mant_exp(JSContext *ctx,
         t[j] = v;
     }
 
-#if JS_LIMB_BITS == 32
     a1 = ((uint64_t)t[2] << 32) | t[1];
     a0 = (uint64_t)t[0] << 32;
-#else
-    a1 = t[1];
-    a0 = t[0];
-#endif
     a0 |= (low_bits != 0);
     /* normalize */
-    if (a1 == 0) {
-        /* JS_LIMB_BITS = 64 bit only */
-        shift = 64;
-        a1 = a0;
-        a0 = 0;
-    } else {
+    {
         shift = clz64(a1);
         if (shift != 0) {
             a1 = (a1 << shift) | (a0 >> (64 - shift));
@@ -11636,18 +11575,6 @@ static const js_limb_t js_pow_dec[JS_LIMB_DIGITS + 1] = {
     10000000U,
     100000000U,
     1000000000U,
-#if JS_LIMB_BITS == 64
-    10000000000U,
-    100000000000U,
-    1000000000000U,
-    10000000000000U,
-    100000000000000U,
-    1000000000000000U,
-    10000000000000000U,
-    100000000000000000U,
-    1000000000000000000U,
-    10000000000000000000U,
-#endif
 };
 
 /* syntax: [-]digits in base radix. Return NULL if memory error. radix
@@ -11792,15 +11719,10 @@ static char *limb_to_a(char *q, js_limb_t n, unsigned int radix, int len)
 #define JS_RADIX_MAX 36
 
 static const uint8_t digits_per_limb_table[JS_RADIX_MAX - 1] = {
-#if JS_LIMB_BITS == 32
 32,20,16,13,12,11,10,10, 9, 9, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-#else
-64,40,32,27,24,22,21,20,19,18,17,17,16,16,16,15,15,15,14,14,14,14,13,13,13,13,13,13,13,12,12,12,12,12,12,
-#endif
 };
 
 static const js_limb_t radix_base_table[JS_RADIX_MAX - 1] = {
-#if JS_LIMB_BITS == 32
  0x00000000, 0xcfd41b91, 0x00000000, 0x48c27395,
  0x81bf1000, 0x75db9c97, 0x40000000, 0xcfd41b91,
  0x3b9aca00, 0x8c8b6d2b, 0x19a10000, 0x309f1021,
@@ -11810,17 +11732,6 @@ static const js_limb_t radix_base_table[JS_RADIX_MAX - 1] = {
  0x1269ae40, 0x17179149, 0x1cb91000, 0x23744899,
  0x2b73a840, 0x34e63b41, 0x40000000, 0x4cfa3cc1,
  0x5c13d840, 0x6d91b519, 0x81bf1000,
-#else
- 0x0000000000000000, 0xa8b8b452291fe821, 0x0000000000000000, 0x6765c793fa10079d,
- 0x41c21cb8e1000000, 0x3642798750226111, 0x8000000000000000, 0xa8b8b452291fe821,
- 0x8ac7230489e80000, 0x4d28cb56c33fa539, 0x1eca170c00000000, 0x780c7372621bd74d,
- 0x1e39a5057d810000, 0x5b27ac993df97701, 0x0000000000000000, 0x27b95e997e21d9f1,
- 0x5da0e1e53c5c8000, 0xd2ae3299c1c4aedb, 0x16bcc41e90000000, 0x2d04b7fdd9c0ef49,
- 0x5658597bcaa24000, 0xa0e2073737609371, 0x0c29e98000000000, 0x14adf4b7320334b9,
- 0x226ed36478bfa000, 0x383d9170b85ff80b, 0x5a3c23e39c000000, 0x8e65137388122bcd,
- 0xdd41bb36d259e000, 0x0aee5720ee830681, 0x1000000000000000, 0x172588ad4f5f0981,
- 0x211e44f7d02c1000, 0x2ee56725f06e5c71, 0x41c21cb8e1000000,
-#endif
 };
 
 static JSValue js_bigint_to_string1(JSContext *ctx, JSValueConst val, int radix)
@@ -13540,11 +13451,7 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValueConst val)
             for(i = p->len - 1; i >= 0; i--) {
                 if (i != p->len - 1)
                     printf("_");
-#if JS_LIMB_BITS == 32
                 printf("%08x", p->tab[i]);
-#else
-                printf("%016" PRIx64, p->tab[i]);
-#endif
             }
             printf("n");
             if (sgn)
@@ -13631,9 +13538,6 @@ static double js_math_pow(double a, double b)
 
 JSValue JS_NewBigInt64(JSContext *ctx, int64_t v)
 {
-#if JS_SHORT_BIG_INT_BITS == 64
-    return __JS_NewShortBigInt(ctx, v);
-#else
     if (v >= JS_SHORT_BIG_INT_MIN && v <= JS_SHORT_BIG_INT_MAX) {
         return __JS_NewShortBigInt(ctx, v);
     } else {
@@ -13643,7 +13547,6 @@ JSValue JS_NewBigInt64(JSContext *ctx, int64_t v)
             return JS_EXCEPTION;
         return JS_MKPTR(JS_TAG_BIG_INT, p);
     }
-#endif
 }
 
 JSValue JS_NewBigUint64(JSContext *ctx, uint64_t v)
@@ -13746,10 +13649,8 @@ static int JS_ToBigInt64Free(JSContext *ctx, int64_t *pres, JSValue val)
         JSBigInt *p = JS_VALUE_GET_PTR(val);
         /* return the value mod 2^64 */
         res = p->tab[0];
-#if JS_LIMB_BITS == 32
         if (p->len >= 2)
             res |= (uint64_t)p->tab[1] << 32;
-#endif
         JS_FreeValue(ctx, val);
     }
     *pres = res;
@@ -35519,11 +35420,7 @@ static int JS_WriteBigInt(BCWriterState *s, JSValueConst obj)
     bc_put_leb128(s, len);
     if (len > 0) {
         for(i = 0; i < (len / (JS_LIMB_BITS / 8)); i++) {
-#if JS_LIMB_BITS == 32
             bc_put_u32(s, p->tab[i]);
-#else
-            bc_put_u64(s, p->tab[i]);
-#endif
         }
         for(i = 0; i < len % (JS_LIMB_BITS / 8); i++) {
             bc_put_u8(s, (p->tab[p->len - 1] >> (i * 8)) & 0xff);
@@ -36411,13 +36308,8 @@ static JSValue JS_ReadBigInt(BCReaderState *s)
     if (!p)
         goto fail;
     for(i = 0; i < len / (JS_LIMB_BITS / 8); i++) {
-#if JS_LIMB_BITS == 32
         if (bc_get_u32(s, &v))
             goto fail;
-#else
-        if (bc_get_u64(s, &v))
-            goto fail;
-#endif
         p->tab[i] = v;
     }
     n = len % (JS_LIMB_BITS / 8);
