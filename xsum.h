@@ -99,30 +99,6 @@ typedef struct
 } xsum_small_accumulator;          /*     propagation must be done again    */
 
 
-/* CONSTANTS DEFINING THE LARGE ACCUMULATOR FORMAT. */
-
-#define XSUM_LCHUNK_BITS 64        /* Bits in chunk of the large accumulator */
-typedef uint64_t xsum_lchunk;      /* Integer type of large accumulator chunk,
-                                      must be EXACTLY 64 bits in size */
-
-#define XSUM_LCOUNT_BITS (64-XSUM_MANTISSA_BITS)  /* # of bits in count */
-typedef int_least16_t xsum_lcount; /* Signed int type of counts for large acc.*/
-
-#define XSUM_LCHUNKS \
-  (1 << (XSUM_EXP_BITS+1))         /* # of chunks in large accumulator */
-
-typedef uint64_t xsum_used;        /* Unsigned type for holding used flags */
-
-typedef struct
-{ xsum_lchunk chunk[XSUM_LCHUNKS]; /* Chunks making up large accumulator */
-  xsum_lcount count[XSUM_LCHUNKS]; /* Counts of # adds remaining for chunks,
-                                        or -1 if not used yet or special. */
-  xsum_used chunks_used[XSUM_LCHUNKS/64];  /* Bits indicate chunks in use */
-  xsum_used used_used;             /* Bits indicate chunk_used entries not 0 */
-  xsum_small_accumulator sacc;     /* The small accumulator to condense into */
-} xsum_large_accumulator;
-
-
 /* TYPE FOR LENGTHS OF ARRAYS.  Must be a signed integer type.  Set to
    ptrdiff_t here on the assumption that this will be big enough, but
    not unnecessarily big, which seems to be true. */
@@ -145,41 +121,8 @@ void xsum_small_add_accumulator (xsum_small_accumulator *,
 void xsum_small_negate (xsum_small_accumulator *restrict);
 xsum_flt xsum_small_round (xsum_small_accumulator *restrict);
 
-void xsum_large_init (xsum_large_accumulator *restrict);
-void xsum_large_add1 (xsum_large_accumulator *restrict, xsum_flt);
-void xsum_large_addv (xsum_large_accumulator *restrict,
-                      const xsum_flt *restrict, xsum_length);
-void xsum_large_add_sqnorm (xsum_large_accumulator *restrict,
-                            const xsum_flt *restrict, xsum_length);
-void xsum_large_add_dot (xsum_large_accumulator *restrict,
-                         const xsum_flt *, const xsum_flt *, xsum_length);
-void xsum_large_add_accumulator (xsum_large_accumulator *,
-                                 xsum_large_accumulator *);
-void xsum_large_negate (xsum_large_accumulator *restrict);
-xsum_flt xsum_large_round (xsum_large_accumulator *restrict);
-
-void xsum_large_to_small_accumulator (xsum_small_accumulator *restrict,
-                                      xsum_large_accumulator *restrict);
-void xsum_small_to_large_accumulator (xsum_large_accumulator *restrict,
-                                      xsum_small_accumulator *restrict);
-
 xsum_flt xsum_small_div_unsigned (xsum_small_accumulator *restrict, unsigned);
 xsum_flt xsum_small_div_int (xsum_small_accumulator *restrict, int);
-xsum_flt xsum_large_div_unsigned (xsum_large_accumulator *restrict, unsigned);
-xsum_flt xsum_large_div_int (xsum_large_accumulator *restrict, int);
-
-
-/* FUNCTIONS FOR DOUBLE AND OTHER INEXACT SUMMATION.  Used for testing. */
-
-xsum_flt xsum_sum_double (const xsum_flt *restrict, xsum_length);
-xsum_flt xsum_sum_double_not_ordered (const xsum_flt *restrict, xsum_length);
-xsum_flt xsum_sum_float128 (const xsum_flt *restrict, xsum_length);
-xsum_flt xsum_sum_kahan (const xsum_flt *restrict, xsum_length);
-xsum_flt xsum_sqnorm_double (const xsum_flt *restrict, xsum_length);
-xsum_flt xsum_sqnorm_double_not_ordered (const xsum_flt *restrict, xsum_length);
-xsum_flt xsum_dot_double (const xsum_flt *, const xsum_flt *, xsum_length);
-xsum_flt xsum_dot_double_not_ordered (const xsum_flt *, const xsum_flt *,
-                                      xsum_length);
 
 
 /* DEBUG FLAG.  Set to non-zero for debug ouptut.  Ignored unless xsum.c
