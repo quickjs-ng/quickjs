@@ -57263,6 +57263,7 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
             list_del(&mr->hash_link);
             list_del(&mr->link);
+            s->record_count--;
             break;
         case JS_WEAK_REF_KIND_WEAK_REF:
             wrd = wr->u.weak_ref_data;
