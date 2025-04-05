@@ -10,7 +10,9 @@ This project is a _fork_ of the [original QuickJS project] by Fabrice Bellard an
 ## Getting started
 
 Head over to the [project website] for instructions on how to get started and more
-documentation.
+documentation. 
+
+Get the [latest releases].
 
 ## Authors
 
@@ -22,3 +24,4 @@ documentation.
 [@saghul]: https://github.com/saghul
 [contributors]: https://github.com/quickjs-ng/quickjs/graphs/contributors
 [project website]: https://quickjs-ng.github.io/quickjs/
+[latest releases]: https://quickjs-ng.github.io/quickjs/installation.md#latest-releases
