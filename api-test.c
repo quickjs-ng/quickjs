@@ -269,6 +269,32 @@ static void two_byte_string(void)
     JS_FreeRuntime(rt);
 }
 
+static void weak_map_gc_check(void)
+{
+    const char *code =
+"const map = new WeakMap(); \
+function addItem() { \
+    const k = { \
+        text: 'a'.repeat(1024 * 1024), \
+    }; \
+    map.set(k, {k}); \
+} \
+addItem();";
+
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    assert(!JS_IsException(ret));
+    JS_RunGC(rt);
+    JSMemoryUsage memory_usage;
+    JS_ComputeMemoryUsage(rt, &memory_usage);
+    assert(memory_usage.memory_used_count < 10000);
+    assert(memory_usage.memory_used_size < 1024 * 1024);
+    JS_FreeValue(ctx, ret);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -278,5 +304,6 @@ int main(void)
     is_array();
     module_serde();
     two_byte_string();
+    weak_map_gc_check();
     return 0;
 }
