@@ -269,6 +269,48 @@ static void two_byte_string(void)
     JS_FreeRuntime(rt);
 }
 
+static void weak_map_gc_check(void)
+{
+    static const char init_code[] =
+"const map = new WeakMap(); \
+function addItem() { \
+    const k = { \
+        text: 'a', \
+    }; \
+    map.set(k, {k}); \
+}";
+    static const char test_code[] = "addItem()";
+
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    JSValue ret = JS_Eval(ctx, init_code, strlen(init_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    assert(!JS_IsException(ret));
+
+    JSValue ret_test = JS_Eval(ctx, test_code, strlen(test_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    assert(!JS_IsException(ret_test));
+    JS_RunGC(rt);
+    JSMemoryUsage memory_usage;
+    JS_ComputeMemoryUsage(rt, &memory_usage);
+
+    for (int i = 0; i < 3; i++) {
+        JSValue ret_test2 = JS_Eval(ctx, test_code, strlen(test_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+        assert(!JS_IsException(ret_test2));
+        JS_RunGC(rt);
+        JSMemoryUsage memory_usage2;
+        JS_ComputeMemoryUsage(rt, &memory_usage2);
+
+        assert(memory_usage.memory_used_count == memory_usage2.memory_used_count);
+        assert(memory_usage.memory_used_size == memory_usage2.memory_used_size);
+        JS_FreeValue(ctx, ret_test2);
+    }
+
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, ret_test);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -278,5 +320,6 @@ int main(void)
     is_array();
     module_serde();
     two_byte_string();
+    weak_map_gc_check();
     return 0;
 }
