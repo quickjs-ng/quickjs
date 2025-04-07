@@ -493,6 +493,26 @@ typedef struct JSWeakRefRecord {
     } u;
 } JSWeakRefRecord;
 
+typedef struct JSMapRecord {
+    int ref_count; /* used during enumeration to avoid freeing the record */
+    bool empty; /* true if the record is deleted */
+    struct JSMapState *map;
+    struct list_head link;
+    struct list_head hash_link;
+    JSValue key;
+    JSValue value;
+} JSMapRecord;
+
+typedef struct JSMapState {
+    bool is_weak; /* true if WeakSet/WeakMap */
+    struct list_head records; /* list of JSMapRecord.link */
+    uint32_t record_count;
+    struct list_head *hash_table;
+    uint32_t hash_size; /* must be a power of two */
+    uint32_t record_count_threshold; /* count at which a hash table
+                                        resize is needed */
+} JSMapState;
+
 enum {
     JS_ATOM_TYPE_STRING = 1,
     JS_ATOM_TYPE_GLOBAL_SYMBOL,
@@ -5783,6 +5803,22 @@ void JS_MarkValue(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
     }
 }
 
+static void mark_weak_map_value(JSRuntime *rt, JSWeakRefRecord **first_weak_ref, JS_MarkFunc *mark_func) {
+    JSWeakRefRecord *wr;
+    JSMapRecord *mr;
+    JSMapState *s;
+
+    for (wr = *first_weak_ref; wr != NULL; wr = wr->next_weak_ref) {
+        if (wr->kind == JS_WEAK_REF_KIND_MAP) {
+            mr = wr->u.map_record;
+            s = mr->map;
+            assert(s->is_weak);
+            assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
+            JS_MarkValue(rt, mr->value, mark_func);
+        }
+    }
+}
+
 static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                           JS_MarkFunc *mark_func)
 {
@@ -5820,6 +5856,10 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                     }
                 }
                 prs++;
+            }
+
+            if (unlikely(p->first_weak_ref)) {
+                mark_weak_map_value(rt, &p->first_weak_ref, mark_func);
             }
 
             if (p->class_id != JS_CLASS_OBJECT) {
@@ -48433,26 +48473,6 @@ static const JSCFunctionListEntry js_symbol_funcs[] = {
 
 /* Set/Map/WeakSet/WeakMap */
 
-typedef struct JSMapRecord {
-    int ref_count; /* used during enumeration to avoid freeing the record */
-    bool empty; /* true if the record is deleted */
-    struct JSMapState *map;
-    struct list_head link;
-    struct list_head hash_link;
-    JSValue key;
-    JSValue value;
-} JSMapRecord;
-
-typedef struct JSMapState {
-    bool is_weak; /* true if WeakSet/WeakMap */
-    struct list_head records; /* list of JSMapRecord.link */
-    uint32_t record_count;
-    struct list_head *hash_table;
-    uint32_t hash_size; /* must be a power of two */
-    uint32_t record_count_threshold; /* count at which a hash table
-                                        resize is needed */
-} JSMapState;
-
 #define MAGIC_SET (1 << 0)
 #define MAGIC_WEAK (1 << 1)
 
@@ -49058,9 +49078,10 @@ static void js_map_mark(JSRuntime *rt, JSValueConst val,
     if (s) {
         list_for_each(el, &s->records) {
             mr = list_entry(el, JSMapRecord, link);
-            if (!s->is_weak)
+            if (!s->is_weak) {
                 JS_MarkValue(rt, mr->key, mark_func);
-            JS_MarkValue(rt, mr->value, mark_func);
+                JS_MarkValue(rt, mr->value, mark_func);
+            }
         }
     }
 }
