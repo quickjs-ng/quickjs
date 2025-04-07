@@ -271,26 +271,42 @@ static void two_byte_string(void)
 
 static void weak_map_gc_check(void)
 {
-    const char *code =
+    static const char init_code[] =
 "const map = new WeakMap(); \
 function addItem() { \
     const k = { \
-        text: 'a'.repeat(1024 * 1024), \
+        text: 'a', \
     }; \
     map.set(k, {k}); \
-} \
-addItem();";
+}";
+    static const char test_code[] = "addItem()";
 
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx = JS_NewContext(rt);
-    JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_GLOBAL);
+
+    JSValue ret = JS_Eval(ctx, init_code, strlen(init_code), "<input>", JS_EVAL_TYPE_GLOBAL);
     assert(!JS_IsException(ret));
+
+    JSValue ret_test = JS_Eval(ctx, test_code, strlen(test_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    assert(!JS_IsException(ret_test));
     JS_RunGC(rt);
     JSMemoryUsage memory_usage;
     JS_ComputeMemoryUsage(rt, &memory_usage);
-    assert(memory_usage.memory_used_count < 10000);
-    assert(memory_usage.memory_used_size < 1024 * 1024);
+
+    for (int i = 0; i < 3; i++) {
+        JSValue ret_test2 = JS_Eval(ctx, test_code, strlen(test_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+        assert(!JS_IsException(ret_test2));
+        JS_RunGC(rt);
+        JSMemoryUsage memory_usage2;
+        JS_ComputeMemoryUsage(rt, &memory_usage2);
+
+        assert(memory_usage.memory_used_count == memory_usage2.memory_used_count);
+        assert(memory_usage.memory_used_size == memory_usage2.memory_used_size);
+        JS_FreeValue(ctx, ret_test2);
+    }
+
     JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, ret_test);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }

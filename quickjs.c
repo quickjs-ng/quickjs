@@ -1714,8 +1714,8 @@ static JSClassShortDef const js_std_class_def[] = {
     { JS_ATOM_BigInt, js_object_data_finalizer, js_object_data_mark },      /* JS_CLASS_BIG_INT */
     { JS_ATOM_Map, js_map_finalizer, js_map_mark },             /* JS_CLASS_MAP */
     { JS_ATOM_Set, js_map_finalizer, js_map_mark },             /* JS_CLASS_SET */
-    { JS_ATOM_WeakMap, js_map_finalizer, js_map_mark },         /* JS_CLASS_WEAKMAP */
-    { JS_ATOM_WeakSet, js_map_finalizer, js_map_mark },         /* JS_CLASS_WEAKSET */
+    { JS_ATOM_WeakMap, js_map_finalizer, NULL },         /* JS_CLASS_WEAKMAP */
+    { JS_ATOM_WeakSet, js_map_finalizer, NULL },         /* JS_CLASS_WEAKSET */
     { JS_ATOM_Iterator, NULL, NULL },                           /* JS_CLASS_ITERATOR */
     { JS_ATOM_IteratorHelper, js_iterator_helper_finalizer, js_iterator_helper_mark }, /* JS_CLASS_ITERATOR_HELPER */
     { JS_ATOM_IteratorWrap, js_iterator_wrap_finalizer, js_iterator_wrap_mark }, /* JS_CLASS_ITERATOR_WRAP */
@@ -5803,12 +5803,12 @@ void JS_MarkValue(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
     }
 }
 
-static void mark_weak_map_value(JSRuntime *rt, JSWeakRefRecord **first_weak_ref, JS_MarkFunc *mark_func) {
+static void mark_weak_map_value(JSRuntime *rt, JSWeakRefRecord *first_weak_ref, JS_MarkFunc *mark_func) {
     JSWeakRefRecord *wr;
     JSMapRecord *mr;
     JSMapState *s;
 
-    for (wr = *first_weak_ref; wr != NULL; wr = wr->next_weak_ref) {
+    for (wr = first_weak_ref; wr != NULL; wr = wr->next_weak_ref) {
         if (wr->kind == JS_WEAK_REF_KIND_MAP) {
             mr = wr->u.map_record;
             s = mr->map;
@@ -5859,7 +5859,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
             }
 
             if (unlikely(p->first_weak_ref)) {
-                mark_weak_map_value(rt, &p->first_weak_ref, mark_func);
+                mark_weak_map_value(rt, p->first_weak_ref, mark_func);
             }
 
             if (p->class_id != JS_CLASS_OBJECT) {
@@ -49078,10 +49078,8 @@ static void js_map_mark(JSRuntime *rt, JSValueConst val,
     if (s) {
         list_for_each(el, &s->records) {
             mr = list_entry(el, JSMapRecord, link);
-            if (!s->is_weak) {
-                JS_MarkValue(rt, mr->key, mark_func);
-                JS_MarkValue(rt, mr->value, mark_func);
-            }
+            JS_MarkValue(rt, mr->key, mark_func);
+            JS_MarkValue(rt, mr->value, mark_func);
         }
     }
 }
