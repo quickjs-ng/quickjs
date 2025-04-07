@@ -49076,6 +49076,7 @@ static void js_map_mark(JSRuntime *rt, JSValueConst val,
 
     s = p->u.map_state;
     if (s) {
+        assert(!s->is_weak);
         list_for_each(el, &s->records) {
             mr = list_entry(el, JSMapRecord, link);
             JS_MarkValue(rt, mr->key, mark_func);
