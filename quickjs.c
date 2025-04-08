@@ -35224,6 +35224,13 @@ static const char * const bc_tag_str[] = {
     "Set",
     "Symbol",
 };
+
+static const char *bc_tag_name(uint8_t tag)
+{
+    if (tag >= countof(bc_tag_str))
+        return "<bad tag>";
+    return bc_tag_str[tag];
+}
 #endif
 
 static void bc_put_u8(BCWriterState *s, uint8_t v)
@@ -37077,7 +37084,7 @@ static JSValue JS_ReadObjectRec(BCReaderState *s)
     if (bc_get_u8(s, &tag))
         return JS_EXCEPTION;
 
-    bc_read_trace(s, "%s {\n", bc_tag_str[tag]);
+    bc_read_trace(s, "%s {\n", bc_tag_name(tag));
 
     switch(tag) {
     case BC_TAG_NULL:
