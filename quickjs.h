@@ -903,6 +903,7 @@ JS_EXTERN JSValue JS_CallConstructor2(JSContext *ctx, JSValueConst func_obj,
  * wholly infallible: non-strict classic scripts may _parse_ okay as a module
  * but not _execute_ as one (different runtime semantics.) Use with caution.
  * |input| can be either ASCII or UTF-8 encoded source code.
+ * Returns false if QuickJS was built with -DQJS_DISABLE_PARSER.
  */
 JS_EXTERN bool JS_DetectModule(const char *input, size_t input_len);
 /* 'input' must be zero terminated i.e. input[input_len] = '\0'. */
