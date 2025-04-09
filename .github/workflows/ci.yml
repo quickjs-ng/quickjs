@@ -208,6 +208,11 @@ jobs:
         run: |
           cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
           cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
+      - name: test amalgamation
+        run: |
+          build\${{matrix.buildType}}\qjs.exe amalgam.js
+          cl.exe /std:c11 /experimental:c11atomics quickjs-amalgam.c api-test.c /Fe:amalgam-api-test.exe
+          .\amalgam-api-test.exe
 
   windows-clang:
     runs-on: windows-latest
@@ -358,6 +363,12 @@ jobs:
     - name: test api
       run: |
         ./build/api-test
+    - name: test amalgamation
+      run: |
+        ./build/qjs amalgam.js
+        cc -Wall -I. quickjs-amalgam.c api-test.c -o amalgam-api-test -lm
+        ./amalgam-api-test
+
   windows-mingw-shared:
     runs-on: windows-latest
     defaults:
@@ -545,7 +556,7 @@ jobs:
   amalgam:
     strategy:
       matrix:
-        # TODO(bnoordhuis) test on windows
+        # Windows is tested as part of windows-msvc
         config:
           - { os: ubuntu-latest }
           - { os: macos-latest }
