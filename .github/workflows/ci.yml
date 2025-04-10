@@ -576,6 +576,19 @@ jobs:
         run: |
           make jscheck
 
+  parserless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: |
+          make QJS_DISABLE_PARSER=ON QJS_BUILD_EXAMPLES=ON
+      - name: test
+        run: |
+          ./build/hello
+          ./build/hello_module
+
+
   meson:
     runs-on: ${{ matrix.platform }}
     name: meson on ${{ matrix.platform }} (${{ matrix.mode.name }} ${{ matrix.flavor }}, ${{ matrix.features.name }})
