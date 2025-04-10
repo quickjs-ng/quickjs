@@ -237,7 +237,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
         size_t buf_len;
         uint8_t *buf;
         JSValue func_val;
-        char cname[1024];
+        char cname[1000];
 
         buf = js_load_file(ctx, &buf_len, module_name);
         if (!buf) {
