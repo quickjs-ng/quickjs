@@ -217,7 +217,7 @@ static void module_serde(void)
     JS_FreeValue(ctx, mod);
     assert(loader_calls == 1);
     mod = JS_ReadObject(ctx, buf, len, JS_READ_OBJ_BYTECODE);
-    free(buf);
+    js_free(ctx, buf);
     assert(loader_calls == 1); // 'b' is returned from cache
     assert(!JS_IsException(mod));
     JSValue ret = JS_EvalFunction(ctx, mod);
