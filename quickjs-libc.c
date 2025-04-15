@@ -22,6 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "quickjs.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -2237,6 +2238,16 @@ static JSValue js_os_cputime(JSContext *ctx, JSValueConst this_val,
 }
 #endif
 
+static JSValue js_os_exepath(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    char buf[JS__PATH_MAX];
+    size_t len = sizeof(buf);
+    if (js_exepath(buf, &len))
+        return JS_UNDEFINED;
+    return JS_NewStringLen(ctx, buf, len);
+}
+
 static JSValue js_os_now(JSContext *ctx, JSValueConst this_val,
                          int argc, JSValueConst *argv)
 {
@@ -4023,6 +4034,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     OS_FLAG(SIGTTOU),
     JS_CFUNC_DEF("cputime", 0, js_os_cputime ),
 #endif
+    JS_CFUNC_DEF("exePath", 0, js_os_exepath ),
     JS_CFUNC_DEF("now", 0, js_os_now ),
     JS_CFUNC_MAGIC_DEF("setTimeout", 2, js_os_setTimeout, 0 ),
     JS_CFUNC_MAGIC_DEF("setInterval", 2, js_os_setTimeout, 1 ),

@@ -54,6 +54,10 @@ extern "C" {
 #include <errno.h>
 #include <pthread.h>
 #endif
+#if !defined(_WIN32)
+#include <limits.h>
+#include <unistd.h>
+#endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #  define likely(x)       (x)
@@ -116,6 +120,14 @@ extern "C" {
   __attribute__((format(printf, format_param, dots_param)))
 #endif
 #endif
+#endif
+
+#if defined(PATH_MAX)
+# define JS__PATH_MAX PATH_MAX
+#elif defined(_WIN32)
+# define JS__PATH_MAX 32767
+#else
+# define JS__PATH_MAX 8192
 #endif
 
 void js__pstrcpy(char *buf, int buf_size, const char *str);
@@ -580,6 +592,8 @@ static inline size_t js__malloc_usable_size(const void *ptr)
     return 0;
 #endif
 }
+
+int js_exepath(char* buffer, size_t* size);
 
 /* Cross-platform threading APIs. */
 
