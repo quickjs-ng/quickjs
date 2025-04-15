@@ -403,6 +403,8 @@ int main(int argc, char **argv)
     struct trace_malloc_data trace_data = { NULL };
     int r = 0;
     int optind = 1;
+    char exebuf[JS__PATH_MAX];
+    size_t exebuf_size = sizeof(exebuf);
     char *compile_file = NULL;
     char *exe = NULL;
     char *expr = NULL;
@@ -425,7 +427,9 @@ int main(int argc, char **argv)
     qjs__argc = argc;
     qjs__argv = argv;
 
-    if (is_standalone(argv[0])) {
+    /* check if this is a standalone executable */
+
+    if (!js_exepath(exebuf, &exebuf_size) && is_standalone(exebuf)) {
         standalone = 1;
         goto start;
     }
@@ -663,7 +667,7 @@ start:
             JSValue args[3];
             args[0] = JS_NewString(ctx, compile_file);
             args[1] = JS_NewString(ctx, out);
-            args[2] = JS_NewString(ctx, exe != NULL ? exe : argv[0]);
+            args[2] = exe != NULL ? JS_NewString(ctx, exe) : JS_UNDEFINED;
             ret = JS_Call(ctx, func, JS_UNDEFINED, 3, (JSValueConst *)args);
             JS_FreeValue(ctx, func);
             JS_FreeValue(ctx, args[0]);
