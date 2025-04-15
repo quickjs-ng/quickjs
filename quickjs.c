@@ -26322,11 +26322,7 @@ static __exception int get_lvalue(JSParseState *s, int *popcode, int *pscope,
                 opcode = OP_get_ref_value;
             }
             break;
-        case OP_get_array_el:
-            emit_op(s, OP_to_propkey2);
-            break;
-        case OP_get_super_value:
-            emit_op(s, OP_to_propkey);
+        default:
             break;
         }
     }
