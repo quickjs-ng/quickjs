@@ -30,6 +30,14 @@ function test_fromarray() {
   assert(btoa(text) == targetText);
 }
 
+function test_nonbase64_characters() {
+  const f = () => {
+    atob("!@#$%^");
+  };
+
+  assert_throws(TypeError, f);
+}
+
 test_atob();
 test_btoa();
 test_btoatob();
