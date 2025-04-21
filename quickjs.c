@@ -237,6 +237,11 @@ typedef struct JSRuntimeFinalizerState {
     void *arg;
 } JSRuntimeFinalizerState;
 
+typedef struct JSValueLink {
+    struct JSValueLink *next;
+    JSValueConst value;
+} JSValueLink;
+
 struct JSRuntime {
     JSMallocFunctions mf;
     JSMallocState malloc_state;
@@ -283,6 +288,12 @@ struct JSRuntime {
 
     JSInterruptHandler *interrupt_handler;
     void *interrupt_opaque;
+
+    JSPromiseHook *promise_hook;
+    void *promise_hook_opaque;
+    // for smuggling the parent promise from js_promise_then
+    // to js_promise_constructor
+    JSValueLink *parent_promise;
 
     JSHostPromiseRejectionTracker *host_promise_rejection_tracker;
     void *host_promise_rejection_tracker_opaque;
@@ -50199,6 +50210,12 @@ static JSValue promise_reaction_job(JSContext *ctx, int argc,
     return res2;
 }
 
+void JS_SetPromiseHook(JSRuntime *rt, JSPromiseHook promise_hook, void *opaque)
+{
+    rt->promise_hook = promise_hook;
+    rt->promise_hook_opaque = opaque;
+}
+
 void JS_SetHostPromiseRejectionTracker(JSRuntime *rt,
                                        JSHostPromiseRejectionTracker *cb,
                                        void *opaque)
@@ -50221,6 +50238,14 @@ static void fulfill_or_reject_promise(JSContext *ctx, JSValueConst promise,
     s->promise_state = JS_PROMISE_FULFILLED + is_reject;
 
     promise_trace(ctx, "fulfill_or_reject_promise: is_reject=%d\n", is_reject);
+
+    if (s->promise_state == JS_PROMISE_FULFILLED) {
+        JSRuntime *rt = ctx->rt;
+        if (rt->promise_hook) {
+            rt->promise_hook(ctx, JS_PROMISE_HOOK_RESOLVE, promise,
+                             JS_UNDEFINED, rt->promise_hook_opaque);
+        }
+    }
 
     if (s->promise_state == JS_PROMISE_REJECTED && !s->is_handled) {
         JSRuntime *rt = ctx->rt;
@@ -50260,6 +50285,7 @@ static JSValue js_promise_resolve_thenable_job(JSContext *ctx,
 {
     JSValueConst promise, thenable, then;
     JSValue args[2], res;
+    JSRuntime *rt;
 
     promise_trace(ctx, "js_promise_resolve_thenable_job\n");
 
@@ -50269,7 +50295,16 @@ static JSValue js_promise_resolve_thenable_job(JSContext *ctx,
     then = argv[2];
     if (js_create_resolving_functions(ctx, args, promise) < 0)
         return JS_EXCEPTION;
+    rt = ctx->rt;
+    if (rt->promise_hook) {
+        rt->promise_hook(ctx, JS_PROMISE_HOOK_BEFORE, promise, JS_UNDEFINED,
+                         rt->promise_hook_opaque);
+    }
     res = JS_Call(ctx, then, thenable, 2, vc(args));
+    if (rt->promise_hook) {
+        rt->promise_hook(ctx, JS_PROMISE_HOOK_AFTER, promise, JS_UNDEFINED,
+                         rt->promise_hook_opaque);
+    }
     if (JS_IsException(res)) {
         JSValue error = JS_GetException(ctx);
         res = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
@@ -50452,6 +50487,7 @@ static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
     JSValueConst executor;
     JSValue obj;
     JSPromiseData *s;
+    JSRuntime *rt;
     JSValue args[2], ret;
     int i;
 
@@ -50472,6 +50508,14 @@ static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
     JS_SetOpaqueInternal(obj, s);
     if (js_create_resolving_functions(ctx, args, obj))
         goto fail;
+    rt = ctx->rt;
+    if (rt->promise_hook) {
+        JSValueConst parent_promise = JS_UNDEFINED;
+        if (rt->parent_promise)
+            parent_promise = rt->parent_promise->value;
+        rt->promise_hook(ctx, JS_PROMISE_HOOK_INIT, obj, parent_promise,
+                         rt->promise_hook_opaque);
+    }
     ret = JS_Call(ctx, executor, JS_UNDEFINED, 2, vc(args));
     if (JS_IsException(ret)) {
         JSValue ret2, error;
@@ -50529,8 +50573,7 @@ static JSValue js_new_promise_capability(JSContext *ctx,
 
     executor = js_promise_executor_new(ctx);
     if (JS_IsException(executor))
-        return executor;
-
+        return JS_EXCEPTION;
     if (JS_IsUndefined(ctor)) {
         result_promise = js_promise_constructor(ctx, ctor, 1, vc(&executor));
     } else {
@@ -51005,7 +51048,10 @@ static JSValue js_promise_then(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv)
 {
     JSValue ctor, result_promise, resolving_funcs[2];
+    bool have_promise_hook;
+    JSValueLink link;
     JSPromiseData *s;
+    JSRuntime *rt;
     int i, ret;
 
     s = JS_GetOpaque2(ctx, this_val, JS_CLASS_PROMISE);
@@ -51015,7 +51061,16 @@ static JSValue js_promise_then(JSContext *ctx, JSValueConst this_val,
     ctor = JS_SpeciesConstructor(ctx, this_val, JS_UNDEFINED);
     if (JS_IsException(ctor))
         return ctor;
+    rt = ctx->rt;
+    // always restore, even if js_new_promise_capability callee removes hook
+    have_promise_hook = (rt->promise_hook != NULL);
+    if (have_promise_hook) {
+        link = (JSValueLink){rt->parent_promise, this_val};
+        rt->parent_promise = &link;
+    }
     result_promise = js_new_promise_capability(ctx, resolving_funcs, ctor);
+    if (have_promise_hook)
+        rt->parent_promise = link.next;
     JS_FreeValue(ctx, ctor);
     if (JS_IsException(result_promise))
         return result_promise;
