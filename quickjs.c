@@ -7447,7 +7447,7 @@ int JS_IsInstanceOf(JSContext *ctx, JSValueConst val, JSValueConst obj)
     return JS_OrdinaryIsInstanceOf(ctx, val, obj);
 }
 
-#include "gen/builtin-array-fromasync.h"
+#include "builtin-array-fromasync.h"
 
 static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                                     void *opaque)
