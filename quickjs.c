@@ -50274,12 +50274,6 @@ static void fulfill_or_reject_promise(JSContext *ctx, JSValueConst promise,
     }
 }
 
-static void reject_promise(JSContext *ctx, JSValueConst promise,
-                           JSValueConst value)
-{
-    fulfill_or_reject_promise(ctx, promise, value, true);
-}
-
 static JSValue js_promise_resolve_thenable_job(JSContext *ctx,
                                                int argc, JSValueConst *argv)
 {
@@ -50425,7 +50419,7 @@ static JSValue js_promise_resolve_function_call(JSContext *ctx,
         JSValue error;
     fail_reject:
         error = JS_GetException(ctx);
-        reject_promise(ctx, s->promise, error);
+        fulfill_or_reject_promise(ctx, s->promise, error, true);
         JS_FreeValue(ctx, error);
     } else if (!JS_IsFunction(ctx, then)) {
         JS_FreeValue(ctx, then);
