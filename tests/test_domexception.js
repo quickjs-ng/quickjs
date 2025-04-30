@@ -24,7 +24,9 @@ function test_properties() {
 	assertThrows(TypeError, () => ex.message = "");
 	assertThrows(TypeError, () => ex.name = "test");
 	assert(ex.__proto__, DOMException.prototype);
-	assert(Object.getOwnPropertyNames(ex).length, 0);
+	/* Note: browsers set "stack" on the prototype, not the object.
+	 * This follows node. */
+	assert(Object.getOwnPropertyNames(ex), ["stack"]);
 }
 
 test_code();

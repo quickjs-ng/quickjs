@@ -6720,7 +6720,7 @@ static bool can_add_backtrace(JSValueConst obj)
     if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)
         return false;
     p = JS_VALUE_GET_OBJ(obj);
-    if (p->class_id != JS_CLASS_ERROR)
+    if (p->class_id != JS_CLASS_ERROR && p->class_id != JS_CLASS_DOM_EXCEPTION)
         return false;
     if (find_own_property1(p, JS_ATOM_stack))
         return false;
@@ -57684,7 +57684,8 @@ static void js_domexception_mark(JSRuntime *rt, JSValueConst val,
 }
 
 static JSValue js_domexception_constructor0(JSContext *ctx, JSValueConst new_target,
-                                            int argc, JSValueConst *argv)
+                                            int argc, JSValueConst *argv,
+                                            bool add_backtrace)
 {
     JSDOMExceptionData *s;
     JSValue obj, message, name;
@@ -57711,6 +57712,9 @@ static JSValue js_domexception_constructor0(JSContext *ctx, JSValueConst new_tar
     s->message = message;
     s->code = -1;
     JS_SetOpaqueInternal(obj, s);
+    if (add_backtrace)
+        build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0,
+                        JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
     return obj;
 fail3:
     JS_FreeValue(ctx, name);
@@ -57726,7 +57730,7 @@ static JSValue js_domexception_constructor(JSContext *ctx, JSValueConst new_targ
 {
     if (JS_IsUndefined(new_target))
         return JS_ThrowTypeError(ctx, "constructor requires 'new'");
-    return js_domexception_constructor0(ctx, new_target, argc, argv);
+    return js_domexception_constructor0(ctx, new_target, argc, argv, true);
 }
 
 static JSValue js_domexception_get_name(JSContext *ctx, JSValueConst this_val)
@@ -57803,9 +57807,10 @@ JSValue JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowDOMException(JSContext *ctx, const c
     }
     argv[0] = js_message;
     argv[1] = js_name;
-    obj = js_domexception_constructor0(ctx, JS_UNDEFINED, 2, argv);
+    obj = js_domexception_constructor0(ctx, JS_UNDEFINED, 2, argv, false);
     JS_FreeValue(ctx, js_message);
     JS_FreeValue(ctx, js_name);
+    build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0, 0);
     JS_Throw(ctx, obj);
 end:
     va_end(ap);
