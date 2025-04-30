@@ -57810,6 +57810,8 @@ JSValue JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowDOMException(JSContext *ctx, const c
     obj = js_domexception_constructor0(ctx, JS_UNDEFINED, 2, argv, false);
     JS_FreeValue(ctx, js_message);
     JS_FreeValue(ctx, js_name);
+    if (JS_IsException(obj))
+        goto end;
     build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0, 0);
     JS_Throw(ctx, obj);
 end:
