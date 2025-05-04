@@ -30,3 +30,7 @@ Rust wrapper focus on embedding-ready and no-pain type conversion and interopera
 ## [GodotJS](https://github.com/godotjs/GodotJS)
 
 This project adds TypeScript/JavaScript support for Godot 4.x. It supports multiple javascript runtimes, including QuickJS-NG.
+
+## [quickjs_es_runtime](https://github.com/HiRoFa/quickjs_es_runtime)
+
+Rust wrapper with typescript, modules, promises, async/await and much more.

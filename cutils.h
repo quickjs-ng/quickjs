@@ -54,6 +54,10 @@ extern "C" {
 #include <errno.h>
 #include <pthread.h>
 #endif
+#if !defined(_WIN32)
+#include <limits.h>
+#include <unistd.h>
+#endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #  define likely(x)       (x)
@@ -94,7 +98,7 @@ extern "C" {
 #define container_of(ptr, type, member) ((type *)((uint8_t *)(ptr) - offsetof(type, member)))
 #endif
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) || defined(__cplusplus)
 #define minimum_length(n) n
 #else
 #define minimum_length(n) static n
@@ -117,6 +121,14 @@ extern "C" {
   __attribute__((format(printf, format_param, dots_param)))
 #endif
 #endif
+#endif
+
+#if defined(PATH_MAX)
+# define JS__PATH_MAX PATH_MAX
+#elif defined(_WIN32)
+# define JS__PATH_MAX 32767
+#else
+# define JS__PATH_MAX 8192
 #endif
 
 void js__pstrcpy(char *buf, int buf_size, const char *str);
@@ -546,6 +558,26 @@ void rqsort(void *base, size_t nmemb, size_t size,
             int (*cmp)(const void *, const void *, void *),
             void *arg);
 
+static inline uint64_t float64_as_uint64(double d)
+{
+    union {
+        double d;
+        uint64_t u64;
+    } u;
+    u.d = d;
+    return u.u64;
+}
+
+static inline double uint64_as_float64(uint64_t u64)
+{
+    union {
+        double d;
+        uint64_t u64;
+    } u;
+    u.u64 = u64;
+    return u.d;
+}
+
 int64_t js__gettimeofday_us(void);
 uint64_t js__hrtime_ns(void);
 
@@ -562,20 +594,30 @@ static inline size_t js__malloc_usable_size(const void *ptr)
 #endif
 }
 
+int js_exepath(char* buffer, size_t* size);
+
 /* Cross-platform threading APIs. */
 
-#if !defined(EMSCRIPTEN) && !defined(__wasi__)
+#if defined(EMSCRIPTEN) || defined(__wasi__)
+
+#define JS_HAVE_THREADS 0
+
+#else
+
+#define JS_HAVE_THREADS 1
 
 #if defined(_WIN32)
 #define JS_ONCE_INIT INIT_ONCE_STATIC_INIT
 typedef INIT_ONCE js_once_t;
 typedef CRITICAL_SECTION js_mutex_t;
 typedef CONDITION_VARIABLE js_cond_t;
+typedef HANDLE js_thread_t;
 #else
 #define JS_ONCE_INIT PTHREAD_ONCE_INIT
 typedef pthread_once_t js_once_t;
 typedef pthread_mutex_t js_mutex_t;
 typedef pthread_cond_t js_cond_t;
+typedef pthread_t js_thread_t;
 #endif
 
 void js_once(js_once_t *guard, void (*callback)(void));
@@ -591,6 +633,15 @@ void js_cond_signal(js_cond_t *cond);
 void js_cond_broadcast(js_cond_t *cond);
 void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex);
 int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout);
+
+enum {
+    JS_THREAD_CREATE_DETACHED = 1,
+};
+
+// creates threads with 2 MB stacks (glibc default)
+int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+                     int flags);
+int js_thread_join(js_thread_t thrd);
 
 #endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
 

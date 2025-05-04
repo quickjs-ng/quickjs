@@ -170,65 +170,45 @@ jobs:
           ./build/api-test
 
   windows-msvc:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64, Win32]
-        buildType: [Debug, Release]
+        config:
+          - { arch: x64, vsArch: x64, buildType: Debug, os: windows-latest }
+          - { arch: x64, vsArch: x64, buildType: Release, os: windows-latest }
+          - { arch: Win32, vsArch: x86, buildType: Debug, os: windows-latest }
+          - { arch: Win32, vsArch: x86, buildType: Release, os: windows-latest }
+          - { arch: ARM64, vsArch: arm64, buildType: Debug, os: windows-11-arm }
+          - { arch: ARM64, vsArch: arm64, buildType: Release, os: windows-11-arm }
     steps:
       - uses: actions/checkout@v4
       - name: build
         run: |
-          cmake -B build -DQJS_BUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -A ${{matrix.arch}}
-          cmake --build build --config ${{matrix.buildType}}
+          cmake -B build -DQJS_BUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -A ${{matrix.config.arch}}
+          cmake --build build --config ${{matrix.config.buildType}}
       - name: stats
         run: |
-          build\${{matrix.buildType}}\qjs.exe -qd
+          build\${{matrix.config.buildType}}\qjs.exe -qd
       - name: test
         run: |
-          cp build\${{matrix.buildType}}\fib.dll examples\
-          cp build\${{matrix.buildType}}\point.dll examples\
-          build\${{matrix.buildType}}\qjs.exe examples\test_fib.js
-          build\${{matrix.buildType}}\qjs.exe examples\test_point.js
-          build\${{matrix.buildType}}\run-test262.exe -c tests.conf
-          build\${{matrix.buildType}}\function_source.exe
+          cp build\${{matrix.config.buildType}}\fib.dll examples\
+          cp build\${{matrix.config.buildType}}\point.dll examples\
+          build\${{matrix.config.buildType}}\qjs.exe examples\test_fib.js
+          build\${{matrix.config.buildType}}\qjs.exe examples\test_point.js
+          build\${{matrix.config.buildType}}\run-test262.exe -c tests.conf
+          build\${{matrix.config.buildType}}\function_source.exe
       - name: test standalone
         run: |
-          build\${{matrix.buildType}}\qjs.exe -c examples\hello.js -o hello.exe
+          build\${{matrix.config.buildType}}\qjs.exe -c examples\hello.js -o hello.exe
           .\hello.exe
       - name: test api
         run: |
-          build\${{matrix.buildType}}\api-test.exe
+          build\${{matrix.config.buildType}}\api-test.exe
       - name: Set up Visual Studio shell
         uses: egor-tensin/vs-shell@v2
         with:
-          arch: ${{ matrix.arch == 'x64' && 'x64' || 'x86' }}
-      - name: cxxtest
-        run: |
-          cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
-          cl.exe /DJS_NAN_BOXING=1 /Zs cxxtest.cc
-
-  windows-msvc-vs2019:
-    runs-on: windows-2019
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x64, Win32]
-        buildType: [Debug, Release]
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: |
-          cmake -B build -DQJS_BUILD_EXAMPLES=ON -G "Visual Studio 16 2019" -A ${{matrix.arch}}
-          cmake --build build --config ${{matrix.buildType}} --target qjs_exe
-      - name: stats
-        run: |
-          build\${{matrix.buildType}}\qjs.exe -qd
-      - name: Set up Visual Studio shell
-        uses: egor-tensin/vs-shell@v2
-        with:
-          arch: ${{ matrix.arch == 'x64' && 'x64' || 'x86' }}
+          arch: ${{ matrix.config.vsArch }}
       - name: cxxtest
         run: |
           cl.exe /DJS_NAN_BOXING=0 /Zs cxxtest.cc
@@ -383,6 +363,7 @@ jobs:
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
+        update: true
         msystem: ${{matrix.sys}}
         install: >-
           git
@@ -455,13 +436,13 @@ jobs:
       - name: result
         run: ls -lh build
   wasi:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: jcbhmr/setup-wasmtime@v2
       - name: setup wasi-sdk
         run: |
-          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk_21.0_amd64.deb -P /tmp
+          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.deb -P /tmp
           sudo apt install /tmp/wasi-sdk*.deb
       - name: test
         run: |
@@ -633,6 +614,19 @@ jobs:
       - name: jscheck
         run: |
           make jscheck
+
+  parserless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: |
+          make QJS_DISABLE_PARSER=ON QJS_BUILD_EXAMPLES=ON
+      - name: test
+        run: |
+          ./build/hello
+          ./build/hello_module
+
 
   meson:
     runs-on: ${{ matrix.platform }}

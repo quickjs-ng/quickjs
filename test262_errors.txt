@@ -24,10 +24,50 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-retu
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-not-object.js:72: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/Function/prototype/arguments/prop-desc.js:31: Test262Error: Function.prototype.arguments property getter/setter are the same function Expected SameValue(«function () {
+    [native code]
+}», «function () {
+    [native code]
+}») to be true
+test262/test/built-ins/Function/prototype/arguments/prop-desc.js:31: strict mode: Test262Error: Function.prototype.arguments property getter/setter are the same function Expected SameValue(«function () {
+    [native code]
+}», «function () {
+    [native code]
+}») to be true
+test262/test/built-ins/Function/prototype/caller/prop-desc.js:29: Test262Error: Caller property getter/setter are the same function Expected SameValue(«function () {
+    [native code]
+}», «function () {
+    [native code]
+}») to be true
+test262/test/built-ins/Function/prototype/caller/prop-desc.js:29: strict mode: Test262Error: Caller property getter/setter are the same function Expected SameValue(«function () {
+    [native code]
+}», «function () {
+    [native code]
+}») to be true
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: strict mode: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: TypeError: cannot read property 'call' of undefined
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: strict mode: TypeError: cannot read property 'call' of undefined
+test262/test/built-ins/Iterator/prototype/drop/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/drop/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/every/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/every/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/filter/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/filter/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/find/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/find/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/flatMap/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/flatMap/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/forEach/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/forEach/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/map/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/map/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/reduce/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/reduce/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/some/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/some/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/take/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
+test262/test/built-ins/Iterator/prototype/take/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
 test262/test/built-ins/Object/defineProperties/typedarray-backed-by-resizable-buffer.js:20: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/Object/defineProperties/typedarray-backed-by-resizable-buffer.js:20: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/Object/defineProperty/coerced-P-grow.js:45: TypeError: out-of-bound index in typed array
@@ -40,16 +80,64 @@ test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45:
 test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: strict mode: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
 test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
 test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: strict mode: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
+test262/test/built-ins/String/prototype/match/cstm-matcher-on-bigint-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/match/cstm-matcher-on-bigint-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/match/cstm-matcher-on-boolean-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/match/cstm-matcher-on-boolean-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/match/cstm-matcher-on-number-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/match/cstm-matcher-on-number-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/match/cstm-matcher-on-string-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/match/cstm-matcher-on-string-primitive.js:22: strict mode: Test262Error: should not be called
 test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
 test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: strict mode: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
+test262/test/built-ins/String/prototype/matchAll/cstm-matchall-on-bigint-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/matchAll/cstm-matchall-on-bigint-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/matchAll/cstm-matchall-on-number-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/matchAll/cstm-matchall-on-number-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/matchAll/cstm-matchall-on-string-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/matchAll/cstm-matchall-on-string-primitive.js:22: strict mode: Test262Error: should not be called
 test262/test/built-ins/String/prototype/matchAll/regexp-prototype-matchAll-v-u-flag.js:73: Test262Error: Actual [] and expected [𠮷, 𠮷, 𠮷, 0, 3, 6] should have the same contents. 
 test262/test/built-ins/String/prototype/matchAll/regexp-prototype-matchAll-v-u-flag.js:73: strict mode: Test262Error: Actual [] and expected [𠮷, 𠮷, 𠮷, 0, 3, 6] should have the same contents. 
+test262/test/built-ins/String/prototype/replace/cstm-replace-on-bigint-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replace/cstm-replace-on-bigint-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replace/cstm-replace-on-boolean-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replace/cstm-replace-on-boolean-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replace/cstm-replace-on-number-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replace/cstm-replace-on-number-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replace/cstm-replace-on-string-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replace/cstm-replace-on-string-primitive.js:21: strict mode: Test262Error: should not be called
 test262/test/built-ins/String/prototype/replace/regexp-prototype-replace-v-u-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«"𠮷a𠮷b𠮷"», «"XaXbX"») to be true
 test262/test/built-ins/String/prototype/replace/regexp-prototype-replace-v-u-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«"𠮷a𠮷b𠮷"», «"XaXbX"») to be true
+test262/test/built-ins/String/prototype/replaceAll/cstm-replaceall-on-bigint-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replaceAll/cstm-replaceall-on-bigint-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replaceAll/cstm-replaceall-on-boolean-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replaceAll/cstm-replaceall-on-boolean-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replaceAll/cstm-replaceall-on-number-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replaceAll/cstm-replaceall-on-number-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replaceAll/cstm-replaceall-on-string-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/replaceAll/cstm-replaceall-on-string-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/search/cstm-search-on-bigint-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/search/cstm-search-on-bigint-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/search/cstm-search-on-boolean-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/search/cstm-search-on-boolean-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/search/cstm-search-on-number-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/search/cstm-search-on-number-primitive.js:21: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/search/cstm-search-on-string-primitive.js:21: Test262Error: should not be called
+test262/test/built-ins/String/prototype/search/cstm-search-on-string-primitive.js:21: strict mode: Test262Error: should not be called
 test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
 test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
 test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-u-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
 test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-u-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
+test262/test/built-ins/String/prototype/split/cstm-split-on-bigint-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/split/cstm-split-on-bigint-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/split/cstm-split-on-boolean-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/split/cstm-split-on-boolean-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/split/cstm-split-on-number-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/split/cstm-split-on-number-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/String/prototype/split/cstm-split-on-string-primitive.js:22: Test262Error: should not be called
+test262/test/built-ins/String/prototype/split/cstm-split-on-string-primitive.js:22: strict mode: Test262Error: should not be called
+test262/test/built-ins/TypedArray/prototype/includes/search-undefined-after-shrinking-buffer-index-is-oob.js:23: Test262Error: Expected SameValue(«true», «false») to be true (Testing with Float64Array.)
+test262/test/built-ins/TypedArray/prototype/includes/search-undefined-after-shrinking-buffer-index-is-oob.js:23: strict mode: Test262Error: Expected SameValue(«true», «false») to be true (Testing with Float64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true

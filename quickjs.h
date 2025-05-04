@@ -103,7 +103,8 @@ enum {
     JS_TAG_UNINITIALIZED = 4,
     JS_TAG_CATCH_OFFSET = 5,
     JS_TAG_EXCEPTION   = 6,
-    JS_TAG_FLOAT64     = 7,
+    JS_TAG_SHORT_BIG_INT = 7,
+    JS_TAG_FLOAT64     = 8,
     /* any larger tag is FLOAT64 if JS_NAN_BOXING */
 };
 
@@ -137,6 +138,7 @@ typedef const struct JSValue *JSValueConst;
 #define JS_MKPTR(tag, ptr)       ((JSValue)((tag) | (intptr_t)(ptr)))
 #define JS_VALUE_GET_NORM_TAG(v) ((int)((intptr_t)(v) & 15))
 #define JS_VALUE_GET_TAG(v)      ((int)((intptr_t)(v) & 15))
+#define JS_VALUE_GET_SHORT_BIG_INT(v) JS_VALUE_GET_INT(v)
 #define JS_VALUE_GET_PTR(v)      ((void *)((intptr_t)(v) & ~15))
 #define JS_VALUE_GET_INT(v)      ((int)((intptr_t)(v) >> 4))
 #define JS_VALUE_GET_BOOL(v)     ((int)((intptr_t)(v) >> 4))
@@ -147,6 +149,12 @@ typedef const struct JSValue *JSValueConst;
 static inline JSValue __JS_NewFloat64(double d)
 {
     return JS_MKVAL(JS_TAG_FLOAT64, (int)d);
+}
+
+static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
+{
+    (void)&ctx;
+    return JS_MKVAL(JS_TAG_SHORT_BIG_INT, d);
 }
 
 static inline bool JS_VALUE_IS_NAN(JSValue v)
@@ -162,6 +170,7 @@ typedef uint64_t JSValue;
 #define JS_VALUE_GET_TAG(v) (int)((v) >> 32)
 #define JS_VALUE_GET_INT(v) (int)(v)
 #define JS_VALUE_GET_BOOL(v) (int)(v)
+#define JS_VALUE_GET_SHORT_BIG_INT(v) (int)(v)
 #define JS_VALUE_GET_PTR(v) (void *)(intptr_t)(v)
 
 #define JS_MKVAL(tag, val) (((uint64_t)(tag) << 32) | (uint32_t)(val))
@@ -198,6 +207,12 @@ static inline JSValue __JS_NewFloat64(double d)
     return v;
 }
 
+static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
+{
+    (void)&ctx;
+    return JS_MKVAL(JS_TAG_SHORT_BIG_INT, d);
+}
+
 #define JS_TAG_IS_FLOAT64(tag) ((unsigned)((tag) - JS_TAG_FIRST) >= (JS_TAG_FLOAT64 - JS_TAG_FIRST))
 
 /* same as JS_VALUE_GET_TAG, but return JS_TAG_FLOAT64 with NaN boxing */
@@ -224,6 +239,7 @@ typedef union JSValueUnion {
     int32_t int32;
     double float64;
     void *ptr;
+    int32_t short_big_int;
 } JSValueUnion;
 
 typedef struct JSValue {
@@ -237,6 +253,7 @@ typedef struct JSValue {
 #define JS_VALUE_GET_INT(v) ((v).u.int32)
 #define JS_VALUE_GET_BOOL(v) ((v).u.int32)
 #define JS_VALUE_GET_FLOAT64(v) ((v).u.float64)
+#define JS_VALUE_GET_SHORT_BIG_INT(v) ((v).u.short_big_int)
 #define JS_VALUE_GET_PTR(v) ((v).u.ptr)
 
 /* msvc doesn't understand designated initializers without /std:c++20 */
@@ -279,6 +296,15 @@ static inline JSValue __JS_NewFloat64(double d)
     JSValue v;
     v.tag = JS_TAG_FLOAT64;
     v.u.float64 = d;
+    return v;
+}
+
+static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int64_t d)
+{
+    (void)&ctx;
+    JSValue v;
+    v.tag = JS_TAG_SHORT_BIG_INT;
+    v.u.short_big_int = d;
     return v;
 }
 
@@ -666,7 +692,8 @@ static inline bool JS_IsNumber(JSValueConst v)
 static inline bool JS_IsBigInt(JSContext *ctx, JSValueConst v)
 {
     (void)&ctx;
-    return JS_VALUE_GET_TAG(v) == JS_TAG_BIG_INT;
+    int tag = JS_VALUE_GET_TAG(v);
+    return tag == JS_TAG_BIG_INT || tag == JS_TAG_SHORT_BIG_INT;
 }
 
 static inline bool JS_IsBool(JSValueConst v)
@@ -762,6 +789,10 @@ JS_EXTERN JSValue JS_NewStringLen(JSContext *ctx, const char *str1, size_t len1)
 static inline JSValue JS_NewString(JSContext *ctx, const char *str) {
     return JS_NewStringLen(ctx, str, strlen(str));
 }
+// makes a copy of the input; does not check if the input is valid UTF-16,
+// that is the responsibility of the caller
+JS_EXTERN JSValue JS_NewTwoByteString(JSContext *ctx, const uint16_t *buf,
+                                      size_t len);
 JS_EXTERN JSValue JS_NewAtomString(JSContext *ctx, const char *str);
 JS_EXTERN JSValue JS_ToString(JSContext *ctx, JSValueConst val);
 JS_EXTERN JSValue JS_ToPropertyKey(JSContext *ctx, JSValueConst val);
@@ -873,6 +904,7 @@ JS_EXTERN JSValue JS_CallConstructor2(JSContext *ctx, JSValueConst func_obj,
  * wholly infallible: non-strict classic scripts may _parse_ okay as a module
  * but not _execute_ as one (different runtime semantics.) Use with caution.
  * |input| can be either ASCII or UTF-8 encoded source code.
+ * Returns false if QuickJS was built with -DQJS_DISABLE_PARSER.
  */
 JS_EXTERN bool JS_DetectModule(const char *input, size_t input_len);
 /* 'input' must be zero terminated i.e. input[input_len] = '\0'. */
@@ -971,6 +1003,23 @@ JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise);
 JS_EXTERN bool JS_IsPromise(JSValueConst val);
 
 JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global);
+
+typedef enum JSPromiseHookType {
+    JS_PROMISE_HOOK_INIT,     // emitted when a new promise is created
+    JS_PROMISE_HOOK_BEFORE,   // runs right before promise.then is invoked
+    JS_PROMISE_HOOK_AFTER,    // runs right after promise.then is invoked
+    JS_PROMISE_HOOK_RESOLVE,  // not emitted for rejected promises
+} JSPromiseHookType;
+
+// parent_promise is only passed in when type == JS_PROMISE_HOOK_INIT and
+// is then either a promise object or JS_UNDEFINED if the new promise does
+// not have a parent promise; only promises created with promise.then have
+// a parent promise
+typedef void JSPromiseHook(JSContext *ctx, JSPromiseHookType type,
+                           JSValueConst promise, JSValueConst parent_promise,
+                           void *opaque);
+JS_EXTERN void JS_SetPromiseHook(JSRuntime *rt, JSPromiseHook promise_hook,
+                                 void *opaque);
 
 /* is_handled = true means that the rejection is handled */
 typedef void JSHostPromiseRejectionTracker(JSContext *ctx, JSValueConst promise,
@@ -1200,7 +1249,7 @@ JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 /* Version */
 
 #define QJS_VERSION_MAJOR 0
-#define QJS_VERSION_MINOR 9
+#define QJS_VERSION_MINOR 10
 #define QJS_VERSION_PATCH 0
 #define QJS_VERSION_SUFFIX ""
 

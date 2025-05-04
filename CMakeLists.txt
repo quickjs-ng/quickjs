@@ -10,6 +10,17 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
 
+# MINGW doesn't exist in older cmake versions, newer versions don't know
+# about CMAKE_COMPILER_IS_MINGW, and there is no unique CMAKE_C_COMPILER_ID
+# for mingw-based compilers...
+if(MINGW)
+    # do nothing
+elseif(CMAKE_C_COMPILER MATCHES "mingw")
+    set(MINGW TRUE)
+else()
+    set(MINGW FALSE)
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "No build type selected, default to Release")
     set(CMAKE_BUILD_TYPE "Release")
@@ -70,6 +81,8 @@ if(MSVC)
     xcheck_add_c_compiler_flag(/wd4267) # -Wno-shorten-64-to-32
     xcheck_add_c_compiler_flag(/wd4388) # -Wno-sign-compare
     xcheck_add_c_compiler_flag(/wd4389) # -Wno-sign-compare
+    xcheck_add_c_compiler_flag(/wd4456) # Hides previous local declaration
+    xcheck_add_c_compiler_flag(/wd4457) # Hides function parameter
     xcheck_add_c_compiler_flag(/wd4710) # Function not inlined
     xcheck_add_c_compiler_flag(/wd4711) # Function was inlined
     xcheck_add_c_compiler_flag(/wd4820) # Padding added after construct
@@ -142,6 +155,7 @@ xoption(QJS_BUILD_EXAMPLES "Build examples" OFF)
 xoption(QJS_BUILD_CLI_STATIC "Build a static qjs executable" OFF)
 xoption(QJS_BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
 xoption(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
+xoption(QJS_DISABLE_PARSER "Disable JS source code parser" OFF)
 xoption(QJS_ENABLE_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(QJS_ENABLE_MSAN "Enable MemorySanitizer (MSan)" OFF)
 xoption(QJS_ENABLE_TSAN "Enable ThreadSanitizer (TSan)" OFF)
@@ -224,10 +238,10 @@ endmacro()
 
 set(qjs_sources
     cutils.c
-    libbf.c
     libregexp.c
     libunicode.c
     quickjs.c
+    xsum.c
 )
 
 if(QJS_BUILD_LIBC)

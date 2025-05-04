@@ -31,6 +31,13 @@
 #if !defined(_MSC_VER)
 #include <sys/time.h>
 #endif
+#if defined(_WIN32)
+#include <windows.h>
+#include <process.h> // _beginthread
+#endif
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 #include "cutils.h"
 
@@ -1197,10 +1204,112 @@ int64_t js__gettimeofday_us(void) {
     return ((int64_t)tv.tv_sec * 1000000) + tv.tv_usec;
 }
 
+#if defined(_WIN32)
+int js_exepath(char *buffer, size_t *size_ptr) {
+    int utf8_len, utf16_buffer_len, utf16_len;
+    WCHAR* utf16_buffer;
+
+    if (buffer == NULL || size_ptr == NULL || *size_ptr == 0)
+      return -1;
+
+    if (*size_ptr > 32768) {
+      /* Windows paths can never be longer than this. */
+      utf16_buffer_len = 32768;
+    } else {
+      utf16_buffer_len = (int)*size_ptr;
+    }
+
+    utf16_buffer = malloc(sizeof(WCHAR) * utf16_buffer_len);
+    if (!utf16_buffer)
+        return -1;
+
+    /* Get the path as UTF-16. */
+    utf16_len = GetModuleFileNameW(NULL, utf16_buffer, utf16_buffer_len);
+    if (utf16_len <= 0)
+      goto error;
+
+    /* Convert to UTF-8 */
+    utf8_len = WideCharToMultiByte(CP_UTF8,
+                                   0,
+                                   utf16_buffer,
+                                   -1,
+                                   buffer,
+                                   (int)*size_ptr,
+                                   NULL,
+                                   NULL);
+    if (utf8_len == 0)
+      goto error;
+
+    free(utf16_buffer);
+
+    /* utf8_len *does* include the terminating null at this point, but the
+     * returned size shouldn't. */
+    *size_ptr = utf8_len - 1;
+    return 0;
+
+error:
+    free(utf16_buffer);
+    return -1;
+}
+#elif defined(__APPLE__)
+int js_exepath(char *buffer, size_t *size) {
+    /* realpath(exepath) may be > PATH_MAX so double it to be on the safe side. */
+    char abspath[PATH_MAX * 2 + 1];
+    char exepath[PATH_MAX + 1];
+    uint32_t exepath_size;
+    size_t abspath_size;
+
+    if (buffer == NULL || size == NULL || *size == 0)
+        return -1;
+
+    exepath_size = sizeof(exepath);
+    if (_NSGetExecutablePath(exepath, &exepath_size))
+        return -1;
+
+    if (realpath(exepath, abspath) != abspath)
+        return -1;
+
+    abspath_size = strlen(abspath);
+    if (abspath_size == 0)
+        return -1;
+
+    *size -= 1;
+    if (*size > abspath_size)
+        *size = abspath_size;
+
+    memcpy(buffer, abspath, *size);
+    buffer[*size] = '\0';
+
+    return 0;
+}
+#elif defined(__linux__)
+int js_exepath(char *buffer, size_t *size) {
+    ssize_t n;
+
+    if (buffer == NULL || size == NULL || *size == 0)
+        return -1;
+
+    n = *size - 1;
+    if (n > 0)
+        n = readlink("/proc/self/exe", buffer, n);
+
+    if (n == -1)
+        return n;
+
+    buffer[n] = '\0';
+    *size = n;
+
+    return 0;
+}
+#else
+int js_exepath(char* buffer, size_t* size_ptr) {
+    return -1;
+}
+#endif
+
 /*--- Cross-platform threading APIs. ----*/
 
-#if !defined(EMSCRIPTEN) && !defined(__wasi__)
-
+#if JS_HAVE_THREADS
 #if defined(_WIN32)
 typedef void (*js__once_cb)(void);
 
@@ -1265,6 +1374,37 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     if (GetLastError() != ERROR_TIMEOUT)
         abort();
     return -1;
+}
+
+int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+                     int flags)
+{
+    HANDLE h, cp;
+
+    *thrd = INVALID_HANDLE_VALUE;
+    if (flags & ~JS_THREAD_CREATE_DETACHED)
+        return -1;
+    h = (HANDLE)_beginthread(start, /*stacksize*/2<<20, arg);
+    if (!h)
+        return -1;
+    if (flags & JS_THREAD_CREATE_DETACHED)
+        return 0;
+    // _endthread() automatically closes the handle but we want to wait on
+    // it so make a copy. Race-y for very short-lived threads. Can be solved
+    // by switching to _beginthreadex(CREATE_SUSPENDED) but means changing
+    // |start| from __cdecl to __stdcall.
+    cp = GetCurrentProcess();
+    if (DuplicateHandle(cp, h, cp, thrd, 0, FALSE, DUPLICATE_SAME_ACCESS))
+        return 0;
+    return -1;
+}
+
+int js_thread_join(js_thread_t thrd)
+{
+    if (WaitForSingleObject(thrd, INFINITE))
+        return -1;
+    CloseHandle(thrd);
+    return 0;
 }
 
 #else /* !defined(_WIN32) */
@@ -1407,9 +1547,43 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     return -1;
 }
 
-#endif
+int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+                     int flags)
+{
+    union {
+        void (*x)(void *);
+        void *(*f)(void *);
+    } u = {start};
+    pthread_attr_t attr;
+    int ret;
 
-#endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
+    if (flags & ~JS_THREAD_CREATE_DETACHED)
+        return -1;
+    if (pthread_attr_init(&attr))
+        return -1;
+    ret = -1;
+    if (pthread_attr_setstacksize(&attr, 2<<20))
+        goto fail;
+    if (flags & JS_THREAD_CREATE_DETACHED)
+        if (pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED))
+            goto fail;
+    if (pthread_create(thrd, &attr, u.f, arg))
+        goto fail;
+    ret = 0;
+fail:
+    pthread_attr_destroy(&attr);
+    return ret;
+}
+
+int js_thread_join(js_thread_t thrd)
+{
+    if (pthread_join(thrd, NULL))
+        return -1;
+    return 0;
+}
+
+#endif /* !defined(_WIN32) */
+#endif /* JS_HAVE_THREADS */
 
 #ifdef __GNUC__
 #pragma GCC visibility pop

@@ -18,7 +18,7 @@ static int timeout_interrupt_handler(JSRuntime *rt, void *opaque)
 
 static void sync_call(void)
 {
-    const char *code =
+    static const char code[] =
 "(function() { \
     try { \
         while (true) {} \
@@ -43,7 +43,7 @@ static void sync_call(void)
 
 static void async_call(void)
 {
-    const char *code =
+    static const char code[] =
 "(async function() { \
     const loop = async () => { \
         await Promise.resolve(); \
@@ -85,7 +85,7 @@ static JSValue save_value(JSContext *ctx, JSValueConst this_val,
 
 static void async_call_stack_overflow(void)
 {
-    const char *code =
+    static const char code[] =
 "(async function() { \
     const f = () => f(); \
     try { \
@@ -199,7 +199,7 @@ static JSModuleDef *loader(JSContext *ctx, const char *name, void *opaque)
 static void module_serde(void)
 {
     JSRuntime *rt = JS_NewRuntime();
-    JS_SetDumpFlags(rt, JS_DUMP_MODULE_RESOLVE);
+    //JS_SetDumpFlags(rt, JS_DUMP_MODULE_RESOLVE);
     JS_SetModuleLoaderFunc(rt, NULL, loader, NULL);
     JSContext *ctx = JS_NewContext(rt);
     static const char code[] = "import {f} from 'b'; f()";
@@ -217,7 +217,7 @@ static void module_serde(void)
     JS_FreeValue(ctx, mod);
     assert(loader_calls == 1);
     mod = JS_ReadObject(ctx, buf, len, JS_READ_OBJ_BYTECODE);
-    free(buf);
+    js_free(ctx, buf);
     assert(loader_calls == 1); // 'b' is returned from cache
     assert(!JS_IsException(mod));
     JSValue ret = JS_EvalFunction(ctx, mod);
@@ -233,6 +233,247 @@ static void module_serde(void)
     JS_FreeRuntime(rt);
 }
 
+static void two_byte_string(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    {
+        JSValue v = JS_NewTwoByteString(ctx, NULL, 0);
+        assert(!JS_IsException(v));
+        const char *s = JS_ToCString(ctx, v);
+        assert(s);
+        assert(!strcmp(s, ""));
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, v);
+    }
+    {
+        JSValue v = JS_NewTwoByteString(ctx, (uint16_t[]){'o','k'}, 2);
+        assert(!JS_IsException(v));
+        const char *s = JS_ToCString(ctx, v);
+        assert(s);
+        assert(!strcmp(s, "ok"));
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, v);
+    }
+    {
+        JSValue v = JS_NewTwoByteString(ctx, (uint16_t[]){0xD800}, 1);
+        assert(!JS_IsException(v));
+        const char *s = JS_ToCString(ctx, v);
+        assert(s);
+        // questionable but surrogates don't map to UTF-8 without WTF-8
+        assert(!strcmp(s, "\xED\xA0\x80"));
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, v);
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void weak_map_gc_check(void)
+{
+    static const char init_code[] =
+"const map = new WeakMap(); \
+function addItem() { \
+    const k = { \
+        text: 'a', \
+    }; \
+    map.set(k, {k}); \
+}";
+    static const char test_code[] = "addItem()";
+
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    JSValue ret = JS_Eval(ctx, init_code, strlen(init_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    assert(!JS_IsException(ret));
+
+    JSValue ret_test = JS_Eval(ctx, test_code, strlen(test_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+    assert(!JS_IsException(ret_test));
+    JS_RunGC(rt);
+    JSMemoryUsage memory_usage;
+    JS_ComputeMemoryUsage(rt, &memory_usage);
+
+    for (int i = 0; i < 3; i++) {
+        JSValue ret_test2 = JS_Eval(ctx, test_code, strlen(test_code), "<input>", JS_EVAL_TYPE_GLOBAL);
+        assert(!JS_IsException(ret_test2));
+        JS_RunGC(rt);
+        JSMemoryUsage memory_usage2;
+        JS_ComputeMemoryUsage(rt, &memory_usage2);
+
+        assert(memory_usage.memory_used_count == memory_usage2.memory_used_count);
+        assert(memory_usage.memory_used_size == memory_usage2.memory_used_size);
+        JS_FreeValue(ctx, ret_test2);
+    }
+
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, ret_test);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+struct {
+    int hook_type_call_count[4];
+} promise_hook_state;
+
+static void promise_hook_cb(JSContext *ctx, JSPromiseHookType type,
+                            JSValueConst promise, JSValueConst parent_promise,
+                            void *opaque)
+{
+    assert(type == JS_PROMISE_HOOK_INIT ||
+           type == JS_PROMISE_HOOK_BEFORE ||
+           type == JS_PROMISE_HOOK_AFTER ||
+           type == JS_PROMISE_HOOK_RESOLVE);
+    promise_hook_state.hook_type_call_count[type]++;
+    assert(opaque == (void *)&promise_hook_state);
+    if (!JS_IsUndefined(parent_promise)) {
+        JSValue global_object = JS_GetGlobalObject(ctx);
+        JS_SetPropertyStr(ctx, global_object, "actual",
+                          JS_DupValue(ctx, parent_promise));
+        JS_FreeValue(ctx, global_object);
+    }
+}
+
+static void promise_hook(void)
+{
+    int *cc = promise_hook_state.hook_type_call_count;
+    JSContext *unused;
+    JSRuntime *rt = JS_NewRuntime();
+    //JS_SetDumpFlags(rt, JS_DUMP_PROMISE);
+    JS_SetPromiseHook(rt, promise_hook_cb, &promise_hook_state);
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue global_object = JS_GetGlobalObject(ctx);
+    {
+        // empty module; creates an outer and inner module promise;
+        // JS_Eval returns the outer promise
+        JSValue ret = JS_Eval(ctx, "", 0, "<input>", JS_EVAL_TYPE_MODULE);
+        assert(!JS_IsException(ret));
+        assert(JS_IsPromise(ret));
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret));
+        JS_FreeValue(ctx, ret);
+        assert(2 == cc[JS_PROMISE_HOOK_INIT]);
+        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(2 == cc[JS_PROMISE_HOOK_RESOLVE]);
+        assert(!JS_IsJobPending(rt));
+    }
+    memset(&promise_hook_state, 0, sizeof(promise_hook_state));
+    {
+        // module with unresolved promise; the outer and inner module promises
+        // are resolved but not the user's promise
+        static const char code[] = "new Promise(() => {})";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
+        assert(!JS_IsException(ret));
+        assert(JS_IsPromise(ret));
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        JS_FreeValue(ctx, ret);
+        assert(3 == cc[JS_PROMISE_HOOK_INIT]);
+        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(2 == cc[JS_PROMISE_HOOK_RESOLVE]); // outer and inner module promise
+        assert(!JS_IsJobPending(rt));
+    }
+    memset(&promise_hook_state, 0, sizeof(promise_hook_state));
+    {
+        // module with resolved promise
+        static const char code[] = "new Promise((resolve,reject) => resolve())";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
+        assert(!JS_IsException(ret));
+        assert(JS_IsPromise(ret));
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        JS_FreeValue(ctx, ret);
+        assert(3 == cc[JS_PROMISE_HOOK_INIT]);
+        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(3 == cc[JS_PROMISE_HOOK_RESOLVE]);
+        assert(!JS_IsJobPending(rt));
+    }
+    memset(&promise_hook_state, 0, sizeof(promise_hook_state));
+    {
+        // module with rejected promise
+        static const char code[] = "new Promise((resolve,reject) => reject())";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
+        assert(!JS_IsException(ret));
+        assert(JS_IsPromise(ret));
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        JS_FreeValue(ctx, ret);
+        assert(3 == cc[JS_PROMISE_HOOK_INIT]);
+        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(2 == cc[JS_PROMISE_HOOK_RESOLVE]);
+        assert(!JS_IsJobPending(rt));
+    }
+    memset(&promise_hook_state, 0, sizeof(promise_hook_state));
+    {
+        // module with promise chain
+        static const char code[] =
+            "globalThis.count = 0;"
+            "globalThis.actual = undefined;" // set by promise_hook_cb
+            "globalThis.expected = new Promise(resolve => resolve());"
+            "expected.then(_ => count++)";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
+        assert(!JS_IsException(ret));
+        assert(JS_IsPromise(ret));
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        JS_FreeValue(ctx, ret);
+        assert(4 == cc[JS_PROMISE_HOOK_INIT]);
+        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(3 == cc[JS_PROMISE_HOOK_RESOLVE]);
+        JSValue v = JS_GetPropertyStr(ctx, global_object, "count");
+        assert(!JS_IsException(v));
+        int32_t count;
+        assert(0 == JS_ToInt32(ctx, &count, v));
+        assert(0 == count);
+        JS_FreeValue(ctx, v);
+        assert(JS_IsJobPending(rt));
+        assert(1 == JS_ExecutePendingJob(rt, &unused));
+        assert(!JS_HasException(ctx));
+        assert(4 == cc[JS_PROMISE_HOOK_INIT]);
+        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(4 == cc[JS_PROMISE_HOOK_RESOLVE]);
+        assert(!JS_IsJobPending(rt));
+        v = JS_GetPropertyStr(ctx, global_object, "count");
+        assert(!JS_IsException(v));
+        assert(0 == JS_ToInt32(ctx, &count, v));
+        assert(1 == count);
+        JS_FreeValue(ctx, v);
+        JSValue actual = JS_GetPropertyStr(ctx, global_object, "actual");
+        JSValue expected = JS_GetPropertyStr(ctx, global_object, "expected");
+        assert(!JS_IsException(actual));
+        assert(!JS_IsException(expected));
+        assert(JS_IsSameValue(ctx, actual, expected));
+        JS_FreeValue(ctx, actual);
+        JS_FreeValue(ctx, expected);
+    }
+    memset(&promise_hook_state, 0, sizeof(promise_hook_state));
+    {
+        // module with thenable; fires before and after hooks
+        static const char code[] =
+            "new Promise(resolve => resolve({then(resolve){ resolve() }}))";
+        JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
+        assert(!JS_IsException(ret));
+        assert(JS_IsPromise(ret));
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        JS_FreeValue(ctx, ret);
+        assert(3 == cc[JS_PROMISE_HOOK_INIT]);
+        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(2 == cc[JS_PROMISE_HOOK_RESOLVE]);
+        assert(JS_IsJobPending(rt));
+        assert(1 == JS_ExecutePendingJob(rt, &unused));
+        assert(!JS_HasException(ctx));
+        assert(3 == cc[JS_PROMISE_HOOK_INIT]);
+        assert(1 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(1 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(3 == cc[JS_PROMISE_HOOK_RESOLVE]);
+        assert(!JS_IsJobPending(rt));
+    }
+    JS_FreeValue(ctx, global_object);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -241,5 +482,8 @@ int main(void)
     raw_context_global_var();
     is_array();
     module_serde();
+    two_byte_string();
+    weak_map_gc_check();
+    promise_hook();
     return 0;
 }

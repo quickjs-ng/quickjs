@@ -48,7 +48,7 @@ export function compileStandalone(inFile, outFile, targetExe) {
   const bytecode = new Uint8Array(bjson.write(code, JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_REFERENCE | JS_WRITE_OBJ_STRIP_SOURCE));
 
   // Step 2: copy the bytecode to the end of the executable and add a marker.
-  const exeFileName = targetExe ?? globalThis.argv0;
+  const exeFileName = targetExe ?? os.exePath() ?? globalThis.argv0;
   const exe = std.loadFile(exeFileName, { binary: true });
 
   if (!exe) {
@@ -80,7 +80,7 @@ export function compileStandalone(inFile, outFile, targetExe) {
 }
 
 export function runStandalone() {
-  const file = globalThis.argv0;
+  const file = os.exePath() ?? globalThis.argv0;
   const exe = std.open(file, 'rb');
 
   if (!exe) {

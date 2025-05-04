@@ -122,6 +122,12 @@ if get_option('debug')
     language: 'c',
   )
 endif
+if get_option('disable_parser')
+  add_project_arguments(
+    ['-DQJS_DISABLE_PARSER'],
+    language: 'c',
+  )
+endif
 
 qjs_sys_deps = []
 
@@ -132,10 +138,10 @@ qjs_sys_deps += dependency('dl', required: false)
 
 qjs_srcs = files(
   'cutils.c',
-  'libbf.c',
   'libregexp.c',
   'libunicode.c',
   'quickjs.c',
+  'xsum.c'
 )
 qjs_hdrs = files(
   'quickjs.h',
