@@ -418,10 +418,12 @@ endif()
 
 if(NOT IOS)
     file(STRINGS quickjs.h quickjs_h REGEX QJS_VERSION)
-    string(REGEX MATCHALL "([0-9])" QJS_VERSION "${quickjs_h}")
-    list(GET QJS_VERSION 0 QJS_VERSION_MAJOR)
-    list(GET QJS_VERSION 1 QJS_VERSION_MINOR)
-    list(GET QJS_VERSION 2 QJS_VERSION_PATCH)
+    string(REGEX MATCH "QJS_VERSION_MAJOR ([0-9]*)" _ "${quickjs_h}")
+    set(QJS_VERSION_MAJOR ${CMAKE_MATCH_1})
+    string(REGEX MATCH "QJS_VERSION_MINOR ([0-9]*)" _ "${quickjs_h}")
+    set(QJS_VERSION_MINOR ${CMAKE_MATCH_1})
+    string(REGEX MATCH "QJS_VERSION_PATCH ([0-9]*)" _ "${quickjs_h}")
+    set(QJS_VERSION_PATCH ${CMAKE_MATCH_1})
     set_target_properties(qjs PROPERTIES
         VERSION ${QJS_VERSION_MAJOR}.${QJS_VERSION_MINOR}.${QJS_VERSION_PATCH}
         SOVERSION ${QJS_VERSION_MAJOR}
