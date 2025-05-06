@@ -474,6 +474,38 @@ static void promise_hook(void)
     JS_FreeRuntime(rt);
 }
 
+static void dump_memory_usage(void)
+{
+    JSMemoryUsage stats;
+
+    JSRuntime *rt = NULL;
+    JSContext *ctx = NULL;
+
+    rt = JS_NewRuntime();
+    ctx = JS_NewContext(rt);
+
+    //JS_SetDumpFlags(rt, JS_DUMP_PROMISE);
+
+    static const char code[] =
+    "globalThis.count = 0;"
+    "globalThis.actual = undefined;" // set by promise_hook_cb
+    "globalThis.expected = new Promise(resolve => resolve());"
+    "expected.then(_ => count++)";
+
+    JSValue evalVal = JS_Eval(ctx, code, strlen(code), "<input>", 0);
+    JS_FreeValue(ctx, evalVal);
+
+    FILE *temp = tmpfile();
+    assert(temp != NULL);
+    JS_ComputeMemoryUsage(rt, &stats);
+    JS_DumpMemoryUsage(temp, &stats, rt);
+    // JS_DumpMemoryUsage(stdout, &stats, rt);
+    fclose(temp);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -485,5 +517,6 @@ int main(void)
     two_byte_string();
     weak_map_gc_check();
     promise_hook();
+    dump_memory_usage();
     return 0;
 }
