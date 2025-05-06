@@ -769,6 +769,35 @@ int js_module_set_import_meta(JSContext *ctx, JSValueConst func_val,
     return 0;
 }
 
+static int js_module_loader_json(JSContext *ctx, JSModuleDef *m)
+{
+    size_t buf_len;
+    uint8_t *buf;
+    JSValue parsed;
+    JSPropertyEnum *props;
+    uint32_t len;
+    JSAtom module_name = JS_GetModuleName(ctx, m);
+    const char *module_name_cstr = JS_AtomToCString(ctx, module_name);
+
+    buf = js_load_file(ctx, &buf_len, module_name_cstr);
+
+    /* XXX: Not ideal to parse the file twice, but didn't want to introduce
+       extra state to JSModuleDef like opaque */
+    parsed = JS_ParseJSON(ctx, (const char*) buf, buf_len, module_name_cstr);
+
+    JS_GetOwnPropertyNames(ctx, &props, &len, parsed, JS_GPN_STRING_MASK);
+
+    for (uint32_t i = 0; i < len; i++) {
+        JSValue val = JS_GetProperty(ctx, parsed, props[i].atom);
+        JS_SetModuleExport(ctx, m, JS_AtomToCString(ctx, props[i].atom), val);
+    }
+
+    JS_FreePropertyEnum(ctx, props, len);
+    JS_FreeValue(ctx, parsed);
+    js_free(ctx, buf);
+    return 0;
+}
+
 JSModuleDef *js_module_loader(JSContext *ctx,
                               const char *module_name, void *opaque)
 {
@@ -788,19 +817,63 @@ JSModuleDef *js_module_loader(JSContext *ctx,
             return NULL;
         }
 
-        /* compile the module */
-        func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
-                           JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
-        js_free(ctx, buf);
-        if (JS_IsException(func_val))
-            return NULL;
-        if (js_module_set_import_meta(ctx, func_val, true, false) < 0) {
+        JSValue with_clause = JS_GetImportAssertion(ctx);
+        if (JS_IsArray(with_clause)) {
+            int64_t array_len;
+            JS_GetLength(ctx, with_clause, &array_len);
+
+            for (int64_t i = 0; i < array_len; i += 2) {
+                JSValue prop = JS_GetPropertyInt64(ctx, with_clause, i);
+                const char *name = JS_ToCString(ctx, prop);
+                if (strcmp(name, "type") == 0) {
+                    JSValue key = JS_GetPropertyInt64(ctx, with_clause, i + 1);
+                    if (!JS_IsString(key)) {
+                        JS_ThrowTypeError(ctx, "value of 'type' is expecting string");
+                        return NULL;
+                    }
+
+                    const char *str = JS_ToCString(ctx, key);
+                    if (strcmp(str, "json") != 0) {
+                        JS_ThrowTypeError(ctx, "'type' is not 'json'");
+                        return NULL;
+                    }
+                    break;
+                }
+            }
+
+            m = JS_NewCModule(ctx, module_name, js_module_loader_json);
+
+            if (!m)
+                return NULL;
+
+            JSValue parsed = JS_ParseJSON(ctx, (const char*) buf, buf_len, module_name);
+
+            JSPropertyEnum *props;
+            uint32_t len;
+
+            JS_GetOwnPropertyNames(ctx, &props, &len, parsed, JS_GPN_STRING_MASK);
+
+            for (uint32_t i = 0; i < len; i++) {
+                JS_AddModuleExport(ctx, m, JS_AtomToCString(ctx, props[i].atom));
+            }
+
+            JS_FreePropertyEnum(ctx, props, len);
+            JS_FreeValue(ctx, parsed);
+        } else {
+            /* compile the module */
+            func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
+                               JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+            if (JS_IsException(func_val))
+                return NULL;
+            if (js_module_set_import_meta(ctx, func_val, true, false) < 0) {
+                JS_FreeValue(ctx, func_val);
+                return NULL;
+            }
+            /* the module is already referenced, so we must free it */
+            m = JS_VALUE_GET_PTR(func_val);
             JS_FreeValue(ctx, func_val);
-            return NULL;
         }
-        /* the module is already referenced, so we must free it */
-        m = JS_VALUE_GET_PTR(func_val);
-        JS_FreeValue(ctx, func_val);
+        js_free(ctx, buf);
     }
     return m;
 }
