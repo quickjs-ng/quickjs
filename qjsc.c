@@ -347,6 +347,7 @@ void help(void)
            "-D module_name         compile a dynamically loaded module or worker\n"
            "-M module_name[,cname] add initialization code for an external C module\n"
            "-p prefix   set the prefix of the generated C names\n"
+           "-P          do not add default system modules\n"
            "-s          strip the source code, specify twice to also strip debug info\n"
            "-S n        set the maximum stack size to 'n' bytes (default=%d)\n",
            JS_GetVersion(),
@@ -404,6 +405,7 @@ int main(int argc, char **argv)
     int module;
     size_t stack_size;
     namelist_t dynamic_module_list;
+    bool load_system_modules = true;
 
     out_filename = NULL;
     script_name = NULL;
@@ -414,14 +416,6 @@ int main(int argc, char **argv)
     stack_size = 0;
     memset(&dynamic_module_list, 0, sizeof(dynamic_module_list));
 
-
-    /* add system modules */
-    namelist_add(&cmodule_list, "qjs:std", "std", 0);
-    namelist_add(&cmodule_list, "qjs:os", "os", 0);
-    namelist_add(&cmodule_list, "qjs:bjson", "bjson", 0);
-    namelist_add(&cmodule_list, "std", "std", 0);
-    namelist_add(&cmodule_list, "os", "os", 0);
-    namelist_add(&cmodule_list, "bjson", "bjson", 0);
 
     while (optind < argc && *argv[optind] == '-') {
         char *arg = argv[optind] + 1;
@@ -519,6 +513,10 @@ int main(int argc, char **argv)
                 namelist_add(&dynamic_module_list, optarg, NULL, 0);
                 continue;
             }
+            if (opt == 'P') {
+                load_system_modules = false;
+                continue;
+            }
             if (opt == 's') {
                 strip++;
                 continue;
@@ -541,6 +539,16 @@ int main(int argc, char **argv)
             }
             help();
         }
+    }
+
+    if (load_system_modules) {
+        /* add system modules */
+        namelist_add(&cmodule_list, "qjs:std", "std", 0);
+        namelist_add(&cmodule_list, "qjs:os", "os", 0);
+        namelist_add(&cmodule_list, "qjs:bjson", "bjson", 0);
+        namelist_add(&cmodule_list, "std", "std", 0);
+        namelist_add(&cmodule_list, "os", "os", 0);
+        namelist_add(&cmodule_list, "bjson", "bjson", 0);
     }
 
     if (optind >= argc)
