@@ -1260,6 +1260,8 @@ static JSValue js_promise_resolve(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv, int magic);
 static JSValue js_promise_then(JSContext *ctx, JSValueConst this_val,
                                int argc, JSValueConst *argv);
+static JSValue js_promise_resolve_thenable_job(JSContext *ctx,
+                                               int argc, JSValueConst *argv);
 static bool js_string_eq(JSString *p1, JSString *p2);
 static int js_string_compare(JSString *p1, JSString *p2);
 static int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
@@ -50221,6 +50223,9 @@ static JSValue promise_rejection_tracker_job(JSContext *ctx, int argc,
     JSRuntime *rt;
     JSPromiseData *s;
     JSValueConst promise;
+    struct list_head *el, *el1;
+    JSJobEntry *job;
+    bool has_other_promise_jobs;
 
     assert(argc == 1);
 
@@ -50232,6 +50237,22 @@ static JSValue promise_rejection_tracker_job(JSContext *ctx, int argc,
         return JS_UNDEFINED; /* should never happen */
 
     promise_trace(ctx, "promise_rejection_tracker_job\n");
+
+    // Push the rejection tracker jobs to the end of the queue if there are other jobs.
+    // This allows us to handle rejections that get added later and thus would handle the
+    // rejection _after_ we check for it.
+    has_other_promise_jobs = false;
+    list_for_each_safe(el, el1, &rt->job_list) {
+        job = list_entry(el, JSJobEntry, link);
+        if (job->job_func == promise_reaction_job || job->job_func == js_promise_resolve_thenable_job) {
+            has_other_promise_jobs = true;
+            break;
+        }
+    }
+    if (has_other_promise_jobs) {
+        JS_EnqueueJob(ctx, promise_rejection_tracker_job, 1, &promise);
+        return JS_UNDEFINED;
+    }
 
     // Check again in case the hook was removed.
     if (rt->host_promise_rejection_tracker)
