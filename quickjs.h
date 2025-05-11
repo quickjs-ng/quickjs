@@ -1053,7 +1053,7 @@ JS_EXTERN void JS_SetModuleLoaderFunc(JSRuntime *rt,
 JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
-JS_EXTERN JSValue JS_GetImportAssertion(JSContext *ctx);
+JS_EXTERN JSValueConst JS_GetImportAssertion(JSContext *ctx);
 
 /* JS Job support */
 

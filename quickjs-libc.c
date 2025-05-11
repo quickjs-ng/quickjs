@@ -817,11 +817,11 @@ JSModuleDef *js_module_loader(JSContext *ctx,
             return NULL;
         }
 
-        JSValue with_clause = JS_GetImportAssertion(ctx);
+        JSValueConst with_clause = JS_GetImportAssertion(ctx);
+        bool is_json = false;
         if (JS_IsArray(with_clause)) {
             int64_t array_len;
             JS_GetLength(ctx, with_clause, &array_len);
-
             for (int64_t i = 0; i < array_len; i += 2) {
                 JSValue prop = JS_GetPropertyInt64(ctx, with_clause, i);
                 const char *name = JS_ToCString(ctx, prop);
@@ -834,13 +834,20 @@ JSModuleDef *js_module_loader(JSContext *ctx,
 
                     const char *str = JS_ToCString(ctx, key);
                     if (strcmp(str, "json") != 0) {
+                        JS_FreeValue(ctx, key);
+                        JS_FreeCString(ctx, str);
                         JS_ThrowTypeError(ctx, "'type' is not 'json'");
                         return NULL;
                     }
+                    JS_FreeValue(ctx, key);
+                    JS_FreeCString(ctx, str);
+                    is_json = true;
                     break;
                 }
             }
+        }
 
+        if (is_json) {
             m = JS_NewCModule(ctx, module_name, js_module_loader_json);
 
             if (!m)
