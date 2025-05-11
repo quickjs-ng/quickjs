@@ -11732,7 +11732,12 @@ static JSBigInt *js_bigint_from_string(JSContext *ctx,
 }
 
 /* 2 <= base <= 36 */
-static char const digits[36] = "0123456789abcdefghijklmnopqrstuvwxyz";
+static char const digits[36] = {
+    '0','1','2','3','4','5','6','7','8','9',
+    'a','b','c','d','e','f','g','h','i','j',
+    'k','l','m','n','o','p','q','r','s','t',
+    'u','v','w','x','y','z'
+};
 
 /* special version going backwards */
 /* XXX: use dtoa.c */
@@ -50333,6 +50338,32 @@ static JSValue promise_reaction_job(JSContext *ctx, int argc,
     return res2;
 }
 
+static JSValue promise_rejection_tracker_job(JSContext *ctx, int argc,
+                                             JSValueConst *argv)
+{
+    JSRuntime *rt;
+    JSPromiseData *s;
+    JSValueConst promise;
+
+    assert(argc == 1);
+
+    rt = ctx->rt;
+    promise = argv[0];
+    s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
+
+    if (!s || s->promise_state != JS_PROMISE_REJECTED)
+        return JS_UNDEFINED; /* should never happen */
+
+    promise_trace(ctx, "promise_rejection_tracker_job\n");
+
+    // Check again in case the hook was removed.
+    if (rt->host_promise_rejection_tracker)
+        rt->host_promise_rejection_tracker(
+            ctx, promise, s->promise_result, s->is_handled, rt->host_promise_rejection_tracker_opaque);
+
+    return JS_UNDEFINED;
+}
+
 void JS_SetPromiseHook(JSRuntime *rt, JSPromiseHook promise_hook, void *opaque)
 {
     rt->promise_hook = promise_hook;
@@ -50370,14 +50401,6 @@ static void fulfill_or_reject_promise(JSContext *ctx, JSValueConst promise,
         }
     }
 
-    if (s->promise_state == JS_PROMISE_REJECTED && !s->is_handled) {
-        JSRuntime *rt = ctx->rt;
-        if (rt->host_promise_rejection_tracker) {
-            rt->host_promise_rejection_tracker(ctx, promise, value, false,
-                                               rt->host_promise_rejection_tracker_opaque);
-        }
-    }
-
     list_for_each_safe(el, el1, &s->promise_reactions[is_reject]) {
         rd = list_entry(el, JSPromiseReactionData, link);
         args[0] = rd->resolving_funcs[0];
@@ -50394,6 +50417,12 @@ static void fulfill_or_reject_promise(JSContext *ctx, JSValueConst promise,
         rd = list_entry(el, JSPromiseReactionData, link);
         list_del(&rd->link);
         promise_reaction_data_free(ctx->rt, rd);
+    }
+
+    if (s->promise_state == JS_PROMISE_REJECTED && !s->is_handled) {
+        JSRuntime *rt = ctx->rt;
+        if (rt->host_promise_rejection_tracker)
+            JS_EnqueueJob(ctx, promise_rejection_tracker_job, 1, &promise);
     }
 }
 
@@ -51141,10 +51170,8 @@ static __exception int perform_promise_then(JSContext *ctx,
         JSValueConst args[5];
         if (s->promise_state == JS_PROMISE_REJECTED && !s->is_handled) {
             JSRuntime *rt = ctx->rt;
-            if (rt->host_promise_rejection_tracker) {
-                rt->host_promise_rejection_tracker(ctx, promise, s->promise_result,
-                                                   true, rt->host_promise_rejection_tracker_opaque);
-            }
+            if (rt->host_promise_rejection_tracker)
+                JS_EnqueueJob(ctx, promise_rejection_tracker_job, 1, &promise);
         }
         i = s->promise_state - JS_PROMISE_FULFILLED;
         rd = rd_array[i];
