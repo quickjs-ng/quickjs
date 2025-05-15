@@ -67,7 +67,7 @@
 
 /* INCLUDE INTEL INTRINSICS IF USED AND AVAILABLE. */
 
-#if USE_SIMD && __SSE2__
+#if USE_SIMD && (__SSE2__ || __AVX__)
 # include <immintrin.h>
 #endif
 
