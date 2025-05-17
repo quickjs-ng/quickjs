@@ -31,7 +31,6 @@
 #include <assert.h>
 #if !defined(_MSC_VER)
 #include <unistd.h>
-#include <grp.h>
 #endif
 #include <errno.h>
 #include <fcntl.h>
@@ -67,6 +66,7 @@
 #include <termios.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
+#include <grp.h>
 #endif
 
 #if defined(__APPLE__)
