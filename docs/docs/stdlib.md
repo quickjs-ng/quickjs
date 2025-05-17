@@ -253,6 +253,8 @@ object containing optional parameters:
   process.
 - `uid` - Integer. If present, the process uid with `setuid`.
 - `gid` - Integer. If present, the process gid with `setgid`.
+- `groups` - Array of integer. If present, the supplementary
+   group IDs with `setgroup`.
 
 ### `waitpid(pid, options)`
 
