@@ -31,6 +31,7 @@
 #include <assert.h>
 #if !defined(_MSC_VER)
 #include <unistd.h>
+#include <grp.h>
 #endif
 #include <errno.h>
 #include <fcntl.h>
@@ -3236,6 +3237,8 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     static const char *std_name[3] = { "stdin", "stdout", "stderr" };
     int std_fds[3];
     uint32_t uid = -1, gid = -1;
+    int ngroups = -1;
+    gid_t groups[64];
 
     val = JS_GetPropertyStr(ctx, args, "length");
     if (JS_IsException(val))
@@ -3339,6 +3342,40 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (ret)
                 goto exception;
         }
+
+        val = JS_GetPropertyStr(ctx, options, "groups");
+        if (JS_IsException(val))
+            goto exception;
+        if (!JS_IsUndefined(val)) {
+            int64_t idx, len;
+            JSValue prop;
+            uint32_t id;
+            ngroups = 0;
+            if (JS_GetLength(ctx, val, &len)) {
+                JS_FreeValue(ctx, val);
+                goto exception;
+            }
+            for (idx = 0; idx < len; idx++) {
+                prop = JS_GetPropertyInt64(ctx, val, idx);
+                if (JS_IsException(prop))
+                    break;
+                if (JS_IsUndefined(prop))
+                    continue;
+                ret = JS_ToUint32(ctx, &id, prop);
+                JS_FreeValue(ctx, prop);
+                if (ret)
+                    break;
+                if (ngroups == countof(groups)) {
+                    JS_ThrowRangeError(ctx, "too many groups");
+                    break;
+                }
+                groups[ngroups++] = id;
+            }
+            JS_FreeValue(ctx, val);
+            if (idx < len)
+                goto exception;
+        }
+
     }
 
 #if !defined(EMSCRIPTEN) && !defined(__wasi__)
@@ -3372,6 +3409,10 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
 
         if (cwd) {
             if (chdir(cwd) < 0)
+                _exit(127);
+        }
+        if (ngroups != -1) {
+            if (setgroups(ngroups, groups) < 0)
                 _exit(127);
         }
         if (uid != -1) {
