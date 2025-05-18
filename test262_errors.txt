@@ -24,26 +24,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-retu
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-not-object.js:72: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-undefined-return-object.js:66: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/Function/prototype/arguments/prop-desc.js:31: Test262Error: Function.prototype.arguments property getter/setter are the same function Expected SameValue(«function () {
-    [native code]
-}», «function () {
-    [native code]
-}») to be true
-test262/test/built-ins/Function/prototype/arguments/prop-desc.js:31: strict mode: Test262Error: Function.prototype.arguments property getter/setter are the same function Expected SameValue(«function () {
-    [native code]
-}», «function () {
-    [native code]
-}») to be true
-test262/test/built-ins/Function/prototype/caller/prop-desc.js:29: Test262Error: Caller property getter/setter are the same function Expected SameValue(«function () {
-    [native code]
-}», «function () {
-    [native code]
-}») to be true
-test262/test/built-ins/Function/prototype/caller/prop-desc.js:29: strict mode: Test262Error: Caller property getter/setter are the same function Expected SameValue(«function () {
-    [native code]
-}», «function () {
-    [native code]
-}») to be true
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: strict mode: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: TypeError: cannot read property 'call' of undefined
