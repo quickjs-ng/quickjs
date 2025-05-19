@@ -128,6 +128,12 @@ typedef struct {
     JSValue func;
 } JSOSTimer;
 
+typedef struct {
+    struct list_head link;
+    JSValue promise;
+    JSValue reason;
+} JSRejectedPromiseEntry;
+
 #ifdef USE_WORKER
 
 typedef struct {
@@ -168,6 +174,7 @@ typedef struct JSThreadState {
     struct list_head os_signal_handlers; /* list JSOSSignalHandler.link */
     struct list_head os_timers; /* list of JSOSTimer.link */
     struct list_head port_list; /* list of JSWorkerMessageHandler.link */
+    struct list_head rejected_promise_list; /* list of JSRejectedPromiseEntry.link */
     int eval_script_recurse; /* only used in the main thread */
     int64_t next_timer_id; /* for setTimeout / setInterval */
     bool can_js_os_poll;
@@ -4280,6 +4287,7 @@ void js_std_init_handlers(JSRuntime *rt)
     init_list_head(&ts->os_signal_handlers);
     init_list_head(&ts->os_timers);
     init_list_head(&ts->port_list);
+    init_list_head(&ts->rejected_promise_list);
 
     ts->next_timer_id = 1;
 
@@ -4297,6 +4305,14 @@ void js_std_init_handlers(JSRuntime *rt)
         JS_SetSharedArrayBufferFunctions(rt, &sf);
     }
 #endif
+}
+
+static void free_rp(JSRuntime *rt, JSRejectedPromiseEntry *rp)
+{
+    list_del(&rp->link);
+    JS_FreeValueRT(rt, rp->promise);
+    JS_FreeValueRT(rt, rp->reason);
+    js_free_rt(rt, rp);
 }
 
 void js_std_free_handlers(JSRuntime *rt)
@@ -4317,6 +4333,11 @@ void js_std_free_handlers(JSRuntime *rt)
     list_for_each_safe(el, el1, &ts->os_timers) {
         JSOSTimer *th = list_entry(el, JSOSTimer, link);
         free_timer(rt, th);
+    }
+
+    list_for_each_safe(el, el1, &ts->rejected_promise_list) {
+        JSRejectedPromiseEntry *rp = list_entry(el, JSRejectedPromiseEntry, link);
+        free_rp(rt, rp);
     }
 
 #ifdef USE_WORKER
@@ -4366,14 +4387,62 @@ void js_std_dump_error(JSContext *ctx)
     JS_FreeValue(ctx, exception_val);
 }
 
+static JSRejectedPromiseEntry *find_rejected_promise(JSContext *ctx, JSThreadState *ts,
+                                                     JSValueConst promise)
+{
+    struct list_head *el;
+
+    list_for_each(el, &ts->rejected_promise_list) {
+        JSRejectedPromiseEntry *rp = list_entry(el, JSRejectedPromiseEntry, link);
+        if (JS_IsSameValue(ctx, rp->promise, promise))
+            return rp;
+    }
+    return NULL;
+}
+
 void js_std_promise_rejection_tracker(JSContext *ctx, JSValueConst promise,
                                       JSValueConst reason,
                                       bool is_handled, void *opaque)
 {
-    if (!is_handled) {
-        fprintf(stderr, "Possibly unhandled promise rejection: ");
-        js_std_dump_error1(ctx, reason);
-        fflush(stderr);
+
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSRejectedPromiseEntry *rp = find_rejected_promise(ctx, ts, promise);
+
+    if (is_handled) {
+        /* the rejection is handled, so the entry can be removed if present */
+        if (rp)
+            free_rp(rt, rp);
+    } else {
+        /* add a new entry if needed */
+        if (!rp) {
+            rp = js_malloc_rt(rt, sizeof(*rp));
+            if (rp) {
+                rp->promise = JS_DupValue(ctx, promise);
+                rp->reason = JS_DupValue(ctx, reason);
+                list_add_tail(&rp->link, &ts->rejected_promise_list);
+            }
+        }
+    }
+}
+
+/* check if there are pending promise rejections. It must be done
+   asynchrously in case a rejected promise is handled later. Currently
+   we do it once the application is about to sleep. It could be done
+   more often if needed. */
+static void js_std_promise_rejection_check(JSContext *ctx)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    struct list_head *el;
+
+    if (unlikely(!list_empty(&ts->rejected_promise_list))) {
+        list_for_each(el, &ts->rejected_promise_list) {
+            JSRejectedPromiseEntry *rp = list_entry(el, JSRejectedPromiseEntry, link);
+            fprintf(stderr, "Possibly unhandled promise rejection: ");
+            js_std_dump_error1(ctx, rp->reason);
+            fflush(stderr);
+        }
         exit(1);
     }
 }
@@ -4396,6 +4465,8 @@ int js_std_loop(JSContext *ctx)
                 break;
             }
         }
+
+        js_std_promise_rejection_check(ctx);
 
         if (!ts->can_js_os_poll || js_os_poll(ctx))
             break;
@@ -4431,6 +4502,8 @@ JSValue js_std_await(JSContext *ctx, JSValue obj)
             if (err < 0) {
                 js_std_dump_error(ctx1);
             }
+            if (err == 0)
+                js_std_promise_rejection_check(ctx);
             if (ts->can_js_os_poll)
                 js_os_poll(ctx);
         } else {
