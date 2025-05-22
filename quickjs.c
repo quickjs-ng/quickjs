@@ -41777,33 +41777,31 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
             double dlimit;
             v = JS_ToNumber(ctx, argv[0]);
             if (JS_IsException(v))
-                return JS_EXCEPTION;
+                goto fail;
             // Check for Infinity.
             if (JS_ToFloat64(ctx, &dlimit, v)) {
                 JS_FreeValue(ctx, v);
-                return JS_EXCEPTION;
+                goto fail;
             }
             if (isnan(dlimit)) {
                 JS_FreeValue(ctx, v);
-                goto fail;
+                goto range_error;
             }
             if (!isfinite(dlimit)) {
                 JS_FreeValue(ctx, v);
                 if (dlimit < 0)
-                    goto fail;
+                    goto range_error;
                 else
                     count = MAX_SAFE_INTEGER;
             } else {
                 v = JS_ToIntegerFree(ctx, v);
                 if (JS_IsException(v))
-                    return JS_EXCEPTION;
+                    goto fail;
                 if (JS_ToInt64Free(ctx, &count, v))
-                    return JS_EXCEPTION;
+                    goto fail;
             }
-            if (count < 0) {
-            fail:
-                return JS_ThrowRangeError(ctx, "must be positive");
-            }
+            if (count < 0)
+                goto range_error;
         }
         break;
     case JS_ITERATOR_HELPER_KIND_FILTER:
@@ -41812,7 +41810,7 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
         {
             func = argv[0];
             if (check_function(ctx, func))
-                return JS_EXCEPTION;
+                goto fail;
         }
         break;
     default:
@@ -41822,17 +41820,17 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
 
     method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
     if (JS_IsException(method))
-        return JS_EXCEPTION;
+        goto fail;
     obj = JS_NewObjectClass(ctx, JS_CLASS_ITERATOR_HELPER);
     if (JS_IsException(obj)) {
         JS_FreeValue(ctx, method);
-        return JS_EXCEPTION;
+        goto fail;
     }
     it = js_malloc(ctx, sizeof(*it));
     if (!it) {
         JS_FreeValue(ctx, obj);
         JS_FreeValue(ctx, method);
-        return JS_EXCEPTION;
+        goto fail;
     }
     it->kind = magic;
     it->obj = js_dup(this_val);
@@ -41844,6 +41842,11 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
     it->done = 0;
     JS_SetOpaqueInternal(obj, it);
     return obj;
+range_error:
+    JS_ThrowRangeError(ctx, "must be positive");
+fail:
+    JS_IteratorClose(ctx, this_val, true);
+    return JS_EXCEPTION;
 }
 
 static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
@@ -41856,8 +41859,10 @@ static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
 
     if (check_iterator(ctx, this_val) < 0)
         return JS_EXCEPTION;
+    func = JS_UNDEFINED;
+    method = JS_UNDEFINED;
     if (check_function(ctx, argv[0]))
-        return JS_EXCEPTION;
+        goto fail;
     func = js_dup(argv[0]);
     method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
     if (JS_IsException(method))
@@ -42006,9 +42011,11 @@ static JSValue js_iterator_proto_reduce(JSContext *ctx, JSValueConst this_val,
 
     if (check_iterator(ctx, this_val) < 0)
         return JS_EXCEPTION;
-    if (check_function(ctx, argv[0]))
-        return JS_EXCEPTION;
     acc = JS_UNDEFINED;
+    func = JS_UNDEFINED;
+    method = JS_UNDEFINED;
+    if (check_function(ctx, argv[0]))
+        goto exception;
     func = js_dup(argv[0]);
     method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
     if (JS_IsException(method))

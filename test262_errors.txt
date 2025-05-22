@@ -28,26 +28,6 @@ test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: Test262Er
 test262/test/built-ins/Iterator/prototype/constructor/prop-desc.js:10: strict mode: Test262Error: Expected SameValue(«"undefined"», «"function"») to be true
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: TypeError: cannot read property 'call' of undefined
 test262/test/built-ins/Iterator/prototype/constructor/weird-setter.js:23: strict mode: TypeError: cannot read property 'call' of undefined
-test262/test/built-ins/Iterator/prototype/drop/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/drop/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/every/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/every/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/filter/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/filter/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/find/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/find/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/flatMap/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/flatMap/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/forEach/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/forEach/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/map/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/map/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/reduce/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/reduce/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/some/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/some/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/take/argument-validation-failure-closes-underlying.js:18: Test262Error: Expected SameValue(«false», «true») to be true
-test262/test/built-ins/Iterator/prototype/take/argument-validation-failure-closes-underlying.js:18: strict mode: Test262Error: Expected SameValue(«false», «true») to be true
 test262/test/built-ins/Object/defineProperties/typedarray-backed-by-resizable-buffer.js:20: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/Object/defineProperties/typedarray-backed-by-resizable-buffer.js:20: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test262/test/built-ins/Object/defineProperty/coerced-P-grow.js:45: TypeError: out-of-bound index in typed array
