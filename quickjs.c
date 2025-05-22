@@ -7495,6 +7495,11 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
             for (size_t i = 0; i < countof(args); i++)
                 JS_FreeValue(ctx, args[i]);
             JS_FreeValue(ctx, fun);
+            if (JS_SetPrototypeInternal(ctx, result, ctx->function_proto,
+                                        /*throw_flag*/true) < 0) {
+                JS_FreeValue(ctx, result);
+                return JS_EXCEPTION;
+            }
             return result;
         }
     }
