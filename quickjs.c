@@ -53304,7 +53304,7 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     // first creates a .constructor value property that we then replace with
     // an accessor
     ctx->iterator_ctor_getset = JS_NewCFunctionData(ctx, js_iterator_constructor_getset,
-                                                    0, 0, 1, &obj);
+                                                    0, 0, 1, vc(&obj));
     JS_DefineProperty(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
                       JS_ATOM_constructor, JS_UNDEFINED,
                       ctx->iterator_ctor_getset, ctx->iterator_ctor_getset,
