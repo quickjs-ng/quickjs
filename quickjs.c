@@ -5462,11 +5462,6 @@ static force_inline JSShapeProperty *find_own_property(JSProperty **ppr,
     return NULL;
 }
 
-/* indicate that the object may be part of a function prototype cycle */
-static void set_cycle_flag(JSContext *ctx, JSValueConst obj)
-{
-}
-
 static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
 {
     if (var_ref) {
@@ -15991,8 +15986,6 @@ static JSValue js_instantiate_prototype(JSContext *ctx, JSObject *p, JSAtom atom
     obj = JS_NewObject(ctx);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
-    set_cycle_flag(ctx, obj);
-    set_cycle_flag(ctx, this_val);
     ret = JS_DefinePropertyValue(ctx, obj, JS_ATOM_constructor,
                                  js_dup(this_val),
                                  JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
@@ -16142,8 +16135,6 @@ static int js_op_define_class(JSContext *ctx, JSValue *sp,
     if (JS_DefinePropertyValue(ctx, ctor, JS_ATOM_prototype,
                                js_dup(proto), JS_PROP_THROW) < 0)
         goto fail;
-    set_cycle_flag(ctx, ctor);
-    set_cycle_flag(ctx, proto);
 
     JS_FreeValue(ctx, parent_proto);
     JS_FreeValue(ctx, parent_class);
@@ -37618,8 +37609,6 @@ static void JS_SetConstructor2(JSContext *ctx,
                            js_dup(proto), proto_flags);
     JS_DefinePropertyValue(ctx, proto, JS_ATOM_constructor,
                            js_dup(func_obj), ctor_flags);
-    set_cycle_flag(ctx, func_obj);
-    set_cycle_flag(ctx, proto);
 }
 
 void JS_SetConstructor(JSContext *ctx, JSValueConst func_obj,
