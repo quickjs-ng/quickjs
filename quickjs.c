@@ -9726,7 +9726,7 @@ int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
             }
             idx = __JS_AtomToUInt32(prop);
             /* if the typed array is detached, p->u.array.count = 0 */
-            if (idx >= typed_array_get_length(ctx, p)) {
+            if (idx >= p->u.array.count) {
             typed_array_oob:
                 return JS_ThrowTypeErrorOrFalse(ctx, flags, "out-of-bound index in typed array");
             }
