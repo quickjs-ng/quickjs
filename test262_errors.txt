@@ -40,8 +40,6 @@ test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-flag.js
 test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
 test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-u-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
 test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-u-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
-test262/test/built-ins/TypedArray/prototype/includes/search-undefined-after-shrinking-buffer-index-is-oob.js:23: Test262Error: Expected SameValue(«true», «false») to be true (Testing with Float64Array.)
-test262/test/built-ins/TypedArray/prototype/includes/search-undefined-after-shrinking-buffer-index-is-oob.js:23: strict mode: Test262Error: Expected SameValue(«true», «false») to be true (Testing with Float64Array.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true

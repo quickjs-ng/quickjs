@@ -54814,7 +54814,6 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValueConst this_val,
     double d;
     float f;
     uint16_t hf;
-    bool oob;
 
     p = get_typed_array(ctx, this_val);
     if (!p)
@@ -54826,7 +54825,6 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValueConst this_val,
     if (len == 0)
         goto done;
 
-    oob = false;
     if (special == special_lastIndexOf) {
         k = len - 1;
         if (argc > 1) {
@@ -54860,7 +54858,6 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValueConst this_val,
                     k = 0;
             } else if (k > len) {
                 k = len;
-                oob = true;
             }
         }
         stop = len;
@@ -54871,8 +54868,10 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValueConst this_val,
        exception is raised) */
     if (typed_array_is_oob(p) || len > p->u.array.count) {
         /* "includes" scans all the properties, so "undefined" can match */
-        if (special == special_includes && JS_IsUndefined(argv[0]) && len > 0)
-            res = oob ? -1 : 0;
+        if (special == special_includes)
+            if (JS_IsUndefined(argv[0]))
+                if (k < typed_array_get_length(ctx, p))
+                    res = 0;
         goto done;
     }
 
