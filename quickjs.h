@@ -544,7 +544,11 @@ JS_EXTERN void JS_FreeAtom(JSContext *ctx, JSAtom v);
 JS_EXTERN void JS_FreeAtomRT(JSRuntime *rt, JSAtom v);
 JS_EXTERN JSValue JS_AtomToValue(JSContext *ctx, JSAtom atom);
 JS_EXTERN JSValue JS_AtomToString(JSContext *ctx, JSAtom atom);
-JS_EXTERN const char *JS_AtomToCString(JSContext *ctx, JSAtom atom);
+JS_EXTERN const char *JS_AtomToCStringLen(JSContext *ctx, size_t *plen, JSAtom atom);
+static inline const char *JS_AtomToCString(JSContext *ctx, JSAtom atom) 
+{
+    return JS_AtomToCStringLen(ctx, NULL, atom);
+}
 JS_EXTERN JSAtom JS_ValueToAtom(JSContext *ctx, JSValueConst val);
 
 /* object class support */
