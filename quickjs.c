@@ -3459,15 +3459,16 @@ static __maybe_unused void print_atom(JSContext *ctx, JSAtom atom)
 }
 
 /* free with JS_FreeCString() */
-const char *JS_AtomToCString(JSContext *ctx, JSAtom atom)
+const char *JS_AtomToCStringLen(JSContext *ctx, size_t *plen, JSAtom atom)
 {
     JSValue str;
     const char *cstr;
 
     str = JS_AtomToString(ctx, atom);
     if (JS_IsException(str))
-        return NULL;
-    cstr = JS_ToCString(ctx, str);
+        if (plen)
+            *plen = 0;
+    cstr = JS_ToCStringLen(ctx, plen, str);
     JS_FreeValue(ctx, str);
     return cstr;
 }
