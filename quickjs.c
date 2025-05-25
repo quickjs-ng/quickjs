@@ -51323,6 +51323,9 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
             if (magic == GEN_MAGIC_RETURN) {
                 err = js_create_iterator_result(ctx, js_dup(argv[0]), true);
                 is_reject = 0;
+            } else if (JS_IteratorClose(ctx, s->sync_iter, false)) {
+                err = JS_GetException(ctx);
+                is_reject = 1;
             } else {
                 err = JS_MakeError(ctx, JS_TYPE_ERROR, "throw is not a method",
                                    true);
