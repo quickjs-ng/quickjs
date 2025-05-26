@@ -678,7 +678,7 @@ static js_force_inline JSValue JS_NewUint32(uint32_t val)
     return v;
 }
 
-JS_EXTERN JSValue JS_NewNumber(JSContext *ctx, double d);
+JS_EXTERN JSValue JS_NewNumber(double d);
 JS_EXTERN JSValue JS_NewBigInt64(JSContext *ctx, int64_t v);
 JS_EXTERN JSValue JS_NewBigUint64(JSContext *ctx, uint64_t v);
 

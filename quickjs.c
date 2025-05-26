@@ -1388,7 +1388,7 @@ static JSValue js_number(double d)
         return js_float64(d);
 }
 
-JSValue JS_NewNumber(JSContext *ctx, double d)
+JSValue JS_NewNumber(double d)
 {
     return js_number(d);
 }
