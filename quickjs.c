@@ -15012,7 +15012,7 @@ static __exception int js_operator_private_in(JSContext *ctx, JSValue *sp)
     }
     JS_FreeValue(ctx, op1);
     JS_FreeValue(ctx, op2);
-    sp[-2] = JS_NewBool(ctx, ret);
+    sp[-2] = JS_NewBool(ret);
     return 0;
 }
 
@@ -57645,7 +57645,7 @@ static JSValue js_callsite_isnative(JSContext *ctx, JSValueConst this_val, int a
     JSCallSiteData *csd = JS_GetOpaque2(ctx, this_val, JS_CLASS_CALL_SITE);
     if (!csd)
         return JS_EXCEPTION;
-    return JS_NewBool(ctx, csd->native);
+    return JS_NewBool(csd->native);
 }
 
 static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv, int magic)

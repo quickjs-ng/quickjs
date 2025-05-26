@@ -636,9 +636,8 @@ JS_EXTERN bool JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id);
 
 /* value handling */
 
-static js_force_inline JSValue JS_NewBool(JSContext *ctx, bool val)
+static js_force_inline JSValue JS_NewBool(bool val)
 {
-    (void)&ctx;
     return JS_MKVAL(JS_TAG_BOOL, (val != 0));
 }
 
@@ -770,7 +769,7 @@ JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v);
 JS_EXTERN int JS_ToBool(JSContext *ctx, JSValueConst val); /* return -1 for JS_EXCEPTION */
 static inline JSValue JS_ToBoolean(JSContext *ctx, JSValueConst val)
 {
-    return JS_NewBool(ctx, JS_ToBool(ctx, val));
+    return JS_NewBool(JS_ToBool(ctx, val));
 }
 JS_EXTERN JSValue JS_ToNumber(JSContext *ctx, JSValueConst val);
 JS_EXTERN int JS_ToInt32(JSContext *ctx, int32_t *pres, JSValueConst val);

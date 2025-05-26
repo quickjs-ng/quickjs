@@ -771,7 +771,7 @@ int js_module_set_import_meta(JSContext *ctx, JSValueConst func_val,
                               JS_NewString(ctx, buf),
                               JS_PROP_C_W_E);
     JS_DefinePropertyValueStr(ctx, meta_obj, "main",
-                              JS_NewBool(ctx, is_main),
+                              JS_NewBool(is_main),
                               JS_PROP_C_W_E);
     JS_FreeValue(ctx, meta_obj);
     return 0;
@@ -1360,7 +1360,7 @@ static JSValue js_std_file_eof(JSContext *ctx, JSValueConst this_val,
     FILE *f = js_std_file_get(ctx, this_val);
     if (!f)
         return JS_EXCEPTION;
-    return JS_NewBool(ctx, feof(f));
+    return JS_NewBool(feof(f));
 }
 
 static JSValue js_std_file_error(JSContext *ctx, JSValueConst this_val,
@@ -1369,7 +1369,7 @@ static JSValue js_std_file_error(JSContext *ctx, JSValueConst this_val,
     FILE *f = js_std_file_get(ctx, this_val);
     if (!f)
         return JS_EXCEPTION;
-    return JS_NewBool(ctx, ferror(f));
+    return JS_NewBool(ferror(f));
 }
 
 static JSValue js_std_file_clearerr(JSContext *ctx, JSValueConst this_val,
@@ -1931,7 +1931,7 @@ static JSValue js_os_isatty(JSContext *ctx, JSValueConst this_val,
     int fd;
     if (JS_ToInt32(ctx, &fd, argv[0]))
         return JS_EXCEPTION;
-    return JS_NewBool(ctx, (isatty(fd) != 0));
+    return JS_NewBool((isatty(fd) != 0));
 }
 
 #if defined(_WIN32)
