@@ -1228,7 +1228,7 @@ static JSValue js_typed_array_constructor_ta(JSContext *ctx,
                                              int classid, uint32_t len);
 static bool is_typed_array(JSClassID class_id);
 static bool typed_array_is_oob(JSObject *p);
-static uint32_t typed_array_get_length(JSContext *ctx, JSObject *p);
+static uint32_t typed_array_length(JSObject *p);
 static JSValue JS_ThrowTypeErrorDetachedArrayBuffer(JSContext *ctx);
 static JSValue JS_ThrowTypeErrorArrayBufferOOB(JSContext *ctx);
 static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf, int var_idx,
@@ -54118,7 +54118,7 @@ static bool typed_array_is_oob(JSObject *p)
 
 /* WARNING: 'p' must be a typed array. Works even if the array buffer
    is detached */
-static uint32_t typed_array_get_length(JSContext *ctx, JSObject *p)
+static uint32_t typed_array_length(JSObject *p)
 {
     JSTypedArray *ta = p->u.typed_array;
     int size_log2 = typed_array_size_log2(p->class_id);
@@ -54896,7 +54896,7 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValueConst this_val,
         /* "includes" scans all the properties, so "undefined" can match */
         if (special == special_includes)
             if (JS_IsUndefined(argv[0]))
-                if (k < typed_array_get_length(ctx, p))
+                if (k < typed_array_length(p))
                     res = 0;
         goto done;
     }
@@ -55337,8 +55337,8 @@ static JSValue js_typed_array_slice(JSContext *ctx, JSValueConst this_val,
 
         p1 = get_typed_array(ctx, arr);
         if (p1 != NULL && p->class_id == p1->class_id &&
-            typed_array_get_length(ctx, p1) >= count &&
-            typed_array_get_length(ctx, p) >= start + count) {
+            typed_array_length(p1) >= count &&
+            typed_array_length(p) >= start + count) {
             shift = typed_array_size_log2(p->class_id);
             memmove(p1->u.array.u.uint8_ptr,
                     p->u.array.u.uint8_ptr + (start << shift),
