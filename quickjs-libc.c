@@ -1329,7 +1329,7 @@ static JSValue js_std_file_tell(JSContext *ctx, JSValueConst this_val,
     if (is_bigint)
         return JS_NewBigInt64(ctx, pos);
     else
-        return JS_NewInt64(ctx, pos);
+        return JS_NewInt64(pos);
 }
 
 static JSValue js_std_file_seek(JSContext *ctx, JSValueConst this_val,
@@ -1414,7 +1414,7 @@ static JSValue js_std_file_read_write(JSContext *ctx, JSValueConst this_val,
         ret = fwrite(buf + pos, 1, len, f);
     else
         ret = fread(buf + pos, 1, len, f);
-    return JS_NewInt64(ctx, ret);
+    return JS_NewInt64(ret);
 }
 
 /* XXX: could use less memory and go faster */
@@ -1895,7 +1895,7 @@ static JSValue js_os_seek(JSContext *ctx, JSValueConst this_val,
     if (is_bigint)
         return JS_NewBigInt64(ctx, ret);
     else
-        return JS_NewInt64(ctx, ret);
+        return JS_NewInt64(ret);
 }
 
 static JSValue js_os_read_write(JSContext *ctx, JSValueConst this_val,
@@ -1922,7 +1922,7 @@ static JSValue js_os_read_write(JSContext *ctx, JSValueConst this_val,
         ret = js_get_errno(write(fd, buf + pos, len));
     else
         ret = js_get_errno(read(fd, buf + pos, len));
-    return JS_NewInt64(ctx, ret);
+    return JS_NewInt64(ret);
 }
 
 static JSValue js_os_isatty(JSContext *ctx, JSValueConst this_val,
@@ -2242,7 +2242,7 @@ static JSValue js_os_cputime(JSContext *ctx, JSValueConst this_val,
     if (!getrusage(RUSAGE_SELF, &ru))
         cputime = (int64_t)ru.ru_utime.tv_sec * 1000000 + ru.ru_utime.tv_usec;
 
-    return JS_NewInt64(ctx, cputime);
+    return JS_NewInt64(cputime);
 }
 #endif
 
@@ -2259,7 +2259,7 @@ static JSValue js_os_exepath(JSContext *ctx, JSValueConst this_val,
 static JSValue js_os_now(JSContext *ctx, JSValueConst this_val,
                          int argc, JSValueConst *argv)
 {
-    return JS_NewInt64(ctx, js__hrtime_ns() / 1000);
+    return JS_NewInt64(js__hrtime_ns() / 1000);
 }
 
 static uint64_t js__hrtime_ms(void)
@@ -2303,7 +2303,7 @@ static JSValue js_os_setTimeout(JSContext *ctx, JSValueConst this_val,
     th->delay = delay;
     th->func = JS_DupValue(ctx, func);
     list_add_tail(&th->link, &ts->os_timers);
-    return JS_NewInt64(ctx, th->timer_id);
+    return JS_NewInt64(th->timer_id);
 }
 
 static JSOSTimer *find_timer_by_id(JSThreadState *ts, int timer_id)
@@ -2887,63 +2887,63 @@ static JSValue js_os_stat(JSContext *ctx, JSValueConst this_val,
         if (JS_IsException(obj))
             return JS_EXCEPTION;
         JS_DefinePropertyValueStr(ctx, obj, "dev",
-                                  JS_NewInt64(ctx, st.st_dev),
+                                  JS_NewInt64(st.st_dev),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "ino",
-                                  JS_NewInt64(ctx, st.st_ino),
+                                  JS_NewInt64(st.st_ino),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "mode",
                                   JS_NewInt32(st.st_mode),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "nlink",
-                                  JS_NewInt64(ctx, st.st_nlink),
+                                  JS_NewInt64(st.st_nlink),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "uid",
-                                  JS_NewInt64(ctx, st.st_uid),
+                                  JS_NewInt64(st.st_uid),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "gid",
-                                  JS_NewInt64(ctx, st.st_gid),
+                                  JS_NewInt64(st.st_gid),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "rdev",
-                                  JS_NewInt64(ctx, st.st_rdev),
+                                  JS_NewInt64(st.st_rdev),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "size",
-                                  JS_NewInt64(ctx, st.st_size),
+                                  JS_NewInt64(st.st_size),
                                   JS_PROP_C_W_E);
 #if !defined(_WIN32)
         JS_DefinePropertyValueStr(ctx, obj, "blocks",
-                                  JS_NewInt64(ctx, st.st_blocks),
+                                  JS_NewInt64(st.st_blocks),
                                   JS_PROP_C_W_E);
 #endif
 #if defined(_WIN32)
         JS_DefinePropertyValueStr(ctx, obj, "atime",
-                                  JS_NewInt64(ctx, (int64_t)st.st_atime * 1000),
+                                  JS_NewInt64((int64_t)st.st_atime * 1000),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "mtime",
-                                  JS_NewInt64(ctx, (int64_t)st.st_mtime * 1000),
+                                  JS_NewInt64((int64_t)st.st_mtime * 1000),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "ctime",
-                                  JS_NewInt64(ctx, (int64_t)st.st_ctime * 1000),
+                                  JS_NewInt64((int64_t)st.st_ctime * 1000),
                                   JS_PROP_C_W_E);
 #elif defined(__APPLE__)
         JS_DefinePropertyValueStr(ctx, obj, "atime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_atimespec)),
+                                  JS_NewInt64(timespec_to_ms(&st.st_atimespec)),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "mtime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_mtimespec)),
+                                  JS_NewInt64(timespec_to_ms(&st.st_mtimespec)),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "ctime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_ctimespec)),
+                                  JS_NewInt64(timespec_to_ms(&st.st_ctimespec)),
                                   JS_PROP_C_W_E);
 #else
         JS_DefinePropertyValueStr(ctx, obj, "atime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_atim)),
+                                  JS_NewInt64(timespec_to_ms(&st.st_atim)),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "mtime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_mtim)),
+                                  JS_NewInt64(timespec_to_ms(&st.st_mtim)),
                                   JS_PROP_C_W_E);
         JS_DefinePropertyValueStr(ctx, obj, "ctime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_ctim)),
+                                  JS_NewInt64(timespec_to_ms(&st.st_ctim)),
                                   JS_PROP_C_W_E);
 #endif
     }

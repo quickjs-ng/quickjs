@@ -798,7 +798,7 @@ static int64_t get_clock_ms(void)
 static JSValue js_agent_monotonicNow(JSContext *ctx, JSValueConst this_val,
                                      int argc, JSValueConst *argv)
 {
-    return JS_NewInt64(ctx, get_clock_ms());
+    return JS_NewInt64(get_clock_ms());
 }
 
 static JSValue js_agent_getReport(JSContext *ctx, JSValueConst this_val,

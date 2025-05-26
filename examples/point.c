@@ -106,7 +106,7 @@ static JSValue js_point_norm(JSContext *ctx, JSValue this_val,
     JSPointData *s = JS_GetOpaque2(ctx, this_val, js_point_class_id);
     if (!s)
         return JS_EXCEPTION;
-    return JS_NewFloat64(ctx, sqrt((double)s->x * s->x + (double)s->y * s->y));
+    return JS_NewFloat64(sqrt((double)s->x * s->x + (double)s->y * s->y));
 }
 
 static JSClassDef js_point_class = {
