@@ -17633,7 +17633,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             {
                 int32_t diff;
                 diff = get_u32(pc);
-                sp[0] = JS_NewCatchOffset(ctx, pc + diff - b->byte_code_buf);
+                sp[0] = JS_NewCatchOffset(pc + diff - b->byte_code_buf);
                 sp++;
                 pc += 4;
             }
@@ -17682,7 +17682,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             if (js_for_of_start(ctx, sp, false))
                 goto exception;
             sp += 1;
-            *sp++ = JS_NewCatchOffset(ctx, 0);
+            *sp++ = JS_NewCatchOffset(0);
             BREAK;
         CASE(OP_for_of_next):
             {
@@ -17699,7 +17699,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             if (js_for_of_start(ctx, sp, true))
                 goto exception;
             sp += 1;
-            *sp++ = JS_NewCatchOffset(ctx, 0);
+            *sp++ = JS_NewCatchOffset(0);
             BREAK;
         CASE(OP_iterator_get_value_done):
             sf->cur_pc = pc;

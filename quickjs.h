@@ -651,9 +651,8 @@ static js_force_inline JSValue JS_NewFloat64(double val)
     return __JS_NewFloat64(val);
 }
 
-static js_force_inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
+static js_force_inline JSValue JS_NewCatchOffset(int32_t val)
 {
-    (void)&ctx;
     return JS_MKVAL(JS_TAG_CATCH_OFFSET, val);
 }
 
