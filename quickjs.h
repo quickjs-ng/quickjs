@@ -641,9 +641,8 @@ static js_force_inline JSValue JS_NewBool(bool val)
     return JS_MKVAL(JS_TAG_BOOL, (val != 0));
 }
 
-static js_force_inline JSValue JS_NewInt32(JSContext *ctx, int32_t val)
+static js_force_inline JSValue JS_NewInt32(int32_t val)
 {
-    (void)&ctx;
     return JS_MKVAL(JS_TAG_INT, val);
 }
 
@@ -663,7 +662,7 @@ static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
 {
     JSValue v;
     if (val >= INT32_MIN && val <= INT32_MAX) {
-        v = JS_NewInt32(ctx, (int32_t)val);
+        v = JS_NewInt32((int32_t)val);
     } else {
         v = JS_NewFloat64(ctx, (double)val);
     }
@@ -674,7 +673,7 @@ static js_force_inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
 {
     JSValue v;
     if (val <= INT32_MAX) {
-        v = JS_NewInt32(ctx, (int32_t)val);
+        v = JS_NewInt32((int32_t)val);
     } else {
         v = JS_NewFloat64(ctx, (double)val);
     }

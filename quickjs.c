@@ -13944,7 +13944,7 @@ static no_inline int js_not_slow(JSContext *ctx, JSValue *sp)
         int32_t v1;
         if (unlikely(JS_ToInt32Free(ctx, &v1, op1)))
             goto exception;
-        sp[-1] = JS_NewInt32(ctx, ~v1);
+        sp[-1] = JS_NewInt32(~v1);
     }
     return 0;
  exception:
@@ -57654,7 +57654,7 @@ static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int 
     if (!csd)
         return JS_EXCEPTION;
     int *field = (void *)((char *)csd + magic);
-    return JS_NewInt32(ctx, *field);
+    return JS_NewInt32(*field);
 }
 
 static const JSCFunctionListEntry js_callsite_proto_funcs[] = {

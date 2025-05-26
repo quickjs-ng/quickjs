@@ -634,7 +634,7 @@ static void agent_start(void *arg)
                 args[0] = JS_NewArrayBuffer(ctx, agent->broadcast_sab_buf,
                                             agent->broadcast_sab_size,
                                             NULL, NULL, true);
-                args[1] = JS_NewInt32(ctx, agent->broadcast_val);
+                args[1] = JS_NewInt32(agent->broadcast_val);
                 ret_val = JS_Call(ctx, agent->broadcast_func, JS_UNDEFINED,
                                   2, (JSValueConst *)args);
                 JS_FreeValue(ctx, args[0]);

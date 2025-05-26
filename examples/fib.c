@@ -42,7 +42,7 @@ static JSValue js_fib(JSContext *ctx, JSValue this_val,
     if (JS_ToInt32(ctx, &n, argv[0]))
         return JS_EXCEPTION;
     res = fib(n);
-    return JS_NewInt32(ctx, res);
+    return JS_NewInt32(res);
 }
 
 static const JSCFunctionListEntry js_fib_funcs[] = {

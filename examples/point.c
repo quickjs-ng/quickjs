@@ -80,9 +80,9 @@ static JSValue js_point_get_xy(JSContext *ctx, JSValue this_val, int magic)
     if (!s)
         return JS_EXCEPTION;
     if (magic == 0)
-        return JS_NewInt32(ctx, s->x);
+        return JS_NewInt32(s->x);
     else
-        return JS_NewInt32(ctx, s->y);
+        return JS_NewInt32(s->y);
 }
 
 static JSValue js_point_set_xy(JSContext *ctx, JSValue this_val, JSValue val, int magic)
