@@ -1374,7 +1374,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
                     if (state == JS_PROMISE_FULFILLED)
                         res_val = JS_UNDEFINED;
                     else if (state == JS_PROMISE_REJECTED)
-                        res_val = JS_Throw(ctx, JS_PromiseResult(ctx, promise));
+                        res_val = JS_Throw(ctx, JS_PromiseResult(promise));
                     else
                         res_val = JS_ThrowTypeError(ctx, "promise is pending");
                 }
@@ -2031,7 +2031,7 @@ int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
          if (is_module) {
              JSPromiseStateEnum state = JS_PromiseState(ctx, promise);
              if (state == JS_PROMISE_REJECTED) {
-                 JS_Throw(ctx, JS_PromiseResult(ctx, promise));
+                 JS_Throw(ctx, JS_PromiseResult(promise));
                  js_std_dump_error(ctx);
                  ret_code = 1;
              }

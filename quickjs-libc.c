@@ -4488,11 +4488,11 @@ JSValue js_std_await(JSContext *ctx, JSValue obj)
     for(;;) {
         state = JS_PromiseState(ctx, obj);
         if (state == JS_PROMISE_FULFILLED) {
-            ret = JS_PromiseResult(ctx, obj);
+            ret = JS_PromiseResult(obj);
             JS_FreeValue(ctx, obj);
             break;
         } else if (state == JS_PROMISE_REJECTED) {
-            ret = JS_Throw(ctx, JS_PromiseResult(ctx, obj));
+            ret = JS_Throw(ctx, JS_PromiseResult(obj));
             JS_FreeValue(ctx, obj);
             break;
         } else if (state == JS_PROMISE_PENDING) {

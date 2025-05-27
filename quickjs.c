@@ -29347,7 +29347,7 @@ static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
         if (state == JS_PROMISE_FULFILLED) {
             JS_FreeValue(ctx, promise);
         } else if (state == JS_PROMISE_REJECTED) {
-            *pvalue = JS_PromiseResult(ctx, promise);
+            *pvalue = JS_PromiseResult(promise);
             JS_FreeValue(ctx, promise);
             return -1;
         } else {
@@ -50185,7 +50185,7 @@ JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValueConst promise)
     return s->promise_state;
 }
 
-JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise)
+JSValue JS_PromiseResult(JSValueConst promise)
 {
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)

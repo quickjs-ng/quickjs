@@ -223,7 +223,7 @@ static void module_serde(void)
     JSValue ret = JS_EvalFunction(ctx, mod);
     assert(!JS_IsException(ret));
     assert(JS_IsPromise(ret));
-    JSValue result = JS_PromiseResult(ctx, ret);
+    JSValue result = JS_PromiseResult(ret);
     assert(!JS_IsException(result));
     assert(JS_IsUndefined(result));
     JS_FreeValue(ctx, result);
