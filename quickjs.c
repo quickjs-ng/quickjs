@@ -10261,7 +10261,7 @@ bool JS_IsSet(JSValueConst val)
     return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_SET;
 }
 
-bool JS_IsError(JSContext *ctx, JSValueConst val)
+bool JS_IsError(JSValueConst val)
 {
     JSObject *p;
     if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
@@ -39519,7 +39519,7 @@ static const JSCFunctionListEntry js_error_proto_funcs[] = {
 static JSValue js_error_isError(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
-    return js_bool(JS_IsError(ctx, argv[0]));
+    return js_bool(JS_IsError(argv[0]));
 }
 
 static JSValue js_error_get_stackTraceLimit(JSContext *ctx, JSValueConst this_val)

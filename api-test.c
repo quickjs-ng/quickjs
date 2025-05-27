@@ -113,7 +113,7 @@ static void async_call_stack_overflow(void)
     }
     assert(r == 1);
     assert(!JS_HasException(ctx));
-    assert(JS_IsError(ctx, value)); // stack overflow should be caught
+    assert(JS_IsError(value)); // stack overflow should be caught
     JS_FreeValue(ctx, value);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
