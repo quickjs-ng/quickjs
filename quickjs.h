@@ -1029,7 +1029,7 @@ JS_EXTERN void JS_SetInterruptHandler(JSRuntime *rt, JSInterruptHandler *cb, voi
 /* if can_block is true, Atomics.wait() can be used */
 JS_EXTERN void JS_SetCanBlock(JSRuntime *rt, bool can_block);
 /* set the [IsHTMLDDA] internal slot */
-JS_EXTERN void JS_SetIsHTMLDDA(JSContext *ctx, JSValueConst obj);
+JS_EXTERN void JS_SetIsHTMLDDA(JSValueConst obj);
 
 typedef struct JSModuleDef JSModuleDef;
 

@@ -10442,7 +10442,7 @@ static JSValue JS_ToPrimitive(JSContext *ctx, JSValueConst val, int hint)
     return JS_ToPrimitiveFree(ctx, js_dup(val), hint);
 }
 
-void JS_SetIsHTMLDDA(JSContext *ctx, JSValueConst obj)
+void JS_SetIsHTMLDDA(JSValueConst obj)
 {
     JSObject *p;
     if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)

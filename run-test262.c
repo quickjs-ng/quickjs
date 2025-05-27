@@ -901,7 +901,7 @@ static JSValue add_helpers1(JSContext *ctx)
                       JS_NewCFunction(ctx, js_print_262, "print", 1));
 
     is_html_dda = JS_NewCFunction(ctx, js_IsHTMLDDA, "IsHTMLDDA", 0);
-    JS_SetIsHTMLDDA(ctx, is_html_dda);
+    JS_SetIsHTMLDDA(is_html_dda);
 #define N 7
     static const char *props[N] = {
         "detachArrayBuffer", "evalScript", "codePointRange",
