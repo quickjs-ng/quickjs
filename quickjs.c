@@ -11936,7 +11936,7 @@ static JSValue JS_CompactBigInt(JSContext *ctx, JSBigInt *p)
 {
     JSValue res;
     if (p->len == 1) {
-        res = __JS_NewShortBigInt(ctx, (js_slimb_t)p->tab[0]);
+        res = __JS_NewShortBigInt((js_slimb_t)p->tab[0]);
         js_free(ctx, p);
         return res;
     } else {
@@ -13638,7 +13638,7 @@ static double js_math_pow(double a, double b)
 JSValue JS_NewBigInt64(JSContext *ctx, int64_t v)
 {
     if (v >= JS_SHORT_BIG_INT_MIN && v <= JS_SHORT_BIG_INT_MAX) {
-        return __JS_NewShortBigInt(ctx, v);
+        return __JS_NewShortBigInt(v);
     } else {
         JSBigInt *p;
         p = js_bigint_new_si64(ctx, v);
@@ -13651,7 +13651,7 @@ JSValue JS_NewBigInt64(JSContext *ctx, int64_t v)
 JSValue JS_NewBigUint64(JSContext *ctx, uint64_t v)
 {
     if (v <= JS_SHORT_BIG_INT_MAX) {
-        return __JS_NewShortBigInt(ctx, v);
+        return __JS_NewShortBigInt(v);
     } else {
         JSBigInt *p;
         p = js_bigint_new_ui64(ctx, v);
@@ -13707,7 +13707,7 @@ static JSValue JS_ToBigIntFree(JSContext *ctx, JSValue val)
     case JS_TAG_FLOAT64:
         goto fail;
     case JS_TAG_BOOL:
-        val = __JS_NewShortBigInt(ctx, JS_VALUE_GET_INT(val));
+        val = __JS_NewShortBigInt(JS_VALUE_GET_INT(val));
         break;
     case JS_TAG_STRING:
         val = JS_StringToBigIntErr(ctx, val);
@@ -13822,12 +13822,12 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
             case OP_inc:
                 if (v == JS_SHORT_BIG_INT_MAX)
                     goto bigint_slow_case;
-                sp[-1] = __JS_NewShortBigInt(ctx, v + 1);
+                sp[-1] = __JS_NewShortBigInt(v + 1);
                 break;
             case OP_dec:
                 if (v == JS_SHORT_BIG_INT_MIN)
                     goto bigint_slow_case;
-                sp[-1] = __JS_NewShortBigInt(ctx, v - 1);
+                sp[-1] = __JS_NewShortBigInt(v - 1);
                 break;
             case OP_neg:
                 v = JS_VALUE_GET_SHORT_BIG_INT(op1);
@@ -13836,7 +13836,7 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
                     p1 = js_bigint_set_short(&buf1, op1);
                     goto bigint_slow_case1;
                 }
-                sp[-1] = __JS_NewShortBigInt(ctx, -v);
+                sp[-1] = __JS_NewShortBigInt(-v);
                 break;
             default:
                 abort();
@@ -13932,7 +13932,7 @@ static no_inline int js_not_slow(JSContext *ctx, JSValue *sp)
     if (JS_IsException(op1))
         goto exception;
     if (JS_VALUE_GET_TAG(op1) == JS_TAG_SHORT_BIG_INT) {
-        sp[-1] = __JS_NewShortBigInt(ctx, ~JS_VALUE_GET_SHORT_BIG_INT(op1));
+        sp[-1] = __JS_NewShortBigInt(~JS_VALUE_GET_SHORT_BIG_INT(op1));
     } else if (JS_VALUE_GET_TAG(op1) == JS_TAG_BIG_INT) {
         JSBigInt *r;
         r = js_bigint_not(ctx, JS_VALUE_GET_PTR(op1));
@@ -13988,7 +13988,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
                  v2 == -1)) {
                 goto slow_big_int;
             }
-            sp[-2] = __JS_NewShortBigInt(ctx, v1 / v2);
+            sp[-2] = __JS_NewShortBigInt(v1 / v2);
             return 0;
         case OP_mod:
             if (v2 == 0 ||
@@ -13996,7 +13996,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
                  v2 == -1)) {
                 goto slow_big_int;
             }
-            sp[-2] = __JS_NewShortBigInt(ctx, v1 % v2);
+            sp[-2] = __JS_NewShortBigInt(v1 % v2);
             return 0;
         case OP_pow:
             goto slow_big_int;
@@ -14004,7 +14004,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
             abort();
         }
         if (likely(v >= JS_SHORT_BIG_INT_MIN && v <= JS_SHORT_BIG_INT_MAX)) {
-            sp[-2] = __JS_NewShortBigInt(ctx, v);
+            sp[-2] = __JS_NewShortBigInt(v);
         } else {
             JSBigInt *r = js_bigint_new_di(ctx, v);
             if (!r)
@@ -14165,7 +14165,7 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         v2 = JS_VALUE_GET_SHORT_BIG_INT(op2);
         v = (js_sdlimb_t)v1 + (js_sdlimb_t)v2;
         if (likely(v >= JS_SHORT_BIG_INT_MIN && v <= JS_SHORT_BIG_INT_MAX)) {
-            sp[-2] = __JS_NewShortBigInt(ctx, v);
+            sp[-2] = __JS_NewShortBigInt(v);
         } else {
             JSBigInt *r = js_bigint_new_di(ctx, v);
             if (!r)
@@ -14321,7 +14321,7 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
         default:
             abort();
         }
-        sp[-2] = __JS_NewShortBigInt(ctx, v);
+        sp[-2] = __JS_NewShortBigInt(v);
         return 0;
     }
     op1 = JS_ToNumericFree(ctx, op1);
@@ -16571,7 +16571,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             pc += 4;
             BREAK;
         CASE(OP_push_bigint_i32):
-            *sp++ = __JS_NewShortBigInt(ctx, (int)get_u32(pc));
+            *sp++ = __JS_NewShortBigInt((int)get_u32(pc));
             pc += 4;
             BREAK;
         CASE(OP_push_const):
@@ -36458,7 +36458,7 @@ static JSValue JS_ReadBigInt(BCReaderState *s)
     if (len == 0) {
         /* zero case */
         bc_read_trace(s, "}\n");
-        return __JS_NewShortBigInt(s->ctx, 0);
+        return __JS_NewShortBigInt(0);
     }
     p = js_bigint_new(s->ctx, (len - 1) / (JS_LIMB_BITS / 8) + 1);
     if (!p)
@@ -53136,7 +53136,7 @@ static JSValue js_bigint_asUintN(JSContext *ctx,
         return JS_EXCEPTION;
     if (bits == 0) {
         JS_FreeValue(ctx, a);
-        res = __JS_NewShortBigInt(ctx, 0);
+        res = __JS_NewShortBigInt(0);
     } else if (JS_VALUE_GET_TAG(a) == JS_TAG_SHORT_BIG_INT) {
         /* fast case */
         if (bits >= JS_SHORT_BIG_INT_BITS) {
@@ -53151,7 +53151,7 @@ static JSValue js_bigint_asUintN(JSContext *ctx,
                 v = (int64_t)v >> shift;
             else
                 v = v >> shift;
-            res = __JS_NewShortBigInt(ctx, v);
+            res = __JS_NewShortBigInt(v);
         }
     } else {
         JSBigInt *r, *p = JS_VALUE_GET_PTR(a);

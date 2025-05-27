@@ -150,9 +150,8 @@ static inline JSValue __JS_NewFloat64(double d)
     return JS_MKVAL(JS_TAG_FLOAT64, (int)d);
 }
 
-static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
+static inline JSValue __JS_NewShortBigInt(int32_t d)
 {
-    (void)&ctx;
     return JS_MKVAL(JS_TAG_SHORT_BIG_INT, d);
 }
 
@@ -206,9 +205,8 @@ static inline JSValue __JS_NewFloat64(double d)
     return v;
 }
 
-static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
+static inline JSValue __JS_NewShortBigInt(int32_t d)
 {
-    (void)&ctx;
     return JS_MKVAL(JS_TAG_SHORT_BIG_INT, d);
 }
 
@@ -298,9 +296,8 @@ static inline JSValue __JS_NewFloat64(double d)
     return v;
 }
 
-static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int64_t d)
+static inline JSValue __JS_NewShortBigInt(int64_t d)
 {
-    (void)&ctx;
     JSValue v;
     v.tag = JS_TAG_SHORT_BIG_INT;
     v.u.short_big_int = d;
