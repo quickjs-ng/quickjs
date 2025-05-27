@@ -10296,6 +10296,13 @@ bool JS_IsWeakMap(JSValueConst val)
     return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_WEAKMAP;
 }
 
+bool JS_IsDataView(JSValueConst val)
+{
+    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
+        return false;
+    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_DATAVIEW;
+}
+
 bool JS_IsError(JSContext *ctx, JSValueConst val)
 {
     JSObject *p;
