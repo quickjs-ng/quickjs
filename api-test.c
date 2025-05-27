@@ -35,7 +35,7 @@ static void sync_call(void)
     JS_FreeValue(ctx, ret);
     assert(JS_HasException(ctx));
     JSValue e = JS_GetException(ctx);
-    assert(JS_IsUncatchableError(ctx, e));
+    assert(JS_IsUncatchableError(e));
     JS_FreeValue(ctx, e);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
@@ -68,7 +68,7 @@ static void async_call(void)
     assert(r == -1);
     assert(JS_HasException(ctx));
     JSValue e = JS_GetException(ctx);
-    assert(JS_IsUncatchableError(ctx, e));
+    assert(JS_IsUncatchableError(e));
     JS_FreeValue(ctx, e);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
