@@ -741,11 +741,11 @@ JS_EXTERN JSValue JS_GetException(JSContext *ctx);
 JS_EXTERN bool JS_HasException(JSContext *ctx);
 JS_EXTERN bool JS_IsError(JSValueConst val);
 JS_EXTERN bool JS_IsUncatchableError(JSValueConst val);
-JS_EXTERN void JS_SetUncatchableError(JSContext *ctx, JSValueConst val);
-JS_EXTERN void JS_ClearUncatchableError(JSContext *ctx, JSValueConst val);
+JS_EXTERN void JS_SetUncatchableError(JSValueConst val);
+JS_EXTERN void JS_ClearUncatchableError(JSValueConst val);
 // Shorthand for:
 //  JSValue exc = JS_GetException(ctx);
-//  JS_ClearUncatchableError(ctx, exc);
+//  JS_ClearUncatchableError(exc);
 //  JS_Throw(ctx, exc);
 JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
 JS_EXTERN JSValue JS_NewError(JSContext *ctx);

@@ -1313,7 +1313,7 @@ static JSValue js_module_ns_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
 static JSValue JS_InstantiateFunctionListItem2(JSContext *ctx, JSObject *p,
                                                JSAtom atom, void *opaque);
 
-static void js_set_uncatchable_error(JSContext *ctx, JSValueConst val,
+static void js_set_uncatchable_error(JSValueConst val,
                                      bool flag);
 
 static JSValue js_new_callsite(JSContext *ctx, JSCallSiteData *csd);
@@ -7185,7 +7185,7 @@ static JSValue JS_ThrowTypeErrorInvalidClass(JSContext *ctx, int class_id)
 static void JS_ThrowInterrupted(JSContext *ctx)
 {
     JS_ThrowInternalError(ctx, "interrupted");
-    JS_SetUncatchableError(ctx, ctx->rt->current_exception);
+    JS_SetUncatchableError(ctx->rt->current_exception);
 }
 
 static no_inline __exception int __js_poll_interrupts(JSContext *ctx)
@@ -10280,7 +10280,7 @@ bool JS_IsUncatchableError(JSValueConst val)
     return p->class_id == JS_CLASS_ERROR && p->is_uncatchable_error;
 }
 
-static void js_set_uncatchable_error(JSContext *ctx, JSValueConst val, bool flag)
+static void js_set_uncatchable_error(JSValueConst val, bool flag)
 {
     JSObject *p;
     if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
@@ -10290,19 +10290,19 @@ static void js_set_uncatchable_error(JSContext *ctx, JSValueConst val, bool flag
         p->is_uncatchable_error = flag;
 }
 
-void JS_SetUncatchableError(JSContext *ctx, JSValueConst val)
+void JS_SetUncatchableError(JSValueConst val)
 {
-    js_set_uncatchable_error(ctx, val, true);
+    js_set_uncatchable_error(val, true);
 }
 
-void JS_ClearUncatchableError(JSContext *ctx, JSValueConst val)
+void JS_ClearUncatchableError(JSValueConst val)
 {
-    js_set_uncatchable_error(ctx, val, false);
+    js_set_uncatchable_error(val, false);
 }
 
 void JS_ResetUncatchableError(JSContext *ctx)
 {
-    js_set_uncatchable_error(ctx, ctx->rt->current_exception, false);
+    js_set_uncatchable_error(ctx->rt->current_exception, false);
 }
 
 int JS_SetOpaque(JSValueConst obj, void *opaque)
