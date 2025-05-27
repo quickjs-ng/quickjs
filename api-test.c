@@ -348,7 +348,7 @@ static void promise_hook(void)
         JSValue ret = JS_Eval(ctx, "", 0, "<input>", JS_EVAL_TYPE_MODULE);
         assert(!JS_IsException(ret));
         assert(JS_IsPromise(ret));
-        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret));
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ret));
         JS_FreeValue(ctx, ret);
         assert(2 == cc[JS_PROMISE_HOOK_INIT]);
         assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
@@ -364,7 +364,7 @@ static void promise_hook(void)
         JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
         assert(!JS_IsException(ret));
         assert(JS_IsPromise(ret));
-        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ret)); // outer module promise
         JS_FreeValue(ctx, ret);
         assert(3 == cc[JS_PROMISE_HOOK_INIT]);
         assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
@@ -379,7 +379,7 @@ static void promise_hook(void)
         JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
         assert(!JS_IsException(ret));
         assert(JS_IsPromise(ret));
-        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ret)); // outer module promise
         JS_FreeValue(ctx, ret);
         assert(3 == cc[JS_PROMISE_HOOK_INIT]);
         assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
@@ -394,7 +394,7 @@ static void promise_hook(void)
         JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
         assert(!JS_IsException(ret));
         assert(JS_IsPromise(ret));
-        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ret)); // outer module promise
         JS_FreeValue(ctx, ret);
         assert(3 == cc[JS_PROMISE_HOOK_INIT]);
         assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
@@ -413,7 +413,7 @@ static void promise_hook(void)
         JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
         assert(!JS_IsException(ret));
         assert(JS_IsPromise(ret));
-        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ret)); // outer module promise
         JS_FreeValue(ctx, ret);
         assert(4 == cc[JS_PROMISE_HOOK_INIT]);
         assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
@@ -454,7 +454,7 @@ static void promise_hook(void)
         JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
         assert(!JS_IsException(ret));
         assert(JS_IsPromise(ret));
-        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, ret)); // outer module promise
+        assert(JS_PROMISE_FULFILLED == JS_PromiseState(ret)); // outer module promise
         JS_FreeValue(ctx, ret);
         assert(3 == cc[JS_PROMISE_HOOK_INIT]);
         assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);

@@ -1370,7 +1370,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
                     }
                 } else {
                     /* check that the returned promise is fulfilled */
-                    JSPromiseStateEnum state = JS_PromiseState(ctx, promise);
+                    JSPromiseStateEnum state = JS_PromiseState(promise);
                     if (state == JS_PROMISE_FULFILLED)
                         res_val = JS_UNDEFINED;
                     else if (state == JS_PROMISE_REJECTED)
@@ -2029,7 +2029,7 @@ int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
          }
          /* dump the error if the module returned an error. */
          if (is_module) {
-             JSPromiseStateEnum state = JS_PromiseState(ctx, promise);
+             JSPromiseStateEnum state = JS_PromiseState(promise);
              if (state == JS_PROMISE_REJECTED) {
                  JS_Throw(ctx, JS_PromiseResult(promise));
                  js_std_dump_error(ctx);

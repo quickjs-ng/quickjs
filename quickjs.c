@@ -29343,7 +29343,7 @@ static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
         promise = js_async_function_call(ctx, m->func_obj, JS_UNDEFINED, 0, NULL, 0);
         if (JS_IsException(promise))
             goto fail;
-        state = JS_PromiseState(ctx, promise);
+        state = JS_PromiseState(promise);
         if (state == JS_PROMISE_FULFILLED) {
             JS_FreeValue(ctx, promise);
         } else if (state == JS_PROMISE_REJECTED) {
@@ -50177,7 +50177,7 @@ typedef struct JSPromiseReactionData {
     JSValue handler;
 } JSPromiseReactionData;
 
-JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValueConst promise)
+JSPromiseStateEnum JS_PromiseState(JSValueConst promise)
 {
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)

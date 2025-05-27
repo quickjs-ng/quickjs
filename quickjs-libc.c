@@ -4486,7 +4486,7 @@ JSValue js_std_await(JSContext *ctx, JSValue obj)
     int state;
 
     for(;;) {
-        state = JS_PromiseState(ctx, obj);
+        state = JS_PromiseState(obj);
         if (state == JS_PROMISE_FULFILLED) {
             ret = JS_PromiseResult(obj);
             JS_FreeValue(ctx, obj);
