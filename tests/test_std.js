@@ -161,19 +161,16 @@ function test_os()
     assert(files.indexOf(fname) >= 0);
 
     fdate = 10000;
- 
+
     err = os.utimes(fpath, fdate, fdate);
     assert(err, 0);
 
     [st, err] = os.stat(fpath);
     assert(err, 0);
     assert(st.mode & os.S_IFMT, os.S_IFREG);
-    
+    assert(st.mtime, fdate);
 
     if (!isWin) {
-        // moved
-        assert(st.mtime, fdate);
-
         err = os.symlink(fname, link_path);
         assert(err, 0);
 
@@ -186,7 +183,6 @@ function test_os()
         assert(buf, fname);
 
         assert(os.remove(link_path) === 0);
-
     }
 
     [buf, err] = os.getcwd();
@@ -204,80 +200,6 @@ function test_os()
 
     assert(os.remove(fdir) === 0);
 }
-
-function test_os_pipe() {
-    
-    var fds, fr, fw, ab;
-    fds = os.pipe();
-//    console.log("got: " + fds[0] + " " + fds[1]);
-    fw = std.fdopen(fds[1], "w");
-    fr = std.fdopen(fds[0], "r");
-    const tstr = "this is a test\r";
-    fw.puts(tstr + "\n");
-//    fw.puts("this is slow!\r\n");
-    fw.puts("\r\n");
-    fw.flush();
-//    fw.close();
-    var barray = new Uint8Array(64);
-//    ab = fr.read(barray.buffer, 0, 64);
-//    console.log(ab);
-//    console.log(fr.getline());
-//    console.log(fr.getline());
-    ab = fr.getline();
-    assert(ab.length, tstr.length);
-    fw.close();
-    fr.close();
-};
-
-test_os_pipe();
-
-function test_win_os_exec() {
-    var ret, fds, pid, f, status;
-
-/* functionality just isn't the same in win32!
-    in fact, in MSYS the command prompt behaves differently.
-    I did manage all of this with FDS and PIDS and not handles
-    hello/r is an artifact of the getline unix emulation
-    I made the executive decision so that this isn't useless:
-        watchpid and kill should be made compatible on all systems.
-        my os.kill is just a terminateprocess call. it returns early.
-        watchpid is too fast for the kill to complete in VC + NT
-    at least we can monitor status of a script and execute programs.
-*/
-    ret = os.exec(["smeegul desgpglam golum"]);
-    assert(ret, 1);
-
-    ret = os.exec(["echo test 0"]);
-    assert(ret, 0);
-
-    ret = os.exec(["cmd.exe", "/c", "exit 2"], { usePath: false });
-    assert(ret, 2);
-
-    fds = os.pipe();
-    pid = os.exec(["echo %FOO%"], {
-        stdout: fds[1],
-        block: false,
-        env: { FOO: "hello" },
-    } );
-    assert(pid >= 0);
-    os.close(fds[1]); /* close the write end (as it is only in the child)  */
-    f = std.fdopen(fds[0], "r");
-    var gl = f.getline();
-    assert(gl, "hello\r");
-    assert(f.getline(), null);
-    f.close();
-    ret = os.watchpid(pid, 1);
-    assert(ret, pid);
-    pid = os.exec(["cat"], { block: false } );
-    assert(pid >= 0);
-    os.kill(pid, os.SIGTERM);
-    os.sleep(1);
-    ret = os.watchpid(pid, 0);
-    assert(ret, pid); 
-    // notes from before......
-    // Flaky on cygwin for unclear reasons, see
-    // https://github.com/quickjs-ng/quickjs/issues/184
-};
 
 function test_os_exec()
 {
@@ -301,22 +223,14 @@ function test_os_exec()
     assert(f.getline(), "hello");
     assert(f.getline(), null);
     f.close();
-    /*
     [ret, status] = os.waitpid(pid, 0);
     assert(ret, pid);
     assert(status & 0x7f, 0); /* exited */
-    //assert(status >> 8, 0); /* exit code */
-
-    // added to test watchpid (for win32 compatible code)
-    ret = os.watchpid(pid, 1);
-    assert(ret, pid);
+    assert(status >> 8, 0); /* exit code */
 
     pid = os.exec(["cat"], { block: false } );
-    ret = os.watchpid(pid, 0);
-    assert(ret, 0);
     assert(pid >= 0);
     os.kill(pid, os.SIGTERM);
-    //os.sleep(1);
     [ret, status] = os.waitpid(pid, 0);
     assert(ret, pid);
     // Flaky on cygwin for unclear reasons, see
@@ -379,8 +293,7 @@ test_file2();
 test_getline();
 test_popen();
 test_os();
-if (!isWin) test_os_exec();
-else test_win_os_exec();
+!isWin && test_os_exec();
 test_interval();
 test_timeout();
 test_timeout_order();
