@@ -1034,6 +1034,14 @@ typedef struct {
     bool is_popen;
 } JSSTDFile;
 
+#if defined(__MINGW32__) || defined(__MINGW64__)
+typedef struct {
+    FILE *f;
+    int is_kind; 
+    char filename[64];
+} JSTMPFile;
+#endif
+
 static bool is_stdio(FILE *f)
 {
     return f == stdin || f == stdout || f == stderr;
@@ -1044,7 +1052,15 @@ static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
     JSThreadState *ts = js_get_thread_state(rt);
     JSSTDFile *s = JS_GetOpaque(val, ts->std_file_class_id);
     if (s) {
+#if defined(__MINGW32__) || defined(__MINGW64__)
+        JSTMPFile *ss = (JSTMPFile*) s;
+        if (ss->is_kind==2) {
+            if (ss->f) fclose(ss->f);
+            if (ss->filename[0] != 0) remove(ss->filename);
+        } else if (s->f && !is_stdio(s->f)) {
+#else
         if (s->f && !is_stdio(s->f)) {
+#endif
 #if !defined(__wasi__)
             if (s->is_popen)
                 pclose(s->f);
@@ -1207,6 +1223,62 @@ static JSValue js_std_fdopen(JSContext *ctx, JSValueConst this_val,
 }
 
 #if !defined(__wasi__)
+#if defined(__MINGW32__) || defined(__MINGW64__)
+// c:/tmp no longer works in windows. c:/ doesn't work. permissions!
+static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSTMPFile *s;
+    JSValue obj;
+    obj = JS_NewObjectClass(ctx, ts->std_file_class_id);
+    if (JS_IsException(obj))
+        return obj;
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+
+    char * env = getenv("TMP");
+    if (!env) env = getenv("TEMP");
+    int i = 0;
+    if (env) {
+        while (env[i]) {
+            s->filename[i] = env[i];
+            i++;
+            if (i > 50) return JS_NULL;
+        };
+    };
+    char* fname = &s->filename[i];
+    char* templ = "\\qXXXXXXX";
+    while (templ[0]) {
+        fname[0] = templ[0];
+        fname++; templ++;
+    };
+    fname[0] = 0;
+    int mkf = mkstemp(s->filename);
+    if (mkf == -1) {    
+        JS_FreeValue(ctx, obj);
+        js_free(ctx, s);
+        return JS_NULL;    
+    };
+    int fd = dup(mkf);
+    s->f = fdopen( fd, "a+");
+    close(mkf);
+    if (argc >= 1) js_set_error_object(ctx, argv[0], s->f ? 0 : errno);
+    if (!s->f) {
+        JS_FreeValue(ctx, obj);
+        js_free(ctx, s);
+        return JS_NULL;
+    };
+    
+    s->is_kind = 2;
+    JS_SetOpaque(obj, s);
+    return obj;
+}
+#else
 static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -1218,7 +1290,8 @@ static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
         return JS_NULL;
     return js_new_std_file(ctx, f, false);
 }
-#endif
+#endif // _WIN32
+#endif // !defined(__wasi__)
 
 static JSValue js_std_sprintf(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
@@ -3057,7 +3130,20 @@ static JSValue js_os_realpath(JSContext *ctx, JSValueConst this_val,
 }
 #endif
 
-#if !defined(_WIN32) && !defined(__wasi__)
+/* start of mods - windows versions
+js_os_symlink - now includes _WIN32
+js_os_pipe - now includes _WIN32 (fd version)
+js_os_exec - now includes _WIN32
+    -build_ms_envp - _WIN32 only ( one large double-nulled string, no array )
+js_watchpid - linux and _WIN32, hybrid function to do the wait, no status
+js_os_kill - now includes _WIN32 (just a kill on pid, no signals)
+js_std_tmpfile new _WIN32 version. permissions fail these days. 
+    -std file finalizer - added remove tmpfile on delete
+
+verified with test_std.js modifications.
+//#if !defined(_WIN32) && !defined(__wasi__)
+*/
+#if !defined(__wasi__) 
 static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -3072,12 +3158,92 @@ static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
         JS_FreeCString(ctx, target);
         return JS_EXCEPTION;
     }
+#ifdef _WIN32
+    int isdir = 0; // might need to pass a value in for folders.
+    if (argc >=2) {
+         if (JS_ToInt32(ctx, &isdir, argv[2])) return JS_EXCEPTION;
+    };
+    err =  CreateSymbolicLinkA(linkpath, target, ( isdir | 2 ) ) ;
+    if (!err) err = GetLastError();
+    else err = 0;
+#else
     err = js_get_errno(symlink(target, linkpath));
+#endif
     JS_FreeCString(ctx, target);
     JS_FreeCString(ctx, linkpath);
     return JS_NewInt32(ctx, err);
 }
 
+#endif
+
+#if defined(_WIN32)
+#define MS_ENVP_BUFFSIZE 8192
+static char *build_ms_envp(JSContext *ctx, JSValue obj)
+{
+    uint32_t len, i;
+    JSPropertyEnum *tab;
+    char *envp, *pair;
+    const char *key, *str;
+    JSValue val;
+    size_t key_len, str_len;
+
+    if (JS_GetOwnPropertyNames(ctx, &tab, &len, obj,
+                               JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
+        return NULL;
+    envp = js_mallocz(ctx,MS_ENVP_BUFFSIZE);
+    pair = envp;
+    if (!envp) goto fail;
+    for(i = 0; i < len; i++) {
+        val = JS_GetProperty(ctx, obj, tab[i].atom);
+        if (JS_IsException(val))
+            goto fail;
+        str = JS_ToCString(ctx, val);
+        JS_FreeValue(ctx, val);
+        if (!str) goto fail;
+        key = JS_AtomToCString(ctx, tab[i].atom);
+        if (!key) {
+            JS_FreeCString(ctx, str);
+            goto fail;
+        }
+        key_len = strlen(key);
+        str_len = strlen(str);
+        /* parallel to build_envp for comparison
+        pair = js_malloc(ctx, key_len + str_len + 2);
+        if (!pair) {
+            JS_FreeCString(ctx, key);
+            JS_FreeCString(ctx, str);
+            goto fail;
+        }*/
+        memcpy(pair, key, key_len);
+        pair += key_len;
+        pair[0] = '='; pair++;
+        memcpy(pair, str, str_len);
+        pair += str_len;
+        pair[0] = '\0';
+        pair++;
+        //envp[i] = pair;
+        JS_FreeCString(ctx, key);
+        JS_FreeCString(ctx, str);
+    }
+    pair[0] = '\0';
+ end:
+    for(i = 0; i < len; i++)
+        JS_FreeAtom(ctx, tab[i].atom);
+    js_free(ctx, tab);
+    return envp;
+ fail:
+    if (envp) {
+        //for(i = 0; i < len; i++) js_free(ctx, envp[i]);
+        js_free(ctx, envp);
+        envp = NULL;
+    }
+    goto end;
+
+};
+
+#endif
+
+#if !defined(_WIN32) && !defined(__wasi__)
 /* return [path, errorcode] */
 static JSValue js_os_readlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
@@ -3230,19 +3396,32 @@ static void js_os_exec_once_init(void)
 
 #endif
 
+#endif // !_WIN32  !__wasi__
+
+
+#if !defined(__wasi__)
+
 /* exec(args[, options]) -> exitcode */
+#define OS_EXEC_CMD_BUFFSIZE 2048
 static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                           int argc, JSValueConst *argv)
 {
     JSValueConst options, args = argv[0];
     JSValue val, ret_val;
-    const char **exec_argv, *file = NULL, *str, *cwd = NULL;
-    char **envp = environ;
+    const char *file = NULL, *str, *cwd = NULL;
     uint32_t exec_argc, i;
-    int ret, pid, status;
-    bool block_flag = true, use_path = true;
+    int ret, pid;
+    bool block_flag = true, use_path = true, specified_fd = false;
     static const char *std_name[3] = { "stdin", "stdout", "stderr" };
     int std_fds[3];
+#ifdef _WIN32
+    char cmdbuff [OS_EXEC_CMD_BUFFSIZE];
+    int cmdi;
+    char *envp = 0;
+#else
+    char **envp = environ;
+    const char **exec_argv;
+    int status;
     uint32_t uid = -1, gid = -1;
     int ngroups = -1;
     gid_t groups[64];
@@ -3272,6 +3451,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         exec_argv[i] = str;
     }
     exec_argv[exec_argc] = NULL;
+#endif
 
     for(i = 0; i < 3; i++)
         std_fds[i] = i;
@@ -3317,9 +3497,11 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                 if (ret)
                     goto exception;
                 std_fds[i] = fd;
+                specified_fd = true;
             }
         }
 
+#ifndef _WIN32
         val = JS_GetPropertyStr(ctx, options, "env");
         if (JS_IsException(val))
             goto exception;
@@ -3329,7 +3511,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (!envp)
                 goto exception;
         }
-
+        
         val = JS_GetPropertyStr(ctx, options, "uid");
         if (JS_IsException(val))
             goto exception;
@@ -3339,7 +3521,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (ret)
                 goto exception;
         }
-
+        
         val = JS_GetPropertyStr(ctx, options, "gid");
         if (JS_IsException(val))
             goto exception;
@@ -3382,10 +3564,177 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (idx < len)
                 goto exception;
         }
+        
+    }
+#else
+        val = JS_GetPropertyStr(ctx, options, "env");
+        if (JS_IsException(val))
+            goto exception;
+        if (!JS_IsUndefined(val)) {
+            envp = build_ms_envp(ctx, val);
+            JS_FreeValue(ctx, val);
+            if (!envp)
+                goto exception;
+        }
+        
 
     }
+        
+    cmdi = 0; int cmdsl;
+    if (cwd) {
+        cmdsl = strlen(cwd);
+        if (cmdsl) {
+            strncpy(&cmdbuff[cmdi], cwd, cmdsl);
+            cmdi += cmdsl;
+        };
+    };
+    if (file) {
+        cmdsl = strlen(file);
+        if (cmdsl) {
+            strncpy(&cmdbuff[cmdi], file, cmdsl);
+            cmdi += cmdsl;
+            cmdbuff[cmdi] = '"';
+            cmdi++;
+        };
+#define WIN32_OS_EXEC_OPTION1
+#define WIN32_OS_EXEC_WATCHING
+// still playing with cwd + file combinations
+#ifdef WIN32_OS_EXEC_OPTION1
+    }  else {
+        strncpy(&cmdbuff[cmdi], "cmd.exe /c \"", 12);
+        cmdi += 12;
+#endif
+    };
 
-#if !defined(EMSCRIPTEN) && !defined(__wasi__)
+   val = JS_GetPropertyStr(ctx, args, "length");
+    if (JS_IsException(val))  goto exception;
+    ret = JS_ToUint32(ctx, &exec_argc, val);
+    JS_FreeValue(ctx, val);
+    if (ret)  goto exception;
+    /* arbitrary limit to avoid overflow */
+    if (exec_argc < 1 || exec_argc > 65535) {   
+        JS_ThrowTypeError(ctx, "invalid number of arguments");
+        goto exception;
+    }
+    for(i = 0; i < exec_argc; i++) {
+        val = JS_GetPropertyUint32(ctx, args, i);
+        if (JS_IsException(val)) goto exception;
+        str = JS_ToCString(ctx, val);
+        JS_FreeValue(ctx, val);
+        if (!str)  goto exception;
+        cmdsl = strlen(str);
+        if (cmdsl) {
+#ifdef WIN32_OS_EXEC_OPTION1
+            if ((file) || (i != 0)) {
+#else
+            if (true) {
+#endif
+                if (OS_EXEC_CMD_BUFFSIZE < (cmdi + cmdsl)) {
+                    JS_ThrowRangeError(ctx, "exec command line too long.");
+                    goto exception;
+                };
+                cmdbuff[cmdi] = ' ';
+                cmdi++;
+            };
+            strncpy(&cmdbuff[cmdi], str, cmdsl);
+            cmdi += cmdsl;
+        };
+        
+    }
+    cmdbuff[cmdi] = '"';
+    cmdi++;
+    cmdbuff[cmdi] = 0;
+#ifdef WIN32_OS_EXEC_WORKING
+    printf("path to exec: \"%s\"\r\n", cmdbuff);
+#endif
+#endif //_WIN32
+
+#ifdef _WIN32
+    STARTUPINFO istart;
+    PROCESS_INFORMATION iproc;  
+    // memset was absolutely necessary. I kept getting deeper system crashes
+    memset(&iproc, 0, sizeof(iproc));
+    memset(&istart, 0, sizeof(istart) );
+    istart.cb = sizeof(istart);
+
+      if (specified_fd) { // this is also something worth tinkering with
+        istart.dwFlags = STARTF_USESTDHANDLES;
+      };
+      
+        istart.hStdInput = (HANDLE) _get_osfhandle( std_fds[0] );
+        if (istart.hStdInput == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stdin of process");
+            goto exception;
+        };
+        istart.hStdOutput = (HANDLE) _get_osfhandle( std_fds[1] );
+        if (istart.hStdOutput == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stdout of process");
+            goto exception;
+        };
+        istart.hStdError = (HANDLE) _get_osfhandle( std_fds[2] );
+        if (istart.hStdError == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stderr of process");
+            goto exception;
+        };
+/*       
+      printf("using handles %" PRIx64 " from %d, %"  PRIx64 " from %d, %"  PRIx64 " from %d\r\n", 
+        (int64_t) istart.hStdInput, std_fds[0], (int64_t) istart.hStdOutput, std_fds[1],
+       (int64_t) istart.hStdError, std_fds[2]);
+
+BOOL CreateProcessA(
+  [in, optional]      LPCSTR                lpApplicationName,
+  [in, out, optional] LPSTR                 lpCommandLine,
+  [in, optional]      LPSECURITY_ATTRIBUTES lpProcessAttributes,
+  [in, optional]      LPSECURITY_ATTRIBUTES lpThreadAttributes,
+  [in]                BOOL                  bInheritHandles,
+  [in]                DWORD                 dwCreationFlags,
+  [in, optional]      LPVOID                lpEnvironment,
+  [in, optional]      LPCSTR                lpCurrentDirectory,
+  [in]                LPSTARTUPINFOA        lpStartupInfo,
+  [out]               LPPROCESS_INFORMATION lpProcessInformation
+);*/
+
+    int cflags = NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW; // prevents output on stdout
+
+   // seems like inherithandles and environ crash the return value if not perfect!
+   // we may also need to sim a cmd.exe chdir and a manual push with a cwd .... 
+   if (!CreateProcessA(0, cmdbuff, 0, 0, true, cflags, envp, 0, &istart, &iproc) )
+    {
+        int e = GetLastError();
+        JS_ThrowInternalError(ctx, "failed to start process with error: %d", e);
+        goto exception;
+    };
+    
+    int32_t excode = 0;
+    pid = iproc.dwProcessId; 
+    HANDLE phandle = iproc.hProcess;
+    HANDLE thandle = iproc.hThread;
+        int besafe = 0;
+    if (block_flag) {
+        for(;;) {
+            int dwait = WaitForSingleObject(phandle, INFINITE);        
+            if (dwait == WAIT_OBJECT_0) {
+                GetExitCodeProcess (phandle, (DWORD*) &excode);
+                ret_val = JS_NewInt32(ctx, (int32_t) excode);
+                excode = GetLastError();
+                break;
+            } else {
+                besafe++; if (besafe==20) {
+                    JS_ThrowPlainError(ctx, "exec process did not complete.");
+                    goto exception;
+                };
+            };
+        };
+        CloseHandle(phandle);
+        CloseHandle(thandle);
+     } else {
+        excode = (int32_t) iproc.dwProcessId;
+        ret_val = JS_NewInt32(ctx, excode); //(int64_t) phandle);
+    }
+    
+#else // _WIN32
+
+#if !defined(EMSCRIPTEN) && !defined(__wasi__) 
     // should happen pre-fork because it calls dlsym()
     // and that's not an async-signal-safe function
     js_once(&js_os_exec_once, js_os_exec_once_init);
@@ -3457,9 +3806,11 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         ret = pid;
     }
     ret_val = JS_NewInt32(ctx, ret);
+#endif // !_WIN32
  done:
     JS_FreeCString(ctx, file);
     JS_FreeCString(ctx, cwd);
+#ifndef _WIN32
     for(i = 0; i < exec_argc; i++)
         JS_FreeCString(ctx, exec_argv[i]);
     js_free(ctx, exec_argv);
@@ -3473,10 +3824,115 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         js_free(ctx, envp);
     }
     return ret_val;
+#else
+    if (envp) js_free(ctx, envp);
+    return ret_val;
+#endif
  exception:
     ret_val = JS_EXCEPTION;
     goto done;
 }
+#endif
+
+#ifdef _WIN32    
+/* pipe() -> [read_fd, write_fd] or null if error */
+static JSValue js_os_pipe(JSContext *ctx, JSValueConst this_val,
+                          int argc, JSValueConst *argv)
+{
+    int pipe_fds[2], ret;
+    JSValue obj;
+#ifdef _WIN32
+#define PIPE_BUFFSIZE 4096
+#define WIN_PIPE_SPECIALFLAGS 0
+#define WIN_OS_PIPE_USE_FDS
+    HANDLE pipe_handles[2];
+    struct _SECURITY_ATTRIBUTES secur;
+    secur.nLength = sizeof(secur);
+    secur.lpSecurityDescriptor = 0;
+    secur.bInheritHandle = true;
+    ret = CreatePipe(&pipe_handles[0], &pipe_handles[1], &secur, PIPE_BUFFSIZE);
+    if (ret == 0) return JS_NULL;
+#ifdef WIN_OS_PIPE_USE_FDS
+    pipe_fds[0] = _open_osfhandle( (intptr_t) pipe_handles[0], WIN_PIPE_SPECIALFLAGS );
+    if (pipe_fds[0] == -1 ) {
+        CloseHandle(pipe_handles[0]);
+        return JS_NULL;
+    };
+    pipe_fds[1] = _open_osfhandle( (intptr_t) pipe_handles[1], WIN_PIPE_SPECIALFLAGS );
+    if (pipe_fds[1] == -1 ) {
+        CloseHandle(pipe_handles[1]);
+        return JS_NULL;
+    };    
+#else
+    pipe_fds[0] = pipe_handles[0];
+    pipe_fds[1] = pipe_handles[1];
+#endif // WIN_OS_PIPE_USE_FDS
+#else
+    ret = pipe(pipe_fds);
+    if (ret < 0) return JS_NULL;
+#endif // _WIN32
+    obj = JS_NewArray(ctx);
+    if (JS_IsException(obj))
+        return obj;
+    JS_DefinePropertyValueUint32(ctx, obj, 0, JS_NewInt32(ctx, pipe_fds[0]),
+                                 JS_PROP_C_W_E);
+    JS_DefinePropertyValueUint32(ctx, obj, 1, JS_NewInt32(ctx, pipe_fds[1]),
+                                 JS_PROP_C_W_E);
+    return obj;
+}
+
+/* kill(pid, sig) */
+static JSValue js_os_kill(JSContext *ctx, JSValueConst this_val,
+                          int argc, JSValueConst *argv)
+{
+    int pid;
+    HANDLE ph;
+    DWORD flags = PROCESS_TERMINATE;
+    if (JS_ToInt32(ctx, &pid, argv[0]))
+        return JS_EXCEPTION;
+    ph = OpenProcess(flags, false, (DWORD) pid); 
+    if (!ph) return JS_NewInt32(ctx, GetLastError());
+    if (TerminateProcess(ph, 0)) return JS_NULL;
+    int err = GetLastError();
+    return JS_NewInt32(ctx,err);
+}
+
+/* watchpid(pid, blocking) -> -error/0= is still waiting/pid = complete */
+static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    int pid;
+    HANDLE ph;
+    int block = 0, ret; 
+    DWORD options = 0, flags = PROCESS_QUERY_INFORMATION | SYNCHRONIZE;
+    if (JS_ToInt32(ctx, &pid, argv[0])) return JS_EXCEPTION;
+    if ((argc > 1) && (JS_ToInt32(ctx, &block, argv[1]))) return JS_EXCEPTION;
+    if (block==1) options = INFINITE;
+    ph = OpenProcess(flags, false, (DWORD) pid);
+    if (!ph) return JS_NewInt32(ctx, -GetLastError());
+    ret = WaitForSingleObject((HANDLE) ph, options);
+    if (ret == WAIT_TIMEOUT) return JS_NewInt32(ctx, 0); // timed out
+    if (ret != 0) return JS_NewInt32(ctx, -GetLastError());
+    return JS_NewInt32(ctx, pid);
+}
+#else    
+/* watchpid(pid, blocking) -> -error/0= is still waiting/pid = complete */
+static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    int pid, status, block = 0, options = 0, ret;
+    if (JS_ToInt32(ctx, &pid, argv[0])) return JS_EXCEPTION;
+    if ((argc > 1) && (JS_ToInt32(ctx, &block, argv[1]))) return JS_EXCEPTION;
+    if (!block) options = WNOHANG;
+    ret = waitpid(pid, &status, options);
+    if (ret == 0) return JS_NewInt32(ctx, 0);
+    if (ret==pid) return JS_NewInt32(ctx, pid);
+    return JS_NewInt32(ctx, -errno);
+}
+#endif
+
+
+#if !defined(_WIN32) && !defined(__wasi__)
 
 /* getpid() -> pid */
 static JSValue js_os_getpid(JSContext *ctx, JSValueConst this_val,
@@ -4113,17 +4569,18 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("sleep", 1, js_os_sleep ),
 #if !defined(__wasi__)
     JS_CFUNC_DEF("realpath", 1, js_os_realpath ),
+    JS_CFUNC_DEF("symlink", 3, js_os_symlink ),
+    JS_CFUNC_DEF("pipe", 0, js_os_pipe ),
+    JS_CFUNC_DEF("exec", 1, js_os_exec ),
+    JS_CFUNC_DEF("watchpid", 2, js_os_watchpid ),
+    JS_CFUNC_DEF("kill", 2, js_os_kill ),
 #endif
 #if !defined(_WIN32) && !defined(__wasi__)
     JS_CFUNC_MAGIC_DEF("lstat", 1, js_os_stat, 1 ),
-    JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
     JS_CFUNC_DEF("readlink", 1, js_os_readlink ),
-    JS_CFUNC_DEF("exec", 1, js_os_exec ),
     JS_CFUNC_DEF("getpid", 0, js_os_getpid ),
     JS_CFUNC_DEF("waitpid", 2, js_os_waitpid ),
     OS_FLAG(WNOHANG),
-    JS_CFUNC_DEF("pipe", 0, js_os_pipe ),
-    JS_CFUNC_DEF("kill", 2, js_os_kill ),
     JS_CFUNC_DEF("dup", 1, js_os_dup ),
     JS_CFUNC_DEF("dup2", 2, js_os_dup2 ),
 #endif
