@@ -8,7 +8,7 @@ const isCygwin = os.platform === 'cygwin';
 function test_win_os_exec() {
     var ret, fds, pid, f, status;
 
-    ret = os.exec(["smeegul desgpglam golum"]);
+    ret = os.exec(["bad command or filename @@"]);
     assert(ret, 1);
 
     ret = os.exec(["echo test 0"]);
@@ -26,25 +26,46 @@ function test_win_os_exec() {
     assert(pid >= 0);
     os.close(fds[1]); 
     f = std.fdopen(fds[0], "r");
-    var gl = f.getline();
-    /* artifact of windows to c compatibility between getline and cmd.exe echo*/
-    assert(gl, "hello\r");
+
+    /* \r artifact of windows compatibility between getline and cmd.exe echo*/
+    assert(f.getline(), "hello\r");
     assert(f.getline(), null);
     f.close();
-    /* I created watchpid to at least notify if the PID is complete cross-compatibly.
+    /* I created watchpid to cross-compatibly notify if the PID is complete.
        There's no windows equivalent of waitpid, and windows would prefer Handles.
        watchpid returns negative error || 0 if still waiting || pid if complete. 
-       watchpid returns no status. specify 1 in the 2nd param for blocking */
+       watchpid returns no status. specify 1 in the 2nd param for blocking 
+       watchpid(p,0) == waitpid(p, WNOHANG), watchpid(p,1) == waitpid(p,0) */
     ret = os.watchpid(pid, 1);
     assert(ret, pid);
+
     pid = os.exec(["cat"], { block: false } );
     assert(pid >= 0);
-    /* Just does TerminateProcess. There's no signal. 
-       Windows does signal pid groups and that takes research. */
+    /* os.kill Just does TerminateProcess. There's no signal control in win32. 
+       Windows does signal pid groups and killing a group requires research. */
+    ret = os.watchpid(pid, 0);
+    assert(ret, 0);
     os.kill(pid, os.SIGTERM);
     os.sleep(1);
     ret = os.watchpid(pid, 0);
     assert(ret, pid); 
+
+    pid = os.exec([os.exePath(),"-q"], { block: true } );
+    assert(pid, 0);
+
+    fds = os.pipe();
+    pid = os.exec([os.exePath(),"thereisno.js"], { 
+        block: true,
+        stderr: fds[1],
+    } );
+    assert(pid, 1); 
+    os.close(fds[1]); 
+    f = std.fdopen(fds[0], "r");
+
+    assert(f.getline(), "thereisno.js: No such file or directory\r");
+    assert(f.getline(), null);
+    f.close();
+
 };
 
 function test_os_exec()
@@ -75,7 +96,10 @@ function test_os_exec()
     assert(status >> 8, 0); /* exit code */
 
     pid = os.exec(["cat"], { block: false } );
-    assert(pid >= 0);
+    assert(pid >= 0)
+    /* watchpid(p,0) == waitpid(p, WNOHANG), watchpid(p,1) == waitpid(p,0) */
+    ret = os.watchpid(pid, 0);
+    assert(ret, 0);
     os.kill(pid, os.SIGTERM);
     [ret, status] = os.waitpid(pid, 0);
     assert(ret, pid);
@@ -84,8 +108,23 @@ function test_os_exec()
     if (!isCygwin) {
         assert(status & 0x7f, os.SIGTERM);
     }
-}
 
+    pid = os.exec([os.exePath(),"-q"], { block: true } );
+    assert(pid, 0);
+
+    fds = os.pipe();
+    pid = os.exec([os.exePath(),"thereisno.js"], { 
+        block: true,
+        stderr: fds[1],
+    } );
+    assert(pid, 1); 
+    os.close(fds[1]); 
+    f = std.fdopen(fds[0], "r");
+    assert(f.getline(), "thereisno.js: No such file or directory");
+    assert(f.getline(), null);
+    f.close();
+
+}
 
 if (!isWin) test_os_exec();
 else test_win_os_exec();
