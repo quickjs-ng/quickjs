@@ -1034,6 +1034,15 @@ typedef struct {
     bool is_popen;
 } JSSTDFile;
 
+#if defined(__MINGW32__) || defined(__MINGW64__)
+typedef struct {
+    FILE *f;
+    int is_kind; 
+    char filename[64];
+} JSTMPFile;
+#endif
+
+
 static bool is_stdio(FILE *f)
 {
     return f == stdin || f == stdout || f == stderr;
@@ -1044,17 +1053,26 @@ static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
     JSThreadState *ts = js_get_thread_state(rt);
     JSSTDFile *s = JS_GetOpaque(val, ts->std_file_class_id);
     if (s) {
+#if defined(__MINGW32__) || defined(__MINGW64__)
+        JSTMPFile *ss = (JSTMPFile*) s;
+        if (ss->is_kind==2) {
+            if (ss->f) fclose(ss->f);
+            if (ss->filename[0] != 0) remove(ss->filename);
+        } else if (s->f && !is_stdio(s->f)) {
+#else
         if (s->f && !is_stdio(s->f)) {
+#endif
 #if !defined(__wasi__)
             if (s->is_popen)
                 pclose(s->f);
             else
 #endif
                 fclose(s->f);
+            
         }
         js_free_rt(rt, s);
-    }
-}
+    };
+};
 
 static ssize_t js_get_errno(ssize_t ret)
 {
@@ -1207,6 +1225,62 @@ static JSValue js_std_fdopen(JSContext *ctx, JSValueConst this_val,
 }
 
 #if !defined(__wasi__)
+#if defined(__MINGW32__) || defined(__MINGW64__)
+// c:/tmp no longer works in windows. c:/ doesn't work. permissions!
+static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSTMPFile *s;
+    JSValue obj;
+    obj = JS_NewObjectClass(ctx, ts->std_file_class_id);
+    if (JS_IsException(obj))
+        return obj;
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+
+    char * env = getenv("TMP");
+    if (!env) env = getenv("TEMP");
+    int i = 0;
+    if (env) {
+        while (env[i]) {
+            s->filename[i] = env[i];
+            i++;
+            if (i > 50) return JS_NULL;
+        };
+    };
+    char* fname = &s->filename[i];
+    char* templ = "\\qXXXXXXX";
+    while (templ[0]) {
+        fname[0] = templ[0];
+        fname++; templ++;
+    };
+    fname[0] = 0;
+    int mkf = mkstemp(s->filename);
+    if (mkf == -1) {    
+        JS_FreeValue(ctx, obj);
+        js_free(ctx, s);
+        return JS_NULL;    
+    };
+    int fd = dup(mkf);
+    s->f = fdopen( fd, "a+");
+    close(mkf);
+    if (argc >= 1) js_set_error_object(ctx, argv[0], s->f ? 0 : errno);
+    if (!s->f) {
+        JS_FreeValue(ctx, obj);
+        js_free(ctx, s);
+        return JS_NULL;
+    };
+    
+    s->is_kind = 2;
+    JS_SetOpaque(obj, s);
+    return obj;
+}
+#else // MINGW
 static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -1218,7 +1292,8 @@ static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
         return JS_NULL;
     return js_new_std_file(ctx, f, false);
 }
-#endif
+#endif // !MINGW
+#endif // WASI
 
 static JSValue js_std_sprintf(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
@@ -3055,9 +3130,7 @@ static JSValue js_os_realpath(JSContext *ctx, JSValueConst this_val,
     }
     return make_string_error(ctx, buf, err);
 }
-#endif
 
-#if !defined(_WIN32) && !defined(__wasi__)
 static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -3072,12 +3145,27 @@ static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
         JS_FreeCString(ctx, target);
         return JS_EXCEPTION;
     }
+#ifdef _WIN32
+    int isdirflag = 0; // might need to pass a value in for folders.
+    if (argc > 2) {
+         if (JS_ToInt32(ctx, &isdirflag, argv[2])) return JS_EXCEPTION;
+    };
+    printf("symbolic link: %s -> %s; isdir: %d", target, linkpath, isdirflag); 
+    // 2 = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+    err =  CreateSymbolicLinkA(linkpath, target, ( isdirflag | 2 ) ) ; 
+    printf(" returned %d\r\n", err);
+    if (!err) err = GetLastError();
+    else err = 0;
+#else
     err = js_get_errno(symlink(target, linkpath));
+#endif
     JS_FreeCString(ctx, target);
     JS_FreeCString(ctx, linkpath);
     return JS_NewInt32(ctx, err);
 }
+#endif
 
+#if !defined(_WIN32) && !defined(__wasi__)
 /* return [path, errorcode] */
 static JSValue js_os_readlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
@@ -4113,10 +4201,10 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("sleep", 1, js_os_sleep ),
 #if !defined(__wasi__)
     JS_CFUNC_DEF("realpath", 1, js_os_realpath ),
+    JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
 #endif
 #if !defined(_WIN32) && !defined(__wasi__)
     JS_CFUNC_MAGIC_DEF("lstat", 1, js_os_stat, 1 ),
-    JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
     JS_CFUNC_DEF("readlink", 1, js_os_readlink ),
     JS_CFUNC_DEF("exec", 1, js_os_exec ),
     JS_CFUNC_DEF("getpid", 0, js_os_getpid ),
