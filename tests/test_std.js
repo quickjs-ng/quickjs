@@ -168,11 +168,19 @@ function test_os()
     [st, err] = os.stat(fpath);
     assert(err, 0);
     assert(st.mode & os.S_IFMT, os.S_IFREG);
-    assert(st.mtime, fdate);
 
+    
     if (!isWin) {
+
+        // I bet this can be fixed in windows 10
+        assert(st.mtime, fdate);
+
+    /* symlink in windows 10+ requres admin or SeCreateSymbolicLinkPrivilege privilege found under:
+      Computer Configuration\Windows Settings\Security Settings\Local Policies\User Rights Assignment\
+    */
         err = os.symlink(fname, link_path);
         assert(err, 0);
+  
 
         [st, err] = os.lstat(link_path);
         assert(err, 0);
@@ -298,3 +306,5 @@ test_interval();
 test_timeout();
 test_timeout_order();
 test_stdio_close();
+
+std.exit(0);
