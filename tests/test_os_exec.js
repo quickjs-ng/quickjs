@@ -27,15 +27,14 @@ function test_win_os_exec() {
     os.close(fds[1]); 
     f = std.fdopen(fds[0], "r");
     var gl = f.getline();
-    /* artifact of windows to c compatibility. 
-       may could change the code for getline, but that's a can of worms.
-       such a thing would require detecting /r and trimming every time. */
+    /* artifact of windows to c compatibility between getline and cmd.exe echo*/
     assert(gl, "hello\r");
     assert(f.getline(), null);
     f.close();
-    /* I invented watchpid to at least notify if the PID is complete.
-       There's no windows equivalent, and windows would prefer Handles.
-       At least a user can script basic tasks with this asynchronously */
+    /* I created watchpid to at least notify if the PID is complete cross-compatibly.
+       There's no windows equivalent of waitpid, and windows would prefer Handles.
+       watchpid returns negative error || 0 if still waiting || pid if complete. 
+       watchpid returns no status. specify 1 in the 2nd param for blocking */
     ret = os.watchpid(pid, 1);
     assert(ret, pid);
     pid = os.exec(["cat"], { block: false } );
