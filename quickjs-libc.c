@@ -3504,9 +3504,6 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         };   
     }
     cmdbuff[cmdi] = 0;
-#ifdef WIN32_OS_EXEC_WORKING
-    printf("path to exec: [%s] path:[%s]\r\n", cmdbuff, cwd);
-#endif // working
 
 #endif // WIN32
 
@@ -3518,10 +3515,9 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     memset(&istart, 0, sizeof(istart) );
     istart.cb = sizeof(istart);
 
-      if (specified_fd) { // this is also something worth tinkering with
+    if (specified_fd) { // this is also something worth tinkering with
         istart.dwFlags = STARTF_USESTDHANDLES;
-      //};
-      
+         
         istart.hStdInput = (HANDLE) _get_osfhandle( std_fds[0] );
         if (istart.hStdInput == INVALID_HANDLE_VALUE) {
             JS_ThrowInternalError(ctx, "failed to associate stdin of process");
@@ -3537,13 +3533,8 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             JS_ThrowInternalError(ctx, "failed to associate stderr of process");
             goto exception;
         };
-      // */
     };
-/*       
-      printf("using handles %" PRIx64 " from %d, %"  PRIx64 " from %d, %"  PRIx64 " from %d\r\n", 
-        (int64_t) istart.hStdInput, std_fds[0], (int64_t) istart.hStdOutput, std_fds[1],
-       (int64_t) istart.hStdError, std_fds[2]);
-
+/* from the windows documentation ....
 BOOL CreateProcessA(
   [in, optional]      LPCSTR                lpApplicationName,
   [in, out, optional] LPSTR                 lpCommandLine,
@@ -3557,10 +3548,7 @@ BOOL CreateProcessA(
   [out]               LPPROCESS_INFORMATION lpProcessInformation
 );*/
 
-    int cflags = NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW; // prevents output on stdout
-
-   // seems like inherithandles and environ crash the return value if not perfect!
-   // we may also need to sim a cmd.exe chdir and a manual push with a cwd .... 
+   int cflags = NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW; // prevents output on stdout
    if (!CreateProcessA(file, cmdbuff, 0, 0, true, cflags, envp, cwd, &istart, &iproc) )
     {
         int e = GetLastError();
