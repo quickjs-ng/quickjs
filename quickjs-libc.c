@@ -3155,6 +3155,7 @@ static char **build_envp(JSContext *ctx, JSValue obj)
             char *envp2 = envp;
             envp = js_mallocz(ctx,buff_len);
             memcpy(envp, envp2, buff_len2);
+            js_free(ctx, envp2);
         };
 #else
         pair = js_malloc(ctx, key_len + str_len + 2);
