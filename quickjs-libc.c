@@ -3149,7 +3149,7 @@ static char **build_envp(JSContext *ctx, JSValue obj)
         key_len = strlen(key);
         str_len = strlen(str);
 #ifdef _WIN32
-        if (&pair[key_len + str_len + 2] > (envp + buff_len)) {
+         if (&pair[key_len + str_len + 2] > &envp[buff_len]) {
             size_t buff_len2 = buff_len;
             buff_len *= 2;
             char *envp2 = envp;
