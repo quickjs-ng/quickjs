@@ -3057,73 +3057,6 @@ static JSValue js_os_realpath(JSContext *ctx, JSValueConst this_val,
 }
 #endif
 
-#if defined(_WIN32)
-#define MS_ENVP_BUFFSIZE 8192
-static char *build_ms_envp(JSContext *ctx, JSValue obj)
-{
-    uint32_t len, i;
-    JSPropertyEnum *tab;
-    char *envp, *pair;
-    const char *key, *str;
-    JSValue val;
-    size_t key_len, str_len;
-
-    if (JS_GetOwnPropertyNames(ctx, &tab, &len, obj,
-                               JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
-        return NULL;
-    envp = js_mallocz(ctx,MS_ENVP_BUFFSIZE);
-    pair = envp;
-    if (!envp) goto fail;
-    for(i = 0; i < len; i++) {
-        val = JS_GetProperty(ctx, obj, tab[i].atom);
-        if (JS_IsException(val))
-            goto fail;
-        str = JS_ToCString(ctx, val);
-        JS_FreeValue(ctx, val);
-        if (!str) goto fail;
-        key = JS_AtomToCString(ctx, tab[i].atom);
-        if (!key) {
-            JS_FreeCString(ctx, str);
-            goto fail;
-        }
-        key_len = strlen(key);
-        str_len = strlen(str);
-        /* parallel to build_envp for comparison
-        pair = js_malloc(ctx, key_len + str_len + 2);
-        if (!pair) {
-            JS_FreeCString(ctx, key);
-            JS_FreeCString(ctx, str);
-            goto fail;
-        }*/
-        memcpy(pair, key, key_len);
-        pair += key_len;
-        pair[0] = '='; pair++;
-        memcpy(pair, str, str_len);
-        pair += str_len;
-        pair[0] = '\0';
-        pair++;
-        //envp[i] = pair;
-        JS_FreeCString(ctx, key);
-        JS_FreeCString(ctx, str);
-    }
-    pair[0] = '\0';
- end:
-    for(i = 0; i < len; i++)
-        JS_FreeAtom(ctx, tab[i].atom);
-    js_free(ctx, tab);
-    return envp;
- fail:
-    if (envp) {
-        //for(i = 0; i < len; i++) js_free(ctx, envp[i]);
-        js_free(ctx, envp);
-        envp = NULL;
-    }
-    goto end;
-
-};
-
-#endif
-
 #if !defined(_WIN32) && !defined(__wasi__)
 static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
@@ -3168,20 +3101,36 @@ static JSValue js_os_readlink(JSContext *ctx, JSValueConst this_val,
     JS_FreeCString(ctx, path);
     return make_string_error(ctx, buf, err);
 }
+#endif
 
+#if !defined(__wasi__)
+#ifdef _WIN32
+#define MS_ENVP_BUFFSIZE 4096
+static char *build_envp(JSContext *ctx, JSValue obj)
+{
+    size_t key_len, str_len, buff_len = MS_ENVP_BUFFSIZE;
+    char *envp, *pair;
+#else
 static char **build_envp(JSContext *ctx, JSValue obj)
 {
-    uint32_t len, i;
-    JSPropertyEnum *tab;
-    char **envp, *pair;
-    const char *key, *str;
-    JSValue val;
     size_t key_len, str_len;
+    char **envp, *pair;
+#endif // WIN32
+    const char *key, *str;
+    uint32_t len, i;
+    JSPropertyEnum *tab;    
+    JSValue val;
+    
 
     if (JS_GetOwnPropertyNames(ctx, &tab, &len, obj,
                                JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
         return NULL;
+#ifdef _WIN32
+    envp = js_mallocz(ctx,buff_len);
+    pair = envp;
+#else
     envp = js_mallocz(ctx, sizeof(envp[0]) * ((size_t)len + 1));
+#endif
     if (!envp)
         goto fail;
     for(i = 0; i < len; i++) {
@@ -3199,17 +3148,31 @@ static char **build_envp(JSContext *ctx, JSValue obj)
         }
         key_len = strlen(key);
         str_len = strlen(str);
+#ifdef _WIN32
+        if (&pair[key_len + str_len + 2] > (envp + buff_len)) {
+            size_t buff_len2 = buff_len;
+            buff_len *= 2;
+            char *envp2 = envp;
+            envp = js_mallocz(ctx,buff_len);
+            memcpy(envp, envp2, buff_len2);
+        };
+#else
         pair = js_malloc(ctx, key_len + str_len + 2);
         if (!pair) {
             JS_FreeCString(ctx, key);
             JS_FreeCString(ctx, str);
             goto fail;
         }
+#endif // _WIN32
         memcpy(pair, key, key_len);
         pair[key_len] = '=';
         memcpy(pair + key_len + 1, str, str_len);
         pair[key_len + 1 + str_len] = '\0';
+#ifdef _WIN32
+        pair += key_len + str_len + 2;
+#else
         envp[i] = pair;
+#endif
         JS_FreeCString(ctx, key);
         JS_FreeCString(ctx, str);
     }
@@ -3220,14 +3183,18 @@ static char **build_envp(JSContext *ctx, JSValue obj)
     return envp;
  fail:
     if (envp) {
+#ifndef _WIN32
         for(i = 0; i < len; i++)
             js_free(ctx, envp[i]);
+#endif // !_WIN32
         js_free(ctx, envp);
         envp = NULL;
     }
     goto done;
 }
+#endif // !(__wasi__)
 
+#if !defined(_WIN32) && !defined(__wasi__)
 /* execvpe is not available on non GNU systems */
 static int my_execvpe(const char *filename, char **argv, char **envp)
 {
@@ -3295,9 +3262,8 @@ static void js_os_exec_once_init(void)
      *(void **) (&js_os_exec_closefrom) = dlsym(RTLD_DEFAULT, "closefrom");
 }
 
-#endif
-
-#endif // ! WIN32 ! wasi
+#endif // !__wasi__
+#endif // !_WIN32 !__wasi__
 
 #if !defined(__wasi__)
 /* exec(args[, options]) -> exitcode */
@@ -3310,10 +3276,11 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     const char *file = NULL, *str, *cwd = NULL;
     uint32_t exec_argc, i;
     int ret, pid;
-    bool block_flag = true, use_path = true, specified_fd = false;
+    bool block_flag = true, use_path = true;
     static const char *std_name[3] = { "stdin", "stdout", "stderr" };
     int std_fds[3];
 #ifdef _WIN32
+    bool specified_fd = false;
     char cmdbuff [OS_EXEC_CMD_BUFFSIZE];
     int cmdi;
     char *envp = 0;
@@ -3396,7 +3363,9 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                 if (ret)
                     goto exception;
                 std_fds[i] = fd;
+#ifdef _WIN32
                 specified_fd = true;
+#endif
             }
         }
 
@@ -3470,7 +3439,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         if (JS_IsException(val))
             goto exception;
         if (!JS_IsUndefined(val)) {
-            envp = build_ms_envp(ctx, val);
+            envp = build_envp(ctx, val);
             JS_FreeValue(ctx, val);
             if (!envp)
                 goto exception;
@@ -3756,7 +3725,7 @@ static JSValue js_os_pipe(JSContext *ctx, JSValueConst this_val,
         CloseHandle(pipe_handles[1]);
         return JS_NULL;
     };    
-#else
+#else // windows prefers handles. but to stay consistent the system should use file desc
     pipe_fds[0] = pipe_handles[0];
     pipe_fds[1] = pipe_handles[1];
 #endif // WIN_OS_PIPE_USE_FDS
@@ -3774,7 +3743,7 @@ static JSValue js_os_pipe(JSContext *ctx, JSValueConst this_val,
     return obj;
 }
 
-/* kill(pid, sig) */
+/* kill(pid) : works like standard c/linux kill except signal is ignored */
 static JSValue js_os_kill(JSContext *ctx, JSValueConst this_val,
                           int argc, JSValueConst *argv)
 {
@@ -3790,7 +3759,8 @@ static JSValue js_os_kill(JSContext *ctx, JSValueConst this_val,
     return JS_NewInt32(ctx,err);
 }
 
-/* watchpid(pid, blocking) -> -error/0= is still waiting/pid = complete */
+/* watchpid(pid, blocking) -> ret < 0 = -error/ ret = 0 still waiting/ ret = pid complete
+     hybrid clone of waitpid that will work with both systems except there's no status  */
 static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv)
 {
@@ -3811,7 +3781,8 @@ static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
 #endif
 
 #if !defined(_WIN32) && !defined(__wasi__)
-/* watchpid(pid, blocking) -> -error/0= is still waiting/pid = complete */
+/* watchpid(pid, blocking) -> ret < 0 = -error/ ret = 0 still waiting/ ret = pid complete
+     hybrid clone of waitpid that will work with both systems except there's no status  */
 static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv)
 {
@@ -3824,7 +3795,6 @@ static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
     if (ret==pid) return JS_NewInt32(ctx, pid);
     return JS_NewInt32(ctx, -errno);
 }
-
 
 /* getpid() -> pid */
 static JSValue js_os_getpid(JSContext *ctx, JSValueConst this_val,
@@ -4465,7 +4435,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("watchpid", 2, js_os_watchpid ),
     JS_CFUNC_DEF("pipe", 0, js_os_pipe ),
     JS_CFUNC_DEF("kill", 2, js_os_kill ),
- #endif
+#endif
 #if !defined(_WIN32) && !defined(__wasi__)
     JS_CFUNC_MAGIC_DEF("lstat", 1, js_os_stat, 1 ),
     JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
