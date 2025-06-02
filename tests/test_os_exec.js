@@ -27,22 +27,17 @@ function test_win_os_exec() {
     os.close(fds[1]); 
     f = std.fdopen(fds[0], "r");
 
-    /* \r artifact of windows compatibility between getline and cmd.exe echo*/
     assert(f.getline(), "hello\r");
     assert(f.getline(), null);
     f.close();
-    /* I created watchpid to cross-compatibly notify if the PID is complete.
-       There's no windows equivalent of waitpid, and windows would prefer Handles.
-       watchpid returns negative error || 0 if still waiting || pid if complete. 
-       watchpid returns no status. specify 1 in the 2nd param for blocking 
+    /* watchpid is similar waitpid on WIN32 + GNU but lacks a status indicator
        watchpid(p,0) == waitpid(p, WNOHANG), watchpid(p,1) == waitpid(p,0) */
     ret = os.watchpid(pid, 1);
     assert(ret, pid);
 
     pid = os.exec(["cat"], { block: false } );
     assert(pid >= 0);
-    /* os.kill Just does TerminateProcess. There's no signal control in win32. 
-       Windows does signal pid groups and killing a group requires research. */
+    /* os.kill in WIN32 Just does TerminateProcess. There's no signal control in win32. */
     ret = os.watchpid(pid, 0);
     assert(ret, 0);
     os.kill(pid, os.SIGTERM);
