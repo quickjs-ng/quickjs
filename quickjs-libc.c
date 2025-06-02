@@ -3725,7 +3725,7 @@ static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
     int pid;
     HANDLE ph;
     int block = 0, ret; 
-    DWORD options = 0, flags = PROCESS_QUERY_INFORMATION | SYNCHRONIZE;
+    DWORD options = 0, flags = PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE;
     if (JS_ToInt32(ctx, &pid, argv[0])) 
         return JS_EXCEPTION;
     if ( (argc > 1) && (JS_ToInt32(ctx, &block, argv[1]))) 
@@ -3736,6 +3736,7 @@ static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
     if (!ph) 
         return JS_NewInt32(ctx, -GetLastError());
     ret = WaitForSingleObject((HANDLE) ph, options);
+    CloseHandle(ph);
     if (ret == WAIT_TIMEOUT) 
         return JS_NewInt32(ctx, 0); // timed out
     if (ret != 0) 
