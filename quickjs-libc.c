@@ -3131,7 +3131,7 @@ static JSValue js_os_realpath(JSContext *ctx, JSValueConst this_val,
     return make_string_error(ctx, buf, err);
 }
 /* in WIN32: (0 | err) os.symlink(target, linkpath, bool isDirectory)
-    @ msdn: linkpath and target have reversed meaning! */
+    @ msdn: linkpath and target have reversed meaning than symlink! */
 static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
