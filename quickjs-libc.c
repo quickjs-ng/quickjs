@@ -3105,9 +3105,9 @@ static JSValue js_os_readlink(JSContext *ctx, JSValueConst this_val,
 
 #if !defined(__wasi__)
 #if defined(_WIN32)
-#define MS_ENVP_BUFFSIZE 4096 // this will automatically double as needed
 static char *build_envp(JSContext *ctx, JSValue obj)
 {
+#define MS_ENVP_BUFFSIZE 4096 // this does automatically double as needed
     size_t key_len, str_len, buff_len = MS_ENVP_BUFFSIZE;
     char *envp, *pair;
 #else
@@ -3448,9 +3448,11 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         }
     }
         
-    cmd_ind = 0; cmd_strlen = 0;
-    if (file)  cmd_strlen = strlen(file);
-    else cmd_strlen = 0;
+    cmd_ind = 0;
+    if (file) 
+       cmd_strlen = strlen(file);
+    else 
+       cmd_strlen = 0;
     if (cmd_strlen) {
         strncpy(&cmd_buff[cmd_ind], file, cmd_strlen);
         cmd_ind += cmd_strlen;
@@ -3460,21 +3462,25 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     };
 
    val = JS_GetPropertyStr(ctx, args, "length");
-    if (JS_IsException(val))  goto exception;
+    if (JS_IsException(val))
+       goto exception;
     ret = JS_ToUint32(ctx, &exec_argc, val);
     JS_FreeValue(ctx, val);
-    if (ret)  goto exception;
+    if (ret)
+       goto exception;
     /* arbitrary limit to avoid overflow */
     if (exec_argc < 1 || exec_argc > 65535) {   
         JS_ThrowTypeError(ctx, "invalid number of arguments");
         goto exception;
     }
-    for(i = 0; i < exec_argc; i++) {
+    for (i = 0; i < exec_argc; i++) {
         val = JS_GetPropertyUint32(ctx, args, i);
-        if (JS_IsException(val)) goto exception;
+        if (JS_IsException(val)) 
+           goto exception;
         str = JS_ToCString(ctx, val);
         JS_FreeValue(ctx, val);
-        if (!str)  goto exception;
+        if (!str)  
+           goto exception;
         cmd_strlen = strlen(str);
         if (cmd_strlen) {
             if ((i != 0) || (file != 0)) {
@@ -3532,7 +3538,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     pid = iproc.dwProcessId; 
     HANDLE phandle = iproc.hProcess;
     HANDLE thandle = iproc.hThread;
-        int besafe = 0;
+    int besafe = 0;
     if (block_flag) {
         for(;;) {
             int dwait = WaitForSingleObject(phandle, INFINITE);        
@@ -3543,7 +3549,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                 break;
             } else {
                 besafe++; if (besafe==20) {
-                    JS_ThrowPlainError(ctx, "exec process did not complete.");
+                    JS_ThrowPlainError(ctx, "exec process did not complete after %d iterations.", besafe);
                     goto exception;
                 };
             };
@@ -3552,7 +3558,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         CloseHandle(thandle);
      } else {
         excode = (int32_t) iproc.dwProcessId;
-        ret_val = JS_NewInt32(ctx, excode); //(int64_t) phandle);
+        ret_val = JS_NewInt32(ctx, excode);
     }
     
 #else // _WIN32
@@ -3693,7 +3699,7 @@ static JSValue js_os_pipe(JSContext *ctx, JSValueConst this_val,
     return obj;
 }
 
-/* (NULL | err) kill(pid) : works like standard c/linux kill except signal is ignored */
+/* kill(pid) -> (NULL | err) : works like standard c/linux kill except signal is ignored */
 static JSValue js_os_kill(JSContext *ctx, JSValueConst this_val,
                           int argc, JSValueConst *argv)
 {
@@ -3711,7 +3717,7 @@ static JSValue js_os_kill(JSContext *ctx, JSValueConst this_val,
     return JS_NewInt32(ctx,err);
 }
 
-/* watchpid(pid, blocking) -> ret: < 0 = -error/ ret: = 0 still waiting/ ret: = pid complete
+/* watchpid(pid, blocking) -> ret: < 0 = -error | ret: = 0 still waiting | ret: = pid complete
      hybrid clone of waitpid that will work with Win32 + GNU systems except there's no status  */
 static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv)
