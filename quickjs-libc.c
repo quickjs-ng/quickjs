@@ -1042,7 +1042,6 @@ typedef struct {
 } JSTMPFile;
 #endif
 
-
 static bool is_stdio(FILE *f)
 {
     return f == stdin || f == stdout || f == stderr;
