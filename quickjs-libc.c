@@ -3264,10 +3264,8 @@ static void js_os_exec_once_init(void)
      *(void **) (&js_os_exec_closefrom) = dlsym(RTLD_DEFAULT, "closefrom");
 }
 
-#endif // !__wasi__
-#endif // !_WIN32 !__wasi__
+#endif // !defined(EMSCRIPTEN) && !defined(__wasi__)
 
-#if !defined(__wasi__)
 /* exec(args[, options]) -> exitcode */
 static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                           int argc, JSValueConst *argv)
@@ -3280,13 +3278,6 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     bool block_flag = true, use_path = true;
     static const char *std_name[3] = { "stdin", "stdout", "stderr" };
     int std_fds[3];
-#if defined(_WIN32)
-    bool specified_fd = false;
-#define OS_EXEC_CMD_BUFFSIZE 2048
-    char cmd_buff [OS_EXEC_CMD_BUFFSIZE];
-    int cmd_ind, cmd_strlen;;
-    char *envp = 0;
-#else
     char **envp = environ;
     const char **exec_argv;
     int status;
@@ -3319,7 +3310,6 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         exec_argv[i] = str;
     }
     exec_argv[exec_argc] = NULL;
-#endif
 
     for(i = 0; i < 3; i++)
         std_fds[i] = i;
@@ -3365,13 +3355,9 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                 if (ret)
                     goto exception;
                 std_fds[i] = fd;
-#if defined(_WIN32)
-                specified_fd = true;
-#endif
             }
         }
 
-#if !defined(_WIN32)
         val = JS_GetPropertyStr(ctx, options, "env");
         if (JS_IsException(val))
             goto exception;
@@ -3436,132 +3422,6 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         }
         
     }
-#else
-        val = JS_GetPropertyStr(ctx, options, "env");
-        if (JS_IsException(val))
-            goto exception;
-        if (!JS_IsUndefined(val)) {
-            envp = build_envp(ctx, val);
-            JS_FreeValue(ctx, val);
-            if (!envp)
-                goto exception;
-        }
-    }
-        
-    cmd_ind = 0;
-    if (file) 
-       cmd_strlen = strlen(file);
-    else 
-       cmd_strlen = 0;
-    if (cmd_strlen) {
-        strncpy(&cmd_buff[cmd_ind], file, cmd_strlen);
-        cmd_ind += cmd_strlen;
-    }  else {
-        strncpy(&cmd_buff[cmd_ind], "cmd /C ", 7); 
-        cmd_ind += 7;
-    };
-
-   val = JS_GetPropertyStr(ctx, args, "length");
-    if (JS_IsException(val))
-       goto exception;
-    ret = JS_ToUint32(ctx, &exec_argc, val);
-    JS_FreeValue(ctx, val);
-    if (ret)
-       goto exception;
-    /* arbitrary limit to avoid overflow */
-    if (exec_argc < 1 || exec_argc > 65535) {   
-        JS_ThrowTypeError(ctx, "invalid number of arguments");
-        goto exception;
-    }
-    for (i = 0; i < exec_argc; i++) {
-        val = JS_GetPropertyUint32(ctx, args, i);
-        if (JS_IsException(val)) 
-           goto exception;
-        str = JS_ToCString(ctx, val);
-        JS_FreeValue(ctx, val);
-        if (!str)  
-           goto exception;
-        cmd_strlen = strlen(str);
-        if (cmd_strlen) {
-            if ((i != 0) || (file != 0)) {
-                cmd_buff[cmd_ind] = ' ';
-                cmd_ind++;
-            };
-            if (OS_EXEC_CMD_BUFFSIZE < (cmd_ind + cmd_strlen + 1)) {
-                JS_ThrowRangeError(ctx, "exec command line too long.");
-                goto exception;
-            };
-            strncpy(&cmd_buff[cmd_ind], str, cmd_strlen);
-            cmd_ind += cmd_strlen;
-        };   
-    }
-    cmd_buff[cmd_ind] = 0;
-
-#endif // WIN32
-
-#if defined(_WIN32)
-    STARTUPINFO istart;
-    PROCESS_INFORMATION iproc;  
-    memset(&iproc, 0, sizeof(iproc));
-    memset(&istart, 0, sizeof(istart) );
-    istart.cb = sizeof(istart);
-
-    if (specified_fd) { 
-        istart.dwFlags = STARTF_USESTDHANDLES;
-         
-        istart.hStdInput = (HANDLE) _get_osfhandle( std_fds[0] );
-        if (istart.hStdInput == INVALID_HANDLE_VALUE) {
-            JS_ThrowInternalError(ctx, "failed to associate stdin of process");
-            goto exception;
-        };
-        istart.hStdOutput = (HANDLE) _get_osfhandle( std_fds[1] );
-        if (istart.hStdOutput == INVALID_HANDLE_VALUE) {
-            JS_ThrowInternalError(ctx, "failed to associate stdout of process");
-            goto exception;
-        };
-        istart.hStdError = (HANDLE) _get_osfhandle( std_fds[2] );
-        if (istart.hStdError == INVALID_HANDLE_VALUE) {
-            JS_ThrowInternalError(ctx, "failed to associate stderr of process");
-            goto exception;
-        };
-    };
-
-   int cflags = NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW; // prevents output on stdout
-   if (!CreateProcessA(file, cmd_buff, 0, 0, true, cflags, envp, cwd, &istart, &iproc) )
-    {
-        int e = GetLastError();
-        JS_ThrowInternalError(ctx, "failed to start process with error: %d", e);
-        goto exception;
-    };
-    
-    int32_t excode = 0;
-    pid = iproc.dwProcessId; 
-    HANDLE phandle = iproc.hProcess;
-    HANDLE thandle = iproc.hThread;
-    int besafe = 0;
-    if (block_flag) {
-        for(;;) {
-            int dwait = WaitForSingleObject(phandle, INFINITE);        
-            if (dwait == WAIT_OBJECT_0) {
-                GetExitCodeProcess (phandle, (DWORD*) &excode);
-                ret_val = JS_NewInt32(ctx, (int32_t) excode);
-                excode = GetLastError();
-                break;
-            } else {
-                besafe++; if (besafe==20) {
-                    JS_ThrowPlainError(ctx, "exec process did not complete after %d iterations.", besafe);
-                    goto exception;
-                };
-            };
-        };
-        CloseHandle(phandle);
-        CloseHandle(thandle);
-     } else {
-        excode = (int32_t) iproc.dwProcessId;
-        ret_val = JS_NewInt32(ctx, excode);
-    }
-    
-#else // _WIN32
 
 #if !defined(EMSCRIPTEN) && !defined(__wasi__) 
     // should happen pre-fork because it calls dlsym()
@@ -3635,11 +3495,9 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         ret = pid;
     }
     ret_val = JS_NewInt32(ctx, ret);
-#endif // !_WIN32
  done:
     JS_FreeCString(ctx, file);
     JS_FreeCString(ctx, cwd);
-#if !defined(_WIN32)
     for(i = 0; i < exec_argc; i++)
         JS_FreeCString(ctx, exec_argv[i]);
     js_free(ctx, exec_argv);
@@ -3653,17 +3511,207 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         js_free(ctx, envp);
     }
     return ret_val;
-#else
-    if (envp) js_free(ctx, envp);
-    return ret_val;
-#endif
  exception:
     ret_val = JS_EXCEPTION;
     goto done;
 }
 #endif 
 
-#if defined(_WIN32)  
+#if defined(_WIN32)
+/* exec(args[, options]) -> exitcode */
+static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
+                          int argc, JSValueConst *argv)
+{
+    JSValueConst options, args = argv[0];
+    JSValue val, ret_val;
+    const char *file = NULL, *str, *cwd = NULL;
+    uint32_t exec_argc, i, besafe;
+    int32_t excode, dwait;
+    int ret, pid;
+    bool block_flag = true, use_path = true;
+    static const char *std_name[3] = { "stdin", "stdout", "stderr" };
+    int std_fds[3];
+    bool specified_fd = false;
+#define OS_EXEC_CMD_BUFFSIZE 2048
+    char cmd_buff [OS_EXEC_CMD_BUFFSIZE];
+    int cmd_ind, cmd_strlen;;
+    char *envp = 0;
+
+    for(i = 0; i < 3; i++)
+        std_fds[i] = i;
+
+    /* get the options, if any */
+    if (argc >= 2) {
+        options = argv[1];
+
+        if (get_bool_option(ctx, &block_flag, options, "block"))
+            goto exception;
+        if (get_bool_option(ctx, &use_path, options, "usePath"))
+            goto exception;
+
+        val = JS_GetPropertyStr(ctx, options, "file");
+        if (JS_IsException(val))
+            goto exception;
+        if (!JS_IsUndefined(val)) {
+            file = JS_ToCString(ctx, val);
+            JS_FreeValue(ctx, val);
+            if (!file)
+                goto exception;
+        }
+
+        val = JS_GetPropertyStr(ctx, options, "cwd");
+        if (JS_IsException(val))
+            goto exception;
+        if (!JS_IsUndefined(val)) {
+            cwd = JS_ToCString(ctx, val);
+            JS_FreeValue(ctx, val);
+            if (!cwd)
+                goto exception;
+        }
+
+        /* stdin/stdout/stderr handles */
+        for(i = 0; i < 3; i++) {
+            val = JS_GetPropertyStr(ctx, options, std_name[i]);
+            if (JS_IsException(val))
+                goto exception;
+            if (!JS_IsUndefined(val)) {
+                int fd;
+                ret = JS_ToInt32(ctx, &fd, val);
+                JS_FreeValue(ctx, val);
+                if (ret)
+                    goto exception;
+                std_fds[i] = fd;
+                specified_fd = true;
+            }
+        }
+
+        val = JS_GetPropertyStr(ctx, options, "env");
+        if (JS_IsException(val))
+            goto exception;
+        if (!JS_IsUndefined(val)) {
+            envp = build_envp(ctx, val);
+            JS_FreeValue(ctx, val);
+            if (!envp)
+                goto exception;
+        }
+    }
+        
+    cmd_ind = 0;
+    if (file) 
+       cmd_strlen = strlen(file);
+    else 
+       cmd_strlen = 0;
+    if (cmd_strlen) {
+        strncpy(&cmd_buff[cmd_ind], file, cmd_strlen);
+        cmd_ind += cmd_strlen;
+    }  else {
+        //strncpy(&cmd_buff[cmd_ind], "cmd /C ", 7); 
+        //cmd_ind += 7;
+    };
+
+   val = JS_GetPropertyStr(ctx, args, "length");
+    if (JS_IsException(val))
+       goto exception;
+    ret = JS_ToUint32(ctx, &exec_argc, val);
+    JS_FreeValue(ctx, val);
+    if (ret)
+       goto exception;
+    /* arbitrary limit to avoid overflow */
+    if (exec_argc < 1 || exec_argc > 65535) {   
+        JS_ThrowTypeError(ctx, "invalid number of arguments");
+        goto exception;
+    }
+    for (i = 0; i < exec_argc; i++) {
+        val = JS_GetPropertyUint32(ctx, args, i);
+        if (JS_IsException(val)) 
+           goto exception;
+        str = JS_ToCString(ctx, val);
+        JS_FreeValue(ctx, val);
+        if (!str)  
+           goto exception;
+        cmd_strlen = strlen(str);
+        if (cmd_strlen) {
+            if ((i != 0) || (file != 0)) {
+                cmd_buff[cmd_ind] = ' ';
+                cmd_ind++;
+            };
+            if (OS_EXEC_CMD_BUFFSIZE < (cmd_ind + cmd_strlen + 1)) {
+                JS_ThrowRangeError(ctx, "exec command line too long.");
+                goto exception;
+            };
+            strncpy(&cmd_buff[cmd_ind], str, cmd_strlen);
+            cmd_ind += cmd_strlen;
+        };   
+    }
+    cmd_buff[cmd_ind] = 0;
+
+    int cflags = NORMAL_PRIORITY_CLASS;
+    STARTUPINFO istart;
+    PROCESS_INFORMATION iproc;  
+    memset(&iproc, 0, sizeof(iproc));
+    memset(&istart, 0, sizeof(istart) );
+    istart.cb = sizeof(istart);
+
+    if (specified_fd) 
+    { 
+        istart.dwFlags = STARTF_USESTDHANDLES;
+        cflags |= CREATE_NO_WINDOW;
+    };    
+    istart.hStdInput = (HANDLE) _get_osfhandle( std_fds[0] );
+    if (istart.hStdInput == INVALID_HANDLE_VALUE) 
+    {
+        JS_ThrowInternalError(ctx, "failed to associate stdin of process");
+        goto exception;
+    };
+    istart.hStdOutput = (HANDLE) _get_osfhandle( std_fds[1] );
+    if (istart.hStdOutput == INVALID_HANDLE_VALUE) 
+    {
+        JS_ThrowInternalError(ctx, "failed to associate stdout of process");
+        goto exception;
+    };
+    istart.hStdError = (HANDLE) _get_osfhandle( std_fds[2] );
+    if (istart.hStdError == INVALID_HANDLE_VALUE) {
+        JS_ThrowInternalError(ctx, "failed to associate stderr of process");
+        goto exception;
+    };
+
+    besafe = excode = 0;
+    if (!CreateProcessA(file, cmd_buff, 0, 0, specified_fd, cflags, envp, cwd, &istart, &iproc) ) {
+        excode = GetLastError();
+        ret_val = JS_NewInt32(ctx, excode);
+    } else if (block_flag) {
+        while (block_flag) {
+            dwait = WaitForSingleObject(iproc.hProcess, INFINITE);        
+            if (dwait == WAIT_OBJECT_0) {
+                if (!GetExitCodeProcess (iproc.hProcess, (DWORD*) &excode))
+                    excode = GetLastError();
+                ret_val = JS_NewInt32(ctx, (int32_t) excode);
+                block_flag = 0;
+            } else {
+                besafe++; 
+                if (besafe==20) {
+                    JS_ThrowPlainError(ctx, "exec process did not complete after %d iterations.", besafe);
+                    goto exception;
+                };
+            };
+        };
+        CloseHandle(iproc.hProcess);
+        CloseHandle(iproc.hThread);
+    } else {
+        pid = iproc.dwProcessId; 
+        ret_val = JS_NewInt32(ctx, pid);
+    };
+    
+ done:
+    JS_FreeCString(ctx, file);
+    JS_FreeCString(ctx, cwd);
+    if (envp) js_free(ctx, envp);
+    return ret_val;
+ exception:
+    ret_val = JS_EXCEPTION;
+    goto done;
+}
+
 /* pipe() -> [read_fd, write_fd] or null if error */
 static JSValue js_os_pipe(JSContext *ctx, JSValueConst this_val,
                           int argc, JSValueConst *argv)
