@@ -32,7 +32,6 @@ function test_os_exec() {
     pid = os.exec( [osShellCmd, osShellFlag, ":"], { block: false} );
     /*  watchpid is similar waitpid on WIN32 + GNU but lacks a status indicator
         watchpid(p,0) == waitpid(p, WNOHANG), watchpid(p,1) == waitpid(p,0) */
-    os.sleep(0); // watcpid is too fast! you have to sleep or check it again.
     ret = os.watchpid(pid, 1);
     assert(ret, pid);
 
@@ -62,7 +61,7 @@ function test_os_exec() {
     assert(ret, 0);
     /* os.kill in WIN32 Just does TerminateProcess & signal control is ignored. */
     os.kill(pid, os.SIGTERM);
-    os.sleep(0);
+    os.sleep(0); // watcpid is too fast! you have to sleep or check it again.
     ret = os.watchpid(pid, 1);
     assert(ret, pid); 
 
