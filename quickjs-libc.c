@@ -1034,11 +1034,12 @@ typedef struct {
     bool is_popen;
 } JSSTDFile;
 
-#if defined(__MINGW32__) || defined(__MINGW64__)
+#if defined(__MINGW64__)
+enum JSSTDFileKind { STDFile, STDPipe, TMPFile };
 typedef struct {
     FILE *f;
-    int is_kind; 
-    char filename[64];
+    enum JSSTDFileKind kind;
+    char *filename;
 } JSTMPFile;
 #endif
 
@@ -1052,11 +1053,12 @@ static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
     JSThreadState *ts = js_get_thread_state(rt);
     JSSTDFile *s = JS_GetOpaque(val, ts->std_file_class_id);
     if (s) {
-#if defined(__MINGW32__) || defined(__MINGW64__)
+#if defined(__MINGW64__)
         JSTMPFile *ss = (JSTMPFile*) s;
-        if (ss->is_kind==2) {
+        if (ss->kind == TMPFile) {
             if (ss->f) fclose(ss->f);
-            if (ss->filename[0] != 0) remove(ss->filename);
+            if (ss->filename != 0) remove(ss->filename);
+            js_free_rt(rt, ss->filename);
         } else if (s->f && !is_stdio(s->f)) {
 #else
         if (s->f && !is_stdio(s->f)) {
@@ -1067,7 +1069,7 @@ static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
             else
 #endif
                 fclose(s->f);
-            
+
         }
         js_free_rt(rt, s);
     }
@@ -1224,7 +1226,7 @@ static JSValue js_std_fdopen(JSContext *ctx, JSValueConst this_val,
 }
 
 #if !defined(__wasi__)
-#if defined(__MINGW32__) || defined(__MINGW64__)
+#if defined(__MINGW64__)
 static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -1232,53 +1234,52 @@ static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
     JSThreadState *ts = js_get_thread_state(rt);
     JSTMPFile *s;
     JSValue obj;
+    char* fn_template, *env_tmp, *fn_buff;
+    int mk_fd, fn_len;
+
     obj = JS_NewObjectClass(ctx, ts->std_file_class_id);
     if (JS_IsException(obj))    
-        return obj;
+        return JS_EXCEPTION;
     s = js_mallocz(ctx, sizeof(*s));
     if (!s) {
         JS_FreeValue(ctx, obj);
         return JS_EXCEPTION;
     }
-
-    char * env = getenv("TMP");
-    if (!env)  
-        env = getenv("TEMP");
-    int i = 0;
-    if (env) {
-        while (env[i]) {
-            s->filename[i] = env[i];
-            i++;
-            if (i > 50) 
-                return JS_NULL;
-        }
+    fn_template = "\\qXXXXXXX";
+    env_tmp = getenv("TMP");
+    if (!env_tmp)  
+        env_tmp = getenv("TEMP");
+    if (env_tmp) {
+        fn_len = strlen(env_tmp);
+        fn_buff = js_malloc(ctx, fn_len + 10);
+        memcpy(fn_buff, env_tmp, fn_len);
+        memcpy(fn_buff + fn_len, fn_template, 10);
+    } else {
+        fn_buff = js_mallocz(ctx, 10);
+        memcpy(fn_buff, fn_template, 10);
     }
-    char* fname = &s->filename[i];
-    char* templ = "\\qXXXXXXX";
-    while (templ[0]) {
-        fname[0] = templ[0];
-        fname++; templ++;
-    }
-    fname[0] = 0;
-    int mkf = mkstemp(s->filename);
-    if (mkf == -1) {    
-        JS_FreeValue(ctx, obj);
-        js_free(ctx, s);
-        return JS_NULL;    
-    }
-    int fd = dup(mkf);
-    s->f = fdopen( fd, "a+");
-    close(mkf);
+    mk_fd = mkstemp(fn_buff);    
+    if (mk_fd == -1) {    
+        JS_ThrowInternalError(ctx, "tmpfile failed to create file with error: %d.", errno);
+        goto file_failure;
+    };
+    //int fd = dup(mkf);
+    s->f = fdopen( mk_fd, "a+");
+    if (s->f == 0) {
+        JS_ThrowInternalError(ctx, "tmpfile failed to open file with error: %d.", errno);
+        goto file_failure;
+    };
+    s->filename = fn_buff;
+    s->kind = TMPFile;
     if (argc >= 1) 
         js_set_error_object(ctx, argv[0], s->f ? 0 : errno);
-    if (!s->f) {
-        JS_FreeValue(ctx, obj);
-        js_free(ctx, s);
-        return JS_NULL;
-    }
-    s->is_kind = 2;
     JS_SetOpaque(obj, s);
     return obj;
+  file_failure:
+    JS_FreeValue(ctx, obj);
+    js_free(ctx, s);
+    js_free(ctx, fn_buff);
+    return JS_EXCEPTION;    
 }
 #else // MINGW
 static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
