@@ -728,7 +728,7 @@ int js_module_set_import_meta(JSContext *ctx, JSValueConst func_val,
                               bool use_realpath, bool is_main)
 {
     JSModuleDef *m;
-    char buf[PATH_MAX + 16];
+    char buf[JS__PATH_MAX + 16];
     JSValue meta_obj;
     JSAtom module_name_atom;
     const char *module_name;
@@ -2756,7 +2756,7 @@ static JSValue make_string_error(JSContext *ctx,
 static JSValue js_os_getcwd(JSContext *ctx, JSValueConst this_val,
                             int argc, JSValueConst *argv)
 {
-    char buf[PATH_MAX];
+    char buf[JS__PATH_MAX];
     int err;
 
     if (!getcwd(buf, sizeof(buf))) {
@@ -3039,7 +3039,7 @@ static JSValue js_os_realpath(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
     const char *path;
-    char buf[PATH_MAX], *res;
+    char buf[JS__PATH_MAX], *res;
     int err;
 
     path = JS_ToCString(ctx, argv[0]);
@@ -3083,7 +3083,7 @@ static JSValue js_os_readlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
     const char *path;
-    char buf[PATH_MAX];
+    char buf[JS__PATH_MAX];
     int err;
     ssize_t res;
 
@@ -3165,7 +3165,7 @@ static char **build_envp(JSContext *ctx, JSValue obj)
 static int my_execvpe(const char *filename, char **argv, char **envp)
 {
     char *path, *p, *p_next, *p1;
-    char buf[PATH_MAX];
+    char buf[JS__PATH_MAX];
     size_t filename_len, path_len;
     bool eacces_error;
 
@@ -3192,7 +3192,7 @@ static int my_execvpe(const char *filename, char **argv, char **envp)
             path_len = p1 - p;
         }
         /* path too long */
-        if ((path_len + 1 + filename_len + 1) > PATH_MAX)
+        if ((path_len + 1 + filename_len + 1) > JS__PATH_MAX)
             continue;
         memcpy(buf, p, path_len);
         buf[path_len] = '/';
