@@ -1282,7 +1282,7 @@ int js_exepath(char *buffer, size_t *size) {
 
     return 0;
 }
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__GNU__)
 int js_exepath(char *buffer, size_t *size) {
     ssize_t n;
 
