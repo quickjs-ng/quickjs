@@ -318,4 +318,3 @@ test_timeout();
 test_timeout_order();
 test_stdio_close();
 
-std.exit(0);
