@@ -6,48 +6,14 @@ const isWin = os.platform === 'win32';
 const isCygwin = os.platform === 'cygwin';
 
 function test_os_exec() {
-    var ret, fds, pid, f, status, amend, exe;
+    var ret, fdout, fderr, pid, f, status, amend, exe, child;
 
-    // cmd.exe does leave a \r that getline doesn't trim
+    /* cmd.exe does leave a \r that getline doesn't trim */
     const osTrimLine = ( isWin ? "\r" : "" );
     const osShellCmd = ( isWin ? "cmd" : "/bin/sh" );
     const osShellFlag = ( isWin ? "/c" : "-c" );
     const osPathSeparator = ( isWin ? "\\" : "/" );
     const osStallProgram = ( isWin ? "cmd /k" : "cat" );
-
-    if (!isWin) {
-
-        ret = os.exec( ["true"] );
-        assert(ret, 0);
-    }
-
-    ret = os.exec( ["exit 1"], { usePath: false } );
-    assert(ret, ( isWin ? 2 : 127 ) );
-
-    ret = os.exec( [osShellCmd, osShellFlag, "exit 2"], { usePath: false } );
-    assert(ret, 2 );
-
-    ret = os.exec( ["echo invalid filenames leave no text"],  );
-    assert( ret, ( isWin ? 2 : 127 ) );
-
-    ret = os.exec( [osShellCmd, osShellFlag, "errors return error codes"],  );
-    assert( ret, ( isWin ? 1 : 127 ) );
-
-    ret = os.exec( [osShellCmd, osShellFlag, "bad command or filename @@"],  
-        { inherit: true }
-    );
-    assert( ret, ( isWin ? 1 : 127 ) );
-
-    ret = os.exec( [osShellCmd, osShellFlag, ": good commands return 0"] );
-    assert(ret, 0);
-
-    ret = os.exec( [osShellCmd, osShellFlag, "echo stdio not inherited by default"] );
-    assert(ret, 0);
-
-    ret = os.exec( [osShellCmd, osShellFlag, "echo inherited shell text comes through"],
-        { inherit: true }
-     );
-    assert(ret, 0);
 
     pid = os.exec( [osShellCmd, osShellFlag, ":"], { block: false} );
     /*  watchpid is similar waitpid on WIN32 + GNU but lacks a status indicator
@@ -55,16 +21,16 @@ function test_os_exec() {
     ret = os.watchpid(pid, 1);
     assert(ret, pid);
     
-    fds = os.pipe();
+    fdout = os.pipe();
     const osShellEchoParam =  ( isWin ? 'echo %FOO%' : 'echo $FOO' );
     pid = os.exec( [osShellCmd, osShellFlag, osShellEchoParam ], {
-        stdout: fds[1],
+        stdout: fdout[1],
         block: false,
         env: { FOO: "hello" },
     } );
     assert(pid >= 0);
-    os.close(fds[1]); 
-    f = std.fdopen(fds[0], "r");
+    os.close(fdout[1]); 
+    f = std.fdopen(fdout[0], "r");
     assert(f.getline(), "hello" + osTrimLine);
     assert(f.getline(), null);
     f.close();
@@ -104,19 +70,32 @@ function test_os_exec() {
     amend.pop();
     amend.push("qjs");
     exe = ( isWin ? amend.join("\\") : amend.join("/") );
+    amend.pop();
+    amend.pop();
+    amend.push("tests");
+    amend.push("test_os_exec_child.js");
+    child = ( isWin ? amend.join("\\") : amend.join("/") );
 
     pid = os.exec( [ exe,"-q"], { block: true } );
     assert(pid, 0);
-    fds = os.pipe();
-    pid = os.exec( [exe,"thereisno.js"], { 
+
+    fdout = os.pipe();
+    fderr = os.pipe();
+    pid = os.exec( [exe, child], { 
         block: true,
-        stderr: fds[1],
+        stdout: fdout[1],
+        stderr: fderr[1],
     } );
-    assert(pid, 1); 
-    os.close(fds[1]); 
-    f = std.fdopen(fds[0], "r");
-    assert(f.getline(), "thereisno.js: No such file or directory" + osTrimLine);
+    assert(pid, 0); 
+    os.close(fdout[1]); 
+    os.close(fderr[1]);
+    f = std.fdopen(fdout[0], "r");
+    assert(f.getline(), "shell text passes through inherited stdio" + osTrimLine);
     assert(f.getline(), null);
+    f.close();
+    f = std.fdopen(fderr[0], "r");
+    ret = f.getline().indexOf('bad');
+    assert(ret > 0);
     f.close();
 
 };
