@@ -6,7 +6,7 @@ const isWin = os.platform === 'win32';
 const isCygwin = os.platform === 'cygwin';
 
 function test_os_exec() {
-    var ret, fdout, fderr, pid, f, status, amend, exe, child;
+    var ret, fdout, fderr, pid, f, status, amend, exe, dir;
 
     /* cmd.exe does leave a \r that getline doesn't trim */
     const osTrimLine = ( isWin ? "\r" : "" );
@@ -73,18 +73,18 @@ function test_os_exec() {
     amend.pop();
     amend.pop();
     amend.push("tests");
-    amend.push("test_os_exec_child.js");
-    child = ( isWin ? amend.join("\\") : amend.join("/") );
+    dir =  ( isWin ? amend.join("\\") : amend.join("/") );
 
     pid = os.exec( [ exe,"-q"], { block: true } );
     assert(pid, 0);
 
     fdout = os.pipe();
     fderr = os.pipe();
-    pid = os.exec( [exe, child], { 
+    pid = os.exec( [exe, "test_os_exec_child.js"], { 
         block: true,
         stdout: fdout[1],
         stderr: fderr[1],
+        cwd: dir,
     } );
     assert(pid, 0); 
     os.close(fdout[1]); 
