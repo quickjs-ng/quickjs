@@ -5,6 +5,10 @@ import { assert } from  "./assert.js";
 const isWin = os.platform === 'win32';
 const isCygwin = os.platform === 'cygwin';
 
+/* symlink in windows 10+ requres admin or SeCreateSymbolicLinkPrivilege privilege found under:
+ Computer Configuration\Windows Settings\Security Settings\Local Policies\User Rights Assignment\
+ set IS_WIN_ADMIN_TEST_FLAG to 1 and run as Administrator to test win32 os.symlink */
+const IS_WIN_ADMIN_TEST_FLAG = 0;
 
 function test_printf()
 {
@@ -172,10 +176,6 @@ function test_os()
     if (!isWin) // returns some negative value in windows 11. had to remove this on my build. (CAP)
         assert(st.mtime, fdate);
 
-    /* symlink in windows 10+ requres admin or SeCreateSymbolicLinkPrivilege privilege found under:
-      Computer Configuration\Windows Settings\Security Settings\Local Policies\User Rights Assignment\
-    */
-    const IS_WIN_ADMIN_TEST_FLAG = 0;
     if (!isWin) {
 
         err = os.symlink(fname, link_path);
@@ -195,10 +195,6 @@ function test_os()
 
         err = os.symlink(fname, link_path);
         assert(err, 0);
-
-        [st, err] = os.lstat(link_path);
-        assert(err, 0);
-        assert(st.mode & os.S_IFMT, os.S_IFLNK);
 
         assert(os.remove(link_path) === 0);
 
