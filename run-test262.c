@@ -2136,6 +2136,7 @@ int main(int argc, char **argv)
     const char *ignore = "";
     bool is_test262_harness = false;
     bool is_module = false;
+    bool enable_progress = true;
 
     js_std_set_worker_new_context_func(JS_NewCustomContext);
 
@@ -2238,6 +2239,12 @@ int main(int argc, char **argv)
 
     update_exclude_dirs();
 
+#ifndef _WIN32
+    if (!isatty(STDOUT_FILENO)) {
+        enable_progress = false;
+    }
+#endif
+
     if (is_dir_list) {
         if (optind < argc && !isdigit((unsigned char)argv[optind][0])) {
             filename = argv[optind++];
@@ -2266,7 +2273,9 @@ int main(int argc, char **argv)
         }
         js_cond_init(&progress_cond);
         js_mutex_init(&progress_mutex);
-        js_thread_create(&progress_thread, show_progress, NULL, /*flags*/0);
+        if (enable_progress) {
+            js_thread_create(&progress_thread, show_progress, NULL, /*flags*/0);
+        }
         for (i = 0; i < nthreads; i++) {
             js_thread_create(&threads[i], run_test_dir_list,
                              (void *)(uintptr_t)i, /*flags*/0);
@@ -2276,7 +2285,9 @@ int main(int argc, char **argv)
         js_mutex_lock(&progress_mutex);
         js_cond_signal(&progress_cond);
         js_mutex_unlock(&progress_mutex);
-        js_thread_join(progress_thread);
+        if (enable_progress) {
+            js_thread_join(progress_thread);
+        }
         js_mutex_destroy(&progress_mutex);
         js_cond_destroy(&progress_cond);
     } else {
