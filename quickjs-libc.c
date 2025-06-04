@@ -3275,7 +3275,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     const char *file = NULL, *str, *cwd = NULL;
     uint32_t exec_argc, i;
     int ret, pid;
-    bool block_flag = true, use_path = true;
+    bool block_flag = true, use_path = true, inherit = false;
     static const char *std_name[3] = { "stdin", "stdout", "stderr" };
     int std_fds[3];
     char **envp = environ;
@@ -3322,6 +3322,8 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             goto exception;
         if (get_bool_option(ctx, &use_path, options, "usePath"))
             goto exception;
+        if (get_bool_option(ctx, &inherit, options, "inherit"))
+            goto exception;
 
         val = JS_GetPropertyStr(ctx, options, "file");
         if (JS_IsException(val))
@@ -3349,6 +3351,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (JS_IsException(val))
                 goto exception;
             if (!JS_IsUndefined(val)) {
+                inherit = true;
                 int fd;
                 ret = JS_ToInt32(ctx, &fd, val);
                 JS_FreeValue(ctx, val);
@@ -3439,9 +3442,15 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         /* remap the stdin/stdout/stderr handles if necessary */
         for(i = 0; i < 3; i++) {
             if (std_fds[i] != i) {
-                if (dup2(std_fds[i], i) < 0)
+                if ( dup2(std_fds[i], i)  < 0)
                     _exit(127);
-            }
+                close (std_fds[i]);
+            } else if (!inherit) {
+                int fd = open("/dev/null", O_WRONLY);
+                if ( dup2(fd, i) < 0)
+                    _exit(127);
+                close(fd);
+            };
         }
 
         if (js_os_exec_closefrom) {
@@ -3528,13 +3537,11 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     uint32_t exec_argc, i, besafe;
     int32_t excode, dwait;
     int ret, pid;
-    bool block_flag = true, use_path = true;
+    bool block_flag = true, use_path = true, inherit = false;
     static const char *std_name[3] = { "stdin", "stdout", "stderr" };
     int std_fds[3];
-    bool specified_fd = false;
-#define OS_EXEC_CMD_BUFFSIZE 2048
-    char cmd_buff [OS_EXEC_CMD_BUFFSIZE];
-    int cmd_ind, cmd_strlen;;
+    int cmd_ind, cmd_strlen;
+    char cmd_buff [JS__PATH_MAX];
     char *envp = 0;
 
     for(i = 0; i < 3; i++)
@@ -3547,6 +3554,8 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         if (get_bool_option(ctx, &block_flag, options, "block"))
             goto exception;
         if (get_bool_option(ctx, &use_path, options, "usePath"))
+            goto exception;
+        if (get_bool_option(ctx, &inherit, options, "inherit"))
             goto exception;
 
         val = JS_GetPropertyStr(ctx, options, "file");
@@ -3581,7 +3590,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                 if (ret)
                     goto exception;
                 std_fds[i] = fd;
-                specified_fd = true;
+                inherit = true;
             }
         }
 
@@ -3604,9 +3613,6 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     if (cmd_strlen) {
         strncpy(&cmd_buff[cmd_ind], file, cmd_strlen);
         cmd_ind += cmd_strlen;
-    }  else {
-        //strncpy(&cmd_buff[cmd_ind], "cmd /C ", 7); 
-        //cmd_ind += 7;
     };
 
    val = JS_GetPropertyStr(ctx, args, "length");
@@ -3635,7 +3641,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                 cmd_buff[cmd_ind] = ' ';
                 cmd_ind++;
             };
-            if (OS_EXEC_CMD_BUFFSIZE < (cmd_ind + cmd_strlen + 1)) {
+            if ( (cmd_ind + cmd_strlen + 1) > JS__PATH_MAX ) {
                 JS_ThrowRangeError(ctx, "exec command line too long.");
                 goto exception;
             };
@@ -3652,31 +3658,32 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     memset(&istart, 0, sizeof(istart) );
     istart.cb = sizeof(istart);
 
-    if (specified_fd) 
+    if (inherit) 
     { 
         istart.dwFlags = STARTF_USESTDHANDLES;
-        cflags |= CREATE_NO_WINDOW;
-    };    
-    istart.hStdInput = (HANDLE) _get_osfhandle( std_fds[0] );
-    if (istart.hStdInput == INVALID_HANDLE_VALUE) 
-    {
-        JS_ThrowInternalError(ctx, "failed to associate stdin of process");
-        goto exception;
-    };
-    istart.hStdOutput = (HANDLE) _get_osfhandle( std_fds[1] );
-    if (istart.hStdOutput == INVALID_HANDLE_VALUE) 
-    {
-        JS_ThrowInternalError(ctx, "failed to associate stdout of process");
-        goto exception;
-    };
-    istart.hStdError = (HANDLE) _get_osfhandle( std_fds[2] );
-    if (istart.hStdError == INVALID_HANDLE_VALUE) {
-        JS_ThrowInternalError(ctx, "failed to associate stderr of process");
-        goto exception;
-    };
+    
+        istart.hStdInput = (HANDLE) _get_osfhandle( std_fds[0] );
+        if (istart.hStdInput == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stdin of process");
+            goto exception;
+        }
+
+        istart.hStdOutput = (HANDLE) _get_osfhandle( std_fds[1] );
+        if (istart.hStdOutput == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stdout of process");
+            goto exception;
+        }
+
+        istart.hStdError = (HANDLE) _get_osfhandle( std_fds[2] );
+        if (istart.hStdError == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stderr of process");
+            goto exception;
+        }
+    } else cflags |= CREATE_NO_WINDOW; 
+        
 
     besafe = excode = 0;
-    if (!CreateProcessA(file, cmd_buff, 0, 0, specified_fd, cflags, envp, cwd, &istart, &iproc) ) {
+    if (!CreateProcessA(file, cmd_buff, 0, 0, true, cflags, envp, cwd, &istart, &iproc) ) {
         excode = GetLastError();
         ret_val = JS_NewInt32(ctx, excode);
     } else if (block_flag) {
