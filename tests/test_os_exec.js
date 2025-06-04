@@ -30,13 +30,23 @@ function test_os_exec() {
     ret = os.exec( ["echo invalid filenames leave no text"],  );
     assert( ret, ( isWin ? 2 : 127 ) );
 
-    ret = os.exec( [osShellCmd, osShellFlag, "bad command or filename @@"],  );
+    ret = os.exec( [osShellCmd, osShellFlag, "errors return error codes"],  );
+    assert( ret, ( isWin ? 1 : 127 ) );
+
+    ret = os.exec( [osShellCmd, osShellFlag, "bad command or filename @@"],  
+        { inherit: true }
+    );
     assert( ret, ( isWin ? 1 : 127 ) );
 
     ret = os.exec( [osShellCmd, osShellFlag, ": good commands return 0"] );
     assert(ret, 0);
 
-    ret = os.exec( [osShellCmd, osShellFlag, "echo shell commands come through"] );
+    ret = os.exec( [osShellCmd, osShellFlag, "echo stdio not inherited by default"] );
+    assert(ret, 0);
+
+    ret = os.exec( [osShellCmd, osShellFlag, "echo inherited shell text comes through"],
+        { inherit: true }
+     );
     assert(ret, 0);
 
     pid = os.exec( [osShellCmd, osShellFlag, ":"], { block: false} );
