@@ -69,11 +69,13 @@ function test_os_exec() {
     amend = os.exePath().split(osPathSeparator);
     amend.pop();
     amend.push("qjs");
-    exe = ( isWin ? amend.join("\\") : amend.join("/") );
-    amend.pop();
-    amend.pop();
-    amend.push("tests");
-    dir =  ( isWin ? amend.join("\\") : amend.join("/") );
+    exe = amend.join(osPathSeparator);
+    [dir, ret] = os.getcwd(); 
+    amend = dir.split(osPathSeparator);
+    if (amend[amend.length - 1] != "tests") {
+        amend.push("tests");
+        dir = amend.join(osPathSeparator);
+    };
 
     pid = os.exec( [ exe,"-q"], { block: true } );
     assert(pid, 0);
