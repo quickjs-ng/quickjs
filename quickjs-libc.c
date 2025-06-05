@@ -1059,10 +1059,10 @@ static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
             if (ss->f) fclose(ss->f);
             if (ss->filename != 0) remove(ss->filename);
             js_free_rt(rt, ss->filename);
-        } else if (s->f && !is_stdio(s->f)) {
-#else
-        if (s->f && !is_stdio(s->f)) {
+            return;
+        };
 #endif
+        if (s->f && !is_stdio(s->f)) {
 #if !defined(__wasi__)
             if (s->is_popen)
                 pclose(s->f);
@@ -1234,8 +1234,8 @@ static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
     JSThreadState *ts = js_get_thread_state(rt);
     JSTMPFile *s;
     JSValue obj;
-    char* fn_template, *env_tmp, *fn_buff;
-    int mk_fd, fn_len;
+    char *env_tmp, *fn_buff;
+    int mk_fd, path_len, fn_template_len, fn_total_len;
 
     obj = JS_NewObjectClass(ctx, ts->std_file_class_id);
     if (JS_IsException(obj))    
@@ -1245,28 +1245,33 @@ static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
         JS_FreeValue(ctx, obj);
         return JS_EXCEPTION;
     }
-    fn_template = "\\qXXXXXXX";
+    static char* fn_template = "qXXXXXXX";
+    fn_template_len = strlen(fn_template) + 1;
+    fn_total_len = fn_template_len;
+    path_len = 0;
     env_tmp = getenv("TMP");
     if (!env_tmp)  
         env_tmp = getenv("TEMP");
     if (env_tmp) {
-        fn_len = strlen(env_tmp);
-        fn_buff = js_malloc(ctx, fn_len + 10);
-        memcpy(fn_buff, env_tmp, fn_len);
-        memcpy(fn_buff + fn_len, fn_template, 10);
-    } else {
-        fn_buff = js_mallocz(ctx, 10);
-        memcpy(fn_buff, fn_template, 10);
+        path_len = strlen(env_tmp);
+        fn_total_len = path_len + 1 + fn_template_len;
     }
+    fn_buff = js_malloc(ctx, path_len + fn_total_len);
+    if (env_tmp) {
+        memcpy(fn_buff, env_tmp, path_len);
+        fn_buff[path_len] = '\\';
+        path_len++;
+    }
+    memcpy(fn_buff + path_len, fn_template, fn_template_len);
     mk_fd = mkstemp(fn_buff);    
     if (mk_fd == -1) {    
         JS_ThrowInternalError(ctx, "tmpfile failed to create file with error: %d.", errno);
         goto file_failure;
     };
-    //int fd = dup(mkf);
     s->f = fdopen( mk_fd, "a+");
-    if (s->f == 0) {
+    if (!s->f) {
         JS_ThrowInternalError(ctx, "tmpfile failed to open file with error: %d.", errno);
+        close(mk_fd);
         goto file_failure;
     };
     s->filename = fn_buff;
