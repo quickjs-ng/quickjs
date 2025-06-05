@@ -5,11 +5,6 @@ import { assert } from  "./assert.js";
 const isWin = os.platform === 'win32';
 const isCygwin = os.platform === 'cygwin';
 
-/* symlink in windows 10+ requres admin or SeCreateSymbolicLinkPrivilege privilege found under:
- Computer Configuration\Windows Settings\Security Settings\Local Policies\User Rights Assignment\
- set IS_WIN_ADMIN_TEST_FLAG to 1 and run as Administrator to test win32 os.symlink */
-const IS_WIN_ADMIN_TEST_FLAG = 0;
-
 function test_printf()
 {
     assert(std.sprintf("a=%d s=%s", 123, "abc"), "a=123 s=abc");
@@ -164,7 +159,7 @@ function test_os()
     assert(err, 0);
     assert(files.indexOf(fname) >= 0);
 
-    fdate = 10000;
+    fdate = 86400000;
 
     err = os.utimes(fpath, fdate, fdate);
     assert(err, 0);
@@ -172,13 +167,11 @@ function test_os()
     [st, err] = os.stat(fpath);
     assert(err, 0);
     assert(st.mode & os.S_IFMT, os.S_IFREG);
+    assert(st.mtime, fdate);
 
-    if (!isWin) // returns some negative value in windows 11. had to remove this on my build. (CAP)
-        assert(st.mtime, fdate);
+    err = os.symlink(fname, link_path);
 
     if (!isWin) {
-
-        err = os.symlink(fname, link_path);
         assert(err, 0);
 
         [st, err] = os.lstat(link_path);
@@ -190,14 +183,10 @@ function test_os()
         assert(buf, fname);
 
         assert(os.remove(link_path) === 0);
-        
-    } else if (IS_WIN_ADMIN_TEST_FLAG) {
-
-        err = os.symlink(fname, link_path);
+       
+    } else if (err != 1314) {
         assert(err, 0);
-
         assert(os.remove(link_path) === 0);
-
     }
 
     [buf, err] = os.getcwd();
@@ -313,4 +302,3 @@ test_interval();
 test_timeout();
 test_timeout_order();
 test_stdio_close();
-
