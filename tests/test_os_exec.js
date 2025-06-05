@@ -72,6 +72,8 @@ function test_os_exec() {
     exe = amend.join(osPathSeparator);
     [dir, ret] = os.getcwd(); 
     amend = dir.split(osPathSeparator);
+    if (amend[amend.length - 1] == "build")
+        amend.pop();
     if (amend[amend.length - 1] != "tests") {
         amend.push("tests");
         dir = amend.join(osPathSeparator);
