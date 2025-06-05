@@ -3158,7 +3158,7 @@ static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
          if (JS_ToInt32(ctx, &isdirflag, argv[2])) return JS_EXCEPTION;
     }
     err =  CreateSymbolicLinkA(linkpath, target, ( isdirflag | 
-        SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE ) ) ; 
+                                                   SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE ) ) ; 
     if (!err) err = GetLastError();
     else err = 0;
 #else
