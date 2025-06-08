@@ -61,12 +61,12 @@
 #define chdir _chdir
 #else
 #include <sys/ioctl.h>
+#include <poll.h>
 #if !defined(__wasi__)
 #include <dlfcn.h>
 #include <termios.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
-#include <poll.h>
 #include <grp.h>
 #endif
 
