@@ -66,6 +66,7 @@
 #include <termios.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
+#include <poll.h>
 #include <grp.h>
 #endif
 
@@ -2633,11 +2634,10 @@ static int js_os_poll(JSContext *ctx)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
-    int ret, fd_max, min_delay;
-    fd_set rfds, wfds;
+    int r, w, ret, nfds, min_delay;
     JSOSRWHandler *rh;
     struct list_head *el;
-    struct timeval tv, *tvp;
+    struct pollfd *pfd, *pfds, pfds_local[64];
 
     /* only check signals in the main thread */
     if (!ts->recv_pipe &&
@@ -2663,23 +2663,32 @@ static int js_os_poll(JSContext *ctx)
         if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))
             return -1; /* no more events */
 
-    tvp = NULL;
-    if (min_delay >= 0) {
-        tv.tv_sec = min_delay / 1000;
-        tv.tv_usec = (min_delay % 1000) * 1000;
-        tvp = &tv;
-    }
-
-    FD_ZERO(&rfds);
-    FD_ZERO(&wfds);
-    fd_max = -1;
+    nfds = 0;
     list_for_each(el, &ts->os_rw_handlers) {
         rh = list_entry(el, JSOSRWHandler, link);
-        fd_max = max_int(fd_max, rh->fd);
-        if (!JS_IsNull(rh->rw_func[0]))
-            FD_SET(rh->fd, &rfds);
-        if (!JS_IsNull(rh->rw_func[1]))
-            FD_SET(rh->fd, &wfds);
+        nfds += (!JS_IsNull(rh->rw_func[0]) || !JS_IsNull(rh->rw_func[1]));
+    }
+
+#ifdef USE_WORKER
+    list_for_each(el, &ts->port_list) {
+        JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
+        nfds += !JS_IsNull(port->on_message_func);
+    }
+#endif // USE_WORKER
+
+    pfd = pfds = pfds_local;
+    if (nfds > (int)countof(pfds_local)) {
+        pfd = pfds = js_malloc(ctx, nfds * sizeof(*pfd));
+        if (!pfd)
+            return -1;
+    }
+
+    list_for_each(el, &ts->os_rw_handlers) {
+        rh = list_entry(el, JSOSRWHandler, link);
+        r = POLLIN * !JS_IsNull(rh->rw_func[0]);
+        w = POLLOUT * !JS_IsNull(rh->rw_func[1]);
+        if (r || w)
+            *pfd++ = (struct pollfd){rh->fd, r|w, 0};
     }
 
 #ifdef USE_WORKER
@@ -2687,43 +2696,50 @@ static int js_os_poll(JSContext *ctx)
         JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
         if (!JS_IsNull(port->on_message_func)) {
             JSWorkerMessagePipe *ps = port->recv_pipe;
-            fd_max = max_int(fd_max, ps->waker.read_fd);
-            FD_SET(ps->waker.read_fd, &rfds);
+            *pfd++ = (struct pollfd){ps->waker.read_fd, POLLIN, 0};
         }
     }
 #endif // USE_WORKER
 
-    ret = select(fd_max + 1, &rfds, &wfds, NULL, tvp);
-    if (ret > 0) {
-        list_for_each(el, &ts->os_rw_handlers) {
-            rh = list_entry(el, JSOSRWHandler, link);
-            if (!JS_IsNull(rh->rw_func[0]) &&
-                FD_ISSET(rh->fd, &rfds)) {
-                return call_handler(ctx, rh->rw_func[0]);
+    // FIXME(bnoordhuis) the loop below is quadratic in theory but
+    // linear-ish in practice because we bail out on the first hit,
+    // i.e., it's probably good enough for now
+    ret = 0;
+    nfds = poll(pfds, nfds, min_delay);
+    for (pfd = pfds; nfds-- > 0; pfd++) {
+        rh = find_rh(ts, pfd->fd);
+        if (rh) {
+            r = (POLLERR|POLLHUP|POLLNVAL|POLLIN) * !JS_IsNull(rh->rw_func[0]);
+            w = (POLLERR|POLLHUP|POLLNVAL|POLLOUT) * !JS_IsNull(rh->rw_func[1]);
+            if (r & pfd->revents) {
+                ret = call_handler(ctx, rh->rw_func[0]);
+                goto done;
                 /* must stop because the list may have been modified */
             }
-            if (!JS_IsNull(rh->rw_func[1]) &&
-                FD_ISSET(rh->fd, &wfds)) {
-                return call_handler(ctx, rh->rw_func[1]);
+            if (w & pfd->revents) {
+                ret = call_handler(ctx, rh->rw_func[1]);
+                goto done;
                 /* must stop because the list may have been modified */
             }
-        }
+        } else {
 #ifdef USE_WORKER
-        list_for_each(el, &ts->port_list) {
-            JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
-            if (!JS_IsNull(port->on_message_func)) {
-                JSWorkerMessagePipe *ps = port->recv_pipe;
-                if (FD_ISSET(ps->waker.read_fd, &rfds)) {
-                    if (handle_posted_message(rt, ctx, port))
-                        goto done;
+            list_for_each(el, &ts->port_list) {
+                JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
+                if (!JS_IsNull(port->on_message_func)) {
+                    JSWorkerMessagePipe *ps = port->recv_pipe;
+                    if (pfd->fd == ps->waker.read_fd) {
+                        if (handle_posted_message(rt, ctx, port))
+                            goto done;
+                    }
                 }
             }
-        }
 #endif // USE_WORKER
+        }
     }
-    goto done; // silence unused label warning
 done:
-    return 0;
+    if (pfds != pfds_local)
+        js_free(ctx, pfds);
+    return ret;
 }
 #endif // defined(_WIN32)
 
