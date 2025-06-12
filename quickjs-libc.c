@@ -1150,7 +1150,7 @@ static JSValue js_std_popen(JSContext *ctx, JSValueConst this_val,
     mode = JS_ToCString(ctx, argv[1]);
     if (!mode)
         goto fail;
-    if (mode[strspn(mode, "rw")] != '\0') {
+    if (strcmp(mode, "r") && strcmp(mode, "w")) {
         JS_ThrowTypeError(ctx, "invalid file mode");
         goto fail;
     }
