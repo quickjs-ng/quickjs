@@ -5,7 +5,6 @@ import { assert } from  "./assert.js";
 const isWin = os.platform === 'win32';
 const isCygwin = os.platform === 'cygwin';
 
-
 function test_printf()
 {
     assert(std.sprintf("a=%d s=%s", 123, "abc"), "a=123 s=abc");
@@ -171,7 +170,7 @@ function test_os()
     assert(err, 0);
     assert(files.indexOf(fname) >= 0);
 
-    fdate = 10000;
+    fdate = 86400000;
 
     err = os.utimes(fpath, fdate, fdate);
     assert(err, 0);
@@ -181,8 +180,9 @@ function test_os()
     assert(st.mode & os.S_IFMT, os.S_IFREG);
     assert(st.mtime, fdate);
 
+    err = os.symlink(fname, link_path);
+
     if (!isWin) {
-        err = os.symlink(fname, link_path);
         assert(err, 0);
 
         [st, err] = os.lstat(link_path);
@@ -193,6 +193,10 @@ function test_os()
         assert(err, 0);
         assert(buf, fname);
 
+        assert(os.remove(link_path) === 0);
+       
+    } else if (err != 1314) {
+        assert(err, 0);
         assert(os.remove(link_path) === 0);
     }
 
