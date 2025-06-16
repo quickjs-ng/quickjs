@@ -31,6 +31,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <time.h>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -72,6 +73,12 @@ typedef struct namelist_t {
     int count;
     int size;
 } namelist_t;
+
+enum file_type_t {
+    file_is_directory,
+    file_is_not_directory,
+    file_is_unknown,
+};
 
 long nthreads; // invariant: 0 < nthreads < countof(threads)
 js_thread_t threads[32];
@@ -407,7 +414,7 @@ static bool ispathsep(int c)
     return c == '/' || c == '\\';
 }
 
-static void consider_test_file(const char *path, const char *name, int is_dir)
+static void consider_test_file(const char *path, const char *name, enum file_type_t file_type)
 {
     size_t pathlen;
     char s[1024];
@@ -418,7 +425,13 @@ static void consider_test_file(const char *path, const char *name, int is_dir)
     while (pathlen > 0 && ispathsep(path[pathlen-1]))
         pathlen--;
     snprintf(s, sizeof(s), "%.*s/%s", (int)pathlen, path, name);
-    if (is_dir)
+#ifndef _WIN32
+    if (file_type == file_is_unknown) {
+        struct stat st;
+        file_type = stat(s, &st) == 0 && S_ISDIR(st.st_mode) ? file_is_directory : file_is_not_directory;
+    }
+#endif
+    if (file_type == file_is_directory)
         find_test_files(s);
     else
         add_test_file(s);
@@ -437,7 +450,7 @@ static void find_test_files(const char *path)
         do {
             consider_test_file(path,
                                d.cFileName,
-                               d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+                               d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? file_is_directory : file_is_not_directory);
         } while (FindNextFileA(h, &d));
         FindClose(h);
     }
@@ -448,7 +461,19 @@ static void find_test_files(const char *path)
     n = scandir(path, &ds, NULL, alphasort);
     for (i = 0; i < n; i++) {
         d = ds[i];
-        consider_test_file(path, d->d_name, d->d_type == DT_DIR);
+        enum file_type_t file_type;
+        switch (d->d_type) {
+        case DT_DIR:
+            file_type = file_is_directory;
+            break;
+        case DT_UNKNOWN:
+            file_type = file_is_unknown;
+            break;
+        default:
+            file_type = file_is_not_directory;
+            break;
+        }
+        consider_test_file(path, d->d_name, file_type);
         free(d);
     }
     free(ds);
