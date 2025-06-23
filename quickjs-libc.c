@@ -99,6 +99,8 @@ extern char **environ;
 #ifndef QJS_NATIVE_MODULE_SUFFIX
 #ifdef _WIN32
 #define QJS_NATIVE_MODULE_SUFFIX ".dll"
+#elif defined(__APPLE__)
+#define QJS_NATIVE_MODULE_SUFFIX ".dylib"
 #else
 #define QJS_NATIVE_MODULE_SUFFIX ".so"
 #endif
