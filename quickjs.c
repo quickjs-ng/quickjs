@@ -57144,6 +57144,7 @@ void JS_AddIntrinsicTypedArrays(JSContext *ctx)
                                js_typed_array_base_funcs,
                                countof(js_typed_array_base_funcs));
     JS_SetConstructor(ctx, typed_array_base_func, typed_array_base_proto);
+    JS_SetConstructorBit(ctx, typed_array_base_func, true);
 
     /* Used to squelch a -Wcast-function-type warning. */
     JSCFunctionType ft = { .generic_magic = js_typed_array_constructor };
