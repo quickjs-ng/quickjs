@@ -10617,6 +10617,8 @@ do {                                                    \
 /* a != 0 */
 static inline js_limb_t js_limb_clz(js_limb_t a)
 {
+    if (!a)
+        return JS_LIMB_BITS;
     return clz32(a);
 }
 
