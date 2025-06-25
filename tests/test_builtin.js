@@ -569,6 +569,16 @@ function test_typed_array()
     assert(a.buffer, b.buffer);
     assert(a.toString(), "0,0,0,255");
     assert(b.toString(), "0,0,255,255");
+
+    const TypedArray = class extends Object.getPrototypeOf(Uint8Array) {};
+    let caught = false;
+    try {
+        new TypedArray(); // extensible but not instantiable
+    } catch (e) {
+        assert(/cannot be called/.test(e.message));
+        caught = true;
+    }
+    assert(caught);
 }
 
 function test_json()
