@@ -49,15 +49,6 @@
 #include "libregexp.h"
 #include "xsum.h"
 
-#if defined(QJS_ENABLE_SLJIT)
-#include <sljitLir.h>
-
-#if SLJIT_VERBOSE
-#include <Zydis/Zydis.h>
-#endif
-
-#endif
-
 #if defined(EMSCRIPTEN) || defined(_MSC_VER)
 #define DIRECT_DISPATCH  0
 #else
@@ -80,6 +71,15 @@
 #if !defined(__TINYC__) && !defined(EMSCRIPTEN) && !defined(__wasi__) && !__STDC_NO_ATOMICS__
 #include "quickjs-c-atomics.h"
 #define CONFIG_ATOMICS
+#endif
+
+
+#if defined(QJS_ENABLE_SLJIT)
+#include <sljitLir.h>
+
+#ifdef QJS_SLJIT_VERBOSE
+#include <Zydis/Zydis.h>
+#endif
 #endif
 
 #ifndef __GNUC__
@@ -33986,7 +33986,7 @@ static void js_jit(JSContext *ctx, JSFunctionBytecode *b) {
     }
 #endif
     b->jitcode = sljit_generate_code(c, 0, NULL);
-#if SLJIT_VERBOSE
+#if QJS_SLJIT_VERBOSE
 
     size_t len = sljit_get_generated_code_size(c);
     // The runtime address (instruction pointer) was chosen arbitrarily here in order to better 
