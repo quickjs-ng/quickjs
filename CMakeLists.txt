@@ -301,11 +301,11 @@ target_include_directories(sljit PUBLIC
 target_link_libraries(qjs PRIVATE sljit)
 
 if (QJS_SLJIT_DEBUG)
-    target_compile_definitions(sljit PUBLIC SLJIT_DEBUG=0)
+    target_compile_definitions(sljit PUBLIC SLJIT_DEBUG=1)
 endif()
 
 if (QJS_SLJIT_VERBOSE)
-    target_compile_definitions(sljit PUBLIC SLJIT_VERBOSE=0)
+    target_compile_definitions(sljit PUBLIC SLJIT_VERBOSE=1)
     add_subdirectory(zydis)
     target_link_libraries(qjs PRIVATE Zydis::Zydis)
     target_compile_options(Zycore PRIVATE -Wno-format-nonliteral)
