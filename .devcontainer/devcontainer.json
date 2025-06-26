@@ -1,0 +1,62 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/cpp
+{
+  "name": "QuickJS-ng Devcontainer",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  // Features to add to the dev container. More info: https://containers.dev/features.
+  "features": {},
+
+  // Use 'forwardPorts' to make a list of ports inside the container available locally.
+  // "forwardPorts": [],
+
+  // Use 'postCreateCommand' to run commands after the container is created.
+  // "postCreateCommand": "gcc -v",
+
+  // Configure tool-specific properties.
+  "customizations": {
+    // Configure properties specific to VS Code.
+    "vscode": {
+      "settings": {
+        "workbench.colorTheme": "Visual Studio Dark - C++",
+        "workbench.preferredDarkColorTheme": "Visual Studio Dark - C++",
+        "workbench.preferredHighContrastColorTheme": "Default High Contrast",
+        "workbench.preferredLightColorTheme": "Visual Studio Light - C++",
+        "window.autoDetectColorScheme": true,
+        "[cpp]": {
+          "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+          "editor.formatOnSave": true
+        }
+      },
+      "extensions": [
+        "bierner.markdown-preview-github-styles",
+        "cheshirekow.cmake-format",
+        "davidanson.vscode-markdownlint",
+        "eamodio.gitlens",
+        "esbenp.prettier-vscode",
+        "franneck94.vscode-c-cpp-dev-extension-pack",
+        "fredericbonnet.cmake-test-adapter",
+        "hbenl.vscode-test-explorer",
+        "josetr.cmake-language-support-vscode",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "matepek.vscode-catch2-test-adapter",
+        "mhutchie.git-graph",
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools-extension-pack",
+        "ms-vscode.cpptools-themes",
+        "ms-vscode.cpptools",
+        "ms-vscode.remote-explorer",
+        "ms-vscode.test-adapter-converter",
+        "redhat.vscode-yaml",
+        "solomonkinard.workspace-include-what-you-use",
+        "sr-team.vscode-clangd-cmake",
+        "streetsidesoftware.code-spell-checker",
+        "timonwong.shellcheck",
+        "vadimcn.vscode-lldb",
+        "xaver.clang-format"
+      ]
+    }
+  }
+}
