@@ -5777,8 +5777,17 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
             }
         }
         break;
+    case JS_TAG_FUNCTION_BYTECODE: 
+        {
+#ifdef QJS_ENABLE_SLJIT
+            JSFunctionBytecode *b = JS_GetFunctionBytecode(v);
+            if (b && b->jitcode) {
+                sljit_free_code(b->jitcode, NULL);
+                b->jitcode = NULL;
+            }
+#endif
+        }
     case JS_TAG_OBJECT:
-    case JS_TAG_FUNCTION_BYTECODE:
         {
             JSGCObjectHeader *p = JS_VALUE_GET_PTR(v);
             if (rt->gc_phase != JS_GC_PHASE_REMOVE_CYCLES) {
@@ -33987,7 +33996,6 @@ static void js_jit(JSContext *ctx, JSFunctionBytecode *b) {
 #endif
     b->jitcode = sljit_generate_code(c, 0, NULL);
 #if QJS_SLJIT_VERBOSE
-
     size_t len = sljit_get_generated_code_size(c);
     // The runtime address (instruction pointer) was chosen arbitrarily here in order to better 
     // visualize relative addressing. In your actual program, set this to e.g. the memory address 
