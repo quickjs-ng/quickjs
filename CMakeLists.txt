@@ -281,6 +281,16 @@ if(EMSCRIPTEN)
 endif()
 
 if (QJS_ENABLE_SLJIT)
+
+xoption(SLJIT_DEBUG "sljit debug mode" OFF)
+xoption(SLJIT_VERBOSE "sljit verbose mode" OFF)
+
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+    set(SLJIT_DEBUG ON)
+    set(SLJIT_VERBOSE ON)
+endif()
+
+
 file(GLOB SLJIT_SRC
        ${CMAKE_CURRENT_SOURCE_DIR}/sljit/sljit_src/sljitLir.c
 )
@@ -291,7 +301,15 @@ target_include_directories(sljit PUBLIC
     $<INSTALL_INTERFACE:sljit/sljit_src>
 )
 
+
 target_link_libraries(qjs PRIVATE sljit)
+
+if (SLJIT_VERBOSE)
+    add_subdirectory(zydis)
+    target_link_libraries(qjs PRIVATE Zydis::Zydis)
+    target_compile_options(Zycore PRIVATE -Wno-format-nonliteral)
+endif()
+
 endif()
 
 # QuickJS bytecode compiler

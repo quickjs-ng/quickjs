@@ -6,3 +6,6 @@
 [submodule "sljit"]
 	path = sljit
 	url = https://github.com/zherczeg/sljit
+[submodule "zydis"]
+	path = zydis
+	url = https://github.com/zyantific/zydis

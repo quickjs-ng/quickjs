@@ -51,6 +51,11 @@
 
 #if defined(QJS_ENABLE_SLJIT)
 #include <sljitLir.h>
+
+#if SLJIT_VERBOSE
+#include <Zydis/Zydis.h>
+#endif
+
 #endif
 
 #if defined(EMSCRIPTEN) || defined(_MSC_VER)
@@ -654,6 +659,18 @@ typedef enum JSFunctionKindEnum {
     JS_FUNC_ASYNC_GENERATOR = (JS_FUNC_GENERATOR | JS_FUNC_ASYNC),
 } JSFunctionKindEnum;
 
+
+struct JitAux {
+  JSValue *stack_buf;
+  JSValue *var_buf;
+  JSValue *arg_buf;
+  JSValue *sp;
+  JSVarRef **var_refs;
+  JSStackFrame *sf;
+  JSObject *p;
+  JSContext *caller_ctx;
+};
+
 typedef struct JSFunctionBytecode {
     JSGCObjectHeader header; /* must come first */
     uint8_t is_strict_mode : 1;
@@ -689,7 +706,15 @@ typedef struct JSFunctionBytecode {
     int pc2line_len;
     uint8_t *pc2line_buf;
     char *source;
+#ifdef QJS_ENABLE_SLJIT
+    JSValue (*jitcode)(JSContext *ctx, JSValueConst func_obj,
+                    JSValueConst this_obj, JSValueConst new_target,
+                    int argc, JSValue *argv, int flags,
+                    struct JitAux *aux);
+#endif
 } JSFunctionBytecode;
+
+
 
 typedef struct JSBoundFunction {
     JSValue func_obj;
@@ -16477,6 +16502,8 @@ static bool needs_backtrace(JSValue exc)
     return !find_own_property1(p, JS_ATOM_stack);
 }
 
+static void js_jit(JSContext *ctx, JSFunctionBytecode *b);
+
 /* argv[] is modified if (flags & JS_CALL_FLAG_COPY_ARGV) = 0. */
 static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                                JSValueConst this_obj, JSValueConst new_target,
@@ -16606,6 +16633,31 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_STEP
     if (check_dump_flag(ctx->rt, JS_DUMP_BYTECODE_STEP))
         print_func_name(b);
+#endif
+
+#ifdef QJS_ENABLE_SLJIT
+jit:
+    if (!b->jitcode) {
+        js_jit(ctx, b);
+        goto jit;
+    } else {
+        // struct JitAux aux = {
+        //     .caller_ctx = caller_ctx,
+        //     .var_refs = var_refs,
+        //     .var_buf = var_buf,
+        //     .arg_buf = arg_buf,
+        //     .sf = sf,
+        //     .sp = sp,
+        //     .p = p,
+        // };
+        // ret_val = b->jitcode(ctx, func_obj, this_obj, new_target,
+        //                      argc, argv, flags, &aux);
+        // sp = aux.sp;
+        // if (JS_IsException(ret_val))
+        //     goto exception;
+        // // TODO handle b->func_kind != JS_FUNC_NORMAL
+        // goto done;
+    }
 #endif
 
  restart:
@@ -33889,6 +33941,77 @@ static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
     }
     return 0;
 }
+
+#ifdef QJS_ENABLE_SLJIT
+typedef sljit_sw (SLJIT_FUNC *func3_t)(sljit_sw a, sljit_sw b, sljit_sw c);
+
+static void js_jit(JSContext *ctx, JSFunctionBytecode *b) {
+    uint8_t *pc;
+    // int opcode;
+
+    pc = b->byte_code_buf;
+
+    struct sljit_compiler *c = sljit_create_compiler(NULL);
+    sljit_emit_enter(c, 0, 3, 1, 3, 0);
+#if 0
+#if !DIRECT_DISPATCH
+#define SWITCH(pc)      switch (opcode = *pc++)
+#define CASE(op)        case op
+#define DEFAULT         default
+#define BREAK           break
+
+#else
+    __extension__ static const void * const dispatch_table[256] = {
+#define DEF(id, size, n_pop, n_push, f) && case_OP_ ## id,
+#define def(id, size, n_pop, n_push, f)
+#include "quickjs-opcode.h"
+        [ OP_COUNT ... 255 ] = &&case_default
+    };
+#define SWITCH(pc)      DUMP_BYTECODE_OR_DONT(pc) __extension__ ({ goto *dispatch_table[opcode = *pc++]; });
+#define CASE(op)        case_ ## op
+#define DEFAULT         case_default
+#define BREAK           SWITCH(pc)
+#endif
+
+     for(;;) {
+        SWITCH(pc) {
+            CASE(OP_push_i32):
+
+            BREAK
+            
+            DEFAULT: 
+            BREAK
+            
+        }
+    }
+#endif
+    b->jitcode = sljit_generate_code(c, 0, NULL);
+#if SLJIT_VERBOSE
+
+    size_t len = sljit_get_generated_code_size(c);
+    // The runtime address (instruction pointer) was chosen arbitrarily here in order to better 
+    // visualize relative addressing. In your actual program, set this to e.g. the memory address 
+    // that the code being disassembled was read from. 
+    ZyanU64 runtime_address = (ZyanU64) b->jitcode; 
+    
+    // Loop over the instructions in our buffer. 
+    ZyanUSize offset = 0; 
+    ZydisDisassembledInstruction instruction; 
+    while (ZYAN_SUCCESS(ZydisDisassembleIntel( 
+        ZYDIS_MACHINE_MODE_LONG_64, 
+        runtime_address, 
+        (const void*) (runtime_address + offset), 
+        len - offset, 
+        &instruction 
+    ))) { 
+        printf("%016" PRIX64 "  %s\n", runtime_address, instruction.text); 
+        offset += instruction.info.length; 
+        runtime_address += instruction.info.length; 
+    } 
+#endif
+    sljit_free_compiler(c);
+}
+#endif
 
 /* create a function object from a function definition. The function
    definition is freed. All the child functions are also created. It
