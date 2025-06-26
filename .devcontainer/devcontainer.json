@@ -11,10 +11,8 @@
 
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
   // "forwardPorts": [],
-
-  // Use 'postCreateCommand' to run commands after the container is created.
-  // "postCreateCommand": "gcc -v",
-
+  "postCreateCommand": "git submodule update --init",
+  
   // Configure tool-specific properties.
   "customizations": {
     // Configure properties specific to VS Code.
