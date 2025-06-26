@@ -49,6 +49,10 @@
 #include "libregexp.h"
 #include "xsum.h"
 
+#if defined(QJS_ENABLE_SLJIT)
+#include <sljitLir.h>
+#endif
+
 #if defined(EMSCRIPTEN) || defined(_MSC_VER)
 #define DIRECT_DISPATCH  0
 #else
