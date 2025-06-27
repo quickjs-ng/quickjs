@@ -281,12 +281,13 @@ if(EMSCRIPTEN)
 endif()
 
 if (QJS_ENABLE_SLJIT)
-xoption(QJS_SLJIT_DEBUG "sljit debug mode" OFF)
-xoption(QJS_SLJIT_VERBOSE "sljit verbose mode" OFF)
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    set(QJS_SLJIT_DEBUG ON)
-    set(QJS_SLJIT_VERBOSE ON)
+xoption(QJS_SLJIT_DEBUG "sljit debug mode" ON)
+xoption(QJS_SLJIT_VERBOSE "sljit verbose mode" ON)
+else()
+xoption(QJS_SLJIT_DEBUG "sljit debug mode" OFF)
+xoption(QJS_SLJIT_VERBOSE "sljit verbose mode" OFF)
 endif()
 
 file(GLOB SLJIT_SRC

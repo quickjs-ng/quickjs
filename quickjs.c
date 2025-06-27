@@ -33952,50 +33952,458 @@ static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
 }
 
 #ifdef QJS_ENABLE_SLJIT
-typedef sljit_sw (SLJIT_FUNC *func3_t)(sljit_sw a, sljit_sw b, sljit_sw c);
 
+typedef struct jit_aux {
+    JSValueConst func_obj;
+    JSValueConst this_obj;
+    JSValueConst new_target;
+    int argc; 
+    JSValueConst *argv; 
+    int flags;
+
+    JSObject *p;
+    JSStackFrame sf_s, *sf;
+    int arg_allocated_size;
+    JSValue *local_buf, *stack_buf, *var_buf, *arg_buf, ret_val, *pval;
+    JSVarRef **var_refs;
+    size_t alloca_size;
+} *jit_aux;
+
+typedef void (*jit_execute_func_t)(
+    JSContext *ctx, // S0
+    JSFunctionBytecode *b, // S1 
+    JSValue **rsp, // S2
+    jit_aux *aux // S3
+);  
+
+static void js_jit_move_js_value(struct sljit_compiler *c, JSValue val) {
+    // R0 = *rsp = sp;
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_S2), 0);
+    // *(*R0 + offsetof(u)) = val.u;
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_MEM1(SLJIT_R0), SLJIT_OFFSETOF(JSValue, u), SLJIT_IMM, (sljit_up)val.u.ptr);
+    // *(*R0 + offsetof(tag)) = val.tag;
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_MEM1(SLJIT_R0), SLJIT_OFFSETOF(JSValue, tag), SLJIT_IMM, val.tag);
+}
+
+static void js_jit_sp_add(struct sljit_compiler *c, int count) {
+    if (count < 0) {
+        // (*rsp) = (*rsp) + count
+        sljit_emit_op2(c, SLJIT_ADD, SLJIT_MEM1(SLJIT_S2), 0, SLJIT_MEM1(SLJIT_S2), 0, SLJIT_IMM, count);
+    } else {
+        // (*rsp) = (*rsp) - count
+        sljit_emit_op2(c, SLJIT_SUB, SLJIT_MEM1(SLJIT_S2), 0, SLJIT_MEM1(SLJIT_S2), 0, SLJIT_IMM, -count);
+    }
+}
+
+static void js_jit_JS_FreeValue_helper(JSContext *ctx, JSValue *val) {
+    JS_FreeValue(ctx, *val);
+}
+
+static void js_jit_free_value_stack(struct sljit_compiler *c, int stack_num) {
+    // R0 = ctx
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_S0, 0);
+    // R1 = *rsp + stack_num
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_S2), stack_num);
+    // js_jit_JS_FreeValue_helper(R0, R1) -> js_jit_JS_FreeValue_helper(ctx, *rsp + stack_num)
+    sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2V(P, P), SLJIT_IMM, SLJIT_FUNC_ADDR(js_jit_JS_FreeValue_helper));
+}
+
+static void js_jit_jsvalue_copy(JSValue *dst, JSValue *src) {
+    *dst = *src;
+}
+
+static void js_jit_jsvalue_copy_dup_src(JSValue *dst, JSValue *src) {
+    *dst = js_dup(*src);
+}
+
+#undef SWITCH
+#undef CASE
+#undef DEFAULT
+#undef BREAK
 static void js_jit(JSContext *ctx, JSFunctionBytecode *b) {
     uint8_t *pc;
-    // int opcode;
+    int opcode;
 
     pc = b->byte_code_buf;
 
     struct sljit_compiler *c = sljit_create_compiler(NULL);
-    sljit_emit_enter(c, 0, 3, 1, 3, 0);
-#if 0
-#if !DIRECT_DISPATCH
+    sljit_emit_enter(c, 0, SLJIT_ARGS4V(P, P, P, P), 4, 3, 0);  
 #define SWITCH(pc)      switch (opcode = *pc++)
 #define CASE(op)        case op
 #define DEFAULT         default
 #define BREAK           break
 
-#else
-    __extension__ static const void * const dispatch_table[256] = {
-#define DEF(id, size, n_pop, n_push, f) && case_OP_ ## id,
-#define def(id, size, n_pop, n_push, f)
-#include "quickjs-opcode.h"
-        [ OP_COUNT ... 255 ] = &&case_default
-    };
-#define SWITCH(pc)      DUMP_BYTECODE_OR_DONT(pc) __extension__ ({ goto *dispatch_table[opcode = *pc++]; });
-#define CASE(op)        case_ ## op
-#define DEFAULT         case_default
-#define BREAK           SWITCH(pc)
-#endif
-
      for(;;) {
         SWITCH(pc) {
             CASE(OP_push_i32):
+                js_jit_move_js_value(c, js_int32(get_u32(pc)));
+                js_jit_sp_add(c, 1);
+                pc += 4;
+                BREAK;
+            CASE(OP_push_bigint_i32):
+                js_jit_move_js_value(c, __JS_NewShortBigInt(ctx, (int)get_u32(pc)));
+                js_jit_sp_add(c, 1);
+                pc += 4;
+                BREAK;
+            CASE(OP_push_const):
+                js_jit_move_js_value(c, js_dup(b->cpool[get_u32(pc)]));
+                js_jit_sp_add(c, 1);
 
-            BREAK
-            
-            DEFAULT: 
-            BREAK
+                pc += 4;
+                BREAK;
+            CASE(OP_push_minus1):
+            CASE(OP_push_0):
+            CASE(OP_push_1):
+            CASE(OP_push_2):
+            CASE(OP_push_3):
+            CASE(OP_push_4):
+            CASE(OP_push_5):
+            CASE(OP_push_6):
+            CASE(OP_push_7):
+                js_jit_move_js_value(c, js_int32(opcode - OP_push_0));
+                js_jit_sp_add(c, 1);
+                BREAK;
+            CASE(OP_push_i8):
+                js_jit_move_js_value(c, js_int32(get_i8(pc)));
+                js_jit_sp_add(c, 1);
+                pc += 1;
+                BREAK;
+            CASE(OP_push_i16):
+                js_jit_move_js_value(c, js_int32(get_i16(pc)));
+                js_jit_sp_add(c, 1);
+                pc += 2;
+                BREAK;
+            CASE(OP_push_const8):
+                js_jit_move_js_value(c, js_dup(b->cpool[*pc++]));
+                js_jit_sp_add(c, 1);
+                BREAK;
+            // CASE(OP_fclosure8):
+            //     *sp++ = js_closure(ctx, js_dup(b->cpool[*pc++]), var_refs, sf);
+            //     if (unlikely(JS_IsException(sp[-1])))
+            //         goto exception;
+            //     BREAK;
+            CASE(OP_push_empty_string):
+                js_jit_move_js_value(c, JS_AtomToString(ctx, JS_ATOM_empty_string));
+                js_jit_sp_add(c, 1);
+                BREAK;
+            // CASE(OP_get_length):
+            //     {
+            //         JSValue val;
+    
+            //         sf->cur_pc = pc;
+            //         val = JS_GetProperty(ctx, sp[-1], JS_ATOM_length);
+            //         if (unlikely(JS_IsException(val)))
+            //             goto exception;
+            //         JS_FreeValue(ctx, sp[-1]);
+            //         sp[-1] = val;
+            //     }
+            //     BREAK;
+            CASE(OP_push_atom_value):
+                js_jit_move_js_value(c, JS_AtomToString(ctx, get_u32(pc)));
+                js_jit_sp_add(c, 1);
+                pc += 4;
+                BREAK;
+            CASE(OP_undefined):
+                js_jit_move_js_value(c, JS_UNDEFINED);
+                js_jit_sp_add(c, 1);
+                BREAK;
+            CASE(OP_null):
+                js_jit_move_js_value(c, JS_NULL);
+                js_jit_sp_add(c, 1);
+                BREAK;
+            // CASE(OP_push_this):
+            //     /* OP_push_this is only called at the start of a function */
+            //     {
+            //         JSValue val;
+            //         if (!b->is_strict_mode) {
+            //             uint32_t tag = JS_VALUE_GET_TAG(this_obj);
+            //             if (likely(tag == JS_TAG_OBJECT))
+            //                 goto normal_this;
+            //             if (tag == JS_TAG_NULL || tag == JS_TAG_UNDEFINED) {
+            //                 val = js_dup(ctx->global_obj);
+            //             } else {
+            //                 val = JS_ToObject(ctx, this_obj);
+            //                 if (JS_IsException(val))
+            //                     goto exception;
+            //             }
+            //         } else {
+            //         normal_this:
+            //             val = js_dup(this_obj);
+            //         }
+            //         *sp++ = val;
+            //     }
+            //     BREAK;
+            CASE(OP_push_false):
+                js_jit_move_js_value(c, JS_FALSE);
+                js_jit_sp_add(c, 1);
+                BREAK;
+            CASE(OP_push_true):
+                js_jit_move_js_value(c, JS_TRUE);
+                js_jit_sp_add(c, 1);
+                BREAK;
+            CASE(OP_nop):
+                BREAK;
+            // CASE(OP_object):
+            //     *sp++ = JS_NewObject(ctx);
+            //     if (unlikely(JS_IsException(sp[-1])))
+            //         goto exception;
+            //     BREAK;
+            // CASE(OP_special_object):
+            // {
+            //     int arg = *pc++;
+            //     switch(arg) {
+            //     case OP_SPECIAL_OBJECT_ARGUMENTS:
+            //         *sp++ = js_build_arguments(ctx, argc, argv);
+            //         if (unlikely(JS_IsException(sp[-1])))
+            //             goto exception;
+            //         break;
+            //     case OP_SPECIAL_OBJECT_MAPPED_ARGUMENTS:
+            //         *sp++ = js_build_mapped_arguments(ctx, argc, argv,
+            //                                           sf, min_int(argc, b->arg_count));
+            //         if (unlikely(JS_IsException(sp[-1])))
+            //             goto exception;
+            //         break;
+            //     case OP_SPECIAL_OBJECT_THIS_FUNC:
+            //         *sp++ = js_dup(sf->cur_func);
+            //         break;
+            //     case OP_SPECIAL_OBJECT_NEW_TARGET:
+            //         *sp++ = js_dup(new_target);
+            //         break;
+            //     case OP_SPECIAL_OBJECT_HOME_OBJECT:
+            //         {
+            //             JSObject *p1;
+            //             p1 = p->u.func.home_object;
+            //             if (unlikely(!p1))
+            //                 *sp++ = JS_UNDEFINED;
+            //             else
+            //                 *sp++ = js_dup(JS_MKPTR(JS_TAG_OBJECT, p1));
+            //         }
+            //         break;
+            //     case OP_SPECIAL_OBJECT_VAR_OBJECT:
+            //         *sp++ = JS_NewObjectProto(ctx, JS_NULL);
+            //         if (unlikely(JS_IsException(sp[-1])))
+            //             goto exception;
+            //         break;
+            //     case OP_SPECIAL_OBJECT_IMPORT_META:
+            //         *sp++ = js_import_meta(ctx);
+            //         if (unlikely(JS_IsException(sp[-1])))
+            //             goto exception;
+            //         break;
+            //     default:
+            //         abort();
+            //     }
+            // }
+            // BREAK;
+            // CASE(OP_rest):
+            // {
+            //     int i, n, first = get_u16(pc);
+            //     pc += 2;
+            //     i = min_int(first, argc);
+            //     n = argc - i;
+            //     *sp++ = js_create_array(ctx, n, &argv[i]);
+            //     if (unlikely(JS_IsException(sp[-1])))
+            //         goto exception;
+            // }
+            // BREAK;
+
+            CASE(OP_drop):
+                // JS_FreeValue(ctx, sp[-1]);
+                js_jit_free_value_stack(c, -1);
+                // sp--;
+                js_jit_sp_add(c, -1);
+                BREAK;
+#define COPY_BASE(sp_reg, dst_idx, src_idx, fn) do { \
+    sljit_emit_op1(c, SLJIT_MOV, sp_reg, 0, SLJIT_MEM1(SLJIT_S2), 0); \
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_MEM1(sp_reg), dst_idx); \
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_MEM1(sp_reg), src_idx); \
+    sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2V(P, P), SLJIT_IMM, SLJIT_FUNC_ADDR(fn)); \
+} while (0)
+
+
+            CASE(OP_nip):
+                // JS_FreeValue(ctx, sp[-2]);
+                js_jit_free_value_stack(c, -2);  
+                // sp[-2] = sp[-1]; -> js_jit_jsvalue_copy(&sp[-2], &sp[-1]);
+                COPY_BASE(SLJIT_R3, -2, -1, js_jit_jsvalue_copy);
+                // sp--;
+                js_jit_sp_add(c, -1);
+                BREAK;
+            CASE(OP_nip1): /* a b c -> b c */
+                // JS_FreeValue(ctx, sp[-3]);
+                js_jit_free_value_stack(c, -3);
+                // sp[-3] = sp[-2];
+                COPY_BASE(SLJIT_R3, -3, -2, js_jit_jsvalue_copy);
+                // sp[-2] = sp[-1];
+                COPY_BASE(SLJIT_R3, -2, -1, js_jit_jsvalue_copy);
+                // sp--;
+                js_jit_sp_add(c, -1);
+                BREAK;
+            CASE(OP_dup):
+                // sp[0] = js_dup(sp[-1]); -> js_jit_jsvalue_copy_dup_src(&sp[0], &sp[-1]);
+                COPY_BASE(SLJIT_R3, 0, -1, js_jit_jsvalue_copy_dup_src);
+                // sp++;
+                js_jit_sp_add(c, 1);
+                BREAK;
+            CASE(OP_dup2): /* a b -> a b a b */
+                // sp[0] = js_dup(sp[-2]);
+                COPY_BASE(SLJIT_R3, 0, -2, js_jit_jsvalue_copy_dup_src);
+                // sp[1] = js_dup(sp[-1]);
+                COPY_BASE(SLJIT_R3, 1, -1, js_jit_jsvalue_copy_dup_src);
+                // sp += 2;
+                js_jit_sp_add(c, 2);
+                BREAK;
+            CASE(OP_dup3): /* a b c -> a b c a b c */
+                // sp[0] = js_dup(sp[-3]); -> js_jit_jsvalue_copy_dup_src(&sp[0], &sp[-3]);
+                COPY_BASE(SLJIT_R3, 0, -3, js_jit_jsvalue_copy_dup_src);
+
+                // sp[1] = js_dup(sp[-2]); -> js_jit_jsvalue_copy_dup_src(&sp[1], &sp[-2]);
+                COPY_BASE(SLJIT_R3, 1, -2, js_jit_jsvalue_copy_dup_src);
+                // sp[2] = js_dup(sp[-1]); -> js_jit_jsvalue_copy_dup_src(&sp[2], &sp[-1]);
+                COPY_BASE(SLJIT_R3, 2, -1, js_jit_jsvalue_copy_dup_src);
+                // sp += 3;
+                js_jit_sp_add(c, 3);
+                BREAK;
+            CASE(OP_dup1): /* a b -> a a b */
+                // sp[0] = sp[-1];
+                COPY_BASE(SLJIT_R3, 0, -1, js_jit_jsvalue_copy);        
+                // sp[-1] = js_dup(sp[-2]);
+                COPY_BASE(SLJIT_R3, -1, -2, js_jit_jsvalue_copy_dup_src);
+                // sp++;
+                js_jit_sp_add(c, 1);
+                BREAK;
+            CASE(OP_insert2): /* obj a -> a obj a (dup_x1) */
+                // sp[0] = sp[-1];
+                COPY_BASE(SLJIT_R3, 0, -1, js_jit_jsvalue_copy);
+                // sp[-1] = sp[-2];
+                COPY_BASE(SLJIT_R3, -1, -2, js_jit_jsvalue_copy);
+                // sp[-2] = js_dup(sp[0]);
+                COPY_BASE(SLJIT_R3, -2, 0, js_jit_jsvalue_copy_dup_src);
+                // sp++
+                js_jit_sp_add(c, 1);
+                BREAK;
+            CASE(OP_insert3): /* obj prop a -> a obj prop a (dup_x2) */
+                // sp[0] = sp[-1];
+                COPY_BASE(SLJIT_R3, 0, -1, js_jit_jsvalue_copy);
+                // sp[-1] = sp[-2];
+                COPY_BASE(SLJIT_R3, -1, -2, js_jit_jsvalue_copy);
+                // sp[-2] = sp[-3];
+                COPY_BASE(SLJIT_R3, -2, -3, js_jit_jsvalue_copy);
+                // sp[-3] = js_dup(sp[0]);
+                COPY_BASE(SLJIT_R3, -3, 0, js_jit_jsvalue_copy_dup_src);
+                // sp++;
+                js_jit_sp_add(c, 1);
+                BREAK;
+            CASE(OP_insert4): /* this obj prop a -> a this obj prop a */
+                // sp[0] = sp[-1];
+                COPY_BASE(SLJIT_R3, 0, -1, js_jit_jsvalue_copy);
+                // sp[-1] = sp[-2];
+                COPY_BASE(SLJIT_R3, -1, -2, js_jit_jsvalue_copy);
+                // sp[-2] = sp[-3];
+                COPY_BASE(SLJIT_R3, -2, -3, js_jit_jsvalue_copy);
+                // sp[-3] = sp[-4];
+                COPY_BASE(SLJIT_R3, -3, -4, js_jit_jsvalue_copy);
+                // sp[-4] = js_dup(sp[0]);
+                COPY_BASE(SLJIT_R3, -4, 0, js_jit_jsvalue_copy_dup_src);
+                // sp++;
+                js_jit_sp_add(c, 1);
+                BREAK;
+            // CASE(OP_perm3): /* obj a b -> a obj b (213) */
+            //     {
+            //         JSValue tmp;
+            //         tmp = sp[-2];
+            //         sp[-2] = sp[-3];
+            //         sp[-3] = tmp;
+            //     }
+            //     BREAK;
+            // CASE(OP_rot3l): /* x a b -> a b x (231) */
+            //     {
+            //         JSValue tmp;
+            //         tmp = sp[-3];
+            //         sp[-3] = sp[-2];
+            //         sp[-2] = sp[-1];
+            //         sp[-1] = tmp;
+            //     }
+            //     BREAK;
+            // CASE(OP_rot4l): /* x a b c -> a b c x */
+            //     {
+            //         JSValue tmp;
+            //         tmp = sp[-4];
+            //         sp[-4] = sp[-3];
+            //         sp[-3] = sp[-2];
+            //         sp[-2] = sp[-1];
+            //         sp[-1] = tmp;
+            //     }
+            //     BREAK;
+            // CASE(OP_rot5l): /* x a b c d -> a b c d x */
+            //     {
+            //         JSValue tmp;
+            //         tmp = sp[-5];
+            //         sp[-5] = sp[-4];
+            //         sp[-4] = sp[-3];
+            //         sp[-3] = sp[-2];
+            //         sp[-2] = sp[-1];
+            //         sp[-1] = tmp;
+            //     }
+            //     BREAK;
+            // CASE(OP_rot3r): /* a b x -> x a b (312) */
+            //     {
+            //         JSValue tmp;
+            //         tmp = sp[-1];
+            //         sp[-1] = sp[-2];
+            //         sp[-2] = sp[-3];
+            //         sp[-3] = tmp;
+            //     }
+            //     BREAK;
+            // CASE(OP_perm4): /* obj prop a b -> a obj prop b */
+            //     {
+            //         JSValue tmp;
+            //         tmp = sp[-2];
+            //         sp[-2] = sp[-3];
+            //         sp[-3] = sp[-4];
+            //         sp[-4] = tmp;
+            //     }
+            //     BREAK;
+            // CASE(OP_perm5): /* this obj prop a b -> a this obj prop b */
+            //     {
+            //         JSValue tmp;
+            //         tmp = sp[-2];
+            //         sp[-2] = sp[-3];
+            //         sp[-3] = sp[-4];
+            //         sp[-4] = sp[-5];
+            //         sp[-5] = tmp;
+            //     }
+            //     BREAK;
+            // CASE(OP_swap): /* a b -> b a */
+            //     {
+            //         JSValue tmp;
+            //         tmp = sp[-2];
+            //         sp[-2] = sp[-1];
+            //         sp[-1] = tmp;
+            //     }
+            //     BREAK;
+            // CASE(OP_swap2): /* a b c d -> c d a b */
+            //     {
+            //         JSValue tmp1, tmp2;
+            //         tmp1 = sp[-4];
+            //         tmp2 = sp[-3];
+            //         sp[-4] = sp[-2];
+            //         sp[-3] = sp[-1];
+            //         sp[-2] = tmp1;
+            //         sp[-1] = tmp2;
+            //     }
+            //     BREAK;
+            CASE(OP_invalid):
+            DEFAULT:
+                goto end;
+                BREAK;
             
         }
     }
-#endif
+end:
+    sljit_emit_return_void(c);
     b->jitcode = sljit_generate_code(c, 0, NULL);
 #if QJS_SLJIT_VERBOSE
+    printf("-- FUNCTION DUMP START --\n");
     size_t len = sljit_get_generated_code_size(c);
     // The runtime address (instruction pointer) was chosen arbitrarily here in order to better 
     // visualize relative addressing. In your actual program, set this to e.g. the memory address 
@@ -34016,6 +34424,7 @@ static void js_jit(JSContext *ctx, JSFunctionBytecode *b) {
         offset += instruction.info.length; 
         runtime_address += instruction.info.length; 
     } 
+    printf("-- FUNCTION DUMP END --\n");
 #endif
     sljit_free_compiler(c);
 }
