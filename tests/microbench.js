@@ -710,6 +710,15 @@ function math_min(n)
     return n * 1000;
 }
 
+function object_null(n)
+{
+    var j;
+    for(j = 0; j < n; j++) {
+        global_res = {__proto__: null};
+    }
+    return n;
+}
+
 function regexp_ascii(n)
 {
     var i, j, r, s;
@@ -1098,6 +1107,7 @@ function main(argc, argv, g)
         array_for_in,
         array_for_of,
         math_min,
+        object_null,
         regexp_ascii,
         regexp_utf16,
         string_build1,
