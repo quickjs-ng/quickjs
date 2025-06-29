@@ -3215,7 +3215,6 @@ static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
         JSAtomStruct *p = rt->atom_array[atom];
         *buf = '\0';
         if (atom_is_free(p)) {
-            assert(!atom_is_free(p));
             snprintf(buf, buf_size, "<free %x>", atom);
         } else if (p != NULL) {
             JSString *str = p;
