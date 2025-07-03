@@ -96,13 +96,15 @@ extern char **environ;
 #define MAX_SAFE_INTEGER (((int64_t) 1 << 53) - 1)
 #endif
 
-#ifndef QJS_NATIVE_MODULE_SUFFIX
+#define QJS_NATIVE_MODULE_COMMON_SUFFIX ".qjs" // Common suffix
+
+#ifndef QJS_NATIVE_MODULE_PLATFORM_SUFFIX
 #ifdef _WIN32
-#define QJS_NATIVE_MODULE_SUFFIX ".dll"
+#define QJS_NATIVE_MODULE_PLATFORM_SUFFIX ".dll"
 #elif defined(__APPLE__)
-#define QJS_NATIVE_MODULE_SUFFIX ".dylib"
+#define QJS_NATIVE_MODULE_PLATFORM_SUFFIX ".dylib"
 #else
-#define QJS_NATIVE_MODULE_SUFFIX ".so"
+#define QJS_NATIVE_MODULE_PLATFORM_SUFFIX ".so"
 #endif
 #endif
 
@@ -624,29 +626,60 @@ typedef JSModuleDef *(JSInitModuleFunc)(JSContext *ctx,
 
 
 #if defined(_WIN32)
-static JSModuleDef *js_module_loader_so(JSContext *ctx,
-                                        const char *module_name)
+static HINSTANCE js_module_loader_open(JSContext *ctx, const char *module_name)
 {
-    JSModuleDef *m;
     HINSTANCE hd;
-    JSInitModuleFunc *init;
-    char *filename = NULL;
+    char *filename;
     size_t len = strlen(module_name);
+
     bool is_absolute = len > 2 && ((module_name[0] >= 'A' && module_name[0] <= 'Z') ||
             (module_name[0] >= 'a' && module_name[0] <= 'z')) && module_name[1] == ':';
     bool is_relative = len > 2 && module_name[0] == '.' && (module_name[1] == '/' || module_name[1] == '\\');
     if (is_absolute || is_relative) {
         filename = (char *)module_name;
     } else {
-        filename = js_malloc(ctx, len + 2 + 1);
+        filename = js_malloc(ctx,
+                             len + 2 + sizeof(QJS_NATIVE_MODULE_PLATFORM_SUFFIX) + 1);
         if (!filename)
             return NULL;
         strcpy(filename, "./");
         strcpy(filename + 2, module_name);
+        len += 2;
     }
     hd = LoadLibraryA(filename);
+    if (!hd) {
+        // Try to add the platform suffix to the file name
+        if (filename == module_name) {
+            // Allocate new filename
+            filename = js_malloc(ctx, len + sizeof(QJS_NATIVE_MODULE_PLATFORM_SUFFIX));
+            if (!filename)
+                return NULL;
+            strcpy(filename, module_name);
+        }
+
+        strcpy(filename + len, QJS_NATIVE_MODULE_PLATFORM_SUFFIX);
+        hd = LoadLibraryA(filename);
+    }
+
     if (filename != module_name)
         js_free(ctx, filename);
+    
+    return hd;
+}
+
+static void js_module_loader_close(HINSTANCE hd)
+{
+    FreeLibrary(hd);
+}
+
+static JSModuleDef *js_module_loader_so(JSContext *ctx,
+                                        const char *module_name)
+{
+    JSModuleDef *m;
+    HINSTANCE hd;
+    JSInitModuleFunc *init;
+
+    hd = js_module_loader_open(ctx, module_name);
     if (hd == NULL) {
         JS_ThrowReferenceError(ctx, "js_load_module '%s' error: %lu",
                                module_name, GetLastError());
@@ -664,7 +697,7 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
                                module_name);
     fail:
         if (hd != NULL)
-            FreeLibrary(hd);
+            js_module_loader_close(hd);
         return NULL;
     }
     return m;
@@ -677,30 +710,63 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
     return NULL;
 }
 #else
-static JSModuleDef *js_module_loader_so(JSContext *ctx,
-                                        const char *module_name)
+static void *js_module_loader_open(JSContext *ctx, const char *module_name)
 {
-    JSModuleDef *m;
     void *hd;
-    JSInitModuleFunc *init;
     char *filename;
+    size_t len = strlen(module_name);
 
+    // Process the module name then store the processed value to filename
     if (!strchr(module_name, '/')) {
         /* must add a '/' so that the DLL is not searched in the
            system library paths */
-        filename = js_malloc(ctx, strlen(module_name) + 2 + 1);
+        filename = js_malloc(ctx,
+                             len + 2 + sizeof(QJS_NATIVE_MODULE_PLATFORM_SUFFIX) + 1);
         if (!filename)
             return NULL;
         strcpy(filename, "./");
         strcpy(filename + 2, module_name);
+        len += 2;
     } else {
         filename = (char *)module_name;
     }
 
     /* C module */
     hd = dlopen(filename, RTLD_NOW | RTLD_LOCAL);
+    if (!hd) {
+        // Try to add the platform suffix to the file name
+        if (filename == module_name) {
+            // Allocate new filename
+            filename = js_malloc(ctx, len + sizeof(QJS_NATIVE_MODULE_PLATFORM_SUFFIX));
+            if (!filename)
+                return NULL;
+            strcpy(filename, module_name);
+        }
+
+        strcpy(filename + len, QJS_NATIVE_MODULE_PLATFORM_SUFFIX);
+        hd = dlopen(filename, RTLD_NOW | RTLD_LOCAL);
+    }
+
     if (filename != module_name)
         js_free(ctx, filename);
+
+    return hd;
+}
+
+static void js_module_loader_close(void *hd)
+{
+    dlclose(hd);
+}
+
+static JSModuleDef *js_module_loader_so(JSContext *ctx,
+                                        const char *module_name)
+{
+    JSModuleDef *m;
+    void *hd;
+    JSInitModuleFunc *init;
+
+    /* C module */
+    hd = js_module_loader_open(ctx, module_name);
     if (!hd) {
         JS_ThrowReferenceError(ctx, "could not load module filename '%s' as shared library: %s",
                                module_name, dlerror());
@@ -720,7 +786,7 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
                                module_name);
     fail:
         if (hd)
-            dlclose(hd);
+            js_module_loader_close(hd);
         return NULL;
     }
     return m;
@@ -785,7 +851,9 @@ JSModuleDef *js_module_loader(JSContext *ctx,
 {
     JSModuleDef *m;
 
-    if (js__has_suffix(module_name, QJS_NATIVE_MODULE_SUFFIX)) {
+    if (js__has_suffix(module_name, QJS_NATIVE_MODULE_PLATFORM_SUFFIX) ||
+        js__has_suffix(module_name, QJS_NATIVE_MODULE_COMMON_SUFFIX))
+    {
         m = js_module_loader_so(ctx, module_name);
     } else {
         size_t buf_len;
