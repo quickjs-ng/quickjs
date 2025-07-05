@@ -682,6 +682,7 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
 static JSModuleDef *js_module_loader_so(JSContext *ctx,
                                         const char *module_name)
 {
+    JSRuntime *rt = JS_GetRuntime(ctx);
     JSModuleDef *m;
     void *hd;
     JSInitModuleFunc *init;
@@ -699,6 +700,8 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
         filename = (char *)module_name;
     }
 
+    js_std_cmd(/*SetNapiModule*/4, rt, NULL);
+
     /* C module */
     hd = dlopen(filename, RTLD_NOW | RTLD_LOCAL);
     if (filename != module_name)
@@ -709,21 +712,25 @@ static JSModuleDef *js_module_loader_so(JSContext *ctx,
         goto fail;
     }
 
-    *(void **) (&init) = dlsym(hd, "js_init_module");
-    if (!init) {
-        JS_ThrowReferenceError(ctx, "could not load module filename '%s': js_init_module not found",
-                               module_name);
-        goto fail;
-    }
-
-    m = init(ctx, module_name);
-    if (!m) {
-        JS_ThrowReferenceError(ctx, "could not load module filename '%s': initialization error",
-                               module_name);
-    fail:
-        if (hd)
-            dlclose(hd);
-        return NULL;
+    m = (JSModuleDef *)js_std_cmd(/*GetNapiModule*/3, rt);
+    if (m) {
+        js_std_cmd(/*SetNapiModule*/4, rt, NULL);
+    } else {
+        *(void **) (&init) = dlsym(hd, "js_init_module");
+        if (!init) {
+            JS_ThrowReferenceError(ctx, "could not load module filename '%s': js_init_module not found",
+                                   module_name);
+            goto fail;
+        }
+        m = init(ctx, module_name);
+        if (!m) {
+            JS_ThrowReferenceError(ctx, "could not load module filename '%s': initialization error",
+                                   module_name);
+        fail:
+            if (hd)
+                dlclose(hd);
+            return NULL;
+        }
     }
     return m;
 }
