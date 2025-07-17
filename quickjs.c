@@ -374,7 +374,7 @@ typedef struct JSVarRef {
         struct {
             int __gc_ref_count; /* corresponds to header.ref_count */
             uint8_t __gc_mark; /* corresponds to header.mark/gc_obj_type */
-            bool is_detached;
+            uint8_t is_detached;
         };
     };
     JSValue *pvalue; /* pointer to the value, either on the stack or
