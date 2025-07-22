@@ -6837,7 +6837,7 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
         b = NULL;
         backtrace_barrier = false;
 
-        if (js_class_has_bytecode(p->class_id)) {
+        if (p && js_class_has_bytecode(p->class_id)) {
             b = p->u.func.function_bytecode;
             backtrace_barrier = b->backtrace_barrier;
         }
