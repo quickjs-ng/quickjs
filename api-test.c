@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
+#include "cutils.h"
 
 #define MAX_TIME 10
 
@@ -506,6 +507,44 @@ static void dump_memory_usage(void)
     JS_FreeRuntime(rt);
 }
 
+static void new_errors(void)
+{
+    typedef struct {
+        const char name[16];
+        JSValue (*func)(JSContext *, const char *, ...);
+    } Entry;
+    static const Entry entries[] = {
+        {"Error",           JS_NewPlainError},
+        {"InternalError",   JS_NewInternalError},
+        {"RangeError",      JS_NewRangeError},
+        {"ReferenceError",  JS_NewReferenceError},
+        {"SyntaxError",     JS_NewSyntaxError},
+        {"TypeError",       JS_NewTypeError},
+    };
+    const Entry *e;
+
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    for (e = entries; e < endof(entries); e++) {
+        JSValue obj = (*e->func)(ctx, "the %s", "needle");
+        assert(!JS_IsException(obj));
+        assert(JS_IsObject(obj));
+        assert(JS_IsError(ctx, obj));
+        const char *haystack = JS_ToCString(ctx, obj);
+        char needle[256];
+        snprintf(needle, sizeof(needle), "%s: the needle", e->name);
+        assert(strstr(haystack, needle));
+        JS_FreeCString(ctx, haystack);
+        JSValue stack = JS_GetPropertyStr(ctx, obj, "stack");
+        assert(!JS_IsException(stack));
+        assert(JS_IsString(stack));
+        JS_FreeValue(ctx, stack);
+        JS_FreeValue(ctx, obj);
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -518,5 +557,6 @@ int main(void)
     weak_map_gc_check();
     promise_hook();
     dump_memory_usage();
+    new_errors();
     return 0;
 }
