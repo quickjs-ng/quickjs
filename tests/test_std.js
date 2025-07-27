@@ -169,7 +169,10 @@ function test_os()
 
     [files, err] = os.readdir(fdir);
     assert(err, 0);
-    assert(files.indexOf(fname) >= 0);
+    assert(files.length >= 3);
+    assert(files.includes(fname));
+    assert(files.includes("."));
+    assert(files.includes(".."));
 
     fdate = 10000;
 

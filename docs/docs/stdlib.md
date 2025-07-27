@@ -198,7 +198,8 @@ the error code.
 
 Return `[array, err]` where `array` is an array of strings
 containing the filenames of the directory `path`. `err` is
-the error code.
+the error code. `array` contains at least `"."` and `".."`
+if successful.
 
 ### `setReadHandler(fd, func)`
 
