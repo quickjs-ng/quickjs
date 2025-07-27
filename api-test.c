@@ -1,3 +1,4 @@
+#include "msvc-pragmas.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
