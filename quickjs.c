@@ -6972,6 +6972,82 @@ static JSValue JS_MakeError(JSContext *ctx, JSErrorEnum error_num,
     return obj;
 }
 
+static JSValue JS_PRINTF_FORMAT_ATTR(3, 0)
+JS_NewError2(JSContext *ctx, JSErrorEnum error_num, 
+            JS_PRINTF_FORMAT const char *fmt, va_list ap)
+{
+    char buf[256];
+
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    return JS_MakeError(ctx, error_num, buf, true);
+}
+
+JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
+{
+    JSValue val;
+    va_list ap;
+
+    va_start(ap, fmt);
+    val = JS_NewError2(ctx, JS_PLAIN_ERROR, fmt, ap);
+    va_end(ap);
+    return val;
+}
+
+JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewSyntaxError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
+{
+    JSValue val;
+    va_list ap;
+
+    va_start(ap, fmt);
+    val = JS_NewError2(ctx, JS_SYNTAX_ERROR, fmt, ap);
+    va_end(ap);
+    return val;
+}
+
+JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewTypeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
+{
+    JSValue val;
+    va_list ap;
+
+    va_start(ap, fmt);
+    val = JS_NewError2(ctx, JS_TYPE_ERROR, fmt, ap);
+    va_end(ap);
+    return val;
+}
+
+JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewReferenceError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
+{
+    JSValue val;
+    va_list ap;
+
+    va_start(ap, fmt);
+    val = JS_NewError2(ctx, JS_REFERENCE_ERROR, fmt, ap);
+    va_end(ap);
+    return val;
+}
+
+JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewRangeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
+{
+    JSValue val;
+    va_list ap;
+
+    va_start(ap, fmt);
+    val = JS_NewError2(ctx, JS_RANGE_ERROR, fmt, ap);
+    va_end(ap);
+    return val;
+}
+
+JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
+{
+    JSValue val;
+    va_list ap;
+
+    va_start(ap, fmt);
+    val = JS_NewError2(ctx, JS_INTERNAL_ERROR, fmt, ap);
+    va_end(ap);
+    return val;
+}
+
 /* fmt and arguments may be pure ASCII or UTF-8 encoded contents */
 static JSValue JS_PRINTF_FORMAT_ATTR(4, 0)
 JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
