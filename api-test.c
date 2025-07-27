@@ -531,7 +531,7 @@ static void new_errors(void)
         assert(JS_IsObject(obj));
         assert(JS_IsError(ctx, obj));
         const char *haystack = JS_ToCString(ctx, obj);
-        char needle[32];
+        char needle[256];
         snprintf(needle, sizeof(needle), "%s: the needle", e->name);
         assert(strstr(haystack, needle));
         JS_FreeCString(ctx, haystack);
