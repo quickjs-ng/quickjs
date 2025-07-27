@@ -6947,8 +6947,8 @@ JSValue JS_NewError(JSContext *ctx)
     return obj;
 }
 
-static JSValue JS_MakeError(JSContext *ctx, JSErrorEnum error_num,
-                            const char *message, bool add_backtrace)
+static JSValue JS_MakeError2(JSContext *ctx, JSErrorEnum error_num,
+                             bool add_backtrace, const char *message)
 {
     JSValue obj, msg;
 
@@ -6972,16 +6972,24 @@ static JSValue JS_MakeError(JSContext *ctx, JSErrorEnum error_num,
     return obj;
 }
 
-/* fmt and arguments may be pure ASCII or UTF-8 encoded contents */
 static JSValue JS_PRINTF_FORMAT_ATTR(4, 0)
-JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num,
-               bool add_backtrace, JS_PRINTF_FORMAT const char *fmt, va_list ap)
+JS_MakeError(JSContext *ctx, JSErrorEnum error_num, bool add_backtrace,
+             JS_PRINTF_FORMAT const char *fmt, va_list ap)
 {
     char buf[256];
-    JSValue obj;
 
     vsnprintf(buf, sizeof(buf), fmt, ap);
-    obj = JS_MakeError(ctx, error_num, buf, add_backtrace);
+    return JS_MakeError2(ctx, error_num, add_backtrace, buf);
+}
+
+/* fmt and arguments may be pure ASCII or UTF-8 encoded contents */
+static JSValue JS_PRINTF_FORMAT_ATTR(4, 0)
+JS_ThrowError2(JSContext *ctx, JSErrorEnum error_num, bool add_backtrace,
+               JS_PRINTF_FORMAT const char *fmt, va_list ap)
+{
+    JSValue obj;
+
+    obj = JS_MakeError(ctx, error_num, add_backtrace, fmt, ap);
     if (unlikely(JS_IsException(obj))) {
         /* out of memory: throw JS_NULL to avoid recursing */
         obj = JS_NULL;
@@ -7004,38 +7012,45 @@ JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
     return JS_ThrowError2(ctx, error_num, add_backtrace, fmt, ap);
 }
 
-JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
-{
-    JSValue val;
-    va_list ap;
+#define JS_ERROR_MAP(X)     \
+    X(Internal, INTERNAL)   \
+    X(Plain, PLAIN)         \
+    X(Range, RANGE)         \
+    X(Reference, REFERENCE) \
+    X(Syntax, SYNTAX)       \
+    X(Type, TYPE)           \
 
-    va_start(ap, fmt);
-    val = JS_ThrowError(ctx, JS_PLAIN_ERROR, fmt, ap);
-    va_end(ap);
-    return val;
-}
+#define X(lc, uc)   \
+    JSValue JS_PRINTF_FORMAT_ATTR(2, 3)                         \
+    JS_New##lc##Error(JSContext *ctx,                           \
+                      JS_PRINTF_FORMAT const char *fmt, ...)    \
+    {                                                           \
+        JSValue val;                                            \
+        va_list ap;                                             \
+                                                                \
+        va_start(ap, fmt);                                      \
+        val = JS_MakeError(ctx, JS_##uc##_ERROR,                \
+                           /*add_backtrace*/true, fmt, ap);     \
+        va_end(ap);                                             \
+        return val;                                             \
+    }                                                           \
+    JSValue JS_PRINTF_FORMAT_ATTR(2, 3)                         \
+    JS_Throw##lc##Error(JSContext *ctx,                         \
+                        JS_PRINTF_FORMAT const char *fmt, ...)  \
+    {                                                           \
+        JSValue val;                                            \
+        va_list ap;                                             \
+                                                                \
+        va_start(ap, fmt);                                      \
+        val = JS_ThrowError(ctx, JS_##uc##_ERROR, fmt, ap);     \
+        va_end(ap);                                             \
+        return val;                                             \
+    }                                                           \
 
-JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowSyntaxError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
-{
-    JSValue val;
-    va_list ap;
+JS_ERROR_MAP(X)
 
-    va_start(ap, fmt);
-    val = JS_ThrowError(ctx, JS_SYNTAX_ERROR, fmt, ap);
-    va_end(ap);
-    return val;
-}
-
-JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowTypeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
-{
-    JSValue val;
-    va_list ap;
-
-    va_start(ap, fmt);
-    val = JS_ThrowError(ctx, JS_TYPE_ERROR, fmt, ap);
-    va_end(ap);
-    return val;
-}
+#undef X
+#undef JS_ERROR_MAP
 
 static int JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowTypeErrorOrFalse(JSContext *ctx, int flags, JS_PRINTF_FORMAT const char *fmt, ...)
 {
@@ -7082,39 +7097,6 @@ static int JS_ThrowTypeErrorReadOnly(JSContext *ctx, int flags, JSAtom atom)
     } else {
         return false;
     }
-}
-
-JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowReferenceError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
-{
-    JSValue val;
-    va_list ap;
-
-    va_start(ap, fmt);
-    val = JS_ThrowError(ctx, JS_REFERENCE_ERROR, fmt, ap);
-    va_end(ap);
-    return val;
-}
-
-JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowRangeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
-{
-    JSValue val;
-    va_list ap;
-
-    va_start(ap, fmt);
-    val = JS_ThrowError(ctx, JS_RANGE_ERROR, fmt, ap);
-    va_end(ap);
-    return val;
-}
-
-JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...)
-{
-    JSValue val;
-    va_list ap;
-
-    va_start(ap, fmt);
-    val = JS_ThrowError(ctx, JS_INTERNAL_ERROR, fmt, ap);
-    va_end(ap);
-    return val;
 }
 
 JSValue JS_ThrowOutOfMemory(JSContext *ctx)
@@ -51457,8 +51439,8 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
                 err = JS_GetException(ctx);
                 is_reject = 1;
             } else {
-                err = JS_MakeError(ctx, JS_TYPE_ERROR, "throw is not a method",
-                                   true);
+                err = JS_MakeError2(ctx, JS_TYPE_ERROR, /*add_backtrace*/true,
+                                    "throw is not a method");
                 is_reject = 1;
             }
             goto done_resolve;
