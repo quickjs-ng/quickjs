@@ -535,6 +535,10 @@ static void new_errors(void)
         snprintf(needle, sizeof(needle), "%s: the needle", e->name);
         assert(strstr(haystack, needle));
         JS_FreeCString(ctx, haystack);
+        JSValue stack = JS_GetPropertyStr(ctx, obj, "stack");
+        assert(!JS_IsException(stack));
+        assert(JS_IsString(stack));
+        JS_FreeValue(ctx, stack);
         JS_FreeValue(ctx, obj);
     }
     JS_FreeContext(ctx);
