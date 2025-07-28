@@ -16430,6 +16430,7 @@ typedef enum {
     OP_SPECIAL_OBJECT_HOME_OBJECT,
     OP_SPECIAL_OBJECT_VAR_OBJECT,
     OP_SPECIAL_OBJECT_IMPORT_META,
+    OP_SPECIAL_OBJECT_NULL_PROTO,
 } OPSpecialObjectEnum;
 
 #define FUNC_RET_AWAIT      0
@@ -16726,6 +16727,11 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     break;
                 case OP_SPECIAL_OBJECT_IMPORT_META:
                     *sp++ = js_import_meta(ctx);
+                    if (unlikely(JS_IsException(sp[-1])))
+                        goto exception;
+                    break;
+                case OP_SPECIAL_OBJECT_NULL_PROTO:
+                    *sp++ = JS_NewObjectProtoClass(ctx, JS_NULL, JS_CLASS_OBJECT);
                     if (unlikely(JS_IsException(sp[-1])))
                         goto exception;
                     break;
@@ -33468,6 +33474,18 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                         goto has_label;
                     }
                 }
+            }
+            goto no_change;
+
+        case OP_object:
+            if (code_match(&cc, pos_next, OP_null, OP_set_proto, -1)) {
+                if (cc.line_num >= 0) line_num = cc.line_num;
+                if (cc.col_num >= 0) col_num = cc.col_num;
+                add_pc2line_info(s, bc_out.size, line_num, col_num);
+                dbuf_putc(&bc_out, OP_special_object);
+                dbuf_putc(&bc_out, OP_SPECIAL_OBJECT_NULL_PROTO);
+                pos_next = cc.pos;
+                break;
             }
             goto no_change;
 
