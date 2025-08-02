@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
+#include "js_native_api.h"
 #include "cutils.h"
 
 #define MAX_TIME 10
@@ -545,6 +546,109 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+static char go_baton[] = "go baton";
+
+static napi_value go_callback(napi_env env, napi_callback_info info)
+{
+    size_t argc;
+    napi_value argv[4];
+    napi_value this_arg;
+    void *data;
+    argc = countof(argv);
+    assert(napi_ok == napi_get_cb_info(env, info, &argc, argv,
+                                       &this_arg, &data));
+    assert(argc == 3);
+    assert(data == (void *)go_baton);
+    napi_value result;
+    assert(napi_ok == napi_create_string_utf8(env, "ok", 2, &result));
+    return result;
+}
+
+static void napi(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    napi_env env = (void *)ctx;
+    {
+        typedef struct {
+            napi_valuetype typ;
+            const char source[32];
+        } Entry;
+        static const Entry entries[] = {
+            {napi_undefined,    "undefined"},
+            {napi_null,         "null"},
+            {napi_boolean,      "true"},
+            {napi_boolean,      "false"},
+            {napi_number,       "42"},
+            {napi_number,       "13.37"},
+            {napi_string,       "''"},
+            {napi_symbol,       "Symbol('')"},
+            {napi_object,       "Object()"},
+            {napi_function,     "Function()"},
+            {napi_bigint,       "42n"},
+        };
+        const Entry *e;
+        for (e = entries; e < endof(entries); e++) {
+            napi_handle_scope scope;
+            assert(napi_ok == napi_open_handle_scope(env, &scope));
+            napi_value script;
+            assert(napi_ok == napi_create_string_utf8(env, e->source,
+                                                      strlen(e->source),
+                                                      &script));
+            napi_value result;
+            assert(napi_ok == napi_run_script(env, script, &result));
+            napi_valuetype typ;
+            assert(napi_ok == napi_typeof(env, result, &typ));
+            assert(typ == e->typ);
+            assert(napi_ok == napi_close_handle_scope(env, scope));
+            assert(JS_IsUninitialized(JS_GetException(ctx)));
+        }
+    }
+    {
+        napi_handle_scope scope;
+        napi_value result;
+        assert(napi_ok == napi_open_handle_scope(env, &scope));
+        {
+            napi_value obj;
+            napi_escapable_handle_scope inner;
+            assert(napi_ok == napi_open_escapable_handle_scope(env, &inner));
+            assert(napi_ok == napi_create_array(env, &obj));
+            assert(napi_ok == napi_escape_handle(env, inner, obj, &result));
+            assert(napi_ok == napi_close_escapable_handle_scope(env, inner));
+        }
+        bool ok;
+        assert(napi_ok == napi_is_array(env, result, &ok));
+        assert(ok);
+        assert(napi_ok == napi_close_handle_scope(env, scope));
+        assert(JS_IsUninitialized(JS_GetException(ctx)));
+    }
+    {
+        napi_handle_scope scope;
+        assert(napi_ok == napi_open_handle_scope(env, &scope));
+        napi_value global;
+        assert(napi_ok == napi_get_global(env, &global));
+        napi_property_descriptor d = {
+            .utf8name   = "go",
+            .method     = go_callback,
+            .data       = go_baton,
+        };
+        assert(napi_ok == napi_define_properties(env, global, 1, &d));
+        static const char source[] = "go(1,2,3)";
+        napi_value script;
+        assert(napi_ok == napi_create_string_utf8(env, source, strlen(source),
+                                                  &script));
+        napi_value result;
+        assert(napi_ok == napi_run_script(env, script, &result));
+        napi_valuetype typ;
+        assert(napi_ok == napi_typeof(env, result, &typ));
+        assert(typ == napi_string);
+        assert(napi_ok == napi_close_handle_scope(env, scope));
+        assert(JS_IsUninitialized(JS_GetException(ctx)));
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -558,5 +662,6 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    napi();
     return 0;
 }
