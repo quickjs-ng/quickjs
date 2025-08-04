@@ -10237,60 +10237,42 @@ bool JS_SetConstructorBit(JSContext *ctx, JSValueConst func_obj, bool val)
 
 bool JS_IsRegExp(JSValueConst val)
 {
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
-        return false;
-    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_REGEXP;
+    return JS_CLASS_REGEXP == JS_GetClassID(val);
 }
 
 bool JS_IsMap(JSValueConst val)
 {
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
-        return false;
-    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_MAP;
+    return JS_CLASS_MAP == JS_GetClassID(val);
 }
 
 bool JS_IsSet(JSValueConst val)
 {
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
-        return false;
-    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_SET;
+    return JS_CLASS_SET == JS_GetClassID(val);
 }
 
 bool JS_IsWeakRef(JSValueConst val)
 {
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
-        return false;
-    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_WEAK_REF;
+    return JS_CLASS_WEAK_REF == JS_GetClassID(val);
 }
 
 bool JS_IsWeakSet(JSValueConst val)
 {
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
-        return false;
-    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_WEAKSET;
+    return JS_CLASS_WEAKSET == JS_GetClassID(val);
 }
 
 bool JS_IsWeakMap(JSValueConst val)
 {
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
-        return false;
-    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_WEAKMAP;
+    return JS_CLASS_WEAKMAP == JS_GetClassID(val);
 }
 
 bool JS_IsDataView(JSValueConst val)
 {
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
-        return false;
-    return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_DATAVIEW;
+    return JS_CLASS_DATAVIEW == JS_GetClassID(val);
 }
 
 bool JS_IsError(JSContext *ctx, JSValueConst val)
 {
-    JSObject *p;
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
-        return false;
-    p = JS_VALUE_GET_OBJ(val);
-    return (p->class_id == JS_CLASS_ERROR);
+    return JS_CLASS_ERROR == JS_GetClassID(val);
 }
 
 /* used to avoid catching interrupt exceptions */
