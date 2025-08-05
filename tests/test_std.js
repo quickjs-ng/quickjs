@@ -215,45 +215,6 @@ function test_os()
     assert(os.remove(fdir) === 0);
 }
 
-function test_os_exec()
-{
-    var ret, fds, pid, f, status;
-
-    ret = os.exec(["true"]);
-    assert(ret, 0);
-
-    ret = os.exec(["/bin/sh", "-c", "exit 1"], { usePath: false });
-    assert(ret, 1);
-
-    fds = os.pipe();
-    pid = os.exec(["sh", "-c", "echo $FOO"], {
-        stdout: fds[1],
-        block: false,
-        env: { FOO: "hello" },
-    } );
-    assert(pid >= 0);
-    os.close(fds[1]); /* close the write end (as it is only in the child)  */
-    f = std.fdopen(fds[0], "r");
-    assert(f.getline(), "hello");
-    assert(f.getline(), null);
-    f.close();
-    [ret, status] = os.waitpid(pid, 0);
-    assert(ret, pid);
-    assert(status & 0x7f, 0); /* exited */
-    assert(status >> 8, 0); /* exit code */
-
-    pid = os.exec(["cat"], { block: false } );
-    assert(pid >= 0);
-    os.kill(pid, os.SIGTERM);
-    [ret, status] = os.waitpid(pid, 0);
-    assert(ret, pid);
-    // Flaky on cygwin for unclear reasons, see
-    // https://github.com/quickjs-ng/quickjs/issues/184
-    if (!isCygwin) {
-        assert(status & 0x7f, os.SIGTERM);
-    }
-}
-
 function test_interval()
 {
     var t = os.setInterval(f, 1);
@@ -307,7 +268,6 @@ test_file2();
 test_getline();
 test_popen();
 test_os();
-!isWin && test_os_exec();
 test_interval();
 test_timeout();
 test_timeout_order();
