@@ -2336,6 +2336,7 @@ JSContext *JS_NewContext(JSRuntime *rt)
     JS_AddIntrinsicPromise(ctx);
     JS_AddIntrinsicBigInt(ctx);
     JS_AddIntrinsicWeakRef(ctx);
+    JS_AddIntrinsicBase64(ctx);
 
     JS_AddPerformance(ctx);
 
@@ -57613,6 +57614,144 @@ static void insert_weakref_record(JSValueConst target,
     wr->next_weak_ref = *pwr;
     *pwr = wr;
 }
+
+/* urlsafe_base64 atob/btoa */
+
+// Base64 encoding table
+static const char base64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+// btoa: binary to ASCII (base64 encode)
+char* btoa(JSContext *ctx, const char* bin, size_t len) {
+    if (bin == NULL || len == 0) return NULL;
+    // Calculate output length (including padding)
+    size_t out_len = 4 * ((len + 2) / 3) + 1;
+    // Allocate memory for output string (plus null terminator)
+    char* out = (char*)js_mallocz(ctx, out_len);
+
+    if (out == NULL) return NULL;
+
+    // Base64 encoding process
+    size_t i, j;
+
+    for (i = 0, j = 0; i < len; i += 3, j += 4) {
+        uint32_t triple = (bin[i] << 16);
+        if (i + 1 < len) triple |= (bin[i + 1] << 8);
+        if (i + 2 < len) triple |= bin[i + 2];
+
+        out[j] = base64_table[(triple >> 18) & 0x3F];
+        out[j + 1] = base64_table[(triple >> 12) & 0x3F];
+        out[j + 2] = (i + 1 < len) ? base64_table[(triple >> 6) & 0x3F] : '=';
+        out[j + 3] = (i + 2 < len) ? base64_table[triple & 0x3F] : '=';
+    }
+
+    out[out_len] = '\0';
+    return out;
+}
+
+static JSValue js_base64_btoa(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    const char *fmt_str = NULL;
+    const char *result_str = NULL;
+    JSValue v;
+
+    if (argc > 0) {
+        fmt_str = JS_ToCString(ctx, argv[0]);
+        result_str = btoa(ctx, fmt_str, strlen(fmt_str));
+        v = JS_NewString(ctx, result_str);
+        JS_FreeCString(ctx, fmt_str);
+        return v;
+    } else {
+        return JS_ThrowTypeError(ctx, "ERR_MISSING_ARGS");
+    }
+}
+
+static int base64_index(char c) {
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '-')
+        return 62;
+    if (c == '_')
+        return 63;
+
+    return -1; // Invalid character
+}
+
+// atob: ASCII to binary (base64 decode)
+char* atob(JSContext *ctx, const char* str) {
+    if (str == NULL) return NULL;
+
+    size_t str_len = strlen(str);
+
+    if (str_len % 4 != 0) return NULL; // Invalid base64 string
+
+    // Calculate output length
+    size_t len = str_len / 4 * 3;
+
+    if (str[str_len - 1] == '=') len--;
+
+    if (str[str_len - 2] == '=') len--;
+
+    // Allocate memory for output data
+    size_t out_len = len+1;
+    char* out = (char*)js_mallocz(ctx, out_len);
+
+    if (out == NULL) return NULL;
+
+    // Base64 decoding process
+    size_t i, j;
+
+    for (i = 0, j = 0; i < str_len; i += 4, j += 3) {
+        int a = base64_index(str[i]);
+        int b = base64_index(str[i + 1]);
+        int c = str[i + 2] == '=' ? 0 : base64_index(str[i + 2]);
+        int d = str[i + 3] == '=' ? 0 : base64_index(str[i + 3]);
+
+        if (a == -1 || b == -1 || c == -1 || d == -1) {
+            js_free(ctx, out);
+            return NULL; // Invalid character
+        }
+
+        uint32_t triple = (a << 18) | (b << 12) | (c << 6) | d;
+        out[j] = (triple >> 16) & 0xFF;
+
+        if (j + 1 < len) out[j + 1] = (triple >> 8) & 0xFF;
+        if (j + 2 < len) out[j + 2] = triple & 0xFF;
+    }
+
+    out[out_len] = '\0';
+    return out;
+}
+
+
+static JSValue js_base64_atob(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    const char *fmt_str = NULL;
+    const char *result_str = NULL;
+    JSValue v;
+
+    if (argc > 0) {
+        fmt_str = JS_ToCString(ctx, argv[0]);
+        result_str = atob(ctx, fmt_str);
+        v = JS_NewString(ctx, result_str);
+        JS_FreeCString(ctx, fmt_str);
+        return v;
+    } else {
+        return JS_ThrowTypeError(ctx, "ERR_MISSING_ARGS");
+    }
+}
+
+static const JSCFunctionListEntry js_base64_funcs[] = {
+    JS_CFUNC_DEF("btoa", 1, js_base64_btoa ),
+    JS_CFUNC_DEF("atob", 1, js_base64_atob ),
+};
+
+void JS_AddIntrinsicBase64(JSContext *ctx)
+{
+    JS_SetPropertyFunctionList(ctx, ctx->global_obj, js_base64_funcs, countof(js_base64_funcs));
+}
+
 
 /* CallSite */
 
