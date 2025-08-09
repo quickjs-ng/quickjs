@@ -473,6 +473,10 @@ struct JSContext {
 
     struct list_head loaded_modules; /* list of JSModuleDef.link */
 
+    /* To minimize creating breaking changes, I have instead decided
+       to carry the parsed import_assertion instead */
+    JSValue import_assertion;
+
     /* if NULL, RegExp compilation is not supported */
     JSValue (*compile_regexp)(JSContext *ctx, JSValueConst pattern,
                               JSValueConst flags);
@@ -856,6 +860,9 @@ struct JSModuleDef {
     bool eval_has_exception;
     JSValue eval_exception;
     JSValue meta_obj; /* for import.meta */
+
+    /* a list of key/value strings - [key, value, key, value] */
+    JSValue import_assertion;
 };
 
 typedef struct JSJobEntry {
@@ -1248,7 +1255,7 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m);
 static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
                                JS_MarkFunc *mark_func);
 static JSValue js_import_meta(JSContext *ctx);
-static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier);
+static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier, JSValueConst import_assertion);
 static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref);
 static JSValue js_new_promise_capability(JSContext *ctx,
                                          JSValue *resolving_funcs,
@@ -2311,6 +2318,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->error_back_trace = JS_UNDEFINED;
     ctx->error_prepare_stack = JS_UNDEFINED;
     ctx->error_stack_trace_limit = js_int32(10);
+    ctx->import_assertion = JS_UNDEFINED;
     init_list_head(&ctx->loaded_modules);
 
     JS_AddIntrinsicBasicObjects(ctx);
@@ -2442,6 +2450,7 @@ static void JS_MarkContext(JSRuntime *rt, JSContext *ctx,
     JS_MarkValue(rt, ctx->regexp_ctor, mark_func);
     JS_MarkValue(rt, ctx->function_ctor, mark_func);
     JS_MarkValue(rt, ctx->function_proto, mark_func);
+    JS_MarkValue(rt, ctx->import_assertion, mark_func);
 
     if (ctx->array_shape)
         mark_func(rt, &ctx->array_shape->header);
@@ -2513,6 +2522,7 @@ void JS_FreeContext(JSContext *ctx)
     JS_FreeValue(ctx, ctx->regexp_ctor);
     JS_FreeValue(ctx, ctx->function_ctor);
     JS_FreeValue(ctx, ctx->function_proto);
+    JS_FreeValue(ctx, ctx->import_assertion);
 
     js_free_shape_null(ctx->rt, ctx->array_shape);
 
@@ -17163,10 +17173,11 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             {
                 JSValue val;
                 sf->cur_pc = pc;
-                val = js_dynamic_import(ctx, sp[-1]);
+                val = js_dynamic_import(ctx, sp[-2], sp[-1]);
                 if (JS_IsException(val))
                     goto exception;
                 JS_FreeValue(ctx, sp[-1]);
+                JS_FreeValue(ctx, sp[-2]);
                 sp[-1] = val;
             }
             BREAK;
@@ -25221,6 +25232,14 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 return js_parse_error(s, "invalid use of 'import()'");
             if (js_parse_assign_expr(s))
                 return -1;
+            if (s->token.val == ',') {
+                if (next_token(s))
+                    return -1;
+                if (js_parse_object_literal(s))
+                    return -1;
+            } else
+                emit_op(s, OP_undefined);
+
             if (js_parse_expect(s, ')'))
                 return -1;
             emit_op(s, OP_import);
@@ -27760,6 +27779,7 @@ static JSModuleDef *js_new_module_def(JSContext *ctx, JSAtom name)
     m->eval_exception = JS_UNDEFINED;
     m->meta_obj = JS_UNDEFINED;
     m->promise = JS_UNDEFINED;
+    m->import_assertion = JS_UNDEFINED;
     m->resolving_funcs[0] = JS_UNDEFINED;
     m->resolving_funcs[1] = JS_UNDEFINED;
     list_add_tail(&m->link, &ctx->loaded_modules);
@@ -27783,9 +27803,11 @@ static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
     JS_MarkValue(rt, m->func_obj, mark_func);
     JS_MarkValue(rt, m->eval_exception, mark_func);
     JS_MarkValue(rt, m->meta_obj, mark_func);
+    JS_MarkValue(rt, m->import_assertion, mark_func);
     JS_MarkValue(rt, m->promise, mark_func);
     JS_MarkValue(rt, m->resolving_funcs[0], mark_func);
     JS_MarkValue(rt, m->resolving_funcs[1], mark_func);
+    JS_MarkValue(rt, m->import_assertion, mark_func);
 }
 
 static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
@@ -27825,6 +27847,7 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
     JS_FreeValue(ctx, m->promise);
     JS_FreeValue(ctx, m->resolving_funcs[0]);
     JS_FreeValue(ctx, m->resolving_funcs[1]);
+    JS_FreeValue(ctx, m->import_assertion);
     list_del(&m->link);
     js_free(ctx, m);
 }
@@ -28557,6 +28580,11 @@ JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m)
     return js_dup(m->module_ns);
 }
 
+JSValueConst JS_GetImportAssertion(JSContext *ctx)
+{
+    return ctx->import_assertion;
+}
+
 #ifdef ENABLE_DUMPS // JS_DUMP_MODULE_RESOLVE
 #define module_trace(ctx, ...) \
    do { \
@@ -28582,6 +28610,8 @@ static int js_resolve_module(JSContext *ctx, JSModuleDef *m)
     }
 #endif
     m->resolved = true;
+
+    ctx->import_assertion = js_dup(m->import_assertion);
     /* resolve each requested module */
     for(i = 0; i < m->req_module_entries_count; i++) {
         JSReqModuleEntry *rme = &m->req_module_entries[i];
@@ -28595,6 +28625,8 @@ static int js_resolve_module(JSContext *ctx, JSModuleDef *m)
         if (js_resolve_module(ctx, m1) < 0)
             return -1;
     }
+    JS_FreeValue(ctx, ctx->import_assertion);
+    ctx->import_assertion = JS_UNDEFINED;
     return 0;
 }
 
@@ -29120,6 +29152,7 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     JSValueConst *resolving_funcs = argv;
     JSValueConst basename_val = argv[2];
     JSValueConst specifier = argv[3];
+    ctx->import_assertion = unsafe_unconst(argv[4]);
     const char *basename = NULL, *filename;
     JSValue ret, err;
 
@@ -29149,11 +29182,12 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     return JS_UNDEFINED;
 }
 
-static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier)
+static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier, JSValueConst import_assertion)
 {
     JSAtom basename;
-    JSValue promise, resolving_funcs[2], basename_val;
-    JSValue args[4];
+    JSValue promise, resolving_funcs[2], basename_val, assertion;
+    JSValue args[5];
+    assertion = JS_UNDEFINED;
 
     basename = JS_GetScriptOrModuleName(ctx, 0);
     if (basename == JS_ATOM_NULL)
@@ -29170,14 +29204,51 @@ static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier)
         return promise;
     }
 
+    if (JS_IsObject(import_assertion)) {
+        assertion = JS_NewArray(ctx);
+        if (!JS_HasProperty(ctx, import_assertion, JS_NewAtom(ctx, "with"))) {
+            JS_FreeValue(ctx, promise);
+            JS_FreeValue(ctx, resolving_funcs[0]);
+            JS_FreeValue(ctx, resolving_funcs[1]);
+            JS_FreeValue(ctx, assertion);
+            return JS_ThrowTypeError(ctx, "expected 'with' property");
+        }
+
+        JSValue obj = JS_GetPropertyStr(ctx, import_assertion, "with");
+        if (!JS_IsObject(obj) || JS_IsArray(obj))
+            return JS_ThrowTypeError(ctx, "expected object");
+
+        JSPropertyEnum *props;
+        uint32_t index, len;
+        index = 0;
+
+        JS_GetOwnPropertyNames(ctx, &props, &len, obj, JS_GPN_STRING_MASK);
+
+        for (uint32_t i = 0; i < len; i++) {
+            JSValue key = JS_AtomToString(ctx, props[i].atom);
+            JSValue val = JS_GetProperty(ctx, obj, props[i].atom);
+
+            JS_DefinePropertyValueUint32(ctx, assertion, index,
+                key, JS_PROP_HAS_ENUMERABLE);
+            index++;
+            JS_DefinePropertyValueUint32(ctx, assertion, index,
+                val, JS_PROP_HAS_ENUMERABLE);
+            index++;
+        }
+
+        JS_FreePropertyEnum(ctx, props, len);
+        JS_FreeValue(ctx, obj);
+    }
+
     args[0] = resolving_funcs[0];
     args[1] = resolving_funcs[1];
     args[2] = basename_val;
     args[3] = unsafe_unconst(specifier);
+    args[4] = assertion;
 
     /* cannot run JS_LoadModuleInternal synchronously because it would
        cause an unexpected recursion in js_evaluate_module() */
-    JS_EnqueueJob(ctx, js_dynamic_import_job, 4, vc(args));
+    JS_EnqueueJob(ctx, js_dynamic_import_job, 5, vc(args));
 
     JS_FreeValue(ctx, basename_val);
     JS_FreeValue(ctx, resolving_funcs[0]);
@@ -29810,6 +29881,68 @@ static int add_import(JSParseState *s, JSModuleDef *m,
     return 0;
 }
 
+static __exception int js_parse_import_assertion(JSParseState *s, JSModuleDef *m)
+{
+    uint32_t index = 0;
+    m->import_assertion = JS_NewArray(s->ctx);
+
+    if (next_token(s))
+        return -1;
+
+    if (js_parse_expect(s, '{'))
+        return -1;
+
+    while (s->token.val != '}') {
+        JSValue key, value;
+        key = value = JS_UNDEFINED;
+
+        if (!token_is_ident(s->token.val) && s->token.val != TOK_STRING) {
+            js_parse_error(s, "identifier or string expected");
+            return -1;
+        }
+
+        if (token_is_ident(s->token.val))
+            key = JS_AtomToValue(s->ctx, s->token.u.ident.atom);
+        else
+            key = js_dup(s->token.u.str.str);
+
+        if (next_token(s))
+            goto fail;
+
+        if (js_parse_expect(s, ':'))
+            goto fail;
+
+        if (s->token.val != TOK_STRING) {
+            js_parse_error(s, "string expected");
+            goto fail;
+        }
+
+        value = js_dup(s->token.u.str.str);
+
+        JS_DefinePropertyValueUint32(s->ctx, m->import_assertion, index,
+            key, JS_PROP_HAS_ENUMERABLE);
+        index++;
+        JS_DefinePropertyValueUint32(s->ctx, m->import_assertion, index,
+            value, JS_PROP_HAS_ENUMERABLE);
+        index++;
+
+        if (next_token(s))
+            goto fail;
+
+        continue;
+    fail:
+        JS_FreeValue(s->ctx, m->import_assertion);
+        JS_FreeValue(s->ctx, key);
+        JS_FreeValue(s->ctx, value);
+        return -1;
+    }
+
+    if (next_token(s))
+        return -1;
+
+    return 0;
+}
+
 static __exception int js_parse_import(JSParseState *s)
 {
     JSContext *ctx = s->ctx;
@@ -29914,6 +30047,10 @@ static __exception int js_parse_import(JSParseState *s)
         module_name = js_parse_from_clause(s);
         if (module_name == JS_ATOM_NULL)
             return -1;
+
+        if (s->token.val == TOK_WITH)
+            if (js_parse_import_assertion(s, m) < 0)
+                return -1;
     }
     idx = add_req_module_entry(ctx, m, module_name);
     JS_FreeAtom(ctx, module_name);
