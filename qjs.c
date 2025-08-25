@@ -53,7 +53,104 @@ static const int trailer_size = TRAILER_SIZE;
 
 static int qjs__argc;
 static char **qjs__argv;
+static JSRuntime *rt;
+static JSContext *ctx;
 
+#if defined(__GNUC__) || defined(__clang__)
+#define JS_EXTERN __attribute__((visibility("default")))
+#else
+#define JS_EXTERN /* nothing */
+#endif
+
+struct napi_module
+{
+    int version;
+    unsigned int flags;
+    const char *filename;
+    JSValue *(*init)(JSContext *, JSValue *);
+};
+
+static JSValue module = JS_UNINITIALIZED;
+
+static int napi_init_func(JSContext *ctx, JSModuleDef *m)
+{
+    JSPropertyEnum *key, *keys;
+    const char *name;
+    uint32_t len;
+    JSValue val;
+    int ret;
+
+    keys = NULL;
+    if (JS_IsUninitialized(module))
+        return -1;
+    ret = JS_GetOwnPropertyNames(ctx, &keys, &len, module,
+                                 JS_GPN_STRING_MASK);
+    if (ret)
+        goto fail;
+    for (key = keys; key < &keys[len]; key++) {
+        val = JS_GetProperty(ctx, module, key->atom);
+        if (JS_IsException(val))
+            goto fail;
+        name = JS_AtomToCString(ctx, key->atom);
+        if (!name) {
+            JS_FreeValue(ctx, val);
+            goto fail;
+        }
+        ret = JS_SetModuleExport(ctx, m, name, val);
+        JS_FreeCString(ctx, name);
+        if (ret)
+            goto fail;
+    }
+fail:
+    js_free(ctx, keys);
+    JS_FreeValue(ctx, module);
+    module = JS_UNINITIALIZED;
+    return ret;
+}
+
+JS_EXTERN void napi_module_register(struct napi_module *nm)
+{
+    JSPropertyEnum *key, *keys;
+    JSValue exports, *valp;
+    JSModuleDef *m;
+    const char *name;
+    uint32_t len;
+    int ret;
+
+    exports = JS_UNDEFINED;
+    keys = NULL;
+    valp = NULL;
+    m = JS_NewCModule(ctx, nm->filename, napi_init_func);
+    if (!m)
+        goto out;
+    js_std_cmd(/*SetNapiModule*/4, rt, m);
+    exports = JS_NewObject(ctx);
+    if (JS_IsException(exports))
+        goto out;
+    assert(JS_IsUninitialized(module));
+    // TODO needs handlescope
+    valp = nm->init(ctx, &exports); // returns either &exports or a new object
+    if (!valp)
+        valp = &exports;
+    module = *valp;
+    ret = JS_GetOwnPropertyNames(ctx, &keys, &len, module,
+                                 JS_GPN_STRING_MASK);
+    if (ret)
+        goto out;
+    for (key = keys; key < &keys[len]; key++) {
+        name = JS_AtomToCString(ctx, key->atom);
+        if (!name)
+            goto out;
+        ret = JS_AddModuleExport(ctx, m, name);
+        JS_FreeCString(ctx, name);
+        if (ret)
+            goto out;
+    }
+out:
+    if (valp != &exports)
+        JS_FreeValue(ctx, exports);
+    js_free(ctx, keys);
+}
 
 static bool is_standalone(const char *exe)
 {
@@ -397,8 +494,6 @@ void help(void)
 
 int main(int argc, char **argv)
 {
-    JSRuntime *rt;
-    JSContext *ctx;
     JSValue ret = JS_UNDEFINED;
     struct trace_malloc_data trace_data = { NULL };
     int r = 0;
