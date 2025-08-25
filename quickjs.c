@@ -48,6 +48,7 @@
 #include "quickjs.h"
 #include "libregexp.h"
 #include "xsum.h"
+#include "dtoa.h"
 
 #if defined(EMSCRIPTEN) || defined(_MSC_VER)
 #define DIRECT_DISPATCH  0
@@ -11963,186 +11964,152 @@ static JSValue JS_CompactBigInt(JSContext *ctx, JSBigInt *p)
     }
 }
 
-/* XXX: remove */
-static double js_strtod(const char *str, int radix, bool is_float)
+#define ATOD_INT_ONLY        (1 << 0)
+/* accept Oo and Ob prefixes in addition to 0x prefix if radix = 0 */
+#define ATOD_ACCEPT_BIN_OCT  (1 << 2)
+/* accept O prefix as octal if radix == 0 and properly formed (Annex B) */
+#define ATOD_ACCEPT_LEGACY_OCTAL  (1 << 4)
+/* accept _ between digits as a digit separator */
+#define ATOD_ACCEPT_UNDERSCORES  (1 << 5)
+/* allow a suffix to override the type */
+#define ATOD_ACCEPT_SUFFIX    (1 << 6)
+/* default type */
+#define ATOD_TYPE_MASK        (3 << 7)
+#define ATOD_TYPE_FLOAT64     (0 << 7)
+#define ATOD_TYPE_BIG_INT     (1 << 7)
+/* accept -0x1 */
+#define ATOD_ACCEPT_PREFIX_AFTER_SIGN (1 << 10)
+
+/* return an exception in case of memory error. Return JS_NAN if
+   invalid syntax */
+/* XXX: directly use js_atod() */
+static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
+                       int radix, int flags)
 {
-    double d;
-    int c;
-
-    if (!is_float || radix != 10) {
-        const char *p = str;
-        uint64_t n_max, n;
-        int int_exp, is_neg;
-
-        is_neg = 0;
-        if (*p == '-') {
-            is_neg = 1;
-            p++;
-        }
-
-        /* skip leading zeros */
-        while (*p == '0')
-            p++;
-        n = 0;
-        if (radix == 10)
-            n_max = ((uint64_t)-1 - 9) / 10; /* most common case */
-        else
-            n_max = ((uint64_t)-1 - (radix - 1)) / radix;
-        /* XXX: could be more precise */
-        int_exp = 0;
-        while (*p != '\0') {
-            c = to_digit((uint8_t)*p);
-            if (c >= radix)
-                break;
-            if (n <= n_max) {
-                n = n * radix + c;
-            } else {
-                if (radix == 10)
-                    goto strtod_case;
-                int_exp++;
-            }
-            p++;
-        }
-        d = n;
-        if (int_exp != 0) {
-            d *= pow(radix, int_exp);
-        }
-        if (is_neg)
-            d = -d;
-    } else {
-    strtod_case:
-        d = strtod(str, NULL);
-    }
-    return d;
-}
-
-/* `js_atof(ctx, p, len, pp, radix, flags)`
-   Convert the string pointed to by `p` to a number value.
-   Return an exception in case of memory error.
-   Return `JS_NAN` if invalid syntax.
-   - `p` points to a null terminated UTF-8 encoded char array,
-   - `len` the length of the array,
-   - `pp` if not null receives a pointer to the next character,
-   - `radix` must be in range 2 to 36, else return `JS_NAN`.
-   - `flags` is a combination of the flags below.
-   There is a null byte at `p[len]`, but there might be embedded null
-   bytes between `p[0]` and `p[len]` which must produce `JS_NAN` if
-   the `ATOD_NO_TRAILING_CHARS` flag is present.
- */
-
-#define ATOD_TRIM_SPACES         (1 << 0)   /* trim white space */
-#define ATOD_ACCEPT_EMPTY        (1 << 1)   /* accept an empty string, value is 0 */
-#define ATOD_ACCEPT_FLOAT        (1 << 2)   /* parse decimal floating point syntax */
-#define ATOD_ACCEPT_INFINITY     (1 << 3)   /* parse Infinity as a float point number */
-#define ATOD_ACCEPT_BIN_OCT      (1 << 4)   /* accept 0o and 0b prefixes */
-#define ATOD_ACCEPT_HEX_PREFIX   (1 << 5)   /* accept 0x prefix for radix 16 */
-#define ATOD_ACCEPT_UNDERSCORES  (1 << 6)   /* accept _ between digits as a digit separator */
-#define ATOD_ACCEPT_SUFFIX       (1 << 7)   /* allow 'n' suffix to produce BigInt */
-#define ATOD_WANT_BIG_INT        (1 << 8)   /* return type must be BigInt */
-#define ATOD_DECIMAL_AFTER_SIGN  (1 << 9)   /* only accept decimal number after sign */
-#define ATOD_NO_TRAILING_CHARS   (1 << 10)  /* do not accept trailing characters */
-
-static JSValue js_atof(JSContext *ctx, const char *p, size_t len,
-                       const char **pp, int radix, int flags)
-{
-    const char *p_start;
-    const char *end = p + len;
-    int sep;
-    bool is_float;
-    char buf1[64], *buf = buf1;
-    size_t i, j;
-    JSValue val = JS_NAN;
-    double d;
-    char sign;
-
-    if (radix < 2 || radix > 36)
-        goto done;
-
+    const char *p, *p_start;
+    int sep, is_neg;
+    bool is_float, has_legacy_octal;
+    int atod_type = flags & ATOD_TYPE_MASK;
+    char buf1[64], *buf;
+    int i, j, len;
+    bool buf_allocated = false;
+    JSValue val;
+    JSATODTempMem atod_mem;
+    
     /* optional separator between digits */
     sep = (flags & ATOD_ACCEPT_UNDERSCORES) ? '_' : 256;
-    sign = 0;
-    if (flags & ATOD_TRIM_SPACES)
-        p += skip_spaces(p);
-    if (p == end && (flags & ATOD_ACCEPT_EMPTY)) {
-        if (pp) *pp = p;
-        if (flags & ATOD_WANT_BIG_INT)
-            return JS_NewBigInt64(ctx, 0);
-        else
-            return js_int32(0);
-    }
-    if (*p == '+' || *p == '-') {
-        sign = *p;
+    has_legacy_octal = false;
+
+    p = str;
+    p_start = p;
+    is_neg = 0;
+    if (p[0] == '+') {
         p++;
-        if (flags & ATOD_DECIMAL_AFTER_SIGN)
-            flags &= ~(ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT);
+        p_start++;
+        if (!(flags & ATOD_ACCEPT_PREFIX_AFTER_SIGN))
+            goto no_radix_prefix;
+    } else if (p[0] == '-') {
+        p++;
+        p_start++;
+        is_neg = 1;
+        if (!(flags & ATOD_ACCEPT_PREFIX_AFTER_SIGN))
+            goto no_radix_prefix;
     }
     if (p[0] == '0') {
         if ((p[1] == 'x' || p[1] == 'X') &&
-            ((flags & ATOD_ACCEPT_HEX_PREFIX) || radix == 16)) {
+            (radix == 0 || radix == 16)) {
             p += 2;
             radix = 16;
-        } else if (flags & ATOD_ACCEPT_BIN_OCT) {
-            if (p[1] == 'o' || p[1] == 'O') {
-                p += 2;
-                radix = 8;
-            } else if (p[1] == 'b' || p[1] == 'B') {
-                p += 2;
-                radix = 2;
-            }
+        } else if ((p[1] == 'o' || p[1] == 'O') &&
+                   radix == 0 && (flags & ATOD_ACCEPT_BIN_OCT)) {
+            p += 2;
+            radix = 8;
+        } else if ((p[1] == 'b' || p[1] == 'B') &&
+                   radix == 0 && (flags & ATOD_ACCEPT_BIN_OCT)) {
+            p += 2;
+            radix = 2;
+        } else if ((p[1] >= '0' && p[1] <= '9') &&
+                   radix == 0 && (flags & ATOD_ACCEPT_LEGACY_OCTAL)) {
+            int i;
+            has_legacy_octal = true;
+            sep = 256;
+            for (i = 1; (p[i] >= '0' && p[i] <= '7'); i++)
+                continue;
+            if (p[i] == '8' || p[i] == '9')
+                goto no_prefix;
+            p += 1;
+            radix = 8;
+        } else {
+            goto no_prefix;
         }
+        /* there must be a digit after the prefix */
+        if (to_digit((uint8_t)*p) >= radix)
+            goto fail;
+    no_prefix: ;
     } else {
-        if (*p == 'I' && (flags & ATOD_ACCEPT_INFINITY) && js__strstart(p, "Infinity", &p)) {
-            d = INF;
-            if (sign == '-')
+ no_radix_prefix:
+        if (!(flags & ATOD_INT_ONLY) &&
+            (atod_type == ATOD_TYPE_FLOAT64) &&
+            js__strstart(p, "Infinity", &p)) {
+            double d = INF;
+            if (is_neg)
                 d = -d;
-            val = js_float64(d);
+            val = JS_NewFloat64(ctx, d);
             goto done;
         }
     }
+    if (radix == 0)
+        radix = 10;
     is_float = false;
     p_start = p;
-    while (to_digit(*p) < radix) {
+    while (to_digit((uint8_t)*p) < radix
+           ||  (*p == sep && (radix != 10 ||
+                              p != p_start + 1 || p[-1] != '0') &&
+                to_digit((uint8_t)p[1]) < radix)) {
         p++;
-        if (*p == sep && to_digit(p[1]) < radix)
-            p++;
     }
-    if ((flags & ATOD_ACCEPT_FLOAT) && radix == 10) {
-        if (*p == '.' && (p > p_start || to_digit(p[1]) < radix)) {
+    if (!(flags & ATOD_INT_ONLY)) {
+        if (*p == '.' && (p > p_start || to_digit((uint8_t)p[1]) < radix)) {
             is_float = true;
             p++;
-            while (to_digit(*p) < radix) {
+            if (*p == sep)
+                goto fail;
+            while (to_digit((uint8_t)*p) < radix ||
+                   (*p == sep && to_digit((uint8_t)p[1]) < radix))
                 p++;
-                if (*p == sep && to_digit(p[1]) < radix)
-                    p++;
-            }
         }
-        if (p > p_start && (*p == 'e' || *p == 'E')) {
-            i = 1;
-            if (p[1] == '+' || p[1] == '-') {
-                i++;
+        if (p > p_start &&
+            (((*p == 'e' || *p == 'E') && radix == 10) ||
+             ((*p == 'p' || *p == 'P') && (radix == 2 || radix == 8 || radix == 16)))) {
+            const char *p1 = p + 1;
+            is_float = true;
+            if (*p1 == '+') {
+                p1++;
+            } else if (*p1 == '-') {
+                p1++;
             }
-            if (is_digit(p[i])) {
-                is_float = true;
-                p += i + 1;
-                while (is_digit(*p) || (*p == sep && is_digit(p[1])))
+            if (is_digit((uint8_t)*p1)) {
+                p = p1 + 1;
+                while (is_digit((uint8_t)*p) || (*p == sep && is_digit((uint8_t)p[1])))
                     p++;
             }
         }
     }
     if (p == p_start)
-        goto done;
+        goto fail;
 
+    buf = buf1;
+    buf_allocated = false;
     len = p - p_start;
     if (unlikely((len + 2) > sizeof(buf1))) {
         buf = js_malloc_rt(ctx->rt, len + 2); /* no exception raised */
-        if (!buf) {
-            if (pp) *pp = p;
-            return JS_ThrowOutOfMemory(ctx);
-        }
+        if (!buf)
+            goto mem_error;
+        buf_allocated = true;
     }
-    /* remove the separators and the radix prefix */
+    /* remove the separators and the radix prefixes */
     j = 0;
-    if (sign == '-')
+    if (is_neg)
         buf[j++] = '-';
     for (i = 0; i < len; i++) {
         if (p_start[i] != '_')
@@ -12153,38 +12120,57 @@ static JSValue js_atof(JSContext *ctx, const char *p, size_t len,
     if (flags & ATOD_ACCEPT_SUFFIX) {
         if (*p == 'n') {
             p++;
-            flags |= ATOD_WANT_BIG_INT;
+            atod_type = ATOD_TYPE_BIG_INT;
+        } else {
+            if (is_float && radix != 10)
+                goto fail;
+        }
+    } else {
+        if (atod_type == ATOD_TYPE_FLOAT64) {
+            if (is_float && radix != 10)
+                goto fail;
         }
     }
 
-    if (flags & ATOD_WANT_BIG_INT) {
-        JSBigInt *r;
-        if (!is_float) {
+    switch(atod_type) {
+    case ATOD_TYPE_FLOAT64:
+        {
+            double d;
+            d = js_atod(buf, NULL, radix, is_float ? 0 : JS_ATOD_INT_ONLY,
+                        &atod_mem);
+            /* return int or float64 */
+            val = JS_NewFloat64(ctx, d);
+        }
+        break;
+    case ATOD_TYPE_BIG_INT:
+        {
+            JSBigInt *r;
+            if (has_legacy_octal || is_float)
+                goto fail;
             r = js_bigint_from_string(ctx, buf, radix);
             if (!r) {
-                val = JS_ThrowOutOfMemory(ctx);
+                val = JS_EXCEPTION;
                 goto done;
             }
             val = JS_CompactBigInt(ctx, r);
         }
-    } else {
-        d = js_strtod(buf, radix, is_float);
-        val = js_number(d);     /* return int or float64 */
+        break;
+    default:
+        abort();
     }
 
- done:
-    if (flags & ATOD_NO_TRAILING_CHARS) {
-        if (flags & ATOD_TRIM_SPACES)
-            p += skip_spaces(p);
-        if (p != end) {
-            JS_FreeValue(ctx, val);
-            val = JS_NAN;
-        }
-    }
-    if (buf != buf1)
+done:
+    if (buf_allocated)
         js_free_rt(ctx->rt, buf);
-    if (pp) *pp = p;
+    if (pp)
+        *pp = p;
     return val;
+ fail:
+    val = JS_NAN;
+    goto done;
+ mem_error:
+    val = JS_ThrowOutOfMemory(ctx);
+    goto done;
 }
 
 typedef enum JSToNumberHintEnum {
@@ -12229,19 +12215,28 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
     case JS_TAG_STRING:
         {
             const char *str;
+            const char *p;
             size_t len;
-            int flags;
 
             str = JS_ToCStringLen(ctx, &len, val);
             JS_FreeValue(ctx, val);
             if (!str)
                 return JS_EXCEPTION;
-            // TODO(saghul): Sync with bellard/quickjs ?
-            flags = ATOD_TRIM_SPACES | ATOD_ACCEPT_EMPTY |
-                ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_INFINITY |
-                ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT |
-                ATOD_DECIMAL_AFTER_SIGN | ATOD_NO_TRAILING_CHARS;
-            ret = js_atof(ctx, str, len, NULL, 10, flags);
+            p = str;
+            p += skip_spaces(p);
+            if ((p - str) == len) {
+                ret = JS_NewInt32(ctx, 0);
+            } else {
+                int flags = ATOD_ACCEPT_BIN_OCT;
+                ret = js_atof(ctx, p, &p, 0, flags);
+                if (!JS_IsException(ret)) {
+                    p += skip_spaces(p);
+                    if ((p - str) != len) {
+                        JS_FreeValue(ctx, ret);
+                        ret = JS_NAN;
+                    }
+                }
+            }
             JS_FreeCString(ctx, str);
         }
         break;
@@ -12803,425 +12798,29 @@ static JSValue js_bigint_to_string(JSContext *ctx, JSValueConst val)
 
 /*---- floating point number to string conversions ----*/
 
-/* JavaScript rounding is specified as round to nearest tie away
-   from zero (RNDNA), but in `printf` the "ties" case is not
-   specified (in most cases it is RNDN, round to nearest, tie to even),
-   so we must round manually. We generate 2 extra places and make
-   an extra call to snprintf if these are exactly '50'.
-   We set the current rounding mode to FE_DOWNWARD to check if the
-   last 2 places become '49'. If not, we must round up, which is
-   performed in place using the string digits.
-
-   Note that we cannot rely on snprintf for rounding up:
-   the code below fails on macOS for `0.5.toFixed(0)`: gives `0` expected `1`
-      fesetround(FE_UPWARD);
-      snprintf(dest, size, "%.*f", n_digits, d);
-      fesetround(FE_TONEAREST);
- */
-
-/* `js_fcvt` minimum buffer length:
-   - up to 21 digits in integral part
-   - 1 potential decimal point
-   - up to 102 decimals
-   - 1 null terminator
- */
-#define JS_FCVT_BUF_SIZE  (21+1+102+1)
-
-/* `js_ecvt` minimum buffer length:
-   - 1 leading digit
-   - 1 potential decimal point
-   - up to 102 decimals
-   - 5 exponent characters (from 'e-324' to 'e+308')
-   - 1 null terminator
- */
-#define JS_ECVT_BUF_SIZE  (1+1+102+5+1)
-
-/* `js_dtoa` minimum buffer length:
-   - 8 byte prefix
-   - either JS_FCVT_BUF_SIZE or JS_ECVT_BUF_SIZE
-   - JS_FCVT_BUF_SIZE is larger than JS_ECVT_BUF_SIZE
- */
-#define JS_DTOA_BUF_SIZE  (8+JS_FCVT_BUF_SIZE)
-
-/* `js_ecvt1`: compute the digits and decimal point spot for a double
-   - `d` is finite, positive or zero
-   - `n_digits` number of significant digits in range 1..103
-   - `buf` receives the printf result
-   - `buf` has a fixed format: n_digits with a decimal point at offset 1
-     and exponent 'e{+/-}xx[x]' at offset n_digits+1
-   Return n_digits
-   Store the position of the decimal point into `*decpt`
- */
-static int js_ecvt1(double d, int n_digits,
-                    char dest[minimum_length(JS_ECVT_BUF_SIZE)],
-                    size_t size, int *decpt)
+static JSValue js_dtoa2(JSContext *ctx,
+                        double d, int radix, int n_digits, int flags)
 {
-    /* d is positive, ensure decimal point is always present */
-    snprintf(dest, size, "%#.*e", n_digits - 1, d);
-    /* dest contents:
-       0:            first digit
-       1:            '.' decimal point (locale specific)
-       2..n_digits:  (n_digits-1) additional digits
-       n_digits+1:   'e' exponent mark
-       n_digits+2..: exponent sign, value and null terminator
-     */
-    /* extract the exponent (actually the position of the decimal point) */
-    *decpt = 1 + atoi(dest + n_digits + 2);
-    return n_digits;
-}
-
-/* `js_ecvt`: compute the digits and decimal point spot for a double
-   with proper javascript rounding. We cannot use `ecvt` for multiple
-   resasons: portability, because of the number of digits is typically
-   limited to 17, finally because the default rounding is inadequate.
-   `d` is finite and positive or zero.
-   `n_digits` number of significant digits in range 1..101
-   or 0 for automatic (only as many digits as necessary)
-   Return the number of digits produced in `dest`.
-   Store the position of the decimal point into `*decpt`
- */
-static int js_ecvt(double d, int n_digits,
-                   char dest[minimum_length(JS_ECVT_BUF_SIZE)],
-                   size_t size, int *decpt)
-{
-    if (n_digits == 0) {
-        /* find the minimum number of digits (XXX: inefficient but simple) */
-        // TODO(chqrlie) use direct method from quickjs-printf
-        unsigned int n_digits_min = 1;
-        unsigned int n_digits_max = 17;
-        for (;;) {
-            n_digits = (n_digits_min + n_digits_max) / 2;
-            js_ecvt1(d, n_digits, dest, size, decpt);
-            if (n_digits_min == n_digits_max)
-                return n_digits;
-            /* dest contents:
-               0:            first digit
-               1:            '.' decimal point (locale specific)
-               2..n_digits:  (n_digits-1) additional digits
-               n_digits+1:   'e' exponent mark
-               n_digits+2..: exponent sign, value and null terminator
-             */
-            if (strtod(dest, NULL) == d) {
-                unsigned int n0 = n_digits;
-                /* enough digits */
-                /* strip the trailing zeros */
-                while (dest[n_digits] == '0')
-                    n_digits--;
-                if (n_digits == n_digits_min)
-                    return n_digits;
-                /* done if trailing zeros and not denormal or huge */
-                if (n_digits < n0 && d > 3e-308 && d < 8e307)
-                    return n_digits;
-                n_digits_max = n_digits;
-            } else {
-                /* need at least one more digit */
-                n_digits_min = n_digits + 1;
-            }
-        }
+    char static_buf[128], *buf, *tmp_buf;
+    int len, len_max;
+    JSValue res;
+    JSDTOATempMem dtoa_mem;
+    len_max = js_dtoa_max_len(d, radix, n_digits, flags);
+    
+    /* longer buffer may be used if radix != 10 */
+    if (len_max > sizeof(static_buf) - 1) {
+        tmp_buf = js_malloc(ctx, len_max + 1);
+        if (!tmp_buf)
+            return JS_EXCEPTION;
+        buf = tmp_buf;
     } else {
-#if defined(FE_DOWNWARD) && defined(FE_TONEAREST)
-        int i;
-        /* generate 2 extra digits: 99% chances to avoid 2 calls */
-        js_ecvt1(d, n_digits + 2, dest, size, decpt);
-        if (dest[n_digits + 1] < '5')
-            return n_digits;    /* truncate the 2 extra digits */
-        if (dest[n_digits + 1] == '5' && dest[n_digits + 2] == '0') {
-            /* close to half-way: try rounding toward 0 */
-            fesetround(FE_DOWNWARD);
-            js_ecvt1(d, n_digits + 2, dest, size, decpt);
-            fesetround(FE_TONEAREST);
-            if (dest[n_digits + 1] < '5')
-                return n_digits;    /* truncate the 2 extra digits */
-        }
-        /* round up in the string */
-        for(i = n_digits;; i--) {
-            /* ignore the locale specific decimal point */
-            if (is_digit(dest[i])) {
-                if (dest[i]++ < '9')
-                    break;
-                dest[i] = '0';
-                if (i == 0) {
-                    dest[0] = '1';
-                    (*decpt)++;
-                    break;
-                }
-            }
-        }
-        return n_digits;    /* truncate the 2 extra digits */
-#else
-        /* No disambiguation available, eg: __wasi__ targets */
-        return js_ecvt1(d, n_digits, dest, size, decpt);
-#endif
+        tmp_buf = NULL;
+        buf = static_buf;
     }
-}
-
-/* `js_fcvt`: convert a floating point value to %f format using RNDNA
-   `d` is finite and positive or zero.
-   `n_digits` number of decimal places in range 0..100
-   Return the number of characters produced in `dest`.
- */
-static size_t js_fcvt(double d, int n_digits,
-                      char dest[minimum_length(JS_FCVT_BUF_SIZE)], size_t size)
-{
-#if defined(FE_DOWNWARD) && defined(FE_TONEAREST)
-    int i, n1;
-    /* generate 2 extra digits: 99% chances to avoid 2 calls */
-    n1 = snprintf(dest, size, "%.*f", n_digits + 2, d) - 2;
-    if (dest[n1] >= '5') {
-        if (dest[n1] == '5' && dest[n1 + 1] == '0') {
-            /* close to half-way: try rounding toward 0 */
-            fesetround(FE_DOWNWARD);
-            n1 = snprintf(dest, size, "%.*f", n_digits + 2, d) - 2;
-            fesetround(FE_TONEAREST);
-        }
-        if (dest[n1] >= '5') {  /* number should be rounded up */
-            /* d is either exactly half way or greater: round the string manually */
-            for (i = n1 - 1;; i--) {
-                /* ignore the locale specific decimal point */
-                if (is_digit(dest[i])) {
-                    if (dest[i]++ < '9')
-                        break;
-                    dest[i] = '0';
-                    if (i == 0) {
-                        dest[0] = '1';
-                        dest[n1] = '0';
-                        dest[n1 - n_digits - 1] = '0';
-                        dest[n1 - n_digits] = '.';
-                        n1++;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    /* truncate the extra 2 digits and the decimal point if !n_digits */
-    n1 -= !n_digits;
-    //dest[n1] = '\0';    // optional
-    return n1;
-#else
-    /* No disambiguation available, eg: __wasi__ targets */
-    return snprintf(dest, size, "%.*f", n_digits, d);
-#endif
-}
-
-static JSValue js_dtoa_infinite(JSContext *ctx, double d)
-{
-    // TODO(chqrlie) use atoms for NaN and Infinite?
-    if (isnan(d))
-        return js_new_string8(ctx, "NaN");
-    if (d < 0)
-        return js_new_string8(ctx, "-Infinity");
-    else
-        return js_new_string8(ctx, "Infinity");
-}
-
-#define JS_DTOA_TOSTRING    0  /* use as many digits as necessary */
-#define JS_DTOA_EXPONENTIAL 1  /* use exponential notation either fixed or variable digits */
-#define JS_DTOA_FIXED       2  /* force fixed number of fractional digits */
-#define JS_DTOA_PRECISION   3  /* use n_digits significant digits (1 <= n_digits <= 101) */
-
-/* `js_dtoa`: convert a floating point number to a string
-   - `mode`: one of the 4 supported formats
-   - `n_digits`: digit number according to mode
-   -   TOSTRING:    0 only. As many digits as necessary
-   -   EXPONENTIAL: 0 as many decimals as necessary
-   -                1..101 number of significant digits
-   -   FIXED:       0..100 number of decimal places
-   -   PRECISION:   1..101 number of significant digits
- */
-// XXX: should use libbf or quickjs-printf.
-static JSValue js_dtoa(JSContext *ctx, double d, int n_digits, int mode)
-{
-    char buf[JS_DTOA_BUF_SIZE];
-    size_t len;
-    char *start;
-    int sign, decpt, exp, i, k, n, n_max;
-
-    if (!isfinite(d))
-        return js_dtoa_infinite(ctx, d);
-
-    sign = (d < 0);
-    start = buf + 8;
-    d = fabs(d);  /* also converts -0 to 0 */
-
-    if (mode != JS_DTOA_EXPONENTIAL && n_digits == 0) {
-        /* fast path for exact integers in variable format:
-           clip to MAX_SAFE_INTEGER because to ensure insignificant
-           digits are generated as 0.
-           used for JS_DTOA_TOSTRING and JS_DTOA_FIXED without decimals.
-         */
-        if (d <= (double)MAX_SAFE_INTEGER) {
-            uint64_t u64 = (uint64_t)d;
-            if (d == u64) {
-                len = u64toa(start, u64);
-                goto done;
-            }
-        }
-    }
-    if (mode == JS_DTOA_FIXED) {
-        len = js_fcvt(d, n_digits, start, sizeof(buf) - 8);
-        // TODO(chqrlie) patch the locale specific decimal point
-        goto done;
-    }
-
-    n_max = (n_digits > 0) ? n_digits : 21;
-    /* the number has k digits (1 <= k <= n_max) */
-    k = js_ecvt(d, n_digits, start, sizeof(buf) - 8, &decpt);
-    /* buffer contents:
-       0:     first digit
-       1:     '.' decimal point
-       2..k:  (k-1) additional digits
-     */
-    n = decpt; /* d=10^(n-k)*(buf1) i.e. d= < x.yyyy 10^(n-1) */
-    if (mode != JS_DTOA_EXPONENTIAL) {
-        /* mode is JS_DTOA_PRECISION or JS_DTOA_TOSTRING */
-        if (n >= 1 && n <= n_max) {
-            /* between 1 and n_max digits before the decimal point */
-            if (k <= n) {
-                /* all digits before the point, append zeros */
-                start[1] = start[0];
-                start++;
-                for(i = k; i < n; i++)
-                    start[i] = '0';
-                len = n;
-            } else {
-                /* k > n: move digits before the point */
-                for(i = 1; i < n; i++)
-                    start[i] = start[i + 1];
-                start[i] = '.';
-                len = 1 + k;
-            }
-            goto done;
-        }
-        if (n >= -5 && n <= 0) {
-            /* insert -n leading 0 decimals and a '0.' prefix */
-            n = -n;
-            start[1] = start[0];
-            start -= n + 1;
-            start[0] = '0';
-            start[1] = '.';
-            for(i = 0; i < n; i++)
-                start[2 + i] = '0';
-            len = 2 + k + n;
-            goto done;
-        }
-    }
-    /* exponential notation */
-    exp = n - 1;
-    /* count the digits and the decimal point if at least one decimal */
-    len = k + (k > 1);
-    start[1] = '.'; /* patch the locale specific decimal point */
-    start[len] = 'e';
-    start[len + 1] = '+';
-    if (exp < 0) {
-        start[len + 1] = '-';
-        exp = -exp;
-    }
-    len += 2 + 1 + (exp > 9) + (exp > 99);
-    for (i = len - 1; exp > 9;) {
-        int quo = exp / 10;
-        start[i--] = (char)('0' + exp % 10);
-        exp = quo;
-    }
-    start[i] = (char)('0' + exp);
-
- done:
-    start[-1] = '-';    /* prepend the sign if negative */
-    return js_new_string8_len(ctx, start - sign, len + sign);
-}
-
-/* `js_dtoa_radix`: convert a floating point number using a specific base
-   - `d` must be finite
-   - `radix` must be in range 2..36
- */
-static JSValue js_dtoa_radix(JSContext *ctx, double d, int radix)
-{
-    char buf[2200], *ptr, *ptr2, *ptr3;
-    int sign, digit;
-    double frac, d0;
-    int64_t n0;
-
-    if (!isfinite(d))
-        return js_dtoa_infinite(ctx, d);
-
-    sign = (d < 0);
-    d = fabs(d);
-    d0 = trunc(d);
-    n0 = 0;
-    frac = d - d0;
-    ptr2 = buf + 1100;  /* ptr2 points to the end of the string */
-    ptr = ptr2;         /* ptr points to the beginning of the string */
-    if (d0 <= MAX_SAFE_INTEGER) {
-        int64_t n = n0 = (int64_t)d0;
-        while (n >= radix) {
-            digit = n % radix;
-            n = n / radix;
-            *--ptr = digits36[digit];
-        }
-        *--ptr = digits36[(size_t)n];
-    } else {
-        /* no decimals */
-        while (d0 >= radix) {
-            digit = fmod(d0, radix);
-            d0 = trunc(d0 / radix);
-            if (d0 >= MAX_SAFE_INTEGER)
-                digit = 0;
-            *--ptr = digits36[digit];
-        }
-        *--ptr = digits36[(size_t)d0];
-        goto done;
-    }
-    if (frac != 0) {
-        double log2_radix = log2(radix);
-        double prec = 1023 + 51;  // handle subnormals
-        *ptr2++ = '.';
-        while (frac != 0 && n0 <= MAX_SAFE_INTEGER/2 && prec > 0) {
-            frac *= radix;
-            digit = trunc(frac);
-            frac -= digit;
-            *ptr2++ = digits36[digit];
-            n0 = n0 * radix + digit;
-            prec -= log2_radix;
-        }
-        if (frac * radix >= radix / 2) {
-            /* round up the string representation manually */
-            char nine = digits36[radix - 1];
-            while (ptr2[-1] == nine) {
-                /* strip trailing '9' or equivalent digits */
-                ptr2--;
-            }
-            if (ptr2[-1] == '.') {
-                /* strip the 'decimal' point */
-                ptr2--;
-                /* increment the integral part */
-                for (ptr3 = ptr2;;) {
-                    if (ptr3[-1] != nine) {
-                        ptr3[-1] = (ptr3[-1] == '9') ? 'a' : ptr3[-1] + 1;
-                        break;
-                    }
-                    *--ptr3 = '0';
-                    if (ptr3 <= ptr) {
-                        /* prepend a '1' if number was all nines */
-                        *--ptr = '1';
-                        break;
-                    }
-                }
-            } else {
-                /* increment the last fractional digit */
-                ptr2[-1] = (ptr2[-1] == '9') ? 'a' : ptr2[-1] + 1;
-            }
-        } else {
-            /* strip trailing fractional zeros */
-            while (ptr2[-1] == '0')
-                ptr2--;
-            /* strip the 'decimal' point if last */
-            ptr2 -= (ptr2[-1] == '.');
-        }
-    }
-done:
-    ptr[-1] = '-';
-    ptr -= sign;
-    return js_new_string8_len(ctx, ptr, ptr2 - ptr);
+    len = js_dtoa(buf, d, radix, n_digits, flags, &dtoa_mem);
+    res = js_new_string8_len(ctx, buf, len);
+    js_free(ctx, tmp_buf);
+    return res;
 }
 
 JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val,
@@ -13267,7 +12866,8 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val,
             return JS_ThrowTypeError(ctx, "cannot convert symbol to string");
         }
     case JS_TAG_FLOAT64:
-        return js_dtoa(ctx, JS_VALUE_GET_FLOAT64(val), 0, JS_DTOA_TOSTRING);
+        return js_dtoa2(ctx, JS_VALUE_GET_FLOAT64(val), 10, 0,
+                        JS_DTOA_FORMAT_FREE);
     case JS_TAG_SHORT_BIG_INT:
     case JS_TAG_BIG_INT:
         return js_bigint_to_string(ctx, val);
@@ -13683,7 +13283,7 @@ JSValue JS_NewBigUint64(JSContext *ctx, uint64_t v)
 /* return NaN if bad bigint literal */
 static JSValue JS_StringToBigInt(JSContext *ctx, JSValue val)
 {
-    const char *str;
+    const char *str, *p;
     size_t len;
     int flags;
 
@@ -13691,12 +13291,21 @@ static JSValue JS_StringToBigInt(JSContext *ctx, JSValue val)
     JS_FreeValue(ctx, val);
     if (!str)
         return JS_EXCEPTION;
-    // TODO(saghul): sync with bellard/quickjs ?
-    flags = ATOD_WANT_BIG_INT |
-        ATOD_TRIM_SPACES | ATOD_ACCEPT_EMPTY |
-        ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT |
-        ATOD_DECIMAL_AFTER_SIGN | ATOD_NO_TRAILING_CHARS;
-    val = js_atof(ctx, str, len, NULL, 10, flags);
+    p = str;
+    p += skip_spaces(p);
+    if ((p - str) == len) {
+        val = JS_NewBigInt64(ctx, 0);
+    } else {
+        flags = ATOD_INT_ONLY | ATOD_ACCEPT_BIN_OCT | ATOD_TYPE_BIG_INT;
+        val = js_atof(ctx, p, &p, 0, flags);
+        p += skip_spaces(p);
+        if (!JS_IsException(val)) {
+            if ((p - str) != len) {
+                JS_FreeValue(ctx, val);
+                val = JS_NAN;
+            }
+        }
+    }
     JS_FreeCString(ctx, str);
     return val;
 }
@@ -21041,7 +20650,6 @@ static __exception int next_token(JSParseState *s)
     int c;
     bool ident_has_escape;
     JSAtom atom;
-    int flags, radix;
 
     if (js_check_stack_overflow(s->ctx->rt, 1000)) {
         JS_ThrowStackOverflow(s->ctx);
@@ -21236,56 +20844,36 @@ static __exception int next_token(JSParseState *s)
             break;
         }
         if (p[1] >= '0' && p[1] <= '9') {
-            flags = ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_FLOAT;
-            radix = 10;
             goto parse_number;
+        } else {
+            goto def_token;
         }
-        goto def_token;
+        break;
     case '0':
-        if (is_digit(p[1])) { /* handle legacy octal */
-            if (s->cur_func->is_strict_mode) {
-                js_parse_error(s, "Octal literals are not allowed in strict mode");
-                goto fail;
-            }
-            /* Legacy octal: no separators, no suffix, no floats,
-               base 8 unless non octal digits are detected */
-            flags = 0;
-            radix = 8;
-            while (is_digit(*p)) {
-                if (*p >= '8' && *p <= '9')
-                    radix = 10;
-                p++;
-            }
-            p = s->token.ptr;
-            goto parse_number;
-        }
-        if (p[1] == '_') {
-            js_parse_error(s, "Numeric separator can not be used after leading 0");
+        /* in strict mode, octal literals are not accepted */
+        if (is_digit(p[1]) && (s->cur_func->is_strict_mode)) {
+            js_parse_error(s, "Octal literals are not allowed in strict mode");
             goto fail;
         }
-        flags = ATOD_ACCEPT_HEX_PREFIX | ATOD_ACCEPT_BIN_OCT |
-            ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
-        radix = 10;
         goto parse_number;
     case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8':
     case '9':
         /* number */
+    parse_number:
         {
             JSValue ret;
-            const char *p1;
-
-            flags = ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
-            radix = 10;
-        parse_number:
-            p1 = (const char *)p;
-            ret = js_atof(s->ctx, p1, s->buf_end - p, &p1, radix, flags);
-            p = (const uint8_t *)p1;
+            const uint8_t *p1;
+            int flags;
+            flags = ATOD_ACCEPT_BIN_OCT | ATOD_ACCEPT_LEGACY_OCTAL |
+                ATOD_ACCEPT_UNDERSCORES | ATOD_ACCEPT_SUFFIX;
+            ret = js_atof(s->ctx, (const char *)p, (const char **)&p, 0,
+                          flags);
             if (JS_IsException(ret))
                 goto fail;
             /* reject `10instanceof Number` */
             if (JS_VALUE_IS_NAN(ret) ||
-                lre_js_is_ident_next(utf8_decode(p, &p_next))) {
+                lre_js_is_ident_next(utf8_decode(p, &p1))) {
                 JS_FreeValue(s->ctx, ret);
                 js_parse_error(s, "invalid number literal");
                 goto fail;
@@ -42962,44 +42550,42 @@ static int js_get_radix(JSContext *ctx, JSValueConst val)
 static JSValue js_number_toString(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv, int magic)
 {
-    char buf[72];
     JSValue val;
-    int base;
+    int base, flags;
     double d;
 
     val = js_thisNumberValue(ctx, this_val);
     if (JS_IsException(val))
         return val;
     if (magic || JS_IsUndefined(argv[0])) {
-        if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
-            size_t len = i32toa(buf, JS_VALUE_GET_INT(val));
-            return js_new_string8_len(ctx, buf, len);
-        }
         base = 10;
     } else {
         base = js_get_radix(ctx, argv[0]);
-        if (base < 0) {
-            JS_FreeValue(ctx, val);
-            return JS_EXCEPTION;
-        }
+        if (base < 0)
+            goto fail;
     }
     if (JS_VALUE_GET_TAG(val) == JS_TAG_INT) {
-        size_t len = i32toa_radix(buf, JS_VALUE_GET_INT(val), base);
-        return js_new_string8_len(ctx, buf, len);
+        char buf1[70];
+        int len;
+        len = i64toa_radix(buf1, JS_VALUE_GET_INT(val), base);
+        return js_new_string8_len(ctx, buf1, len);
     }
     if (JS_ToFloat64Free(ctx, &d, val))
         return JS_EXCEPTION;
+    flags = JS_DTOA_FORMAT_FREE;
     if (base != 10)
-        return js_dtoa_radix(ctx, d, base);
-
-    return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
+        flags |= JS_DTOA_EXP_DISABLED;
+    return js_dtoa2(ctx, d, base, 0, flags);
+ fail:
+    JS_FreeValue(ctx, val);
+    return JS_EXCEPTION;
 }
 
 static JSValue js_number_toFixed(JSContext *ctx, JSValueConst this_val,
                                  int argc, JSValueConst *argv)
 {
     JSValue val;
-    int f;
+    int f, flags;
     double d;
 
     val = js_thisNumberValue(ctx, this_val);
@@ -43009,23 +42595,21 @@ static JSValue js_number_toFixed(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (JS_ToInt32Sat(ctx, &f, argv[0]))
         return JS_EXCEPTION;
-    if (f < 0 || f > 100) {
-        return JS_ThrowRangeError(ctx, "toFixed() digits argument must be between 0 and 100");
-    }
-    if (fabs(d) >= 1e21) {
-        // use ToString(d)
-        return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
-    } else {
-        return js_dtoa(ctx, d, f, JS_DTOA_FIXED);
-    }
+    if (f < 0 || f > 100)
+        return JS_ThrowRangeError(ctx, "invalid number of digits");
+    if (fabs(d) >= 1e21)
+        flags = JS_DTOA_FORMAT_FREE;
+    else
+        flags = JS_DTOA_FORMAT_FRAC;
+    return js_dtoa2(ctx, d, 10, f, flags);
 }
 
 static JSValue js_number_toExponential(JSContext *ctx, JSValueConst this_val,
                                        int argc, JSValueConst *argv)
 {
     JSValue val;
+    int f, flags;
     double d;
-    int f;
 
     val = js_thisNumberValue(ctx, this_val);
     if (JS_IsException(val))
@@ -43034,15 +42618,19 @@ static JSValue js_number_toExponential(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (JS_ToInt32Sat(ctx, &f, argv[0]))
         return JS_EXCEPTION;
-    if (!isfinite(d))
-        return js_dtoa_infinite(ctx, d);
-    if (!JS_IsUndefined(argv[0])) {
-        if (f < 0 || f > 100) {
-            return JS_ThrowRangeError(ctx, "toExponential() argument must be between 0 and 100");
-        }
-        f += 1;  /* number of significant digits between 1 and 101 */
+    if (!isfinite(d)) {
+        return JS_ToStringFree(ctx,  __JS_NewFloat64(d));
     }
-    return js_dtoa(ctx, d, f, JS_DTOA_EXPONENTIAL);
+    if (JS_IsUndefined(argv[0])) {
+        flags = JS_DTOA_FORMAT_FREE;
+        f = 0;
+    } else {
+        if (f < 0 || f > 100)
+            return JS_ThrowRangeError(ctx, "invalid number of digits");
+        f++;
+        flags = JS_DTOA_FORMAT_FIXED;
+    }
+    return js_dtoa2(ctx, d, 10, f, flags | JS_DTOA_EXP_ENABLED);
 }
 
 static JSValue js_number_toPrecision(JSContext *ctx, JSValueConst this_val,
@@ -43058,15 +42646,16 @@ static JSValue js_number_toPrecision(JSContext *ctx, JSValueConst this_val,
     if (JS_ToFloat64Free(ctx, &d, val))
         return JS_EXCEPTION;
     if (JS_IsUndefined(argv[0]))
-        return js_dtoa(ctx, d, 0, JS_DTOA_TOSTRING);
+        goto to_string;
     if (JS_ToInt32Sat(ctx, &p, argv[0]))
         return JS_EXCEPTION;
-    if (!isfinite(d))
-        return js_dtoa_infinite(ctx, d);
-    if (p < 1 || p > 100) {
-        return JS_ThrowRangeError(ctx, "toPrecision() argument must be between 1 and 100");
+    if (!isfinite(d)) {
+    to_string:
+        return JS_ToStringFree(ctx,  __JS_NewFloat64(d));
     }
-    return js_dtoa(ctx, d, p, JS_DTOA_PRECISION);
+    if (p < 1 || p > 100)
+        return JS_ThrowRangeError(ctx, "invalid number of digits");
+    return js_dtoa2(ctx, d, 10, p, JS_DTOA_FORMAT_FIXED);
 }
 
 static const JSCFunctionListEntry js_number_proto_funcs[] = {
@@ -43081,24 +42670,25 @@ static const JSCFunctionListEntry js_number_proto_funcs[] = {
 static JSValue js_parseInt(JSContext *ctx, JSValueConst this_val,
                            int argc, JSValueConst *argv)
 {
-    const char *str;
+    const char *str, *p;
     int radix, flags;
     JSValue ret;
-    size_t len;
 
-    str = JS_ToCStringLen(ctx, &len, argv[0]);
+    str = JS_ToCString(ctx, argv[0]);
     if (!str)
         return JS_EXCEPTION;
     if (JS_ToInt32(ctx, &radix, argv[1])) {
         JS_FreeCString(ctx, str);
         return JS_EXCEPTION;
     }
-    flags = ATOD_TRIM_SPACES;
-    if (radix == 0) {
-        flags |= ATOD_ACCEPT_HEX_PREFIX;  // Only 0x and 0X are supported
-        radix = 10;
+    if (radix != 0 && (radix < 2 || radix > 36)) {
+        ret = JS_NAN;
+    } else {
+        p = str;
+        p += skip_spaces(p);
+        flags = ATOD_INT_ONLY | ATOD_ACCEPT_PREFIX_AFTER_SIGN;
+        ret = js_atof(ctx, p, NULL, radix, flags);
     }
-    ret = js_atof(ctx, str, len, NULL, radix, flags);
     JS_FreeCString(ctx, str);
     return ret;
 }
@@ -43106,16 +42696,15 @@ static JSValue js_parseInt(JSContext *ctx, JSValueConst this_val,
 static JSValue js_parseFloat(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv)
 {
-    const char *str;
+    const char *str, *p;
     JSValue ret;
-    int flags;
-    size_t len;
 
-    str = JS_ToCStringLen(ctx, &len, argv[0]);
+    str = JS_ToCString(ctx, argv[0]);
     if (!str)
         return JS_EXCEPTION;
-    flags = ATOD_TRIM_SPACES | ATOD_ACCEPT_FLOAT | ATOD_ACCEPT_INFINITY;
-    ret = js_atof(ctx, str, len, NULL, 10, flags);
+    p = str;
+    p += skip_spaces(p);
+    ret = js_atof(ctx, p, NULL, 10, 0);
     JS_FreeCString(ctx, str);
     return ret;
 }
