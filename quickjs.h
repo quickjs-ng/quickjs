@@ -484,6 +484,7 @@ JS_EXTERN void JS_AddIntrinsicTypedArrays(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicPromise(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicBigInt(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicWeakRef(JSContext *ctx);
+JS_EXTERN void JS_AddIntrinsicBase64(JSContext *ctx);
 JS_EXTERN void JS_AddPerformance(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicDOMException(JSContext *ctx);
 
