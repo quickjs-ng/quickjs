@@ -560,6 +560,7 @@ JS_EXTERN int JS_AddIntrinsicBigInt(JSContext *ctx);
 JS_EXTERN int JS_AddIntrinsicWeakRef(JSContext *ctx);
 JS_EXTERN int JS_AddPerformance(JSContext *ctx);
 JS_EXTERN int JS_AddIntrinsicDOMException(JSContext *ctx);
+JS_EXTERN int JS_AddIntrinsicAToB(JSContext *ctx);
 
 /* for equality comparisons and sameness */
 JS_EXTERN int JS_IsEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2);

@@ -2500,7 +2500,6 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
 JSContext *JS_NewContext(JSRuntime *rt)
 {
     JSContext *ctx;
-
     ctx = JS_NewContextRaw(rt);
     if (!ctx)
         return NULL;
@@ -2515,7 +2514,7 @@ JSContext *JS_NewContext(JSRuntime *rt)
         JS_AddIntrinsicTypedArrays(ctx) ||
         JS_AddIntrinsicPromise(ctx) ||
         JS_AddIntrinsicWeakRef(ctx) ||
-        JS_AddIntrinsicDOMException(ctx) ||
+        JS_AddIntrinsicAToB(ctx) ||
         JS_AddPerformance(ctx)) {
         JS_FreeContext(ctx);
         return NULL;
@@ -4338,18 +4337,18 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
     size_t len;
     int kind;
 
-    if (buf_len <= 0) {
+    if (unlikely(buf_len <= 0))
         return js_empty_string(ctx->rt);
-    }
+
     /* Compute string kind and length: 7-bit, 8-bit, 16-bit, 16-bit UTF-16 */
     kind = utf8_scan(buf, buf_len, &len);
-    if (len > JS_STRING_LEN_MAX)
+    if (unlikely(len > JS_STRING_LEN_MAX))
         return JS_ThrowRangeError(ctx, "invalid string length");
 
     switch (kind) {
     case UTF8_PLAIN_ASCII:
         str = js_alloc_string(ctx, len, 0);
-        if (!str)
+        if (unlikely(!str))
             return JS_EXCEPTION;
         memcpy(str8(str), buf, len);
         str8(str)[len] = '\0';
@@ -4357,7 +4356,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
     case UTF8_NON_ASCII:
         /* buf contains non-ASCII code-points, but limited to 8-bit values */
         str = js_alloc_string(ctx, len, 0);
-        if (!str)
+        if (unlikely(!str))
             return JS_EXCEPTION;
         utf8_decode_buf8(str8(str), len + 1, buf, buf_len);
         break;
@@ -4366,7 +4365,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
         //if (kind & UTF8_HAS_ERRORS)
         //    return JS_ThrowRangeError(ctx, "invalid UTF-8 sequence");
         str = js_alloc_string(ctx, len, 1);
-        if (!str)
+        if (unlikely(!str))
             return JS_EXCEPTION;
         utf8_decode_buf16(str16(str), len, buf, buf_len);
         break;
@@ -4378,10 +4377,11 @@ JSValue JS_NewStringUTF16(JSContext *ctx, const uint16_t *buf, size_t len)
 {
     JSString *str;
 
-    if (!len)
+    if (unlikely(!len))
         return js_empty_string(ctx->rt);
+
     str = js_alloc_string(ctx, len, 1);
-    if (!str)
+    if (unlikely(!str))
         return JS_EXCEPTION;
     memcpy(str16(str), buf, len * sizeof(*buf));
     return JS_MKPTR(JS_TAG_STRING, str);
@@ -60809,6 +60809,284 @@ int JS_AddIntrinsicDOMException(JSContext *ctx)
     JS_DefinePropertyValue(ctx, ctx->global_obj, JS_ATOM_DOMException, ctor,
                            JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
     ctx->class_proto[JS_CLASS_DOM_EXCEPTION] = proto;
+    return 0;
+}
+/* base64 */
+
+static const unsigned char b64_enc[64] = {
+    'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
+    'Q','R','S','T','U','V','W','X','Y','Z',
+    'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p',
+    'q','r','s','t','u','v','w','x','y','z',
+    '0','1','2','3','4','5','6','7','8','9',
+    '+','/'
+};
+
+enum { K_VAL = 1u, K_WS = 2u };
+
+static const uint8_t b64_val[256] = {
+    ['A']=0, ['B']=1, ['C']=2, ['D']=3, ['E']=4, ['F']=5, ['G']=6, ['H']=7,
+    ['I']=8, ['J']=9, ['K']=10,['L']=11,['M']=12,['N']=13,['O']=14,['P']=15,
+    ['Q']=16,['R']=17,['S']=18,['T']=19,['U']=20,['V']=21,['W']=22,['X']=23,['Y']=24,['Z']=25,
+    ['a']=26,['b']=27,['c']=28,['d']=29,['e']=30,['f']=31,['g']=32,['h']=33,
+    ['i']=34,['j']=35,['k']=36,['l']=37,['m']=38,['n']=39,['o']=40,['p']=41,
+    ['q']=42,['r']=43,['s']=44,['t']=45,['u']=46,['v']=47,['w']=48,['x']=49,['y']=50,['z']=51,
+    ['0']=52,['1']=53,['2']=54,['3']=55,['4']=56,['5']=57,['6']=58,['7']=59,['8']=60,['9']=61,
+    ['+']=62, ['/']=63,
+};
+
+static const char b64_flags[256] = {
+    [' ']=K_WS, ['\t']=K_WS, ['\n']=K_WS, ['\f']=K_WS, ['\r']=K_WS,
+    ['A']=K_VAL,['B']=K_VAL,['C']=K_VAL,['D']=K_VAL,['E']=K_VAL,['F']=K_VAL,['G']=K_VAL,['H']=K_VAL,
+    ['I']=K_VAL,['J']=K_VAL,['K']=K_VAL,['L']=K_VAL,['M']=K_VAL,['N']=K_VAL,['O']=K_VAL,['P']=K_VAL,
+    ['Q']=K_VAL,['R']=K_VAL,['S']=K_VAL,['T']=K_VAL,['U']=K_VAL,['V']=K_VAL,['W']=K_VAL,['X']=K_VAL,
+    ['Y']=K_VAL,['Z']=K_VAL,
+    ['a']=K_VAL,['b']=K_VAL,['c']=K_VAL,['d']=K_VAL,['e']=K_VAL,['f']=K_VAL,['g']=K_VAL,['h']=K_VAL,
+    ['i']=K_VAL,['j']=K_VAL,['k']=K_VAL,['l']=K_VAL,['m']=K_VAL,['n']=K_VAL,['o']=K_VAL,['p']=K_VAL,
+    ['q']=K_VAL,['r']=K_VAL,['s']=K_VAL,['t']=K_VAL,['u']=K_VAL,['v']=K_VAL,['w']=K_VAL,['x']=K_VAL,
+    ['y']=K_VAL,['z']=K_VAL,
+    ['0']=K_VAL,['1']=K_VAL,['2']=K_VAL,['3']=K_VAL,['4']=K_VAL,['5']=K_VAL,['6']=K_VAL,['7']=K_VAL,
+    ['8']=K_VAL,['9']=K_VAL,
+    ['+']=K_VAL,['/']=K_VAL,
+};
+
+static size_t b64_encode(const uint8_t *src, size_t len, char *dst)
+{
+    size_t i = 0, j = 0;
+    size_t main_len = (len / 3) * 3;
+
+    for (; i < main_len; i += 3, j += 4) {
+        uint32_t v = 65536*src[i] + 256*src[i + 1] + src[i + 2];
+        dst[j + 0] = b64_enc[(v >> 18) & 63];
+        dst[j + 1] = b64_enc[(v >> 12) & 63];
+        dst[j + 2] = b64_enc[(v >> 6) & 63];
+        dst[j + 3] = b64_enc[v & 63];
+    }
+
+    size_t rem = len - i;
+    if (rem == 1) {
+        uint32_t v = 65536*src[i];
+        dst[j++] = b64_enc[(v >> 18) & 63];
+        dst[j++] = b64_enc[(v >> 12) & 63];
+        dst[j++] = '=';
+        dst[j++] = '=';
+    } else if (rem == 2) {
+        uint32_t v = 65536*src[i] + 256*src[i + 1];
+        dst[j++] = b64_enc[(v >> 18) & 63];
+        dst[j++] = b64_enc[(v >> 12) & 63];
+        dst[j++] = b64_enc[(v >> 6) & 63];
+        dst[j++] = '=';
+    }
+    return j;
+}
+
+/* Implements https://infra.spec.whatwg.org/#forgiving-base64-decode */
+static size_t
+b64_decode(const char *src, size_t len, uint8_t *dst, int *err)
+{
+    size_t i, j;
+    uint32_t acc;
+    int seen, pad;
+    unsigned ch;
+
+    acc = 0;
+    seen = 0;
+    for (i = 0, j = 0; i < len; i++) {
+        ch = (unsigned char)src[i];
+        if ((b64_flags[ch] & K_WS))
+            continue;
+        if (!(b64_flags[ch] & K_VAL))
+            break;
+        acc = (acc << 6) | b64_val[ch];
+        seen++;
+        if (seen == 4) {
+            dst[j++] = (acc >> 16) & 0xFF;
+            dst[j++] = (acc >> 8) & 0xFF;
+            dst[j++] = acc & 0xFF;
+            seen = 0;
+            acc = 0;
+        }
+    }
+
+    if (seen != 0) {
+        if (seen == 3) {
+            dst[j++] = (acc >> 10) & 0xFF;
+            dst[j++] = (acc >> 2) & 0xFF;
+        } else if (seen == 2) {
+            dst[j++] = (acc >> 4) & 0xFF;
+        } else {
+            *err = 1;
+            return 0;
+        }
+        for (pad = 0; i < len; i++) {
+            ch = (unsigned char)src[i];
+            if (pad < 2 && ch == '=')
+                pad++;
+            else if (!(b64_flags[ch] & K_WS))
+                break;
+        }
+        if (pad != 0 && seen + pad != 4) {
+            *err = 1;
+            return 0;
+        }
+    }
+
+    *err = i < len;
+    return j;
+}
+
+static JSValue js_btoa(JSContext *ctx, JSValueConst this_val,
+                       int argc, JSValueConst *argv)
+{
+    const uint8_t *in8;
+    uint8_t *tmp = NULL;
+    uint8_t *outp;
+    JSValue val, ret = JS_EXCEPTION;
+    JSString *s, *ostr;
+    size_t len, out_len, written;
+
+    val = JS_ToString(ctx, argv[0]);
+    if (unlikely(JS_IsException(val)))
+        return JS_EXCEPTION;
+
+    s = JS_VALUE_GET_STRING(val);
+    len = (size_t)s->len;
+
+    if (likely(!s->is_wide_char)) {
+        in8 = (const uint8_t *)str8(s);
+    } else {
+        const uint16_t *src = str16(s);
+        tmp = js_malloc(ctx, likely(len) ? len : 1);
+        if (unlikely(!tmp))
+            goto fail;
+        for (size_t i = 0; i < len; i++) {
+            uint32_t c = src[i];
+            if (unlikely(c > 0xFF)) {
+                JS_ThrowDOMException(ctx, "InvalidCharacterError",
+                                     "String contains an invalid character");
+                goto fail;
+            }
+            tmp[i] = (uint8_t)c;
+        }
+        in8 = tmp;
+    }
+
+    if (unlikely(len > (SIZE_MAX - 2) / 3)) {
+        JS_ThrowRangeError(ctx, "input too large");
+        goto fail;
+    }
+    out_len = 4 * ((len + 2) / 3);
+    if (unlikely(out_len > JS_STRING_LEN_MAX)) {
+        JS_ThrowRangeError(ctx, "output too large");
+        goto fail;
+    }
+
+    ostr = js_alloc_string(ctx, out_len, 0);
+    if (unlikely(!ostr))
+        goto fail;
+
+    outp = str8(ostr);
+    written = b64_encode(in8, len, (char *)outp);
+    outp[written] = '\0';
+    ostr->len = out_len;
+    ret = JS_MKPTR(JS_TAG_STRING, ostr);
+fail:
+    if (tmp)
+        js_free(ctx, tmp);
+    JS_FreeValue(ctx, val);
+    return ret;
+}
+
+static JSValue js_atob(JSContext *ctx, JSValueConst this_val,
+                       int argc, JSValueConst *argv)
+{
+    const uint8_t *in;
+    uint8_t *tmp = NULL, *outp;
+    JSValue val, ret = JS_EXCEPTION;
+    JSString *s, *ostr;
+    size_t slen, out_cap, out_len;
+    int err;
+
+    val = JS_ToString(ctx, argv[0]);
+    if (unlikely(JS_IsException(val)))
+        return JS_EXCEPTION;
+
+    s = JS_VALUE_GET_STRING(val);
+    slen = (size_t)s->len;
+
+    if (likely(!s->is_wide_char)) {
+        const uint8_t *p = (const uint8_t *)str8(s);
+        for (size_t i = 0; i < slen; i++) {
+            if (unlikely(p[i] & 0x80)) {
+                JS_ThrowDOMException(ctx, "InvalidCharacterError",
+                    "The string to be decoded is not correctly encoded");
+                goto fail;
+            }
+        }
+        in = p;
+    } else {
+        const uint16_t *src = str16(s);
+        tmp = js_malloc(ctx, likely(slen) ? slen : 1);
+        if (unlikely(!tmp))
+            goto fail;
+        for (size_t i = 0; i < slen; i++) {
+            if (unlikely(src[i] > 0x7F)) {
+                JS_ThrowDOMException(ctx, "InvalidCharacterError",
+                    "The string to be decoded is not correctly encoded");
+                goto fail;
+            }
+            tmp[i] = (uint8_t)src[i];
+        }
+        in = tmp;
+    }
+
+    if (unlikely(slen > (SIZE_MAX / 3) * 4)) {
+        JS_ThrowRangeError(ctx, "input too large");
+        goto fail;
+    }
+    out_cap = (slen / 4) * 3 + 3;
+    if (unlikely(out_cap > JS_STRING_LEN_MAX)) {
+        JS_ThrowRangeError(ctx, "output too large");
+        goto fail;
+    }
+
+    ostr = js_alloc_string(ctx, out_cap, 0);
+    if (unlikely(!ostr))
+        goto fail;
+
+    outp = str8(ostr);
+    err = 0;
+    out_len = b64_decode((const char *)in, slen, outp, &err);
+
+    if (unlikely(err)) {
+        js_free_string(ctx->rt, ostr);
+        JS_ThrowDOMException(ctx, "InvalidCharacterError",
+            "The string to be decoded is not correctly encoded");
+        goto fail;
+    }
+    outp[out_len] = '\0';
+    ostr->len = out_len;
+    ret = JS_MKPTR(JS_TAG_STRING, ostr);
+fail:
+    if (tmp)
+        js_free(ctx, tmp);
+    JS_FreeValue(ctx, val);
+    return ret;
+}
+
+static const JSCFunctionListEntry js_base64_funcs[] = {
+    JS_CFUNC_DEF("btoa", 1, js_btoa),
+    JS_CFUNC_DEF("atob", 1, js_atob),
+};
+
+int JS_AddIntrinsicAToB(JSContext *ctx)
+{
+    if (!JS_IsRegisteredClass(ctx->rt, JS_CLASS_DOM_EXCEPTION)) {
+        if (JS_AddIntrinsicDOMException(ctx))
+            return -1;
+    }
+    JS_SetPropertyFunctionList(ctx, ctx->global_obj,
+                               js_base64_funcs, countof(js_base64_funcs));
     return 0;
 }
 
