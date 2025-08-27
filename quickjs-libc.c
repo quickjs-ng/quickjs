@@ -29,21 +29,17 @@
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
-#if !defined(_MSC_VER)
-#include <unistd.h>
-#endif
 #include <errno.h>
 #include <fcntl.h>
 #if !defined(_MSC_VER)
 #include <sys/time.h>
+#include <unistd.h>
 #endif
 #include <time.h>
 #include <signal.h>
 #include <limits.h>
 #include <sys/stat.h>
-#if defined(_MSC_VER)
-#include "dirent_compat.h"
-#else
+#if !defined(_MSC_VER)
 #include <dirent.h>
 #endif
 #if defined(_WIN32)
@@ -90,6 +86,14 @@ extern char **environ;
 #if JS_HAVE_THREADS
 #include "quickjs-c-atomics.h"
 #define USE_WORKER // enable os.Worker
+#endif
+
+#ifndef S_IFBLK
+#define S_IFBLK 0
+#endif
+
+#ifndef S_IFIFO
+#define S_IFIFO 0
 #endif
 
 #ifndef MAX_SAFE_INTEGER // already defined in amalgamation builds
@@ -2052,7 +2056,7 @@ static JSValue js_os_remove(JSContext *ctx, JSValueConst this_val,
 #if defined(_WIN32)
     {
         struct stat st;
-        if (stat(filename, &st) == 0 && S_ISDIR(st.st_mode)) {
+        if (stat(filename, &st) == 0 && (st.st_mode & _S_IFDIR)) {
             ret = rmdir(filename);
         } else {
             ret = unlink(filename);
@@ -2827,6 +2831,42 @@ static JSValue js_os_mkdir(JSContext *ctx, JSValueConst this_val,
 static JSValue js_os_readdir(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv)
 {
+#ifdef _WIN32
+    const char *path;
+    JSValue obj;
+    int err;
+    uint32_t len;
+    HANDLE h;
+    WIN32_FIND_DATAA d;
+    char s[1024];
+
+    path = JS_ToCString(ctx, argv[0]);
+    if (!path)
+        return JS_EXCEPTION;
+    obj = JS_NewArray(ctx);
+    if (JS_IsException(obj)) {
+        JS_FreeCString(ctx, path);
+        return JS_EXCEPTION;
+    }
+    snprintf(s, sizeof(s), "%s/*", path);
+    JS_FreeCString(ctx, path);
+    err = 0;
+    h = FindFirstFileA(s, &d);
+    if (h == INVALID_HANDLE_VALUE)
+        err = GetLastError();
+    if (err)
+        goto done;
+    JS_DefinePropertyValueUint32(ctx, obj, 0, JS_NewString(ctx, "."),
+                                 JS_PROP_C_W_E);
+    for (len = 1; FindNextFileA(h, &d); len++) {
+        JS_DefinePropertyValueUint32(ctx, obj, len,
+                                     JS_NewString(ctx, d.cFileName),
+                                     JS_PROP_C_W_E);
+    }
+    FindClose(h);
+done:
+    return make_obj_error(ctx, obj, err);
+#else
     const char *path;
     DIR *f;
     struct dirent *d;
@@ -2865,6 +2905,7 @@ static JSValue js_os_readdir(JSContext *ctx, JSValueConst this_val,
     closedir(f);
  done:
     return make_obj_error(ctx, obj, err);
+#endif
 }
 
 #if !defined(_WIN32)
@@ -3040,7 +3081,7 @@ static JSValue js_os_sleep(JSContext *ctx, JSValueConst this_val,
 #if defined(_WIN32)
 static char *realpath(const char *path, char *buf)
 {
-    if (!_fullpath(buf, path, PATH_MAX)) {
+    if (!_fullpath(buf, path, JS__PATH_MAX)) {
         errno = ENOENT;
         return NULL;
     } else {
