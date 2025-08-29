@@ -34079,7 +34079,8 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
 {
     int i;
 
-    free_bytecode_atoms(rt, b->byte_code_buf, b->byte_code_len, true);
+    if (b->byte_code_buf)
+        free_bytecode_atoms(rt, b->byte_code_buf, b->byte_code_len, true);
 
     if (b->vardefs) {
         for(i = 0; i < b->arg_count + b->var_count; i++) {
