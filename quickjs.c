@@ -10564,7 +10564,7 @@ static int skip_spaces(const char *pc)
     return p - 1 - p_start;
 }
 
-static inline int to_digit(int c)
+static inline int js_to_digit(int c)
 {
     if (c >= '0' && c <= '9')
         return c - '0';
@@ -10598,7 +10598,7 @@ static inline js_limb_t js_limb_clz(js_limb_t a)
     return clz32(a);
 }
 
-static js_limb_t mp_add(js_limb_t *res, const js_limb_t *op1, const js_limb_t *op2,
+static js_limb_t js_mp_add(js_limb_t *res, const js_limb_t *op1, const js_limb_t *op2,
                      js_limb_t n, js_limb_t carry)
 {
     int i;
@@ -10608,7 +10608,7 @@ static js_limb_t mp_add(js_limb_t *res, const js_limb_t *op1, const js_limb_t *o
     return carry;
 }
 
-static js_limb_t mp_sub(js_limb_t *res, const js_limb_t *op1, const js_limb_t *op2,
+static js_limb_t js_mp_sub(js_limb_t *res, const js_limb_t *op1, const js_limb_t *op2,
                         int n, js_limb_t carry)
 {
     int i;
@@ -10627,7 +10627,7 @@ static js_limb_t mp_sub(js_limb_t *res, const js_limb_t *op1, const js_limb_t *o
 }
 
 /* compute 0 - op2. carry = 0 or 1. */
-static js_limb_t mp_neg(js_limb_t *res, const js_limb_t *op2, int n)
+static js_limb_t js_mp_neg(js_limb_t *res, const js_limb_t *op2, int n)
 {
     int i;
     js_limb_t v, carry;
@@ -10642,7 +10642,7 @@ static js_limb_t mp_neg(js_limb_t *res, const js_limb_t *op2, int n)
 }
 
 /* tabr[] = taba[] * b + l. Return the high carry */
-static js_limb_t mp_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
+static js_limb_t js_mp_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
                       js_limb_t b, js_limb_t l)
 {
     js_limb_t i;
@@ -10656,7 +10656,7 @@ static js_limb_t mp_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
     return l;
 }
 
-static js_limb_t mp_div1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
+static js_limb_t js_mp_div1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
                       js_limb_t b, js_limb_t r)
 {
     js_slimb_t i;
@@ -10670,7 +10670,7 @@ static js_limb_t mp_div1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
 }
 
 /* tabr[] += taba[] * b, return the high word. */
-static js_limb_t mp_add_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
+static js_limb_t js_mp_add_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
                           js_limb_t b)
 {
     js_limb_t i, l;
@@ -10686,23 +10686,23 @@ static js_limb_t mp_add_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n
 }
 
 /* size of the result : op1_size + op2_size. */
-static void mp_mul_basecase(js_limb_t *result,
+static void js_mp_mul_basecase(js_limb_t *result,
                             const js_limb_t *op1, js_limb_t op1_size,
                             const js_limb_t *op2, js_limb_t op2_size)
 {
     int i;
     js_limb_t r;
 
-    result[op1_size] = mp_mul1(result, op1, op1_size, op2[0], 0);
+    result[op1_size] = js_mp_mul1(result, op1, op1_size, op2[0], 0);
     for(i=1;i<op2_size;i++) {
-        r = mp_add_mul1(result + i, op1, op1_size, op2[i]);
+        r = js_mp_add_mul1(result + i, op1, op1_size, op2[i]);
         result[i + op1_size] = r;
     }
 }
 
 /* tabr[] -= taba[] * b. Return the value to substract to the high
    word. */
-static js_limb_t mp_sub_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
+static js_limb_t js_mp_sub_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
                           js_limb_t b)
 {
     js_limb_t i, l;
@@ -10718,7 +10718,7 @@ static js_limb_t mp_sub_mul1(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n
 }
 
 /* WARNING: d must be >= 2^(JS_LIMB_BITS-1) */
-static inline js_limb_t udiv1norm_init(js_limb_t d)
+static inline js_limb_t js_udiv1norm_init(js_limb_t d)
 {
     js_limb_t a0, a1;
     a1 = -d - 1;
@@ -10728,8 +10728,8 @@ static inline js_limb_t udiv1norm_init(js_limb_t d)
 
 /* return the quotient and the remainder in '*pr'of 'a1*2^JS_LIMB_BITS+a0
    / d' with 0 <= a1 < d. */
-static inline js_limb_t udiv1norm(js_limb_t *pr, js_limb_t a1, js_limb_t a0,
-                                js_limb_t d, js_limb_t d_inv)
+static inline js_limb_t js_udiv1norm(js_limb_t *pr, js_limb_t a1, js_limb_t a0,
+                                     js_limb_t d, js_limb_t d_inv)
 {
     js_limb_t n1m, n_adj, q, r, ah;
     js_dlimb_t a;
@@ -10751,16 +10751,16 @@ static inline js_limb_t udiv1norm(js_limb_t *pr, js_limb_t a1, js_limb_t a0,
 #define UDIV1NORM_THRESHOLD 3
 
 /* b must be >= 1 << (JS_LIMB_BITS - 1) */
-static js_limb_t mp_div1norm(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
+static js_limb_t js_mp_div1norm(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n,
                           js_limb_t b, js_limb_t r)
 {
     js_slimb_t i;
 
     if (n >= UDIV1NORM_THRESHOLD) {
         js_limb_t b_inv;
-        b_inv = udiv1norm_init(b);
+        b_inv = js_udiv1norm_init(b);
         for(i = n - 1; i >= 0; i--) {
-            tabr[i] = udiv1norm(&r, r, taba[i], b, b_inv);
+            tabr[i] = js_udiv1norm(&r, r, taba[i], b, b_inv);
         }
     } else {
         js_dlimb_t a1;
@@ -10777,7 +10777,7 @@ static js_limb_t mp_div1norm(js_limb_t *tabr, const js_limb_t *taba, js_limb_t n
    - 1] must be >= 1 << (JS_LIMB_BITS - 1). na - nb must be >= 0. 'taba'
    is modified and contains the remainder (nb limbs). tabq[0..na-nb]
    contains the quotient with tabq[na - nb] <= 1. */
-static void mp_divnorm(js_limb_t *tabq, js_limb_t *taba, js_limb_t na,
+static void js_mp_divnorm(js_limb_t *tabq, js_limb_t *taba, js_limb_t na,
                        const js_limb_t *tabb, js_limb_t nb)
 {
     js_limb_t r, a, c, q, v, b1, b1_inv, n, dummy_r;
@@ -10785,13 +10785,13 @@ static void mp_divnorm(js_limb_t *tabq, js_limb_t *taba, js_limb_t na,
 
     b1 = tabb[nb - 1];
     if (nb == 1) {
-        taba[0] = mp_div1norm(tabq, taba, na, b1, 0);
+        taba[0] = js_mp_div1norm(tabq, taba, na, b1, 0);
         return;
     }
     n = na - nb;
 
     if (n >= UDIV1NORM_THRESHOLD)
-        b1_inv = udiv1norm_init(b1);
+        b1_inv = js_udiv1norm_init(b1);
     else
         b1_inv = 0;
 
@@ -10806,21 +10806,21 @@ static void mp_divnorm(js_limb_t *tabq, js_limb_t *taba, js_limb_t na,
     }
     tabq[n] = q;
     if (q) {
-        mp_sub(taba + n, taba + n, tabb, nb, 0);
+        js_mp_sub(taba + n, taba + n, tabb, nb, 0);
     }
 
     for(i = n - 1; i >= 0; i--) {
         if (unlikely(taba[i + nb] >= b1)) {
             q = -1;
         } else if (b1_inv) {
-            q = udiv1norm(&dummy_r, taba[i + nb], taba[i + nb - 1], b1, b1_inv);
+            q = js_udiv1norm(&dummy_r, taba[i + nb], taba[i + nb - 1], b1, b1_inv);
         } else {
             js_dlimb_t al;
             al = ((js_dlimb_t)taba[i + nb] << JS_LIMB_BITS) | taba[i + nb - 1];
             q = al / b1;
             r = al % b1;
         }
-        r = mp_sub_mul1(taba + i, tabb, nb, q);
+        r = js_mp_sub_mul1(taba + i, tabb, nb, q);
 
         v = taba[i + nb];
         a = v - r;
@@ -10831,7 +10831,7 @@ static void mp_divnorm(js_limb_t *tabq, js_limb_t *taba, js_limb_t na,
             /* negative result */
             for(;;) {
                 q--;
-                c = mp_add(taba + i, taba + i, tabb, nb, 0);
+                c = js_mp_add(taba + i, taba + i, tabb, nb, 0);
                 /* propagate carry and test if positive result */
                 if (c != 0) {
                     if (++taba[i + nb] == 0) {
@@ -10845,7 +10845,7 @@ static void mp_divnorm(js_limb_t *tabq, js_limb_t *taba, js_limb_t na,
 }
 
 /* 1 <= shift <= JS_LIMB_BITS - 1 */
-static js_limb_t mp_shl(js_limb_t *tabr, const js_limb_t *taba, int n,
+static js_limb_t js_mp_shl(js_limb_t *tabr, const js_limb_t *taba, int n,
                         int shift)
 {
     int i;
@@ -10861,7 +10861,7 @@ static js_limb_t mp_shl(js_limb_t *tabr, const js_limb_t *taba, int n,
 
 /* r = (a + high*B^n) >> shift. Return the remainder r (0 <= r < 2^shift).
    1 <= shift <= LIMB_BITS - 1 */
-static js_limb_t mp_shr(js_limb_t *tab_r, const js_limb_t *tab, int n,
+static js_limb_t js_mp_shr(js_limb_t *tab_r, const js_limb_t *tab, int n,
                         int shift, js_limb_t high)
 {
     int i;
@@ -11131,13 +11131,13 @@ static JSBigInt *js_bigint_mul(JSContext *ctx, const JSBigInt *a,
     r = js_bigint_new(ctx, a->len + b->len);
     if (!r)
         return NULL;
-    mp_mul_basecase(r->tab, a->tab, a->len, b->tab, b->len);
+    js_mp_mul_basecase(r->tab, a->tab, a->len, b->tab, b->len);
     /* correct the result if negative operands (no overflow is
        possible) */
     if (js_bigint_sign(a))
-        mp_sub(r->tab + a->len, r->tab + a->len, b->tab, b->len, 0);
+        js_mp_sub(r->tab + a->len, r->tab + a->len, b->tab, b->len, 0);
     if (js_bigint_sign(b))
-        mp_sub(r->tab + b->len, r->tab + b->len, a->tab, a->len, 0);
+        js_mp_sub(r->tab + b->len, r->tab + b->len, a->tab, a->len, 0);
     return js_bigint_normalize(ctx, r);
 }
 
@@ -11164,7 +11164,7 @@ static JSBigInt *js_bigint_divrem(JSContext *ctx, const JSBigInt *a,
     if (!r)
         return NULL;
     if (a_sign) {
-        mp_neg(r->tab, a->tab, na);
+        js_mp_neg(r->tab, a->tab, na);
     } else {
         memcpy(r->tab, a->tab, na * sizeof(a->tab[0]));
     }
@@ -11178,7 +11178,7 @@ static JSBigInt *js_bigint_divrem(JSContext *ctx, const JSBigInt *a,
         return NULL;
     }
     if (b_sign) {
-        mp_neg(tabb, b->tab, nb);
+        js_mp_neg(tabb, b->tab, nb);
     } else {
         memcpy(tabb, b->tab, nb * sizeof(tabb[0]));
     }
@@ -11206,8 +11206,8 @@ static JSBigInt *js_bigint_divrem(JSContext *ctx, const JSBigInt *a,
     /* normalize 'b' */
     shift = js_limb_clz(tabb[nb - 1]);
     if (shift != 0) {
-        mp_shl(tabb, tabb, nb, shift);
-        h = mp_shl(r->tab, r->tab, na, shift);
+        js_mp_shl(tabb, tabb, nb, shift);
+        h = js_mp_shl(r->tab, r->tab, na, shift);
         if (h != 0)
             r->tab[na++] = h;
     }
@@ -11221,23 +11221,23 @@ static JSBigInt *js_bigint_divrem(JSContext *ctx, const JSBigInt *a,
 
     //    js_bigint_dump1(ctx, "a", r->tab, na);
     //    js_bigint_dump1(ctx, "b", tabb, nb);
-    mp_divnorm(q->tab, r->tab, na, tabb, nb);
+    js_mp_divnorm(q->tab, r->tab, na, tabb, nb);
     js_free(ctx, tabb);
 
     if (is_rem) {
         js_free(ctx, q);
         if (shift != 0)
-            mp_shr(r->tab, r->tab, nb, shift, 0);
+            js_mp_shr(r->tab, r->tab, nb, shift, 0);
         r->tab[nb++] = 0;
         if (a_sign)
-            mp_neg(r->tab, r->tab, nb);
+            js_mp_neg(r->tab, r->tab, nb);
         r = js_bigint_normalize1(ctx, r, nb);
         return r;
     } else {
         js_free(ctx, r);
         q->tab[na - nb + 1] = 0;
         if (a_sign ^ b_sign) {
-            mp_neg(q->tab, q->tab, q->len);
+            js_mp_neg(q->tab, q->tab, q->len);
         }
         q = js_bigint_normalize(ctx, q);
         return q;
@@ -11333,7 +11333,7 @@ static JSBigInt *js_bigint_shl(JSContext *ctx, const JSBigInt *a,
             r->tab[i + d] = a->tab[i];
         }
     } else {
-        l = mp_shl(r->tab + d, a->tab, a->len, shift);
+        l = js_mp_shl(r->tab + d, a->tab, a->len, shift);
         if (js_bigint_sign(a))
             l |= (js_limb_t)(-1) << shift;
         r = js_bigint_extend(ctx, r, l);
@@ -11362,7 +11362,7 @@ static JSBigInt *js_bigint_shr(JSContext *ctx, const JSBigInt *a,
         }
         /* no normalization is needed */
     } else {
-        mp_shr(r->tab, a->tab + d, n1, shift, -a_sign);
+        js_mp_shr(r->tab, a->tab + d, n1, shift, -a_sign);
         r = js_bigint_normalize(ctx, r);
     }
     return r;
@@ -11730,7 +11730,7 @@ static JSBigInt *js_bigint_from_string(JSContext *ctx,
             /* XXX: slow */
             v = 0;
             for(i = 0; i < digits_per_limb; i++) {
-                c = to_digit(*p);
+                c = js_to_digit(*p);
                 if (c >= radix)
                     break;
                 p++;
@@ -11741,7 +11741,7 @@ static JSBigInt *js_bigint_from_string(JSContext *ctx,
             if (len == 1 && r->tab[0] == 0) {
                 r->tab[0] = v;
             } else {
-                h = mp_mul1(r->tab, r->tab, len, js_pow_dec[i], v);
+                h = js_mp_mul1(r->tab, r->tab, len, js_pow_dec[i], v);
                 if (h != 0) {
                     r->tab[len++] = h;
                 }
@@ -11758,7 +11758,7 @@ static JSBigInt *js_bigint_from_string(JSContext *ctx,
         r->len = n_limbs;
         memset(r->tab, 0, sizeof(r->tab[0]) * n_limbs);
         for(i = 0; i < n_digits; i++) {
-            c = to_digit(p[n_digits - 1 - i]);
+            c = js_to_digit(p[n_digits - 1 - i]);
             assert(c < radix);
             bit_pos = i * log2_radix;
             shift = bit_pos & (JS_LIMB_BITS - 1);
@@ -11813,7 +11813,7 @@ static char *js_u64toa(char *q, int64_t n, unsigned int base)
 }
 
 /* len >= 1. 2 <= radix <= 36 */
-static char *limb_to_a(char *q, js_limb_t n, unsigned int radix, int len)
+static char *js_limb_to_a(char *q, js_limb_t n, unsigned int radix, int len)
 {
     int digit, i;
 
@@ -11837,11 +11837,11 @@ static char *limb_to_a(char *q, js_limb_t n, unsigned int radix, int len)
 
 #define JS_RADIX_MAX 36
 
-static const uint8_t digits_per_limb_table[JS_RADIX_MAX - 1] = {
+static const uint8_t js_digits_per_limb_table[JS_RADIX_MAX - 1] = {
 32,20,16,13,12,11,10,10, 9, 9, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
 };
 
-static const js_limb_t radix_base_table[JS_RADIX_MAX - 1] = {
+static const js_limb_t js_radix_base_table[JS_RADIX_MAX - 1] = {
  0x00000000, 0xcfd41b91, 0x00000000, 0x48c27395,
  0x81bf1000, 0x75db9c97, 0x40000000, 0xcfd41b91,
  0x3b9aca00, 0x8c8b6d2b, 0x19a10000, 0x309f1021,
@@ -11905,7 +11905,7 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValueConst val, int radix)
         if (!is_binary_radix) {
             int len;
             js_limb_t radix_base, v;
-            radix_base = radix_base_table[radix - 2];
+            radix_base = js_radix_base_table[radix - 2];
             len = r->len;
             for(;;) {
                 /* remove leading zero limbs */
@@ -11918,8 +11918,8 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValueConst val, int radix)
                     }
                     break;
                 } else {
-                    v = mp_div1(r->tab, r->tab, len, radix_base, 0);
-                    q = limb_to_a(q, v, radix, digits_per_limb_table[radix - 2]);
+                    v = js_mp_div1(r->tab, r->tab, len, radix_base, 0);
+                    q = js_limb_to_a(q, v, radix, js_digits_per_limb_table[radix - 2]);
                 }
             }
         } else {
@@ -12043,7 +12043,7 @@ static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
             goto no_prefix;
         }
         /* there must be a digit after the prefix */
-        if (to_digit((uint8_t)*p) >= radix)
+        if (js_to_digit((uint8_t)*p) >= radix)
             goto fail;
     no_prefix: ;
     } else {
@@ -12062,20 +12062,20 @@ static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
         radix = 10;
     is_float = false;
     p_start = p;
-    while (to_digit((uint8_t)*p) < radix
+    while (js_to_digit((uint8_t)*p) < radix
            ||  (*p == sep && (radix != 10 ||
                               p != p_start + 1 || p[-1] != '0') &&
-                to_digit((uint8_t)p[1]) < radix)) {
+                js_to_digit((uint8_t)p[1]) < radix)) {
         p++;
     }
     if (!(flags & ATOD_INT_ONLY) && radix == 10) {
-        if (*p == '.' && (p > p_start || to_digit((uint8_t)p[1]) < radix)) {
+        if (*p == '.' && (p > p_start || js_to_digit((uint8_t)p[1]) < radix)) {
             is_float = true;
             p++;
             if (*p == sep)
                 goto fail;
-            while (to_digit((uint8_t)*p) < radix ||
-                   (*p == sep && to_digit((uint8_t)p[1]) < radix))
+            while (js_to_digit((uint8_t)*p) < radix ||
+                   (*p == sep && js_to_digit((uint8_t)p[1]) < radix))
                 p++;
         }
         if (p > p_start && (*p == 'e' || *p == 'E')) {
