@@ -57794,7 +57794,7 @@ static const JSDOMExceptionNameDef js_dom_exception_names_table[] = {
     { "InvalidModificationError", "INVALID_MODIFICATION_ERR" },
     { "NamespaceError", "NAMESPACE_ERR" },
     { "InvalidAccessError", "INVALID_ACCESS_ERR" },
-    { NULL, NULL },
+    { NULL, "VALIDATION_ERR" },
     { "TypeMismatchError", "TYPE_MISMATCH_ERR" },
     { "SecurityError", "SECURITY_ERR" },
     { "NetworkError", "NETWORK_ERR" },
@@ -57828,7 +57828,7 @@ static void js_domexception_mark(JSRuntime *rt, JSValueConst val,
 
 static JSValue js_domexception_constructor0(JSContext *ctx, JSValueConst new_target,
                                             int argc, JSValueConst *argv,
-                                            bool add_backtrace)
+                                            int backtrace_flags)
 {
     JSDOMExceptionData *s;
     JSValue obj, message, name;
@@ -57839,13 +57839,13 @@ static JSValue js_domexception_constructor0(JSContext *ctx, JSValueConst new_tar
     if (!JS_IsUndefined(argv[0]))
         message = JS_ToString(ctx, argv[0]);
     else
-        message = JS_NewString(ctx, "");
+        message = JS_AtomToString(ctx, JS_ATOM_empty_string);
     if (JS_IsException(message))
         goto fail1;
     if (!JS_IsUndefined(argv[1]))
         name = JS_ToString(ctx, argv[1]);
     else
-        name = JS_NewString(ctx, "Error");
+        name = JS_AtomToString(ctx, JS_ATOM_Error);
     if (JS_IsException(name))
         goto fail2;
     s = js_malloc(ctx, sizeof(*s));
@@ -57855,9 +57855,7 @@ static JSValue js_domexception_constructor0(JSContext *ctx, JSValueConst new_tar
     s->message = message;
     s->code = -1;
     JS_SetOpaqueInternal(obj, s);
-    if (add_backtrace)
-        build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0,
-                        JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
+    build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0, backtrace_flags);
     return obj;
 fail3:
     JS_FreeValue(ctx, name);
@@ -57873,27 +57871,21 @@ static JSValue js_domexception_constructor(JSContext *ctx, JSValueConst new_targ
 {
     if (JS_IsUndefined(new_target))
         return JS_ThrowTypeError(ctx, "constructor requires 'new'");
-    return js_domexception_constructor0(ctx, new_target, argc, argv, true);
+    return js_domexception_constructor0(ctx, new_target, argc, argv,
+                                        JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
 }
 
-static JSValue js_domexception_get_name(JSContext *ctx, JSValueConst this_val)
+static JSValue js_domexception_getfield(JSContext *ctx, JSValueConst this_val,
+                                        int magic)
 {
     JSDOMExceptionData *s;
+    JSValue *valp;
 
     s = JS_GetOpaque2(ctx, this_val, JS_CLASS_DOM_EXCEPTION);
     if (!s)
         return JS_EXCEPTION;
-    return js_dup(s->name);
-}
-
-static JSValue js_domexception_get_message(JSContext *ctx, JSValueConst this_val)
-{
-    JSDOMExceptionData *s;
-
-    s = JS_GetOpaque2(ctx, this_val, JS_CLASS_DOM_EXCEPTION);
-    if (!s)
-        return JS_EXCEPTION;
-    return js_dup(s->message);
+    valp = (void *)((char *)s + magic);
+    return js_dup(*valp);
 }
 
 static JSValue js_domexception_get_code(JSContext *ctx, JSValueConst this_val)
@@ -57924,8 +57916,10 @@ static JSValue js_domexception_get_code(JSContext *ctx, JSValueConst this_val)
 }
 
 static const JSCFunctionListEntry js_domexception_proto_funcs[] = {
-    JS_CGETSET_DEF("name", js_domexception_get_name, NULL ),
-    JS_CGETSET_DEF("message", js_domexception_get_message, NULL ),
+    JS_CGETSET_MAGIC_DEF("name", js_domexception_getfield, NULL,
+        offsetof(JSDOMExceptionData, name) ),
+    JS_CGETSET_MAGIC_DEF("message", js_domexception_getfield, NULL,
+        offsetof(JSDOMExceptionData, message) ),
     JS_CGETSET_DEF("code", js_domexception_get_code, NULL ),
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "DOMException", JS_PROP_CONFIGURABLE ),
 };
@@ -57941,6 +57935,7 @@ JSValue JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowDOMException(JSContext *ctx, const c
     va_list ap;
     char buf[256];
 
+    assert(JS_IsRegisteredClass(ctx->rt, JS_CLASS_DOM_EXCEPTION));
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
@@ -57954,12 +57949,11 @@ JSValue JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowDOMException(JSContext *ctx, const c
     }
     argv[0] = js_message;
     argv[1] = js_name;
-    obj = js_domexception_constructor0(ctx, JS_UNDEFINED, 2, argv, false);
+    obj = js_domexception_constructor0(ctx, JS_UNDEFINED, 2, argv, 0);
     JS_FreeValue(ctx, js_message);
     JS_FreeValue(ctx, js_name);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
-    build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0, 0);
     return JS_Throw(ctx, obj);
 }
 
@@ -57982,8 +57976,6 @@ void JS_AddIntrinsicDOMException(JSContext *ctx)
                             JS_CFUNC_constructor_or_func, 0);
     JS_SetConstructor(ctx, ctor, proto);
     for (i = 0; i < countof(js_dom_exception_names_table); i++) {
-        if (!js_dom_exception_names_table[i].code_name)
-            continue;
         name = JS_NewAtom(ctx, js_dom_exception_names_table[i].code_name);
         JS_DefinePropertyValue(ctx, proto, name, js_int32(i + 1),
                                JS_PROP_ENUMERABLE);
