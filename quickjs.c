@@ -1378,8 +1378,6 @@ static JSValue js_int64(int64_t v)
         return js_float64(v);
 }
 
-#define JS_NewInt64(ctx, val)  js_int64(val)
-
 static JSValue js_number(double d)
 {
     if (double_is_int32(d))
@@ -13815,7 +13813,7 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
             default:
                 abort();
             }
-            sp[-1] = JS_NewInt64(ctx, v64);
+            sp[-1] = js_int64(v64);
         }
         break;
     case JS_TAG_SHORT_BIG_INT:
@@ -13951,7 +13949,7 @@ static no_inline int js_not_slow(JSContext *ctx, JSValue *sp)
         int32_t v1;
         if (unlikely(JS_ToInt32Free(ctx, &v1, op1)))
             goto exception;
-        sp[-1] = JS_NewInt32(ctx, ~v1);
+        sp[-1] = js_int32(~v1);
     }
     return 0;
  exception:
@@ -14224,7 +14222,7 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         v1 = JS_VALUE_GET_INT(op1);
         v2 = JS_VALUE_GET_INT(op2);
         v = (int64_t)v1 + (int64_t)v2;
-        sp[-2] = JS_NewInt64(ctx, v);
+        sp[-2] = js_int64(v);
     } else if ((tag1 == JS_TAG_BIG_INT || tag1 == JS_TAG_SHORT_BIG_INT) &&
                (tag2 == JS_TAG_BIG_INT || tag2 == JS_TAG_SHORT_BIG_INT)) {
         JSBigInt *p1, *p2, *r;
@@ -15019,7 +15017,7 @@ static __exception int js_operator_private_in(JSContext *ctx, JSValue *sp)
     }
     JS_FreeValue(ctx, op1);
     JS_FreeValue(ctx, op2);
-    sp[-2] = JS_NewBool(ctx, ret);
+    sp[-2] = js_bool(ret);
     return 0;
 }
 
@@ -42625,7 +42623,7 @@ static JSValue js_number_constructor(JSContext *ctx, JSValueConst new_target,
             return val;
         switch(JS_VALUE_GET_TAG(val)) {
         case JS_TAG_SHORT_BIG_INT:
-            val = JS_NewInt64(ctx, JS_VALUE_GET_SHORT_BIG_INT(val));
+            val = js_int64(JS_VALUE_GET_SHORT_BIG_INT(val));
             if (JS_IsException(val))
                 return val;
             break;
@@ -42635,7 +42633,7 @@ static JSValue js_number_constructor(JSContext *ctx, JSValueConst new_target,
                 double d;
                 d = js_bigint_to_float64(ctx, p);
                 JS_FreeValue(ctx, val);
-                val = JS_NewFloat64(ctx, d);
+                val = js_float64(d);
             }
             break;
         default:
@@ -52856,7 +52854,7 @@ static JSValue js_Date_parse(JSContext *ctx, JSValueConst this_val,
             for(i = 0; i < 7; i++)
                 fields1[i] = fields[i];
             d = set_date_fields(fields1, is_local) - fields[8] * 60000;
-            rv = JS_NewFloat64(ctx, d);
+            rv = js_float64(d);
         }
     }
     JS_FreeValue(ctx, s);
@@ -57724,7 +57722,7 @@ static JSValue js_callsite_isnative(JSContext *ctx, JSValueConst this_val, int a
     JSCallSiteData *csd = JS_GetOpaque2(ctx, this_val, JS_CLASS_CALL_SITE);
     if (!csd)
         return JS_EXCEPTION;
-    return JS_NewBool(ctx, csd->native);
+    return js_bool(csd->native);
 }
 
 static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv, int magic)
@@ -57733,7 +57731,7 @@ static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int 
     if (!csd)
         return JS_EXCEPTION;
     int *field = (void *)((char *)csd + magic);
-    return JS_NewInt32(ctx, *field);
+    return js_int32(*field);
 }
 
 static const JSCFunctionListEntry js_callsite_proto_funcs[] = {
