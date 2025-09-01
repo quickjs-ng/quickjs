@@ -3622,6 +3622,12 @@ int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def)
     return ret;
 }
 
+static inline JSValue js_empty_string(JSRuntime *rt)
+{
+    JSAtomStruct *p = rt->atom_array[JS_ATOM_empty_string];
+    return js_dup(JS_MKPTR(JS_TAG_STRING, p));
+}
+
 // XXX: `buf` contains raw 8-bit data, no UTF-8 decoding is performed
 // XXX: no special case for len == 0
 static JSValue js_new_string8_len(JSContext *ctx, const char *buf, int len)
@@ -3670,7 +3676,7 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
         return js_dup(JS_MKPTR(JS_TAG_STRING, p));
     }
     if (len <= 0) {
-        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+        return js_empty_string(ctx->rt);
     }
     if (p->is_wide_char) {
         JSString *str;
@@ -4007,7 +4013,7 @@ static JSValue string_buffer_end(StringBuffer *s)
     if (s->len == 0) {
         js_free(s->ctx, str);
         s->str = NULL;
-        return JS_AtomToString(s->ctx, JS_ATOM_empty_string);
+        return js_empty_string(s->ctx->rt);
     }
     if (s->len < s->size) {
         /* smaller size so js_realloc should not fail, but OK if it does */
@@ -4038,7 +4044,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
     int kind;
 
     if (buf_len <= 0) {
-        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+        return js_empty_string(ctx->rt);
     }
     /* Compute string kind and length: 7-bit, 8-bit, 16-bit, 16-bit UTF-16 */
     kind = utf8_scan(buf, buf_len, &len);
@@ -4078,7 +4084,7 @@ JSValue JS_NewTwoByteString(JSContext *ctx, const uint16_t *buf, size_t len)
     JSString *str;
 
     if (!len)
-        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+        return js_empty_string(ctx->rt);
     str = js_alloc_string(ctx, len, 1);
     if (!str)
         return JS_EXCEPTION;
@@ -16614,7 +16620,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 goto exception;
             BREAK;
         CASE(OP_push_empty_string):
-            *sp++ = JS_AtomToString(ctx, JS_ATOM_empty_string);
+            *sp++ = js_empty_string(rt);
             BREAK;
         CASE(OP_get_length):
             {
@@ -39362,7 +39368,7 @@ static JSValue js_function_bind(JSContext *ctx, JSValueConst this_val,
         goto exception;
     if (!JS_IsString(name1)) {
         JS_FreeValue(ctx, name1);
-        name1 = JS_AtomToString(ctx, JS_ATOM_empty_string);
+        name1 = js_empty_string(ctx->rt);
     }
     name1 = JS_ConcatString3(ctx, "bound ", name1, "");
     if (JS_IsException(name1))
@@ -39413,7 +39419,7 @@ static JSValue js_function_toString(JSContext *ctx, JSValueConst this_val,
         suff = "() {\n    [native code]\n}";
         name = JS_GetProperty(ctx, this_val, JS_ATOM_name);
         if (JS_IsUndefined(name))
-            name = JS_AtomToString(ctx, JS_ATOM_empty_string);
+            name = js_empty_string(ctx->rt);
         return JS_ConcatString3(ctx, pref, name, suff);
     }
 }
@@ -39575,7 +39581,7 @@ static JSValue js_error_toString(JSContext *ctx, JSValueConst this_val,
 
     msg = JS_GetProperty(ctx, this_val, JS_ATOM_message);
     if (JS_IsUndefined(msg))
-        msg = JS_AtomToString(ctx, JS_ATOM_empty_string);
+        msg = js_empty_string(ctx->rt);
     else
         msg = JS_ToStringFree(ctx, msg);
     if (JS_IsException(msg)) {
@@ -43051,7 +43057,7 @@ static JSValue js_string_constructor(JSContext *ctx, JSValueConst new_target,
 {
     JSValue val, obj;
     if (argc == 0) {
-        val = JS_AtomToString(ctx, JS_ATOM_empty_string);
+        val = js_empty_string(ctx->rt);
     } else {
         if (JS_IsUndefined(new_target) && JS_IsSymbol(argv[0])) {
             JSAtomStruct *p = JS_VALUE_GET_PTR(argv[0]);
@@ -43301,7 +43307,7 @@ static JSValue js_string_charAt(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     }
     if (idx < 0 || idx >= p->len) {
-        ret = JS_AtomToString(ctx, JS_ATOM_empty_string);
+        ret = js_empty_string(ctx->rt);
     } else {
         c = string_get(p, idx);
         ret = js_new_string_char(ctx, c);
@@ -45331,7 +45337,7 @@ static JSValue js_regexp_constructor(JSContext *ctx, JSValueConst new_target,
             flags = js_dup(flags1);
         }
         if (JS_IsUndefined(pattern)) {
-            pattern = JS_AtomToString(ctx, JS_ATOM_empty_string);
+            pattern = js_empty_string(ctx->rt);
         } else {
             val = pattern;
             pattern = JS_ToString(ctx, val);
@@ -45373,7 +45379,7 @@ static JSValue js_regexp_compile(JSContext *ctx, JSValueConst this_val,
     } else {
         bc = JS_UNDEFINED;
         if (JS_IsUndefined(pattern1))
-            pattern = JS_AtomToString(ctx, JS_ATOM_empty_string);
+            pattern = js_empty_string(ctx->rt);
         else
             pattern = JS_ToString(ctx, pattern1);
         if (JS_IsException(pattern))
@@ -45531,7 +45537,7 @@ static JSValue js_regexp_get_flags(JSContext *ctx, JSValueConst this_val)
     if (res)
         *p++ = 'y';
     if (p == str)
-        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+        return js_empty_string(ctx->rt);
     return js_new_string8_len(ctx, str, p - str);
 
 exception:
@@ -47256,7 +47262,7 @@ JSValue JS_JSONStringify(JSContext *ctx, JSValueConst obj,
     jsc->property_list = JS_UNDEFINED;
     jsc->gap = JS_UNDEFINED;
     jsc->b = &b_s;
-    jsc->empty = JS_AtomToString(ctx, JS_ATOM_empty_string);
+    jsc->empty = js_empty_string(ctx->rt);
     ret = JS_UNDEFINED;
     wrapper = JS_UNDEFINED;
 
@@ -52300,7 +52306,7 @@ static JSValue get_date_string(JSContext *ctx, JSValueConst this_val,
     }
     if (!pos) {
         // XXX: should throw exception?
-        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+        return js_empty_string(ctx->rt);
     }
     return js_new_string8_len(ctx, buf, pos);
 }
@@ -53320,7 +53326,7 @@ static void JS_AddIntrinsicBasicObjects(JSContext *ctx)
                                JS_NewAtomString(ctx, native_error_name[i]),
                                JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
         JS_DefinePropertyValue(ctx, proto, JS_ATOM_message,
-                               JS_AtomToString(ctx, JS_ATOM_empty_string),
+                               js_empty_string(ctx->rt),
                                JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
         ctx->native_error_proto[i] = proto;
     }
@@ -53515,7 +53521,7 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     /* String */
     ctx->class_proto[JS_CLASS_STRING] = JS_NewObjectProtoClass(ctx, ctx->class_proto[JS_CLASS_OBJECT],
                                                                JS_CLASS_STRING);
-    JS_SetObjectData(ctx, ctx->class_proto[JS_CLASS_STRING], JS_AtomToString(ctx, JS_ATOM_empty_string));
+    JS_SetObjectData(ctx, ctx->class_proto[JS_CLASS_STRING], js_empty_string(ctx->rt));
     obj = JS_NewGlobalCConstructor(ctx, "String", js_string_constructor, 1,
                                    ctx->class_proto[JS_CLASS_STRING]);
     JS_SetPropertyFunctionList(ctx, obj, js_string_funcs,
@@ -57838,7 +57844,7 @@ static JSValue js_domexception_constructor0(JSContext *ctx, JSValueConst new_tar
     if (!JS_IsUndefined(argv[0]))
         message = JS_ToString(ctx, argv[0]);
     else
-        message = JS_AtomToString(ctx, JS_ATOM_empty_string);
+        message = js_empty_string(ctx->rt);
     if (JS_IsException(message))
         goto fail1;
     if (!JS_IsUndefined(argv[1]))
