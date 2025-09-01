@@ -182,6 +182,7 @@ enum {
     JS_CLASS_ASYNC_GENERATOR,   /* u.async_generator_data */
     JS_CLASS_WEAK_REF,
     JS_CLASS_FINALIZATION_REGISTRY,
+    JS_CLASS_DOM_EXCEPTION,
     JS_CLASS_CALL_SITE,
 
     JS_CLASS_INIT_COUNT, /* last entry for predefined classes */
@@ -2336,6 +2337,7 @@ JSContext *JS_NewContext(JSRuntime *rt)
     JS_AddIntrinsicPromise(ctx);
     JS_AddIntrinsicBigInt(ctx);
     JS_AddIntrinsicWeakRef(ctx);
+    JS_AddIntrinsicDOMException(ctx);
 
     JS_AddPerformance(ctx);
 
@@ -6725,7 +6727,7 @@ static bool can_add_backtrace(JSValueConst obj)
     if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)
         return false;
     p = JS_VALUE_GET_OBJ(obj);
-    if (p->class_id != JS_CLASS_ERROR)
+    if (p->class_id != JS_CLASS_ERROR && p->class_id != JS_CLASS_DOM_EXCEPTION)
         return false;
     if (find_own_property1(p, JS_ATOM_stack))
         return false;
@@ -35333,7 +35335,7 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 20
+#define BC_VERSION 21
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -57762,6 +57764,228 @@ static void _JS_AddIntrinsicCallSite(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_CALL_SITE],
                                js_callsite_proto_funcs,
                                countof(js_callsite_proto_funcs));
+}
+
+/* DOMException */
+typedef struct JSDOMExceptionData {
+    JSValue name;
+    JSValue message;
+    int code;
+} JSDOMExceptionData;
+
+typedef struct JSDOMExceptionNameDef {
+    const char * const name;
+    const char * const code_name;
+} JSDOMExceptionNameDef;
+
+static const JSDOMExceptionNameDef js_dom_exception_names_table[] = {
+    { "IndexSizeError", "INDEX_SIZE_ERR" },
+    { NULL, "DOMSTRING_SIZE_ERR" },
+    { "HierarchyRequestError", "HIERARCHY_REQUEST_ERR" },
+    { "WrongDocumentError", "WRONG_DOCUMENT_ERR" },
+    { "InvalidCharacterError", "INVALID_CHARACTER_ERR" },
+    { NULL, "NO_DATA_ALLOWED_ERR" },
+    { "NoModificationAllowedError", "NO_MODIFICATION_ALLOWED_ERR" },
+    { "NotFoundError", "NOT_FOUND_ERR" },
+    { "NotSupportedError", "NOT_SUPPORTED_ERR" },
+    { "InUseAttributeError", "INUSE_ATTRIBUTE_ERR" },
+    { "InvalidStateError", "INVALID_STATE_ERR" },
+    { "SyntaxError", "SYNTAX_ERR" },
+    { "InvalidModificationError", "INVALID_MODIFICATION_ERR" },
+    { "NamespaceError", "NAMESPACE_ERR" },
+    { "InvalidAccessError", "INVALID_ACCESS_ERR" },
+    { NULL, "VALIDATION_ERR" },
+    { "TypeMismatchError", "TYPE_MISMATCH_ERR" },
+    { "SecurityError", "SECURITY_ERR" },
+    { "NetworkError", "NETWORK_ERR" },
+    { "AbortError", "ABORT_ERR" },
+    { "URLMismatchError", "URL_MISMATCH_ERR" },
+    { "QuotaExceededError", "QUOTA_EXCEEDED_ERR" },
+    { "TimeoutError", "TIMEOUT_ERR" },
+    { "InvalidNodeTypeError", "INVALID_NODE_TYPE_ERR" },
+    { "DataCloneError", "DATA_CLONE_ERR" }
+};
+
+static void js_domexception_finalizer(JSRuntime *rt, JSValueConst val)
+{
+    JSDOMExceptionData *s = JS_GetOpaque(val, JS_CLASS_DOM_EXCEPTION);
+    if (s) {
+        JS_FreeValueRT(rt, s->name);
+        JS_FreeValueRT(rt, s->message);
+        js_free_rt(rt, s);
+    }
+}
+
+static void js_domexception_mark(JSRuntime *rt, JSValueConst val,
+                                 JS_MarkFunc *mark_func)
+{
+    JSDOMExceptionData *s = JS_GetOpaque(val, JS_CLASS_DOM_EXCEPTION);
+    if (s) {
+        JS_MarkValue(rt, s->name, mark_func);
+        JS_MarkValue(rt, s->message, mark_func);
+    }
+}
+
+static JSValue js_domexception_constructor0(JSContext *ctx, JSValueConst new_target,
+                                            int argc, JSValueConst *argv,
+                                            int backtrace_flags)
+{
+    JSDOMExceptionData *s;
+    JSValue obj, message, name;
+
+    obj = js_create_from_ctor(ctx, new_target, JS_CLASS_DOM_EXCEPTION);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    if (!JS_IsUndefined(argv[0]))
+        message = JS_ToString(ctx, argv[0]);
+    else
+        message = JS_AtomToString(ctx, JS_ATOM_empty_string);
+    if (JS_IsException(message))
+        goto fail1;
+    if (!JS_IsUndefined(argv[1]))
+        name = JS_ToString(ctx, argv[1]);
+    else
+        name = JS_AtomToString(ctx, JS_ATOM_Error);
+    if (JS_IsException(name))
+        goto fail2;
+    s = js_malloc(ctx, sizeof(*s));
+    if (!s)
+        goto fail3;
+    s->name = name;
+    s->message = message;
+    s->code = -1;
+    JS_SetOpaqueInternal(obj, s);
+    build_backtrace(ctx, obj, JS_UNDEFINED, NULL, 0, 0, backtrace_flags);
+    return obj;
+fail3:
+    JS_FreeValue(ctx, name);
+fail2:
+    JS_FreeValue(ctx, message);
+fail1:
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
+}
+
+static JSValue js_domexception_constructor(JSContext *ctx, JSValueConst new_target,
+                                           int argc, JSValueConst *argv)
+{
+    if (JS_IsUndefined(new_target))
+        return JS_ThrowTypeError(ctx, "constructor requires 'new'");
+    return js_domexception_constructor0(ctx, new_target, argc, argv,
+                                        JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL);
+}
+
+static JSValue js_domexception_getfield(JSContext *ctx, JSValueConst this_val,
+                                        int magic)
+{
+    JSDOMExceptionData *s;
+    JSValue *valp;
+
+    s = JS_GetOpaque2(ctx, this_val, JS_CLASS_DOM_EXCEPTION);
+    if (!s)
+        return JS_EXCEPTION;
+    valp = (void *)((char *)s + magic);
+    return js_dup(*valp);
+}
+
+static JSValue js_domexception_get_code(JSContext *ctx, JSValueConst this_val)
+{
+    JSDOMExceptionData *s;
+    const char *name, *it;
+    int i;
+    size_t len;
+
+    s = JS_GetOpaque2(ctx, this_val, JS_CLASS_DOM_EXCEPTION);
+    if (!s)
+        return JS_EXCEPTION;
+    if (s->code == -1) {
+        name = JS_ToCStringLen(ctx, &len, s->name);
+        if (!name)
+            return JS_EXCEPTION;
+        for (i = 0; i < countof(js_dom_exception_names_table); i++) {
+            it = js_dom_exception_names_table[i].name;
+            if (it && !strcmp(it, name) && len == strlen(it)) {
+                s->code = i;
+                break;
+            }
+        }
+        s->code++;
+        JS_FreeCString(ctx, name);
+    }
+    return js_int32(s->code);
+}
+
+static const JSCFunctionListEntry js_domexception_proto_funcs[] = {
+    JS_CGETSET_MAGIC_DEF("name", js_domexception_getfield, NULL,
+        offsetof(JSDOMExceptionData, name) ),
+    JS_CGETSET_MAGIC_DEF("message", js_domexception_getfield, NULL,
+        offsetof(JSDOMExceptionData, message) ),
+    JS_CGETSET_DEF("code", js_domexception_get_code, NULL ),
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "DOMException", JS_PROP_CONFIGURABLE ),
+};
+
+static const JSClassShortDef js_domexception_class_def[] = {
+    { JS_ATOM_DOMException, js_domexception_finalizer, js_domexception_mark }, /* JS_CLASS_DOM_EXCEPTION */
+};
+
+JSValue JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowDOMException(JSContext *ctx, const char *name, JS_PRINTF_FORMAT const char *fmt, ...)
+{
+    JSValue obj, js_name, js_message;
+    JSValueConst argv[2];
+    va_list ap;
+    char buf[256];
+
+    assert(JS_IsRegisteredClass(ctx->rt, JS_CLASS_DOM_EXCEPTION));
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    js_name = JS_NewString(ctx, name);
+    if (JS_IsException(js_name))
+        return JS_EXCEPTION;
+    js_message = JS_NewString(ctx, buf);
+    if (JS_IsException(js_message)) {
+        JS_FreeValue(ctx, js_name);
+        return JS_EXCEPTION;
+    }
+    argv[0] = js_message;
+    argv[1] = js_name;
+    obj = js_domexception_constructor0(ctx, JS_UNDEFINED, 2, argv, 0);
+    JS_FreeValue(ctx, js_message);
+    JS_FreeValue(ctx, js_name);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    return JS_Throw(ctx, obj);
+}
+
+void JS_AddIntrinsicDOMException(JSContext *ctx)
+{
+    JSRuntime *rt = ctx->rt;
+    int i;
+    JSAtom name;
+    JSValue ctor, proto;
+
+    if (!JS_IsRegisteredClass(rt, JS_CLASS_DOM_EXCEPTION)) {
+        init_class_range(rt, js_domexception_class_def, JS_CLASS_DOM_EXCEPTION,
+                         countof(js_domexception_class_def));
+    }
+    proto = JS_NewObjectClass(ctx, JS_CLASS_ERROR);
+    JS_SetPropertyFunctionList(ctx, proto,
+                               js_domexception_proto_funcs,
+                               countof(js_domexception_proto_funcs));
+    ctor = JS_NewCFunction2(ctx, js_domexception_constructor, "DOMException", 2,
+                            JS_CFUNC_constructor_or_func, 0);
+    JS_SetConstructor(ctx, ctor, proto);
+    for (i = 0; i < countof(js_dom_exception_names_table); i++) {
+        name = JS_NewAtom(ctx, js_dom_exception_names_table[i].code_name);
+        JS_DefinePropertyValue(ctx, proto, name, js_int32(i + 1),
+                               JS_PROP_ENUMERABLE);
+        JS_DefinePropertyValue(ctx, ctor, name, js_int32(i + 1),
+                               JS_PROP_ENUMERABLE);
+        JS_FreeAtom(ctx, name);
+    }
+    JS_DefinePropertyValue(ctx, ctx->global_obj, JS_ATOM_DOMException, ctor,
+                           JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+    ctx->class_proto[JS_CLASS_DOM_EXCEPTION] = proto;
 }
 
 bool JS_DetectModule(const char *input, size_t input_len)
