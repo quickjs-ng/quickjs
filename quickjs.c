@@ -1370,14 +1370,14 @@ static const JSClassExoticMethods js_arguments_exotic_methods = {
 };
 static const JSClassExoticMethods js_string_exotic_methods = {
     .get_own_property = js_string_get_own_property,
-    .define_own_property = js_string_define_own_property,
     .delete_property = js_string_delete_property,
+    .define_own_property = js_string_define_own_property,
 };
 static const JSClassExoticMethods js_proxy_exotic_methods = {
     .get_own_property = js_proxy_get_own_property,
-    .define_own_property = js_proxy_define_own_property,
-    .delete_property = js_proxy_delete_property,
     .get_own_property_names = js_proxy_get_own_property_names,
+    .delete_property = js_proxy_delete_property,
+    .define_own_property = js_proxy_define_own_property,
     .has_property = js_proxy_has,
     .get_property = js_proxy_get,
     .set_property = js_proxy_set,
@@ -35195,9 +35195,9 @@ JSValue JS_EvalThis(JSContext *ctx, JSValueConst this_obj,
 {
     JSEvalOptions options = {
         .version = JS_EVAL_OPTIONS_VERSION,
+        .eval_flags = eval_flags,
         .filename = filename,
         .line_num = 1,
-        .eval_flags = eval_flags
     };
     return JS_EvalThis2(ctx, this_obj, input, input_len, &options);
 }
@@ -35232,9 +35232,9 @@ JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
 {
     JSEvalOptions options = {
         .version = JS_EVAL_OPTIONS_VERSION,
+        .eval_flags = eval_flags,
         .filename = filename,
         .line_num = 1,
-        .eval_flags = eval_flags
     };
     return JS_EvalThis2(ctx, ctx->global_obj, input, input_len, &options);
 }
