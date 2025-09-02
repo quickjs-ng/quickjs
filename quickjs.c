@@ -3384,7 +3384,7 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
             c = *r;
             /* -0 case is specific */
             if (c == '0' && len == 2)
-                goto minus_zero;
+                return js_float64(-0.0);
         }
         /* XXX: should test NaN, but the tests do not check it */
         if (!is_num(c)) {
@@ -3405,10 +3405,8 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
             r++;
             c = *r;
             /* -0 case is specific */
-            if (c == '0' && len == 2) {
-            minus_zero:
+            if (c == '0' && len == 2)
                 return js_float64(-0.0);
-            }
         }
         if (!is_num(c)) {
             if (!(c =='I' && (r_end - r) == 8 &&
@@ -19554,10 +19552,12 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
         if (unlikely(JS_IsUncatchableError(ctx, ctx->rt->current_exception))) {
             is_success = false;
         } else {
-            JSValue error = JS_GetException(ctx);
-            ret2 = JS_Call(ctx, s->resolving_funcs[1], JS_UNDEFINED,
-                           1, vc(&error));
-            JS_FreeValue(ctx, error);
+            {
+                JSValue error = JS_GetException(ctx);
+                ret2 = JS_Call(ctx, s->resolving_funcs[1], JS_UNDEFINED,
+                               1, vc(&error));
+                JS_FreeValue(ctx, error);
+            }
         resolved:
             if (unlikely(JS_IsException(ret2))) {
                 if (JS_IsUncatchableError(ctx, ctx->rt->current_exception)) {
