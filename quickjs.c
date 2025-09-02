@@ -7940,7 +7940,7 @@ static uint32_t js_string_obj_get_length(JSContext *ctx, JSValueConst obj)
 
 static int num_keys_cmp(const void *p1, const void *p2, void *opaque)
 {
-    JSContext *ctx = opaque;
+    JSContext *ctx = (JSContext *)opaque;
     JSAtom atom1 = ((const JSPropertyEnum *)p1)->atom;
     JSAtom atom2 = ((const JSPropertyEnum *)p2)->atom;
     uint32_t v1, v2;
@@ -19073,7 +19073,7 @@ static JSContext *JS_GetFunctionRealm(JSContext *ctx, JSValueConst func_obj)
         break;
     case JS_CLASS_PROXY:
         {
-            JSProxyData *s = p->u.opaque;
+            JSProxyData *s = (JSProxyData *)p->u.opaque;
             if (!s)
                 return ctx;
             if (s->is_revoked) {
@@ -22171,7 +22171,7 @@ static uint32_t hash_bytes(uint32_t h, const void *b, size_t n)
 {
     const char *p;
 
-    for (p = b; p < (char *)b + n; p++)
+    for (p = (const char *)b; p < (const char *)b + n; p++)
         h = 33*h + *p;
     h += h >> 5;
     return h;
@@ -28464,9 +28464,9 @@ static int js_module_ns_has(JSContext *ctx, JSValueConst obj, JSAtom atom)
 
 static int exported_names_cmp(const void *p1, const void *p2, void *opaque)
 {
-    JSContext *ctx = opaque;
-    const ExportedNameEntry *me1 = p1;
-    const ExportedNameEntry *me2 = p2;
+    JSContext *ctx = (JSContext *)opaque;
+    const ExportedNameEntry *me1 = (const ExportedNameEntry *)p1;
+    const ExportedNameEntry *me2 = (const ExportedNameEntry *)p2;
     JSValue str1, str2;
     int ret;
 
@@ -28488,7 +28488,7 @@ static int exported_names_cmp(const void *p1, const void *p2, void *opaque)
 static JSValue js_module_ns_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                                      void *opaque)
 {
-    JSModuleDef *m = opaque;
+    JSModuleDef *m = (JSModuleDef *)opaque;
     return JS_GetModuleNamespace(ctx, m);
 }
 
@@ -34038,7 +34038,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
         goto fail;
     b->header.ref_count = 1;
 
-    b->byte_code_buf = (void *)((uint8_t*)b + byte_code_offset);
+    b->byte_code_buf = (uint8_t *)((uint8_t*)b + byte_code_offset);
     b->byte_code_len = fd->byte_code.size;
     memcpy(b->byte_code_buf, fd->byte_code.buf, fd->byte_code.size);
     js_free(ctx, fd->byte_code.buf);
@@ -34046,7 +34046,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 
     b->func_name = fd->func_name;
     if (fd->arg_count + fd->var_count > 0) {
-        b->vardefs = (void *)((uint8_t*)b + vardefs_offset);
+        b->vardefs = (JSVarDef *)((uint8_t*)b + vardefs_offset);
         if (fd->arg_count > 0)
             memcpy(b->vardefs, fd->args, fd->arg_count * sizeof(fd->args[0]));
         if (fd->var_count > 0)
@@ -34060,7 +34060,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     }
     b->cpool_count = fd->cpool_count;
     if (b->cpool_count) {
-        b->cpool = (void *)((uint8_t*)b + cpool_offset);
+        b->cpool = (JSValue *)((uint8_t*)b + cpool_offset);
         memcpy(b->cpool, fd->cpool, b->cpool_count * sizeof(*b->cpool));
     }
     js_free(ctx, fd->cpool);
@@ -34087,7 +34087,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 
     b->closure_var_count = fd->closure_var_count;
     if (b->closure_var_count) {
-        b->closure_var = (void *)((uint8_t*)b + closure_var_offset);
+        b->closure_var = (JSClosureVar *)((uint8_t*)b + closure_var_offset);
         memcpy(b->closure_var, fd->closure_var, b->closure_var_count * sizeof(*b->closure_var));
     }
     js_free(ctx, fd->closure_var);
@@ -36706,13 +36706,13 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     bc.func_name = JS_ATOM_NULL;
     b->header.ref_count = 1;
     if (local_count != 0) {
-        b->vardefs = (void *)((uint8_t*)b + vardefs_offset);
+        b->vardefs = (JSVarDef *)((uint8_t*)b + vardefs_offset);
     }
     if (b->closure_var_count != 0) {
-        b->closure_var = (void *)((uint8_t*)b + closure_var_offset);
+        b->closure_var = (JSClosureVar *)((uint8_t*)b + closure_var_offset);
     }
     if (b->cpool_count != 0) {
-        b->cpool = (void *)((uint8_t*)b + cpool_offset);
+        b->cpool = (JSValue *)((uint8_t*)b + cpool_offset);
     }
 
     add_gc_object(ctx->rt, &b->header, JS_GC_OBJ_TYPE_FUNCTION_BYTECODE);
@@ -37591,7 +37591,7 @@ static JSAtom find_atom(JSContext *ctx, const char *name)
 static JSValue JS_InstantiateFunctionListItem2(JSContext *ctx, JSObject *p,
                                                JSAtom atom, void *opaque)
 {
-    const JSCFunctionListEntry *e = opaque;
+    const JSCFunctionListEntry *e = (const JSCFunctionListEntry *)opaque;
     JSValue val;
 
     switch(e->def_type) {
@@ -41423,7 +41423,7 @@ struct array_sort_context {
 };
 
 static int js_array_cmp_generic(const void *a, const void *b, void *opaque) {
-    struct array_sort_context *psc = opaque;
+    struct array_sort_context *psc = (struct array_sort_context *)opaque;
     JSContext *ctx = psc->ctx;
     JSValueConst argv[2];
     JSValue res;
@@ -45614,13 +45614,13 @@ fail:
 
 bool lre_check_stack_overflow(void *opaque, size_t alloca_size)
 {
-    JSContext *ctx = opaque;
+    JSContext *ctx = (JSContext *)opaque;
     return js_check_stack_overflow(ctx->rt, alloca_size);
 }
 
 int lre_check_timeout(void *opaque)
 {
-    JSContext *ctx = opaque;
+    JSContext *ctx = (JSContext *)opaque;
     JSRuntime *rt = ctx->rt;
     return (rt->interrupt_handler &&
             rt->interrupt_handler(rt, rt->interrupt_opaque));
@@ -45628,7 +45628,7 @@ int lre_check_timeout(void *opaque)
 
 void *lre_realloc(void *opaque, void *ptr, size_t size)
 {
-    JSContext *ctx = opaque;
+    JSContext *ctx = (JSContext *)opaque;
     /* No JS exception is raised here */
     return js_realloc_rt(ctx->rt, ptr, size);
 }
@@ -55094,7 +55094,7 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValueConst this_val,
             if (inc > 0) {
                 pp = NULL;
                 if (pv)
-                    pp = memchr(pv + k, v, len - k);
+                    pp = (const uint8_t *)memchr(pv + k, v, len - k);
                 if (pp)
                     res = pp - pv;
             } else {
@@ -55660,7 +55660,7 @@ struct TA_sort_context {
 };
 
 static int js_TA_cmp_generic(const void *a, const void *b, void *opaque) {
-    struct TA_sort_context *psc = opaque;
+    struct TA_sort_context *psc = (struct TA_sort_context *)opaque;
     JSContext *ctx = psc->ctx;
     uint32_t a_idx, b_idx;
     JSValue argv[2];
@@ -57009,7 +57009,7 @@ static JSValue js_atomics_wait(JSContext *ctx,
     }
 
     waiter = &waiter_s;
-    waiter->ptr = ptr;
+    waiter->ptr = (int32_t *)ptr;
     js_cond_init(&waiter->cond);
     waiter->linked = true;
     list_add_tail(&waiter->link, &js_atomics_waiter_list);
@@ -57766,7 +57766,7 @@ static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int 
     JSCallSiteData *csd = (JSCallSiteData *)JS_GetOpaque2(ctx, this_val, JS_CLASS_CALL_SITE);
     if (!csd)
         return JS_EXCEPTION;
-    int *field = (void *)((char *)csd + magic);
+    int *field = (int *)((char *)csd + magic);
     return js_int32(*field);
 }
 
@@ -57916,7 +57916,7 @@ static JSValue js_domexception_getfield(JSContext *ctx, JSValueConst this_val,
     s = (JSDOMExceptionData *)JS_GetOpaque2(ctx, this_val, JS_CLASS_DOM_EXCEPTION);
     if (!s)
         return JS_EXCEPTION;
-    valp = (void *)((char *)s + magic);
+    valp = (JSValue *)((char *)s + magic);
     return js_dup(*valp);
 }
 
