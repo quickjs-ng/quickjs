@@ -40,6 +40,12 @@
 #include <mimalloc.h>
 #endif
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 extern const uint8_t qjsc_repl[];
 extern const uint32_t qjsc_repl_size;
 extern const uint8_t qjsc_standalone[];
@@ -53,7 +59,82 @@ static const int trailer_size = TRAILER_SIZE;
 
 static int qjs__argc;
 static char **qjs__argv;
+static JSRuntime *rt;
+static JSContext *ctx;
 
+#if defined(__GNUC__) || defined(__clang__)
+#define JS_EXTERN __attribute__((visibility("default")))
+#else
+#define JS_EXTERN /* nothing */
+#endif
+
+struct napi_module
+{
+    int version;
+    unsigned int flags;
+    const char *filename;
+    JSValue *(*init)(JSContext *, JSValue *);
+};
+
+static struct {
+    JSContext *ctx;
+    JSValue exports;
+} napi;
+
+extern int napi_open_handle_scope(JSContext *, void **);
+extern int napi_close_handle_scope(JSContext *, void *);
+
+JS_EXTERN void napi_module_register(struct napi_module *nm)
+{
+    JSValue *p, *exports = &napi.exports;
+    JSContext *ctx = napi.ctx;
+    void *scope;
+
+    if (napi_open_handle_scope(ctx, &scope))
+        return;
+    *exports = JS_NewObject(ctx);
+    if (JS_IsException(*exports))
+        goto out;
+    p = nm->init(ctx, exports); // returns either &exports or new object
+    if (!p)
+        p = exports;
+    if (p != exports) {
+        JS_FreeValue(ctx, *exports);
+        *exports = JS_DupValue(ctx, *p);
+    }
+out:
+    napi_close_handle_scope(ctx, scope);
+}
+
+static JSValue js_napi(JSContext *ctx, JSValue this_val,
+                       int argc, JSValue *argv)
+{
+    const char *filename;
+    uintptr_t handle;
+    char errmsg[128];
+
+    filename = JS_ToCString(ctx, argv[0]);
+    if (!filename)
+        return JS_EXCEPTION;
+    napi.ctx = ctx;
+    napi.exports = JS_UNINITIALIZED;
+    // loaded for constructor function side effect, calls napi_module_register
+#ifdef _WIN32
+    handle = (uintptr_t)LoadLibraryA(filename);
+    if (!handle)
+        snprintf(errmsg, sizeof(errmsg), "error %lu", GetLastError());
+#else
+    handle = (uintptr_t)dlopen(filename, RTLD_LOCAL|RTLD_NOW);
+    if (!handle)
+        snprintf(errmsg, sizeof(errmsg), "%s", dlerror());
+#endif
+    JS_FreeCString(ctx, filename);
+    if (!handle)
+        return JS_ThrowInternalError(ctx, "%s", errmsg);
+    if (JS_IsUninitialized(napi.exports))
+        return JS_ThrowInternalError(ctx, "module did not self-register");
+    return napi.exports;
+}
 
 static bool is_standalone(const char *exe)
 {
@@ -397,8 +478,6 @@ void help(void)
 
 int main(int argc, char **argv)
 {
-    JSRuntime *rt;
-    JSContext *ctx;
     JSValue ret = JS_UNDEFINED;
     struct trace_malloc_data trace_data = { NULL };
     int r = 0;
@@ -417,6 +496,7 @@ int main(int argc, char **argv)
     int trace_memory = 0;
     int empty_run = 0;
     int module = -1;
+    int napi = 0;
     int load_std = 0;
     char *include_list[32];
     int i, include_count = 0;
@@ -513,6 +593,10 @@ int main(int argc, char **argv)
             }
             if (opt == 'T' || !strcmp(longopt, "trace")) {
                 trace_memory++;
+                continue;
+            }
+            if (!strcmp(longopt, "napi")) {
+                napi = 1;
                 continue;
             }
             if (!strcmp(longopt, "std")) {
@@ -639,6 +723,13 @@ start:
                 "globalThis.std = std;\n"
                 "globalThis.os = os;\n";
             eval_buf(ctx, str, strlen(str), "<input>", JS_EVAL_TYPE_MODULE);
+        }
+
+        if (napi) {
+            JSValue global_obj = JS_GetGlobalObject(ctx);
+            JS_SetPropertyStr(ctx, global_obj, "napi",
+                              JS_NewCFunction(ctx, js_napi, "napi", 1));
+            JS_FreeValue(ctx, global_obj);
         }
 
         for(i = 0; i < include_count; i++) {
