@@ -564,12 +564,12 @@ struct JSString {
 
 static inline uint8_t *str8(JSString *p)
 {
-    return (void *)(p + 1);
+    return (uint8_t *)(p + 1);
 }
 
 static inline uint16_t *str16(JSString *p)
 {
-    return (void *)(p + 1);
+    return (uint16_t *)(p + 1);
 }
 
 typedef struct JSClosureVar {
