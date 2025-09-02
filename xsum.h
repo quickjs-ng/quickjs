@@ -111,9 +111,9 @@ typedef ptrdiff_t xsum_length;
 void xsum_small_init (xsum_small_accumulator *restrict);
 void xsum_small_add1 (xsum_small_accumulator *restrict, xsum_flt);
 void xsum_small_addv (xsum_small_accumulator *restrict,
-                      const xsum_flt *restrict, xsum_length);
+                      const xsum_flt *restrict2, xsum_length);
 void xsum_small_add_sqnorm (xsum_small_accumulator *restrict,
-                            const xsum_flt *restrict, xsum_length);
+                            const xsum_flt *restrict2, xsum_length);
 void xsum_small_add_dot (xsum_small_accumulator *restrict,
                          const xsum_flt *, const xsum_flt *, xsum_length);
 void xsum_small_add_accumulator (xsum_small_accumulator *,
