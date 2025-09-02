@@ -2887,7 +2887,7 @@ static JSAtomKindEnum JS_AtomGetKind(JSContext *ctx, JSAtom v)
     default:
         abort();
     }
-    return (JSAtomKindEnum){-1}; // pacify compiler
+    return (JSAtomKindEnum)(-1); // pacify compiler
 }
 
 static JSAtom js_get_atom_index(JSRuntime *rt, JSAtomStruct *p)
@@ -5459,7 +5459,7 @@ static JSContext *js_autoinit_get_realm(JSProperty *pr)
 
 static JSAutoInitIDEnum js_autoinit_get_id(JSProperty *pr)
 {
-    return pr->u.init.realm_and_id & 3;
+    return (JSAutoInitIDEnum)(pr->u.init.realm_and_id & 3);
 }
 
 static void js_autoinit_free(JSRuntime *rt, JSProperty *pr)
@@ -16313,7 +16313,7 @@ static JSValue js_call_c_function(JSContext *ctx, JSValueConst func_obj,
     JSCFunctionEnum cproto;
 
     p = JS_VALUE_GET_OBJ(func_obj);
-    cproto = p->u.cfunc.cproto;
+    cproto = (JSCFunctionEnum)p->u.cfunc.cproto;
     arg_count = p->u.cfunc.length;
 
     /* better to always check stack overflow */
@@ -23290,7 +23290,7 @@ static __exception int js_parse_object_literal(JSParseState *s)
 
             func_kind = JS_FUNC_NORMAL;
             if (is_getset) {
-                func_type = JS_PARSE_FUNC_GETTER + prop_type - PROP_TYPE_GET;
+                func_type = (JSParseFunctionEnum)(JS_PARSE_FUNC_GETTER + prop_type - PROP_TYPE_GET);
             } else {
                 func_type = JS_PARSE_FUNC_METHOD;
                 if (prop_type == PROP_TYPE_STAR)
@@ -34382,7 +34382,7 @@ static __exception int js_parse_function_decl2(JSParseState *s,
         if (s->token.val == '*') {
             if (next_token(s))
                 return -1;
-            func_kind |= JS_FUNC_GENERATOR;
+            func_kind = (JSFunctionKindEnum)(func_kind | JS_FUNC_GENERATOR);
         }
 
         if (s->token.val == TOK_IDENT) {
@@ -36934,7 +36934,7 @@ static JSValue JS_ReadModule(BCReaderState *s)
             JSExportEntry *me = &m->export_entries[i];
             if (bc_get_u8(s, &v8))
                 goto fail;
-            me->export_type = v8;
+            me->export_type = (JSExportTypeEnum)v8;
             if (me->export_type == JS_EXPORT_TYPE_LOCAL) {
                 if (bc_get_leb128_int(s, &me->u.local.var_idx))
                     goto fail;
@@ -39155,7 +39155,7 @@ static JSValue js_function_proto(JSContext *ctx, JSValueConst this_val,
 static JSValue js_function_constructor(JSContext *ctx, JSValueConst new_target,
                                        int argc, JSValueConst *argv, int magic)
 {
-    JSFunctionKindEnum func_kind = magic;
+    JSFunctionKindEnum func_kind = (JSFunctionKindEnum)magic;
     int i, n, ret;
     JSValue s, proto, obj = JS_UNDEFINED;
     StringBuffer b_s, *b = &b_s;
@@ -41691,7 +41691,7 @@ static JSValue js_create_array_iterator(JSContext *ctx, JSValueConst this_val,
     JSIteratorKindEnum kind;
     int class_id;
 
-    kind = magic & 3;
+    kind = (JSIteratorKindEnum)(magic & 3);
     if (magic & 4) {
         /* string iterator case */
         arr = JS_ToStringCheckObject(ctx, this_val);
@@ -42015,7 +42015,7 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
         JS_FreeValue(ctx, method);
         goto fail;
     }
-    it->kind = magic;
+    it->kind = (JSIteratorHelperKindEnum)magic;
     it->obj = js_dup(this_val);
     it->func = js_dup(func);
     it->next = method;
@@ -44520,7 +44520,7 @@ static JSValue js_string_normalize(JSContext *ctx, JSValueConst this_val,
             p++;
         }
         if (*p == 'C' || *p == 'D') {
-            n_type = UNICODE_NFC + is_compat * 2 + (*p - 'C');
+            n_type = (UnicodeNormalizationEnum)(UNICODE_NFC + is_compat * 2 + (*p - 'C'));
             if ((p + 1 - form) != form_len)
                 goto bad_form;
         } else {
@@ -49372,7 +49372,7 @@ static JSValue js_create_map_iterator(JSContext *ctx, JSValueConst this_val,
     JSMapIteratorData *it;
     JSValue enum_obj;
 
-    kind = magic >> 2;
+    kind = (JSIteratorKindEnum)(magic >> 2);
     magic &= 3;
     s = (JSMapState *)JS_GetOpaque2(ctx, this_val, JS_CLASS_MAP + magic);
     if (!s)
@@ -50299,7 +50299,7 @@ JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValueConst promise)
 {
     JSPromiseData *s = (JSPromiseData *)JS_GetOpaque(promise, JS_CLASS_PROMISE);
     if (!s)
-        return -1;
+        return (JSPromiseStateEnum)-1;
     return s->promise_state;
 }
 
@@ -50409,7 +50409,7 @@ static void fulfill_or_reject_promise(JSContext *ctx, JSValueConst promise,
     if (!s || s->promise_state != JS_PROMISE_PENDING)
         return; /* should never happen */
     set_value(ctx, &s->promise_result, js_dup(value));
-    s->promise_state = JS_PROMISE_FULFILLED + is_reject;
+    s->promise_state = (JSPromiseStateEnum)(JS_PROMISE_FULFILLED + is_reject);
 
     promise_trace(ctx, "fulfill_or_reject_promise: is_reject=%d\n", is_reject);
 
