@@ -190,7 +190,11 @@ enum {
 
 /* number of typed array types */
 #define JS_TYPED_ARRAY_COUNT  (JS_CLASS_FLOAT64_ARRAY - JS_CLASS_UINT8C_ARRAY + 1)
-static uint8_t const typed_array_size_log2[JS_TYPED_ARRAY_COUNT];
+static uint8_t const typed_array_size_log2[JS_TYPED_ARRAY_COUNT] = {
+    0, 0, 0, 1, 1, 2, 2,
+    3, 3,                   // BigInt64Array, BigUint64Array
+    1, 2, 3                 // Float16Array, Float32Array, Float64Array
+};
 #define typed_array_size_log2(classid)  (typed_array_size_log2[(classid)- JS_CLASS_UINT8C_ARRAY])
 
 typedef enum JSErrorEnum {
@@ -53593,12 +53597,6 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
 }
 
 /* Typed Arrays */
-
-static uint8_t const typed_array_size_log2[JS_TYPED_ARRAY_COUNT] = {
-    0, 0, 0, 1, 1, 2, 2,
-    3, 3,                   // BigInt64Array, BigUint64Array
-    1, 2, 3                 // Float16Array, Float32Array, Float64Array
-};
 
 static JSValue js_array_buffer_constructor3(JSContext *ctx,
                                             JSValueConst new_target,
