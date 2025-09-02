@@ -5797,7 +5797,7 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
 #endif
 
     switch(tag) {
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         {
             JSString *p = JS_VALUE_GET_STRING(v);
             if (p->atom_type) {
@@ -5810,8 +5810,8 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
             }
         }
         break;
-    case JS_TAG_OBJECT:
-    case JS_TAG_FUNCTION_BYTECODE:
+    case (uint32_t)JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_FUNCTION_BYTECODE:
         {
             JSGCObjectHeader *p = (JSGCObjectHeader *)JS_VALUE_GET_PTR(v);
             if (rt->gc_phase != JS_GC_PHASE_REMOVE_CYCLES) {
@@ -5823,16 +5823,16 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
             }
         }
         break;
-    case JS_TAG_MODULE:
+    case (uint32_t)JS_TAG_MODULE:
         abort(); /* never freed here */
         break;
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         {
             JSBigInt *p = (JSBigInt *)JS_VALUE_GET_PTR(v);
             js_free_rt(rt, p);
         }
         break;
-    case JS_TAG_SYMBOL:
+    case (uint32_t)JS_TAG_SYMBOL:
         {
             JSAtomStruct *p = (JSAtomStruct *)JS_VALUE_GET_PTR(v);
             JS_FreeAtomStruct(rt, p);
@@ -7608,7 +7608,7 @@ static JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
             return JS_ThrowTypeErrorAtom(ctx, "cannot read property '%s' of undefined", prop);
         case JS_TAG_EXCEPTION:
             return JS_EXCEPTION;
-        case JS_TAG_STRING:
+        case (uint32_t)JS_TAG_STRING:
             {
                 JSString *p1 = JS_VALUE_GET_STRING(obj);
                 if (__JS_AtomIsTaggedInt(prop)) {
@@ -10540,7 +10540,7 @@ static int JS_ToBoolFree(JSContext *ctx, JSValue val)
         return JS_VALUE_GET_INT(val);
     case JS_TAG_EXCEPTION:
         return -1;
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         {
             bool ret = JS_VALUE_GET_STRING(val)->len != 0;
             JS_FreeValue(ctx, val);
@@ -10548,7 +10548,7 @@ static int JS_ToBoolFree(JSContext *ctx, JSValue val)
         }
     case JS_TAG_SHORT_BIG_INT:
         return JS_VALUE_GET_SHORT_BIG_INT(val) != 0;
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         {
             JSBigInt *p = (JSBigInt *)JS_VALUE_GET_PTR(val);
             bool ret;
@@ -10567,7 +10567,7 @@ static int JS_ToBoolFree(JSContext *ctx, JSValue val)
             JS_FreeValue(ctx, val);
             return ret;
         }
-    case JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_OBJECT:
         {
             JSObject *p = JS_VALUE_GET_OBJ(val);
             bool ret = !p->is_HTMLDDA;
@@ -12252,7 +12252,7 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
  redo:
     tag = JS_VALUE_GET_NORM_TAG(val);
     switch(tag) {
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
     case JS_TAG_SHORT_BIG_INT:
         if (flag != TON_FLAG_NUMERIC) {
             JS_FreeValue(ctx, val);
@@ -12272,12 +12272,12 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
     case JS_TAG_UNDEFINED:
         ret = JS_NAN;
         break;
-    case JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_OBJECT:
         val = JS_ToPrimitiveFree(ctx, val, HINT_NUMBER);
         if (JS_IsException(val))
             return JS_EXCEPTION;
         goto redo;
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         {
             const char *str;
             size_t len;
@@ -12296,7 +12296,7 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
             JS_FreeCString(ctx, str);
         }
         break;
-    case JS_TAG_SYMBOL:
+    case (uint32_t)JS_TAG_SYMBOL:
         JS_FreeValue(ctx, val);
         return JS_ThrowTypeError(ctx, "cannot convert symbol to number");
     default:
@@ -12837,7 +12837,7 @@ static bool JS_NumberIsNegativeOrMinusZero(JSContext *ctx, JSValueConst val)
         }
     case JS_TAG_SHORT_BIG_INT:
         return (JS_VALUE_GET_SHORT_BIG_INT(val) < 0);
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         {
             JSBigInt *p = (JSBigInt *)JS_VALUE_GET_PTR(val);
             return js_bigint_sign(p);
@@ -13284,7 +13284,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val,
 
     tag = JS_VALUE_GET_NORM_TAG(val);
     switch(tag) {
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         return js_dup(val);
     case JS_TAG_INT:
         len = i32toa(buf, JS_VALUE_GET_INT(val));
@@ -13298,7 +13298,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val,
         return JS_AtomToString(ctx, JS_ATOM_undefined);
     case JS_TAG_EXCEPTION:
         return JS_EXCEPTION;
-    case JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_OBJECT:
         {
             JSValue val1, ret;
             val1 = JS_ToPrimitive(ctx, val, HINT_STRING);
@@ -13309,9 +13309,9 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val,
             return ret;
         }
         break;
-    case JS_TAG_FUNCTION_BYTECODE:
+    case (uint32_t)JS_TAG_FUNCTION_BYTECODE:
         return js_new_string8(ctx, "[function bytecode]");
-    case JS_TAG_SYMBOL:
+    case (uint32_t)JS_TAG_SYMBOL:
         if (is_ToPropertyKey) {
             return js_dup(val);
         } else {
@@ -13320,7 +13320,7 @@ JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val,
     case JS_TAG_FLOAT64:
         return js_dtoa(ctx, JS_VALUE_GET_FLOAT64(val), 0, JS_DTOA_TOSTRING);
     case JS_TAG_SHORT_BIG_INT:
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         return js_bigint_to_string(ctx, val);
     case JS_TAG_UNINITIALIZED:
         return js_new_string8(ctx, "[uninitialized]");
@@ -13608,7 +13608,7 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValueConst val)
     case JS_TAG_SHORT_BIG_INT:
         printf("%" PRId64 "n", (int64_t)JS_VALUE_GET_SHORT_BIG_INT(val));
         break;
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         {
             JSBigInt *p = (JSBigInt *)JS_VALUE_GET_PTR(val);
             int sgn, i;
@@ -13627,14 +13627,14 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValueConst val)
                 printf(")");
         }
         break;
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         {
             JSString *p;
             p = JS_VALUE_GET_STRING(val);
             JS_DumpString(rt, p);
         }
         break;
-    case JS_TAG_FUNCTION_BYTECODE:
+    case (uint32_t)JS_TAG_FUNCTION_BYTECODE:
         {
             JSFunctionBytecode *b = (JSFunctionBytecode *)JS_VALUE_GET_PTR(val);
             char buf[ATOM_GET_STR_BUF_SIZE];
@@ -13645,7 +13645,7 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValueConst val)
             }
         }
         break;
-    case JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_OBJECT:
         {
             JSObject *p = JS_VALUE_GET_OBJ(val);
             JSAtom atom = rt->class_array[p->class_id].class_name;
@@ -13654,7 +13654,7 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValueConst val)
                    JS_AtomGetStrRT(rt, atom_buf, sizeof(atom_buf), atom), (void *)p);
         }
         break;
-    case JS_TAG_SYMBOL:
+    case (uint32_t)JS_TAG_SYMBOL:
         {
             JSAtomStruct *p = (JSAtomStruct *)JS_VALUE_GET_PTR(val);
             char atom_buf[ATOM_GET_STR_BUF_SIZE];
@@ -13662,7 +13662,7 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValueConst val)
                    JS_AtomGetStrRT(rt, atom_buf, sizeof(atom_buf), js_get_atom_index(rt, p)));
         }
         break;
-    case JS_TAG_MODULE:
+    case (uint32_t)JS_TAG_MODULE:
         printf("[module]");
         break;
     default:
@@ -13769,7 +13769,7 @@ static JSValue JS_ToBigIntFree(JSContext *ctx, JSValue val)
     tag = JS_VALUE_GET_NORM_TAG(val);
     switch(tag) {
     case JS_TAG_SHORT_BIG_INT:
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         break;
     case JS_TAG_INT:
     case JS_TAG_NULL:
@@ -13779,12 +13779,12 @@ static JSValue JS_ToBigIntFree(JSContext *ctx, JSValue val)
     case JS_TAG_BOOL:
         val = __JS_NewShortBigInt(ctx, JS_VALUE_GET_INT(val));
         break;
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         val = JS_StringToBigIntErr(ctx, val);
         if (JS_IsException(val))
             return val;
         goto redo;
-    case JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_OBJECT:
         val = JS_ToPrimitiveFree(ctx, val, HINT_NUMBER);
         if (JS_IsException(val))
             return val;
@@ -13913,7 +13913,7 @@ static no_inline __exception int js_unary_arith_slow(JSContext *ctx,
             }
         }
         break;
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         {
             JSBigInt *r;
             p1 = (JSBigInt *)JS_VALUE_GET_PTR(op1);
@@ -15128,7 +15128,7 @@ static __exception int js_operator_typeof(JSContext *ctx, JSValue op1)
     tag = JS_VALUE_GET_NORM_TAG(op1);
     switch(tag) {
     case JS_TAG_SHORT_BIG_INT:
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         atom = JS_ATOM_bigint;
         break;
     case JS_TAG_INT:
@@ -15141,10 +15141,10 @@ static __exception int js_operator_typeof(JSContext *ctx, JSValue op1)
     case JS_TAG_BOOL:
         atom = JS_ATOM_boolean;
         break;
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         atom = JS_ATOM_string;
         break;
-    case JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_OBJECT:
         {
             JSObject *p;
             p = JS_VALUE_GET_OBJ(op1);
@@ -15160,7 +15160,7 @@ static __exception int js_operator_typeof(JSContext *ctx, JSValue op1)
     obj_type:
         atom = JS_ATOM_object;
         break;
-    case JS_TAG_SYMBOL:
+    case (uint32_t)JS_TAG_SYMBOL:
         atom = JS_ATOM_symbol;
         break;
     default:
@@ -36033,26 +36033,26 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValueConst obj)
             bc_put_u64(s, u.u64);
         }
         break;
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         {
             JSString *p = JS_VALUE_GET_STRING(obj);
             bc_put_u8(s, BC_TAG_STRING);
             JS_WriteString(s, p);
         }
         break;
-    case JS_TAG_FUNCTION_BYTECODE:
+    case (uint32_t)JS_TAG_FUNCTION_BYTECODE:
         if (!s->allow_bytecode)
             goto invalid_tag;
         if (JS_WriteFunctionTag(s, obj))
             goto fail;
         break;
-    case JS_TAG_MODULE:
+    case (uint32_t)JS_TAG_MODULE:
         if (!s->allow_bytecode)
             goto invalid_tag;
         if (JS_WriteModule(s, obj))
             goto fail;
         break;
-    case JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_OBJECT:
         {
             JSObject *p = JS_VALUE_GET_OBJ(obj);
             int ret, idx;
@@ -36127,11 +36127,11 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValueConst obj)
         }
         break;
     case JS_TAG_SHORT_BIG_INT:
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         if (JS_WriteBigInt(s, obj))
             goto fail;
         break;
-    case JS_TAG_SYMBOL:
+    case (uint32_t)JS_TAG_SYMBOL:
         {
             JSAtomStruct *p = (JSAtomStruct *)JS_VALUE_GET_PTR(obj);
             if (p->atom_type != JS_ATOM_TYPE_GLOBAL_SYMBOL && p->atom_type != JS_ATOM_TYPE_SYMBOL) {
@@ -48854,11 +48854,11 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     case JS_TAG_BOOL:
         h = JS_VALUE_GET_INT(key);
         break;
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         h = hash_string(JS_VALUE_GET_STRING(key), 0);
         break;
-    case JS_TAG_OBJECT:
-    case JS_TAG_SYMBOL:
+    case (uint32_t)JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_SYMBOL:
         h = (uintptr_t)JS_VALUE_GET_PTR(key) * 3163;
         break;
     case JS_TAG_INT:
@@ -48867,7 +48867,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     case JS_TAG_SHORT_BIG_INT:
         d = JS_VALUE_GET_SHORT_BIG_INT(key);
         goto hash_float64;
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         r = (JSBigInt *)JS_VALUE_GET_PTR(key);
         h = hash_string8((void *)r->tab, r->len * sizeof(*r->tab), 0);
         break;
@@ -53148,7 +53148,7 @@ static JSValue JS_ToBigIntCtorFree(JSContext *ctx, JSValue val)
         val = JS_NewBigInt64(ctx, JS_VALUE_GET_INT(val));
         break;
     case JS_TAG_SHORT_BIG_INT:
-    case JS_TAG_BIG_INT:
+    case (uint32_t)JS_TAG_BIG_INT:
         break;
     case JS_TAG_FLOAT64:
         {
@@ -53168,10 +53168,10 @@ static JSValue JS_ToBigIntCtorFree(JSContext *ctx, JSValue val)
             }
         }
         break;
-    case JS_TAG_STRING:
+    case (uint32_t)JS_TAG_STRING:
         val = JS_StringToBigIntErr(ctx, val);
         break;
-    case JS_TAG_OBJECT:
+    case (uint32_t)JS_TAG_OBJECT:
         val = JS_ToPrimitiveFree(ctx, val, HINT_NUMBER);
         if (JS_IsException(val))
             break;
