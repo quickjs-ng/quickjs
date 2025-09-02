@@ -54318,7 +54318,7 @@ JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValueConst *argv,
         return JS_ThrowRangeError(ctx, "invalid typed array type");
 
     return js_typed_array_constructor(ctx, JS_UNDEFINED, argc, argv,
-                                      JS_CLASS_UINT8C_ARRAY + type);
+                                      JS_CLASS_UINT8C_ARRAY + (int)type);
 }
 
 /* Return the buffer associated to the typed array or an exception if
