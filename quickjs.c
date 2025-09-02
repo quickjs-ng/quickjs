@@ -1328,10 +1328,63 @@ static void _JS_AddIntrinsicCallSite(JSContext *ctx);
 
 static void JS_SetOpaqueInternal(JSValueConst obj, void *opaque);
 
-static const JSClassExoticMethods js_arguments_exotic_methods;
-static const JSClassExoticMethods js_string_exotic_methods;
-static const JSClassExoticMethods js_proxy_exotic_methods;
-static const JSClassExoticMethods js_module_ns_exotic_methods;
+static int js_arguments_define_own_property(JSContext *ctx,
+                                            JSValueConst this_obj,
+                                            JSAtom prop, JSValueConst val,
+                                            JSValueConst getter,
+                                            JSValueConst setter, int flags);
+
+static int js_string_get_own_property(JSContext *ctx,
+                                      JSPropertyDescriptor *desc,
+                                      JSValueConst obj, JSAtom prop);
+static int js_string_define_own_property(JSContext *ctx,
+                                         JSValueConst this_obj,
+                                         JSAtom prop, JSValueConst val,
+                                         JSValueConst getter,
+                                         JSValueConst setter, int flags);
+static int js_string_delete_property(JSContext *ctx,
+                                     JSValueConst obj, JSAtom prop);
+
+static int js_proxy_get_own_property(JSContext *ctx, JSPropertyDescriptor *pdesc,
+                                     JSValueConst obj, JSAtom prop);
+static int js_proxy_define_own_property(JSContext *ctx, JSValueConst obj,
+                                        JSAtom prop, JSValueConst val,
+                                        JSValueConst getter,
+                                        JSValueConst setter, int flags);
+static int js_proxy_delete_property(JSContext *ctx, JSValueConst obj,
+                                    JSAtom atom);
+static int js_proxy_get_own_property_names(JSContext *ctx,
+                                           JSPropertyEnum **ptab,
+                                           uint32_t *plen,
+                                           JSValueConst obj);
+static int js_proxy_has(JSContext *ctx, JSValueConst obj, JSAtom atom);
+static JSValue js_proxy_get(JSContext *ctx, JSValueConst obj, JSAtom atom,
+                            JSValueConst receiver);
+static int js_proxy_set(JSContext *ctx, JSValueConst obj, JSAtom atom,
+                        JSValueConst value, JSValueConst receiver, int flags);
+
+static int js_module_ns_has(JSContext *ctx, JSValueConst obj, JSAtom atom);
+
+static const JSClassExoticMethods js_arguments_exotic_methods = {
+    .define_own_property = js_arguments_define_own_property,
+};
+static const JSClassExoticMethods js_string_exotic_methods = {
+    .get_own_property = js_string_get_own_property,
+    .define_own_property = js_string_define_own_property,
+    .delete_property = js_string_delete_property,
+};
+static const JSClassExoticMethods js_proxy_exotic_methods = {
+    .get_own_property = js_proxy_get_own_property,
+    .define_own_property = js_proxy_define_own_property,
+    .delete_property = js_proxy_delete_property,
+    .get_own_property_names = js_proxy_get_own_property_names,
+    .has_property = js_proxy_has,
+    .get_property = js_proxy_get,
+    .set_property = js_proxy_set,
+};
+static const JSClassExoticMethods js_module_ns_exotic_methods = {
+    .has_property = js_module_ns_has,
+};
 
 static inline bool double_is_int32(double d)
 {
@@ -15190,10 +15243,6 @@ static int js_arguments_define_own_property(JSContext *ctx,
                              flags | JS_PROP_NO_EXOTIC);
 }
 
-static const JSClassExoticMethods js_arguments_exotic_methods = {
-    .define_own_property = js_arguments_define_own_property,
-};
-
 static JSValue js_build_arguments(JSContext *ctx, int argc, JSValueConst *argv)
 {
     JSValue val, *tab;
@@ -28412,10 +28461,6 @@ static int js_module_ns_has(JSContext *ctx, JSValueConst obj, JSAtom atom)
 {
     return (find_own_property1(JS_VALUE_GET_OBJ(obj), atom) != NULL);
 }
-
-static const JSClassExoticMethods js_module_ns_exotic_methods = {
-    .has_property = js_module_ns_has,
-};
 
 static int exported_names_cmp(const void *p1, const void *p2, void *opaque)
 {
@@ -43050,12 +43095,6 @@ static int js_string_delete_property(JSContext *ctx,
     return true;
 }
 
-static const JSClassExoticMethods js_string_exotic_methods = {
-    .get_own_property = js_string_get_own_property,
-    .define_own_property = js_string_define_own_property,
-    .delete_property = js_string_delete_property,
-};
-
 static JSValue js_string_constructor(JSContext *ctx, JSValueConst new_target,
                                      int argc, JSValueConst *argv)
 {
@@ -48423,16 +48462,6 @@ static int js_proxy_isArray(JSContext *ctx, JSValueConst obj)
     }
     return js_is_array(ctx, s->target);
 }
-
-static const JSClassExoticMethods js_proxy_exotic_methods = {
-    .get_own_property = js_proxy_get_own_property,
-    .define_own_property = js_proxy_define_own_property,
-    .delete_property = js_proxy_delete_property,
-    .get_own_property_names = js_proxy_get_own_property_names,
-    .has_property = js_proxy_has,
-    .get_property = js_proxy_get,
-    .set_property = js_proxy_set,
-};
 
 static JSValue js_proxy_constructor(JSContext *ctx, JSValueConst this_val,
                                     int argc, JSValueConst *argv)
