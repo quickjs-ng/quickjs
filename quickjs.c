@@ -53670,8 +53670,8 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
             // TOOD(bnoordhuis) resizing backing memory for SABs atomically
             // is hard so we cheat and allocate |maxByteLength| bytes upfront
             sab_alloc_len = max_len ? *max_len : len;
-            abuf->data = rt->sab_funcs.sab_alloc(rt->sab_funcs.sab_opaque,
-                                                 max_int(sab_alloc_len, 1));
+            abuf->data = (uint8_t *)rt->sab_funcs.sab_alloc(rt->sab_funcs.sab_opaque,
+                                                            max_int(sab_alloc_len, 1));
             if (!abuf->data)
                 goto fail;
             memset(abuf->data, 0, sab_alloc_len);
