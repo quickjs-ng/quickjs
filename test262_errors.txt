@@ -17,6 +17,16 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared-detached.js:34: RangeError: out-of-bound access
+test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared-detached.js:34: strict mode: RangeError: out-of-bound access
+test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared-resize-to-zero.js:33: RangeError: out-of-bound access
+test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared-resize-to-zero.js:33: strict mode: RangeError: out-of-bound access
+test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared.js:35: Test262Error: Expected a RangeError but got a Test262Error
+test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared.js:35: strict mode: Test262Error: Expected a RangeError but got a Test262Error
+test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion.js:35: Test262Error: Expected a RangeError but got a Test262Error
+test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion.js:35: strict mode: Test262Error: Expected a RangeError but got a Test262Error
+test262/test/built-ins/Atomics/wait/retrieve-length-before-index-coercion.js:38: Test262Error: Expected a RangeError but got a Test262Error
+test262/test/built-ins/Atomics/wait/retrieve-length-before-index-coercion.js:38: strict mode: Test262Error: Expected a RangeError but got a Test262Error
 test262/test/built-ins/RegExp/property-escapes/special-property-value-Script_Extensions-Unknown.js:14: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/property-escapes/special-property-value-Script_Extensions-Unknown.js:14: strict mode: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
