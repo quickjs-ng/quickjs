@@ -819,7 +819,7 @@ JS_EXTERN void JS_FreeCString(JSContext *ctx, const char *ptr);
 
 JS_EXTERN JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto,
                                          JSClassID class_id);
-JS_EXTERN JSValue JS_NewObjectClass(JSContext *ctx, int class_id);
+JS_EXTERN JSValue JS_NewObjectClass(JSContext *ctx, JSClassID class_id);
 JS_EXTERN JSValue JS_NewObjectProto(JSContext *ctx, JSValueConst proto);
 JS_EXTERN JSValue JS_NewObject(JSContext *ctx);
 // takes ownership of the values
