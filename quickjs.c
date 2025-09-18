@@ -12054,7 +12054,7 @@ static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
             double d = INF;
             if (is_neg)
                 d = -d;
-            val = JS_NewFloat64(ctx, d);
+            val = js_float64(d);
             goto done;
         }
     }
@@ -12129,7 +12129,7 @@ static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
             d = js_atod(buf, NULL, radix, is_float ? 0 : JS_ATOD_INT_ONLY,
                         &atod_mem);
             /* return int or float64 */
-            val = JS_NewFloat64(ctx, d);
+            val = js_number(d);
         }
         break;
     case ATOD_TYPE_BIG_INT:
