@@ -41531,11 +41531,10 @@ static JSValue js_array_toSorted(JSContext *ctx, JSValueConst this_val,
     JSObject *p;
     int64_t i, len;
     uint32_t count32;
-    int ok;
 
-    ok = JS_IsUndefined(argv[0]) || JS_IsFunction(ctx, argv[0]);
-    if (!ok)
-        return JS_ThrowTypeErrorNotAFunction(ctx);
+    if (!JS_IsUndefined(argv[0]))
+        if (check_function(ctx, argv[0]))
+            return JS_EXCEPTION;
 
     ret = JS_EXCEPTION;
     arr = JS_UNDEFINED;
@@ -49069,8 +49068,8 @@ static JSValue js_map_getOrInsert(JSContext *ctx, JSValueConst this_val,
 
     if (!s)
         return JS_EXCEPTION;
-    if (computed && !JS_IsFunction(ctx, argv[1]))
-        return JS_ThrowTypeError(ctx, "not a function");
+    if (computed && check_function(ctx, argv[1]))
+        return JS_EXCEPTION;
     key = map_normalize_key_const(ctx, argv[0]);
     if (s->is_weak && !is_valid_weakref_target(key))
         return JS_ThrowTypeError(ctx, "invalid value used as WeakMap key");
@@ -57436,9 +57435,8 @@ static JSValue js_finrec_constructor(JSContext *ctx, JSValueConst new_target,
     if (JS_IsUndefined(new_target))
         return JS_ThrowTypeError(ctx, "constructor requires 'new'");
     JSValueConst cb = argv[0];
-    if (!JS_IsFunction(ctx, cb))
-        return JS_ThrowTypeError(ctx, "argument must be a function");
-
+    if (check_function(ctx, cb))
+        return JS_EXCEPTION;
     JSValue obj = js_create_from_ctor(ctx, new_target, JS_CLASS_FINALIZATION_REGISTRY);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
