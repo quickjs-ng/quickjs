@@ -849,6 +849,8 @@ struct JSModuleDef {
     int async_parent_modules_count;
     int async_parent_modules_size;
     int pending_async_dependencies;
+    /* true: async_evaluation_timestamp corresponds to [[AsyncEvaluationOrder]] 
+       false: [[AsyncEvaluationOrder]] is UNSET or DONE */
     bool async_evaluation;
     int64_t async_evaluation_timestamp;
     JSModuleDef *cycle_root;
@@ -28849,6 +28851,15 @@ static int js_execute_async_module(JSContext *ctx, JSModuleDef *m);
 static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
                                   JSValue *pvalue);
 
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+static void js_dump_module(JSContext *ctx, const char *str, JSModuleDef *m)
+{
+    char buf1[ATOM_GET_STR_BUF_SIZE];
+    static const char *module_status_str[] = { "unlinked", "linking", "linked", "evaluating", "evaluating_async", "evaluated" };
+    printf("%s: %s status=%s\n", str, JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name), module_status_str[m->status]);
+}
+#endif
+
 static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst this_val,
                                                   int argc, JSValueConst *argv, int magic,
                                                   JSValueConst *func_data)
@@ -28856,6 +28867,12 @@ static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst t
     JSModuleDef *module = JS_VALUE_GET_PTR(func_data[0]);
     JSValueConst error = argv[0];
     int i;
+
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+    if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_EXEC)) {
+        js_dump_module(ctx, __func__, module);
+    }
+#endif
 
     if (js_check_stack_overflow(ctx->rt, 0))
         return JS_ThrowStackOverflow(ctx);
@@ -28872,6 +28889,7 @@ static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst t
     module->eval_has_exception = true;
     module->eval_exception = js_dup(error);
     module->status = JS_MODULE_STATUS_EVALUATED;
+    module->async_evaluation = false;
 
     for(i = 0; i < module->async_parent_modules_count; i++) {
         JSModuleDef *m = module->async_parent_modules[i];
@@ -28899,6 +28917,12 @@ static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValueConst 
     ExecModuleList exec_list_s, *exec_list = &exec_list_s;
     int i;
 
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+    if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_EXEC)) {
+        js_dump_module(ctx, __func__, module);
+    }
+#endif
+
     if (module->status == JS_MODULE_STATUS_EVALUATED) {
         assert(module->eval_has_exception);
         return JS_UNDEFINED;
@@ -28924,6 +28948,11 @@ static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValueConst 
 
     for(i = 0; i < exec_list->count; i++) {
         JSModuleDef *m = exec_list->tab[i];
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+        if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_EXEC)) {
+            printf("  %d/%d", i, exec_list->count); js_dump_module(ctx, "", m);
+        }
+#endif
         if (m->status == JS_MODULE_STATUS_EVALUATED) {
             assert(m->eval_has_exception);
         } else if (m->has_tla) {
@@ -28938,6 +28967,7 @@ static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValueConst 
                 JS_FreeValue(ctx, m_obj);
                 JS_FreeValue(ctx, error);
             } else {
+                m->async_evaluation = false;
                 js_set_module_evaluated(ctx, m);
             }
         }
@@ -28950,6 +28980,11 @@ static int js_execute_async_module(JSContext *ctx, JSModuleDef *m)
 {
     JSValue promise, m_obj;
     JSValue resolve_funcs[2], ret_val;
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+    if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_EXEC)) {
+        js_dump_module(ctx, __func__, m);
+    }
+#endif
     promise = js_async_function_call(ctx, m->func_obj, JS_UNDEFINED, 0, NULL, 0);
     if (JS_IsException(promise))
         return -1;
@@ -28969,6 +29004,11 @@ static int js_execute_async_module(JSContext *ctx, JSModuleDef *m)
 static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
                                   JSValue *pvalue)
 {
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+    if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_EXEC)) {
+        js_dump_module(ctx, __func__, m);
+    }
+#endif
     if (m->init_func) {
         /* C module init : no asynchronous execution */
         if (m->init_func(ctx, m) < 0)
@@ -29008,18 +29048,17 @@ static int js_inner_module_evaluation(JSContext *ctx, JSModuleDef *m,
     JSModuleDef *m1;
     int i;
 
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+    if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_EXEC)) {
+        js_dump_module(ctx, __func__, m);
+    }
+#endif
+
     if (js_check_stack_overflow(ctx->rt, 0)) {
         JS_ThrowStackOverflow(ctx);
         *pvalue = JS_GetException(ctx);
         return -1;
     }
-
-#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_RESOLVE
-    if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_RESOLVE)) {
-        char buf1[ATOM_GET_STR_BUF_SIZE];
-        printf("js_inner_module_evaluation '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
-    }
-#endif
 
     if (m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
         m->status == JS_MODULE_STATUS_EVALUATED) {
@@ -29121,6 +29160,12 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
     JSModuleDef *m1, *stack_top;
     JSValue ret_val, result;
 
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+    if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_EXEC)) {
+        js_dump_module(ctx, __func__, m);
+    }
+#endif
+
     assert(m->status == JS_MODULE_STATUS_LINKED ||
            m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
            m->status == JS_MODULE_STATUS_EVALUATED);
@@ -29153,6 +29198,11 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
                           1, vc(&m->eval_exception));
         JS_FreeValue(ctx, ret_val);
     } else {
+#ifdef ENABLE_DUMPS // JS_DUMP_MODULE_EXEC
+        if (check_dump_flag(ctx->rt, JS_DUMP_MODULE_EXEC)) {
+            js_dump_module(ctx, "  done", m);
+        }
+#endif
         assert(m->status == JS_MODULE_STATUS_EVALUATING_ASYNC ||
                m->status == JS_MODULE_STATUS_EVALUATED);
         assert(!m->eval_has_exception);

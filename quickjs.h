@@ -425,6 +425,7 @@ typedef struct JSMallocFunctions {
 #define JS_DUMP_OBJECTS       0x20000  /* dump objects in JS_FreeRuntime */
 #define JS_DUMP_ATOMS         0x40000  /* dump atoms in JS_FreeRuntime */
 #define JS_DUMP_SHAPES        0x80000  /* dump shapes in JS_FreeRuntime */
+#define JS_DUMP_MODULE_EXEC  0x100000
 
 // Finalizers run in LIFO order at the very end of JS_FreeRuntime.
 // Intended for cleanup of associated resources; the runtime itself
