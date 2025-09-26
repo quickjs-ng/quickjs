@@ -149,6 +149,7 @@ xoption(QJS_ENABLE_ASAN "Enable AddressSanitizer (ASan)" OFF)
 xoption(QJS_ENABLE_MSAN "Enable MemorySanitizer (MSan)" OFF)
 xoption(QJS_ENABLE_TSAN "Enable ThreadSanitizer (TSan)" OFF)
 xoption(QJS_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
+xoption(QJS_ENABLE_SLJIT "Enable sljit" ON)
 
 if(QJS_ENABLE_ASAN)
 message(STATUS "Building with ASan")
@@ -280,6 +281,39 @@ if(EMSCRIPTEN)
     target_link_libraries(qjs_wasm m)
 endif()
 
+if (QJS_ENABLE_SLJIT)
+
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+xoption(QJS_SLJIT_DEBUG "sljit debug mode" ON)
+xoption(QJS_SLJIT_VERBOSE "sljit verbose mode" ON)
+else()
+xoption(QJS_SLJIT_DEBUG "sljit debug mode" OFF)
+xoption(QJS_SLJIT_VERBOSE "sljit verbose mode" OFF)
+endif()
+
+file(GLOB SLJIT_SRC
+       ${CMAKE_CURRENT_SOURCE_DIR}/sljit/sljit_src/sljitLir.c
+)
+
+add_library(sljit ${SLJIT_SRC})
+target_include_directories(sljit PUBLIC 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/sljit/sljit_src>  
+    $<INSTALL_INTERFACE:sljit/sljit_src>
+)
+target_link_libraries(qjs PRIVATE sljit)
+
+if (QJS_SLJIT_DEBUG)
+    target_compile_definitions(sljit PUBLIC SLJIT_DEBUG=1)
+endif()
+
+if (QJS_SLJIT_VERBOSE)
+    target_compile_definitions(sljit PUBLIC SLJIT_VERBOSE=1)
+    add_subdirectory(zydis)
+    target_link_libraries(qjs PRIVATE Zydis::Zydis)
+    target_compile_options(Zycore PRIVATE -Wno-format-nonliteral)
+endif()
+
+endif()
 
 # QuickJS bytecode compiler
 #
@@ -442,4 +476,11 @@ if(NOT IOS)
     install(EXPORT qjsConfig DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/quickjs)
     install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})
     install(DIRECTORY examples DESTINATION ${CMAKE_INSTALL_DOCDIR})
+
+    if(QJS_ENABLE_SLJIT)
+        install(TARGETS sljit EXPORT qjsConfig
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    endif()
 endif()
