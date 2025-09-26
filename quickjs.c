@@ -3521,7 +3521,10 @@ static JSAtom js_atom_concat_str(JSContext *ctx, JSAtom name, const char *str1)
 static JSAtom js_atom_concat_num(JSContext *ctx, JSAtom name, uint32_t n)
 {
     char buf[16];
-    u32toa(buf, n);
+    size_t len;
+
+    len = u32toa(buf, n);
+    buf[len] = '\0';
     return js_atom_concat_str(ctx, name, buf);
 }
 
