@@ -41499,6 +41499,11 @@ next:
     // not done, construct { done: false, value: xxx } object
     // copy .value verbatim from source object, spec doesn't
     // allow dereferencing getters here
+    d = (JSPropertyDescriptor){
+        .value = JS_UNDEFINED,
+        .getter = JS_UNDEFINED,
+        .setter = JS_UNDEFINED,
+    };
     ret = JS_GetOwnProperty(ctx, &d, item, JS_ATOM_value);
     JS_FreeValue(ctx, item);
     if (ret < 0)
