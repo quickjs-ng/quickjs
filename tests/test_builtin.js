@@ -908,6 +908,48 @@ function test_weak_map()
     /* the WeakMap should be empty here */
 }
 
+function test_set()
+{
+    const iter = {
+        a: [4, 5, 6],
+        nextCalls: 0,
+        returnCalls: 0,
+        next() {
+            const done = this.nextCalls >= this.a.length
+            const value = this.a[this.nextCalls]
+            this.nextCalls++
+            return {done, value}
+        },
+        return() {
+            this.returnCalls++
+            return this
+        },
+    }
+    const setlike = {
+        size: iter.a.length,
+        has(v) { return iter.a.includes(v) },
+        keys() { return iter },
+    }
+    // set must be bigger than iter.a to hit iter.next and iter.return
+    assert(new Set([4,5,6,7]).isSupersetOf(setlike), true)
+    assert(iter.nextCalls, 4);
+    assert(iter.returnCalls, 0);
+    iter.nextCalls = iter.returnCalls = 0
+    assert(new Set([0,1,2,3]).isSupersetOf(setlike), false)
+    assert(iter.nextCalls, 1);
+    assert(iter.returnCalls, 1);
+    iter.nextCalls = iter.returnCalls = 0
+    // set must be bigger than iter.a to hit iter.next and iter.return
+    assert(new Set([4,5,6,7]).isDisjointFrom(setlike), false)
+    assert(iter.nextCalls, 1);
+    assert(iter.returnCalls, 1);
+    iter.nextCalls = iter.returnCalls = 0
+    assert(new Set([0,1,2,3]).isDisjointFrom(setlike), true)
+    assert(iter.nextCalls, 4);
+    assert(iter.returnCalls, 0);
+    iter.nextCalls = iter.returnCalls = 0
+}
+
 function test_weak_set()
 {
     var a, e;
@@ -1103,6 +1145,7 @@ test_regexp();
 test_symbol();
 test_map();
 test_weak_map();
+test_set();
 test_weak_set();
 test_generator();
 test_proxy_iter();
