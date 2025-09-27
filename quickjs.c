@@ -11700,6 +11700,7 @@ static JSBigInt *js_bigint_from_string(JSContext *ctx,
                                        const char *str, int radix)
 {
     const char *p = str;
+    size_t n_digits1;
     int is_neg, n_digits, n_limbs, len, log2_radix, n_bits, i;
     JSBigInt *r;
     js_limb_t v, c, h;
@@ -11711,10 +11712,16 @@ static JSBigInt *js_bigint_from_string(JSContext *ctx,
     }
     while (*p == '0')
         p++;
-    n_digits = strlen(p);
+    n_digits1 = strlen(p);
+    /* the real check for overflox is done js_bigint_new(). Here
+       we just avoid integer overflow */
+    if (n_digits1 > JS_BIGINT_MAX_SIZE * JS_LIMB_BITS) {
+        JS_ThrowRangeError(ctx, "BigInt is too large to allocate");
+        return NULL;
+    }
+    n_digits = n_digits1;
     log2_radix = 32 - clz32(radix - 1); /* ceil(log2(radix)) */
     /* compute the maximum number of limbs */
-    /* XXX: overflow */
     if (radix == 10) {
         n_bits = (n_digits * 27 + 7) / 8; /* >= ceil(n_digits * log2(10)) */
     } else {
@@ -11934,11 +11941,10 @@ static JSValue js_bigint_to_string1(JSContext *ctx, JSValueConst val, int radix)
                 bit_pos = i * log2_radix;
                 pos = bit_pos / JS_LIMB_BITS;
                 shift = bit_pos % JS_LIMB_BITS;
-                if (likely((shift + log2_radix) <= JS_LIMB_BITS)) {
-                    c = r->tab[pos] >> shift;
-                } else {
-                    c = (r->tab[pos] >> shift) |
-                        (r->tab[pos + 1] << (JS_LIMB_BITS - shift));
+                c = r->tab[pos] >> shift;
+                if ((shift + log2_radix) > JS_LIMB_BITS &&
+                    (pos + 1) < r->len) {
+                    c |= r->tab[pos + 1] << (JS_LIMB_BITS - shift);
                 }
                 c &= (radix - 1);
                 *--q = digits[c];
@@ -54809,22 +54815,12 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValueConst this_val,
     if (special == special_lastIndexOf) {
         k = len - 1;
         if (argc > 1) {
-            if (JS_ToFloat64(ctx, &d, argv[1]))
+            int64_t k1;
+            if (JS_ToInt64Clamp(ctx, &k1, argv[1], -1, len - 1, len))
                 goto exception;
-            if (isnan(d)) {
-                k = 0;
-            } else {
-                if (d >= 0) {
-                    if (d < k) {
-                        k = d;
-                    }
-                } else {
-                    d += len;
-                    if (d < 0)
-                        goto done;
-                    k = d;
-                }
-            }
+            k = k1;
+            if (k < 0)
+                goto done;
         }
         stop = -1;
         inc = -1;
