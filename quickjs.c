@@ -11997,7 +11997,7 @@ static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
     bool buf_allocated = false;
     JSValue val;
     JSATODTempMem atod_mem;
-    
+
     /* optional separator between digits */
     sep = (flags & ATOD_ACCEPT_UNDERSCORES) ? '_' : 256;
     has_legacy_octal = false;
@@ -12798,7 +12798,7 @@ static JSValue js_dtoa2(JSContext *ctx,
     JSValue res;
     JSDTOATempMem dtoa_mem;
     len_max = js_dtoa_max_len(d, radix, n_digits, flags);
-    
+
     /* longer buffer may be used if radix != 10 */
     if (len_max > sizeof(static_buf) - 1) {
         tmp_buf = js_malloc(ctx, len_max + 1);
@@ -44707,7 +44707,7 @@ static void sum_precise_add(SumPreciseState *s, double d)
     uint64_t a, m, a0, carry, acc_sign, a_sign;
     int sgn, e, p, n, i;
     unsigned shift;
-    
+
     a = float64_as_uint64(d);
     sgn = a >> 63;
     e = (a >> 52) & ((1 << 11) - 1);
@@ -44754,7 +44754,7 @@ static void sum_precise_add(SumPreciseState *s, double d)
         /* sign extend acc */
         for(i = n; i <= p; i++)
             s->acc[i] = acc_sign;
-        
+
         carry = sgn;
         a_sign = -sgn;
         a0 = m << shift;
@@ -44779,7 +44779,7 @@ static void sum_precise_add(SumPreciseState *s, double d)
                 ADDC64(s->acc[i], carry, s->acc[i], a_sign, carry);
             }
         }
-        
+
         /* extend the accumulator if needed */
         a0 = carry + acc_sign + a_sign;
         /* -1 <= a0 <= 1 (if both acc and a are negative, carry is set) */
@@ -44795,7 +44795,7 @@ static double sum_precise_get_result(SumPreciseState *s)
 {
     int n, shift, e, p, is_neg, i;
     uint64_t m, addend, carry;
-        
+
     if (s->state != SUM_PRECISE_STATE_FINITE) {
         switch(s->state) {
         default:
@@ -44836,7 +44836,7 @@ static double sum_precise_get_result(SumPreciseState *s)
         return 0.0;
     /* subnormal case */
     if (n == 1 && s->acc[0] < ((uint64_t)1 << 52))
-        return uint64_as_float64(((uint64_t)is_neg << 63) | s->acc[0]); 
+        return uint64_as_float64(((uint64_t)is_neg << 63) | s->acc[0]);
     /* normal case */
     e = n * 64;
     p = n - 1;
