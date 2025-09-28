@@ -47,7 +47,6 @@
 #include "list.h"
 #include "quickjs.h"
 #include "libregexp.h"
-#include "xsum.h"
 #include "dtoa.h"
 
 #if defined(EMSCRIPTEN) || defined(_MSC_VER)
@@ -44667,98 +44666,6 @@ static JSValue js_math_clz32(JSContext *ctx, JSValueConst this_val,
     return js_int32(r);
 }
 
-typedef enum SumPreciseStateEnum {
-    SUM_PRECISE_STATE_MINUS_ZERO,
-    SUM_PRECISE_STATE_NOT_A_NUMBER,
-    SUM_PRECISE_STATE_MINUS_INFINITY,
-    SUM_PRECISE_STATE_PLUS_INFINITY,
-    SUM_PRECISE_STATE_FINITE,
-} SumPreciseStateEnum;
-
-static JSValue js_math_sumPrecise(JSContext *ctx, JSValueConst this_val,
-                                  int argc, JSValueConst *argv)
-{
-    JSValue iter, next, item, ret;
-    int done;
-    double d;
-    xsum_small_accumulator acc;
-    SumPreciseStateEnum state;
-
-    iter = JS_GetIterator(ctx, argv[0], /*async*/false);
-    if (JS_IsException(iter))
-        return JS_EXCEPTION;
-    ret = JS_EXCEPTION;
-    next = JS_GetProperty(ctx, iter, JS_ATOM_next);
-    if (JS_IsException(next))
-        goto fail;
-    xsum_small_init(&acc);
-    state = SUM_PRECISE_STATE_MINUS_ZERO;
-    for (;;) {
-        item = JS_IteratorNext(ctx, iter, next, 0, NULL, &done);
-        if (JS_IsException(item))
-            goto fail;
-        if (done)
-            break; // item == JS_UNDEFINED
-        switch (JS_VALUE_GET_TAG(item)) {
-        default:
-            JS_FreeValue(ctx, item);
-            JS_ThrowTypeError(ctx, "not a number");
-            goto fail;
-        case JS_TAG_INT:
-            d = JS_VALUE_GET_INT(item);
-            break;
-        case JS_TAG_FLOAT64:
-            d = JS_VALUE_GET_FLOAT64(item);
-            break;
-        }
-
-        if (state != SUM_PRECISE_STATE_NOT_A_NUMBER) {
-            if (isnan(d))
-                state = SUM_PRECISE_STATE_NOT_A_NUMBER;
-            else if (!isfinite(d) && d > 0.0)
-                if (state == SUM_PRECISE_STATE_MINUS_INFINITY)
-                    state = SUM_PRECISE_STATE_NOT_A_NUMBER;
-                else
-                    state = SUM_PRECISE_STATE_PLUS_INFINITY;
-            else if (!isfinite(d) && d < 0.0)
-                if (state == SUM_PRECISE_STATE_PLUS_INFINITY)
-                    state = SUM_PRECISE_STATE_NOT_A_NUMBER;
-                else
-                    state = SUM_PRECISE_STATE_MINUS_INFINITY;
-            else if (!(d == 0.0 && signbit(d)) && (state == SUM_PRECISE_STATE_MINUS_ZERO || state == SUM_PRECISE_STATE_FINITE)) {
-                state = SUM_PRECISE_STATE_FINITE;
-                xsum_small_add1(&acc, d);
-            }
-        }
-    }
-
-    switch (state) {
-    case SUM_PRECISE_STATE_NOT_A_NUMBER:
-        d = NAN;
-        break;
-    case SUM_PRECISE_STATE_MINUS_INFINITY:
-        d = -INFINITY;
-        break;
-    case SUM_PRECISE_STATE_PLUS_INFINITY:
-        d = INFINITY;
-        break;
-    case SUM_PRECISE_STATE_MINUS_ZERO:
-        d = -0.0;
-        break;
-    case SUM_PRECISE_STATE_FINITE:
-        d = xsum_small_round(&acc);
-        break;
-    default:
-        abort();
-    }
-    ret = js_float64(d);
-fail:
-    JS_IteratorClose(ctx, iter, JS_IsException(ret));
-    JS_FreeValue(ctx, iter);
-    JS_FreeValue(ctx, next);
-    return ret;
-}
-
 /* xorshift* random number generator by Marsaglia */
 static uint64_t xorshift64star(uint64_t *pstate)
 {
@@ -44860,7 +44767,6 @@ static const JSCFunctionListEntry js_math_funcs[] = {
     JS_CFUNC_SPECIAL_DEF("fround", 1, f_f, js_math_fround ),
     JS_CFUNC_DEF("imul", 2, js_math_imul ),
     JS_CFUNC_DEF("clz32", 1, js_math_clz32 ),
-    JS_CFUNC_DEF("sumPrecise", 1, js_math_sumPrecise ),
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Math", JS_PROP_CONFIGURABLE ),
     JS_PROP_DOUBLE_DEF("E", 2.718281828459045, 0 ),
     JS_PROP_DOUBLE_DEF("LN10", 2.302585092994046, 0 ),
