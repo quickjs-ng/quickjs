@@ -933,22 +933,51 @@ function test_set()
     }
     // set must be bigger than iter.a to hit iter.next and iter.return
     assert(new Set([4,5,6,7]).isSupersetOf(setlike), true)
-    assert(iter.nextCalls, 4);
-    assert(iter.returnCalls, 0);
+    assert(iter.nextCalls, 4)
+    assert(iter.returnCalls, 0)
     iter.nextCalls = iter.returnCalls = 0
     assert(new Set([0,1,2,3]).isSupersetOf(setlike), false)
-    assert(iter.nextCalls, 1);
-    assert(iter.returnCalls, 1);
+    assert(iter.nextCalls, 1)
+    assert(iter.returnCalls, 1)
     iter.nextCalls = iter.returnCalls = 0
     // set must be bigger than iter.a to hit iter.next and iter.return
     assert(new Set([4,5,6,7]).isDisjointFrom(setlike), false)
-    assert(iter.nextCalls, 1);
-    assert(iter.returnCalls, 1);
+    assert(iter.nextCalls, 1)
+    assert(iter.returnCalls, 1)
     iter.nextCalls = iter.returnCalls = 0
     assert(new Set([0,1,2,3]).isDisjointFrom(setlike), true)
-    assert(iter.nextCalls, 4);
-    assert(iter.returnCalls, 0);
+    assert(iter.nextCalls, 4)
+    assert(iter.returnCalls, 0)
     iter.nextCalls = iter.returnCalls = 0
+    function expectException(klass, sizes) {
+        for (const size of sizes) {
+            let ex
+            try {
+                new Set([]).union({size})
+            } catch (e) {
+                ex = e
+            }
+            assert(ex instanceof klass)
+            assert(typeof ex.message, "string")
+            assert(ex.message.includes(".size"))
+        }
+    }
+    expectException(RangeError, [-1, -(Number.MAX_SAFE_INTEGER+1), -Infinity])
+    expectException(TypeError, [NaN])
+    const legal = [
+        0, -0, 1, 2,
+        Number.MAX_SAFE_INTEGER + 1,
+        Number.MAX_SAFE_INTEGER + 2,
+        Number.MAX_SAFE_INTEGER + 3,
+        Infinity
+    ]
+    for (const size of legal) {
+        new Set([]).union({
+            size,
+            has() { return false },
+            keys() { return [].values() },
+        })
+    }
 }
 
 function test_weak_set()
