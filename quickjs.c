@@ -44880,7 +44880,7 @@ static JSValue js_math_sumPrecise(JSContext *ctx, JSValueConst this_val,
     double d;
     SumPreciseState s_s, *s = &s_s;
 
-    iter = JS_GetIterator(ctx, argv[0], false);
+    iter = JS_GetIterator(ctx, argv[0], /*is_async*/false);
     if (JS_IsException(iter))
         return JS_EXCEPTION;
     ret = JS_EXCEPTION;
@@ -44902,7 +44902,7 @@ static JSValue js_math_sumPrecise(JSContext *ctx, JSValueConst this_val,
         } else {
             JS_FreeValue(ctx, item);
             JS_ThrowTypeError(ctx, "not a number");
-            JS_IteratorClose(ctx, iter, true);
+            JS_IteratorClose(ctx, iter, /*is_exception_pending*/true);
             goto fail;
         }
         sum_precise_add(s, d);
