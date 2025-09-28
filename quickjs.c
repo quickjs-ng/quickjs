@@ -44823,14 +44823,6 @@ static double sum_precise_get_result(SumPreciseState *s)
     /* normalize */
     while (n > 0 && s->acc[n - 1] == 0)
         n--;
-#if 0
-    {
-        printf("res=");
-        for(i = n - 1; i >= 0; i--)
-            printf(" %016lx", s->acc[i]);
-        printf("\n");
-    }
-#endif
     /* zero result. The spec tells it is always positive in the finite case */
     if (n == 0)
         return 0.0;
