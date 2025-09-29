@@ -142,7 +142,6 @@ qjs_srcs = files(
   'libregexp.c',
   'libunicode.c',
   'quickjs.c',
-  'xsum.c'
 )
 qjs_hdrs = files(
   'quickjs.h',

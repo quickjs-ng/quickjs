@@ -231,7 +231,6 @@ set(qjs_sources
     libregexp.c
     libunicode.c
     quickjs.c
-    xsum.c
 )
 
 if(QJS_BUILD_LIBC)

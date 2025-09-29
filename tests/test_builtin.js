@@ -392,10 +392,11 @@ function test_math()
     assert(Math.imul((-2)**31, (-2)**31), 0);
     assert(Math.imul(2**31-1, 2**31-1), 1);
     assert(Math.fround(0.1), 0.10000000149011612);
-    assert(Math.hypot() == 0);
-    assert(Math.hypot(-2) == 2);
-    assert(Math.hypot(3, 4) == 5);
+    assert(Math.hypot(), 0);
+    assert(Math.hypot(-2), 2);
+    assert(Math.hypot(3, 4), 5);
     assert(Math.abs(Math.hypot(3, 4, 5) - 7.0710678118654755) <= 1e-15);
+    assert(Math.sumPrecise([1,Number.EPSILON/2,Number.MIN_VALUE]), 1.0000000000000002);
 }
 
 function test_number()

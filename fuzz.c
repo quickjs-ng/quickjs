@@ -4,7 +4,6 @@
 #include "cutils.c"
 #include "libregexp.c"
 #include "libunicode.c"
-#include "xsum.c"
 #include <stdlib.h>
 
 int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len)
