@@ -49502,11 +49502,11 @@ static int JS_WriteSet(BCWriterState *s, struct JSMapState *map_state)
 }
 
 static int js_setlike_get_props(JSContext *ctx, JSValueConst setlike,
-                                int64_t *psize, JSValue *phas, JSValue *pkeys)
+                                uint64_t *psize, JSValue *phas, JSValue *pkeys)
 {
     JSValue has, keys, v;
     JSMapState *s;
-    int64_t size;
+    uint64_t size;
     double d;
 
     keys = JS_UNDEFINED;
@@ -49524,14 +49524,19 @@ static int js_setlike_get_props(JSContext *ctx, JSValueConst setlike,
         }
         if (JS_ToFloat64Free(ctx, &d, v) < 0)
             return -1;
-        if (isnan(d)) {
-            JS_ThrowTypeError(ctx, ".size is not a number");
+        if (d < 0) {
+            JS_ThrowRangeError(ctx, ".size is not a legal size");
             return -1;
         }
-        // TODO(bnoordhuis) add precision check, can be double
-        // that cannot be accurately represented as an int64,
-        // like Infinity and numbers outside MAX_SAFE_INTEGER
-        size = d;
+        if (isnan(d)) {
+            JS_ThrowTypeError(ctx, ".size is not a legal size");
+            return -1;
+        }
+        if (isinf(d) || d > (double)MAX_SAFE_INTEGER) {
+            size = UINT64_MAX;
+        } else {
+            size = (uint64_t)d; // cast for expository reasons
+        }
     }
     has = JS_GetProperty(ctx, setlike, JS_ATOM_has);
     if (JS_IsException(has))
@@ -49565,7 +49570,7 @@ static JSValue js_set_isDisjointFrom(JSContext *ctx, JSValueConst this_val,
     int done;
     bool found;
     JSMapState *s;
-    int64_t size;
+    uint64_t size;
     int ok;
 
     s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
@@ -49635,7 +49640,7 @@ static JSValue js_set_isSubsetOf(JSContext *ctx, JSValueConst this_val,
     JSValueConst setlike;
     bool found;
     JSMapState *s;
-    int64_t size;
+    uint64_t size;
     int done, ok;
 
     s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
@@ -49685,7 +49690,7 @@ static JSValue js_set_isSupersetOf(JSContext *ctx, JSValueConst this_val,
     int done;
     bool found;
     JSMapState *s;
-    int64_t size;
+    uint64_t size;
 
     s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
     if (!s)
@@ -49738,7 +49743,7 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
     JSValueConst setlike;
     JSMapState *s, *t;
     JSMapRecord *mr;
-    int64_t size;
+    uint64_t size;
     int done, ok;
 
     s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
@@ -49831,7 +49836,7 @@ static JSValue js_set_difference(JSContext *ctx, JSValueConst this_val,
     JSValueConst setlike;
     JSMapState *s, *t;
     JSMapRecord *mr;
-    int64_t size;
+    uint64_t size;
     int done;
     int ok;
 
@@ -49920,7 +49925,7 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
     struct list_head *el;
     JSMapState *s, *t;
     JSMapRecord *mr;
-    int64_t size;
+    uint64_t size;
     int done;
     bool present;
 
@@ -50005,7 +50010,7 @@ static JSValue js_set_union(JSContext *ctx, JSValueConst this_val,
     struct list_head *el;
     JSMapState *s, *t;
     JSMapRecord *mr;
-    int64_t size;
+    uint64_t size;
     int done;
 
     iter = JS_UNDEFINED;
