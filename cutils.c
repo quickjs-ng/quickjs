@@ -102,6 +102,10 @@ int js__has_suffix(const char *str, const char *suffix)
 
 static void *dbuf_default_realloc(void *opaque, void *ptr, size_t size)
 {
+    if (unlikely(size == 0)) {
+        free(ptr);
+        return NULL;
+    }
     return realloc(ptr, size);
 }
 
