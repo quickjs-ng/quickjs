@@ -16580,9 +16580,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 pc += 2;
                 call_argv = sp - call_argc;
                 ret_val = JS_NewArrayFrom(ctx, call_argc, call_argv);
+                sp -= call_argc;
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
-                sp -= call_argc;
                 *sp++ = ret_val;
             }
             BREAK;
