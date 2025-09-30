@@ -211,6 +211,9 @@ typedef enum JSErrorEnum {
 #define JS_MAX_LOCAL_VARS 65535
 #define JS_STACK_SIZE_MAX 65534
 #define JS_STRING_LEN_MAX ((1 << 30) - 1)
+// 1,024 bytes is about the cutoff point where it starts getting
+// more profitable to ref slice than to copy
+#define JS_STRING_SLICE_LEN_MAX 1024 // in bytes
 
 #define __exception __attribute__((warn_unused_result))
 
@@ -3735,9 +3738,7 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
     if (len <= 0) {
         return js_empty_string(ctx->rt);
     }
-    // 1024 is about the cutoff point where it starts getting more profitable
-    // to ref slice than to copy
-    if (len > (1024 >> p->is_wide_char)) {
+    if (len > (JS_STRING_SLICE_LEN_MAX >> p->is_wide_char)) {
         if (p->kind == JS_STRING_KIND_SLICE) {
             slice = (void *)&p[1];
             p = slice->parent;
