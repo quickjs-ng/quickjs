@@ -1700,15 +1700,32 @@ void update_stats(JSRuntime *rt, const char *filename) {
     js_mutex_unlock(&stats_mutex);
 }
 
+static JSValue qjs_black_box(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst argv[], int magic)
+{
+    return JS_NewInt32(ctx, js_std_cmd(magic, ctx, &argv[0]));
+}
+
+static const JSCFunctionListEntry qjs_methods[] = {
+    JS_CFUNC_MAGIC_DEF("getStringKind", 1, qjs_black_box, /*GetStringKind*/3),
+};
+
+static const JSCFunctionListEntry qjs_object =
+    JS_OBJECT_DEF("qjs", qjs_methods, countof(qjs_methods), JS_PROP_C_W_E);
+
 JSContext *JS_NewCustomContext(JSRuntime *rt)
 {
     JSContext *ctx;
+    JSValue obj;
 
     ctx = JS_NewContext(rt);
     if (ctx && local) {
         js_init_module_std(ctx, "qjs:std");
         js_init_module_os(ctx, "qjs:os");
         js_init_module_bjson(ctx, "qjs:bjson");
+        obj = JS_GetGlobalObject(ctx);
+        JS_SetPropertyFunctionList(ctx, obj, &qjs_object, 1);
+        JS_FreeValue(ctx, obj);
     }
     return ctx;
 }
