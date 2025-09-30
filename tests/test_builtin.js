@@ -378,6 +378,11 @@ function test_string()
     assert(eval('"\0"'), "\0");
 
     assert("abc".padStart(Infinity, ""), "abc");
+
+    assert(qjs.getStringKind("xyzzy".slice(1)),
+           /*JS_STRING_KIND_NORMAL*/0);
+    assert(qjs.getStringKind("xyzzy".repeat(512).slice(1)),
+           /*JS_STRING_KIND_SLICE*/1);
 }
 
 function test_math()
