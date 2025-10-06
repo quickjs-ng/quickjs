@@ -545,6 +545,32 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+static void global_object_prototype(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue proto = JS_NewObject(ctx);
+    assert(JS_IsObject(proto));
+    JSCFunctionListEntry prop = JS_PROP_INT32_DEF("answer", 42, JS_PROP_C_W_E);
+    JS_SetPropertyFunctionList(ctx, proto, &prop, 1);
+    JSValue global_object = JS_GetGlobalObject(ctx);
+    int res = JS_SetPrototype(ctx, global_object, proto);
+    assert(res == true);
+    JS_FreeValue(ctx, global_object);
+    JS_FreeValue(ctx, proto);
+    static const char code[] = "answer";
+    JSValue ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
+    assert(!JS_IsException(ret));
+    assert(JS_IsNumber(ret));
+    int32_t answer;
+    res = JS_ToInt32(ctx, &answer, ret);
+    assert(res == 0);
+    assert(answer == 42);
+    JS_FreeValue(ctx, ret);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     sync_call();
@@ -558,5 +584,6 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    global_object_prototype();
     return 0;
 }
