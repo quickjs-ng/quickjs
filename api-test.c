@@ -545,6 +545,92 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+static int gop_get_own_property(JSContext *ctx, JSPropertyDescriptor *desc,
+                                JSValueConst obj, JSAtom prop)
+{
+    const char *name;
+    int found;
+
+    found = 0;
+    name = JS_AtomToCString(ctx, prop);
+    if (!name)
+        return -1;
+    if (!strcmp(name, "answer")) {
+        found = 1;
+        *desc = (JSPropertyDescriptor){
+            .value = JS_NewInt32(ctx, 42),
+            .flags = JS_PROP_C_W_E | JS_PROP_HAS_VALUE,
+        };
+    }
+    JS_FreeCString(ctx, name);
+    return found;
+}
+
+static void global_object_prototype(void)
+{
+    static const char code[] = "answer";
+    JSValue global_object, proto, ret;
+    JSClassID class_id;
+    JSRuntime *rt;
+    JSContext *ctx;
+    int32_t answer;
+    int res;
+
+    {
+        rt = JS_NewRuntime();
+        ctx = JS_NewContext(rt);
+        proto = JS_NewObject(ctx);
+        assert(JS_IsObject(proto));
+        JSCFunctionListEntry prop = JS_PROP_INT32_DEF("answer", 42, JS_PROP_C_W_E);
+        JS_SetPropertyFunctionList(ctx, proto, &prop, 1);
+        global_object = JS_GetGlobalObject(ctx);
+        res = JS_SetPrototype(ctx, global_object, proto);
+        assert(res == true);
+        JS_FreeValue(ctx, global_object);
+        JS_FreeValue(ctx, proto);
+        ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
+        assert(!JS_IsException(ret));
+        assert(JS_IsNumber(ret));
+        res = JS_ToInt32(ctx, &answer, ret);
+        assert(res == 0);
+        assert(answer == 42);
+        JS_FreeValue(ctx, ret);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+    {
+        JSClassExoticMethods exotic = (JSClassExoticMethods){
+            .get_own_property = gop_get_own_property,
+        };
+        JSClassDef def = (JSClassDef){
+            .class_name = "Global Object",
+            .exotic = &exotic,
+        };
+        rt = JS_NewRuntime();
+        class_id = 0;
+        JS_NewClassID(rt, &class_id);
+        res = JS_NewClass(rt, class_id, &def);
+        assert(res == 0);
+        ctx = JS_NewContext(rt);
+        proto = JS_NewObjectClass(ctx, class_id);
+        assert(JS_IsObject(proto));
+        global_object = JS_GetGlobalObject(ctx);
+        res = JS_SetPrototype(ctx, global_object, proto);
+        assert(res == true);
+        JS_FreeValue(ctx, global_object);
+        JS_FreeValue(ctx, proto);
+        ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
+        assert(!JS_IsException(ret));
+        assert(JS_IsNumber(ret));
+        res = JS_ToInt32(ctx, &answer, ret);
+        assert(res == 0);
+        assert(answer == 42);
+        JS_FreeValue(ctx, ret);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+}
+
 int main(void)
 {
     sync_call();
@@ -558,5 +644,6 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    global_object_prototype();
     return 0;
 }
