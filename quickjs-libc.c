@@ -1039,6 +1039,15 @@ typedef struct {
     bool is_popen;
 } JSSTDFile;
 
+#if defined(__MINGW64__)
+enum JSSTDFileKind { STDFile, STDPipe, TMPFile };
+typedef struct {
+    FILE *f;
+    enum JSSTDFileKind kind;
+    char *filename;
+} JSTMPFile;
+#endif
+
 static bool is_stdio(FILE *f)
 {
     return f == stdin || f == stdout || f == stderr;
@@ -1049,6 +1058,15 @@ static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
     JSThreadState *ts = js_get_thread_state(rt);
     JSSTDFile *s = JS_GetOpaque(val, ts->std_file_class_id);
     if (s) {
+#if defined(__MINGW64__)
+        JSTMPFile *ss = (JSTMPFile*) s;
+        if (ss->kind == TMPFile) {
+            if (ss->f) fclose(ss->f);
+            if (ss->filename != 0) remove(ss->filename);
+            js_free_rt(rt, ss->filename);
+            return;
+        };
+#endif
         if (s->f && !is_stdio(s->f)) {
 #if !defined(__wasi__)
             if (s->is_popen)
@@ -1056,6 +1074,7 @@ static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
             else
 #endif
                 fclose(s->f);
+
         }
         js_free_rt(rt, s);
     }
@@ -1212,6 +1231,67 @@ static JSValue js_std_fdopen(JSContext *ctx, JSValueConst this_val,
 }
 
 #if !defined(__wasi__)
+#if defined(__MINGW64__)
+static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSTMPFile *s;
+    JSValue obj;
+    char *env_tmp, *fn_buff;
+    int mk_fd, path_len, fn_template_len, fn_total_len;
+
+    obj = JS_NewObjectClass(ctx, ts->std_file_class_id);
+    if (JS_IsException(obj))    
+        return JS_EXCEPTION;
+    s = js_mallocz(ctx, sizeof(*s));
+    if (!s) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    static char* fn_template = "qXXXXXXX";
+    fn_template_len = strlen(fn_template) + 1;
+    fn_total_len = fn_template_len;
+    path_len = 0;
+    env_tmp = getenv("TMP");
+    if (!env_tmp)  
+        env_tmp = getenv("TEMP");
+    if (env_tmp) {
+        path_len = strlen(env_tmp);
+        fn_total_len = path_len + 1 + fn_template_len;
+    }
+    fn_buff = js_malloc(ctx, path_len + fn_total_len);
+    if (env_tmp) {
+        memcpy(fn_buff, env_tmp, path_len);
+        fn_buff[path_len] = '\\';
+        path_len++;
+    }
+    memcpy(fn_buff + path_len, fn_template, fn_template_len);
+    mk_fd = mkstemp(fn_buff);    
+    if (mk_fd == -1) {    
+        JS_ThrowInternalError(ctx, "tmpfile failed to create file with error: %d.", errno);
+        goto file_failure;
+    };
+    s->f = fdopen( mk_fd, "a+");
+    if (!s->f) {
+        JS_ThrowInternalError(ctx, "tmpfile failed to open file with error: %d.", errno);
+        close(mk_fd);
+        goto file_failure;
+    };
+    s->filename = fn_buff;
+    s->kind = TMPFile;
+    if (argc >= 1) 
+        js_set_error_object(ctx, argv[0], s->f ? 0 : errno);
+    JS_SetOpaque(obj, s);
+    return obj;
+  file_failure:
+    JS_FreeValue(ctx, obj);
+    js_free(ctx, s);
+    js_free(ctx, fn_buff);
+    return JS_EXCEPTION;    
+}
+#else // MINGW
 static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -1223,7 +1303,8 @@ static JSValue js_std_tmpfile(JSContext *ctx, JSValueConst this_val,
         return JS_NULL;
     return js_new_std_file(ctx, f, false);
 }
-#endif
+#endif // !MINGW
+#endif // WASI
 
 static JSValue js_std_sprintf(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
@@ -3112,9 +3193,8 @@ static JSValue js_os_realpath(JSContext *ctx, JSValueConst this_val,
     }
     return make_string_error(ctx, buf, err);
 }
-#endif
-
-#if !defined(_WIN32) && !defined(__wasi__)
+/* in WIN32: (0 | err) os.symlink(target, linkpath, bool isDirectory)
+    @ msdn: linkpath and target have reversed meaning than symlink! */
 static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -3129,12 +3209,25 @@ static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
         JS_FreeCString(ctx, target);
         return JS_EXCEPTION;
     }
+#if defined(_WIN32)
+    int isdirflag = 0; 
+    if (argc > 2) {
+         if (JS_ToInt32(ctx, &isdirflag, argv[2])) return JS_EXCEPTION;
+    }
+    err =  CreateSymbolicLinkA(linkpath, target, ( isdirflag | 
+                                                   SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE ) ) ; 
+    if (!err) err = GetLastError();
+    else err = 0;
+#else
     err = js_get_errno(symlink(target, linkpath));
+#endif
     JS_FreeCString(ctx, target);
     JS_FreeCString(ctx, linkpath);
     return JS_NewInt32(ctx, err);
 }
+#endif
 
+#if !defined(_WIN32) && !defined(__wasi__)
 /* return [path, errorcode] */
 static JSValue js_os_readlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
@@ -4172,10 +4265,10 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("sleep", 1, js_os_sleep ),
 #if !defined(__wasi__)
     JS_CFUNC_DEF("realpath", 1, js_os_realpath ),
+    JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
 #endif
 #if !defined(_WIN32) && !defined(__wasi__)
     JS_CFUNC_MAGIC_DEF("lstat", 1, js_os_stat, 1 ),
-    JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
     JS_CFUNC_DEF("readlink", 1, js_os_readlink ),
     JS_CFUNC_DEF("exec", 1, js_os_exec ),
     JS_CFUNC_DEF("getpid", 0, js_os_getpid ),
