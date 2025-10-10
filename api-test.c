@@ -631,23 +631,6 @@ static void global_object_prototype(void)
     }
 }
 
-// https://github.com/quickjs-ng/quickjs/issues/1178
-static void slice_string_tocstring(void)
-{
-    JSRuntime *rt = JS_NewRuntime();
-    JSContext *ctx = JS_NewContext(rt);
-    static const char code[] = "'.'.repeat(16384).slice(1, -1)";
-    JSValue ret = JS_Eval(ctx, code, strlen(code), "*", JS_EVAL_TYPE_GLOBAL);
-    assert(!JS_IsException(ret));
-    assert(JS_IsString(ret));
-    const char *str = JS_ToCString(ctx, ret);
-    assert(strlen(str) == 16382);
-    JS_FreeCString(ctx, str);
-    JS_FreeValue(ctx, ret);
-    JS_FreeContext(ctx);
-    JS_FreeRuntime(rt);
-}
-
 int main(void)
 {
     sync_call();
@@ -662,6 +645,5 @@ int main(void)
     dump_memory_usage();
     new_errors();
     global_object_prototype();
-    slice_string_tocstring();
     return 0;
 }

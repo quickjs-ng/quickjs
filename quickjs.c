@@ -211,9 +211,6 @@ typedef enum JSErrorEnum {
 #define JS_MAX_LOCAL_VARS 65535
 #define JS_STACK_SIZE_MAX 65534
 #define JS_STRING_LEN_MAX ((1 << 30) - 1)
-// 1,024 bytes is about the cutoff point where it starts getting
-// more profitable to ref slice than to copy
-#define JS_STRING_SLICE_LEN_MAX 1024 // in bytes
 
 #define __exception __attribute__((warn_unused_result))
 
@@ -554,12 +551,7 @@ typedef enum {
     JS_ATOM_KIND_PRIVATE,
 } JSAtomKindEnum;
 
-typedef enum {
-    JS_STRING_KIND_NORMAL,
-    JS_STRING_KIND_SLICE,
-} JSStringKind;
-
-#define JS_ATOM_HASH_MASK  ((1 << 29) - 1)
+#define JS_ATOM_HASH_MASK  ((1 << 30) - 1)
 
 struct JSString {
     JSRefCountHeader header; /* must come first, 32-bit */
@@ -568,8 +560,7 @@ struct JSString {
     /* for JS_ATOM_TYPE_SYMBOL: hash = 0, atom_type = 3,
        for JS_ATOM_TYPE_PRIVATE: hash = 1, atom_type = 3
        XXX: could change encoding to have one more bit in hash */
-    uint32_t hash : 29;
-    uint8_t kind : 1;
+    uint32_t hash : 30;
     uint8_t atom_type : 2; /* != 0 if atom, JS_ATOM_TYPE_x */
     uint32_t hash_next; /* atom_index for JS_ATOM_TYPE_SYMBOL */
     JSWeakRefRecord *first_weak_ref;
@@ -578,39 +569,14 @@ struct JSString {
 #endif
 };
 
-typedef struct JSStringSlice {
-    JSString *parent;
-    uint32_t start; // in characters, not bytes
-} JSStringSlice;
-
 static inline uint8_t *str8(JSString *p)
 {
-    JSStringSlice *slice;
-
-    switch (p->kind) {
-    case JS_STRING_KIND_NORMAL:
-        return (void *)&p[1];
-    case JS_STRING_KIND_SLICE:
-        slice = (void *)&p[1];
-        return str8(slice->parent) + slice->start;
-    }
-    abort();
-    return NULL;
+    return (void *)(p + 1);
 }
 
 static inline uint16_t *str16(JSString *p)
 {
-    JSStringSlice *slice;
-
-    switch (p->kind) {
-    case JS_STRING_KIND_NORMAL:
-        return (void *)&p[1];
-    case JS_STRING_KIND_SLICE:
-        slice = (void *)&p[1];
-        return str16(slice->parent) + slice->start;
-    }
-    abort();
-    return NULL;
+    return (void *)(p + 1);
 }
 
 typedef struct JSClosureVar {
@@ -2091,7 +2057,6 @@ static JSString *js_alloc_string_rt(JSRuntime *rt, int max_len, int is_wide_char
     str->header.ref_count = 1;
     str->is_wide_char = is_wide_char;
     str->len = max_len;
-    str->kind = JS_STRING_KIND_NORMAL;
     str->atom_type = 0;
     str->hash = 0;          /* optional but costless */
     str->hash_next = 0;     /* optional */
@@ -2112,28 +2077,18 @@ static JSString *js_alloc_string(JSContext *ctx, int max_len, int is_wide_char)
     return p;
 }
 
-static inline void js_free_string0(JSRuntime *rt, JSString *str);
-
 /* same as JS_FreeValueRT() but faster */
 static inline void js_free_string(JSRuntime *rt, JSString *str)
 {
-    if (--str->header.ref_count <= 0)
-        js_free_string0(rt, str);
-}
-
-static inline void js_free_string0(JSRuntime *rt, JSString *str)
-{
-    if (str->atom_type) {
-        JS_FreeAtomStruct(rt, str);
-    } else {
+    if (--str->header.ref_count <= 0) {
+        if (str->atom_type) {
+            JS_FreeAtomStruct(rt, str);
+        } else {
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
-        list_del(&str->link);
+            list_del(&str->link);
 #endif
-        if (str->kind == JS_STRING_KIND_SLICE) {
-            JSStringSlice *slice = (void *)&str[1];
-            js_free_string(rt, slice->parent); // safe, recurses only 1 level
+            js_free_rt(rt, str);
         }
-        js_free_rt(rt, str);
     }
 }
 
@@ -3015,7 +2970,6 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
             p->header.ref_count = 1;
             p->is_wide_char = str->is_wide_char;
             p->len = str->len;
-            p->kind = JS_STRING_KIND_NORMAL;
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
             list_add_tail(&p->link, &rt->string_list);
 #endif
@@ -3030,7 +2984,6 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
         p->header.ref_count = 1;
         p->is_wide_char = 1;    /* Hack to represent NULL as a JSString */
         p->len = 0;
-        p->kind = JS_STRING_KIND_NORMAL;
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
         list_add_tail(&p->link, &rt->string_list);
 #endif
@@ -3735,36 +3688,12 @@ static JSValue js_new_string_char(JSContext *ctx, uint16_t c)
 
 static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
 {
-    JSStringSlice *slice;
-    JSString *q;
-    int len;
-
-    len = end - start;
+    int len = end - start;
     if (start == 0 && end == p->len) {
         return js_dup(JS_MKPTR(JS_TAG_STRING, p));
     }
     if (len <= 0) {
         return js_empty_string(ctx->rt);
-    }
-    if (len > (JS_STRING_SLICE_LEN_MAX >> p->is_wide_char)) {
-        if (p->kind == JS_STRING_KIND_SLICE) {
-            slice = (void *)&p[1];
-            p = slice->parent;
-            start += slice->start;
-        }
-        // allocate as 16 bit wide string to avoid wastage;
-        // js_alloc_string allocates 1 byte extra for 8 bit strings;
-        q = js_alloc_string(ctx, sizeof(*slice)/2, /*is_wide_char*/true);
-        if (!q)
-            return JS_EXCEPTION;
-        q->is_wide_char = p->is_wide_char;
-        q->kind = JS_STRING_KIND_SLICE;
-        q->len = len;
-        slice = (void *)&q[1];
-        slice->parent = p;
-        slice->start = start;
-        p->header.ref_count++;
-        return JS_MKPTR(JS_TAG_STRING, q);
     }
     if (p->is_wide_char) {
         JSString *str;
@@ -4277,7 +4206,7 @@ go:
         for (pos = 0; pos < len; pos++) {
             count += src[pos] >> 7;
         }
-        if (count == 0 && str->kind == JS_STRING_KIND_NORMAL) {
+        if (count == 0) {
             if (plen)
                 *plen = len;
             return (const char *)src;
@@ -5834,7 +5763,17 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
 
     switch(tag) {
     case JS_TAG_STRING:
-        js_free_string0(rt, JS_VALUE_GET_STRING(v));
+        {
+            JSString *p = JS_VALUE_GET_STRING(v);
+            if (p->atom_type) {
+                JS_FreeAtomStruct(rt, p);
+            } else {
+#ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
+                list_del(&p->link);
+#endif
+                js_free_rt(rt, p);
+            }
+        }
         break;
     case JS_TAG_OBJECT:
     case JS_TAG_FUNCTION_BYTECODE:
@@ -58131,13 +58070,6 @@ uintptr_t js_std_cmd(int cmd, ...) {
         pv = va_arg(ap, JSValue *);
         *pv = ctx->error_back_trace;
         ctx->error_back_trace = JS_UNDEFINED;
-        break;
-    case 3: // GetStringKind
-        ctx = va_arg(ap, JSContext *);
-        pv = va_arg(ap, JSValue *);
-        rv = -1;
-        if (JS_IsString(*pv))
-            rv = JS_VALUE_GET_STRING(*pv)->kind;
         break;
     default:
         rv = -1;
