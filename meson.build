@@ -424,6 +424,8 @@ if tests.allowed()
 
       'math_min',
 
+      'object_null',
+
       'regexp_ascii',
       'regexp_utf16',
 
