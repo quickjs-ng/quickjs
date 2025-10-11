@@ -432,6 +432,10 @@ if tests.allowed()
       'string_build1',
       'string_build2',
 
+      'string_slice1',
+      'string_slice2',
+      'string_slice3',
+
       'sort_bench',
 
       'int_to_string',
