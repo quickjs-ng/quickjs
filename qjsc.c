@@ -60,8 +60,8 @@ static FILE *outfile;
 static const char *c_ident_prefix = "qjsc_";
 static int strip;
 
-void namelist_add(namelist_t *lp, const char *name, const char *short_name,
-                  int flags)
+static void namelist_add(namelist_t *lp, const char *name, const char *short_name,
+                         int flags)
 {
     namelist_entry_t *e;
     if (lp->count == lp->size) {
@@ -81,7 +81,7 @@ void namelist_add(namelist_t *lp, const char *name, const char *short_name,
     e->flags = flags;
 }
 
-void namelist_free(namelist_t *lp)
+static void namelist_free(namelist_t *lp)
 {
     while (lp->count > 0) {
         namelist_entry_t *e = &lp->array[--lp->count];
@@ -93,7 +93,7 @@ void namelist_free(namelist_t *lp)
     lp->size = 0;
 }
 
-namelist_entry_t *namelist_find(namelist_t *lp, const char *name)
+static namelist_entry_t *namelist_find(namelist_t *lp, const char *name)
 {
     int i;
     for(i = 0; i < lp->count; i++) {
@@ -217,8 +217,9 @@ static void find_unique_cname(char *cname, size_t cname_size)
 }
 
 /* loader for ES6 modules */
-JSModuleDef *jsc_module_loader(JSContext *ctx,
-                              const char *module_name, void *opaque)
+static JSModuleDef *jsc_module_loader(JSContext *ctx,
+                                      const char *module_name,
+                                      void *opaque)
 {
     JSModuleDef *m;
     namelist_entry_t *e;
@@ -271,7 +272,7 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
     return m;
 }
 
-// copied from quickjs.c:js_default_module_normalize_name
+/* copied from quickjs.c:js_default_module_normalize_name */
 static char *jsc_module_normalize_impl(JSContext *ctx,
                                        const char *base_name,
                                        const char *name)
@@ -412,7 +413,7 @@ static const char main_c_template2[] =
 
 #define PROG_NAME "qjsc"
 
-void help(void)
+static void help(void)
 {
     printf("QuickJS-ng Compiler version %s\n"
            "usage: " PROG_NAME " [options] [files]\n"
