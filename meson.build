@@ -158,7 +158,8 @@ endif
 qjs_c_args = ['-D_GNU_SOURCE']
 
 if host_system == 'windows'
-  qjs_c_args += ['-DWIN32_LEAN_AND_MEAN', '-D_WIN32_WINNT=0x0602']
+  qjs_c_args += ['-DWIN32_LEAN_AND_MEAN', '-D_WIN32_WINNT=0x0601']
+endif
 endif
 
 qjs_libc_lib = static_library(
