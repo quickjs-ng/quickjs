@@ -580,10 +580,10 @@ struct JSString {
 
 typedef struct JSStringSlice {
     JSString *parent;
-    uint32_t start; // in characters, not bytes
+    uint32_t start; // in bytes, not characters
 } JSStringSlice;
 
-static inline uint8_t *str8(JSString *p)
+static inline void *strv(JSString *p)
 {
     JSStringSlice *slice;
 
@@ -592,25 +592,20 @@ static inline uint8_t *str8(JSString *p)
         return (void *)&p[1];
     case JS_STRING_KIND_SLICE:
         slice = (void *)&p[1];
-        return str8(slice->parent) + slice->start;
+        return (char *)&slice->parent[1] + slice->start;
     }
     abort();
     return NULL;
 }
 
+static inline uint8_t *str8(JSString *p)
+{
+    return strv(p);
+}
+
 static inline uint16_t *str16(JSString *p)
 {
-    JSStringSlice *slice;
-
-    switch (p->kind) {
-    case JS_STRING_KIND_NORMAL:
-        return (void *)&p[1];
-    case JS_STRING_KIND_SLICE:
-        slice = (void *)&p[1];
-        return str16(slice->parent) + slice->start;
-    }
-    abort();
-    return NULL;
+    return strv(p);
 }
 
 typedef struct JSClosureVar {
@@ -3750,7 +3745,7 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
         if (p->kind == JS_STRING_KIND_SLICE) {
             slice = (void *)&p[1];
             p = slice->parent;
-            start += slice->start;
+            start += slice->start >> p->is_wide_char; // bytes -> chars
         }
         // allocate as 16 bit wide string to avoid wastage;
         // js_alloc_string allocates 1 byte extra for 8 bit strings;
@@ -3762,7 +3757,7 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
         q->len = len;
         slice = (void *)&q[1];
         slice->parent = p;
-        slice->start = start;
+        slice->start = start << p->is_wide_char; // chars -> bytes
         p->header.ref_count++;
         return JS_MKPTR(JS_TAG_STRING, q);
     }
