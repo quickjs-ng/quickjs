@@ -507,7 +507,6 @@ endif
 unicode_gen = executable(
   'unicode_gen',
   'cutils.c',
-  'libunicode.c',
   'unicode_gen.c',
 
   c_args: qjs_c_args,
