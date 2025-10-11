@@ -122,12 +122,6 @@ if get_option('debug')
     language: 'c',
   )
 endif
-if get_option('disable_parser')
-  add_project_arguments(
-    ['-DQJS_DISABLE_PARSER'],
-    language: 'c',
-  )
-endif
 
 qjs_sys_deps = []
 
@@ -160,6 +154,9 @@ qjs_c_args = ['-D_GNU_SOURCE']
 if host_system == 'windows'
   qjs_c_args += ['-DWIN32_LEAN_AND_MEAN', '-D_WIN32_WINNT=0x0601']
 endif
+
+if not get_option('parser')
+  qjs_c_args += ['-DQJS_DISABLE_PARSER']
 endif
 
 qjs_libc_lib = static_library(
