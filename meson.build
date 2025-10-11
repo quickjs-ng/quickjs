@@ -482,6 +482,21 @@ if tests.allowed()
 
       c_args: qjs_c_args,
       dependencies: qjs_dep,
+      build_by_default: false,
+    ),
+  )
+
+  # Function.toString() test
+  test(
+    'function_source',
+    executable(
+      'function_source',
+      'gen/function_source.c',
+      qjs_libc_srcs,
+
+      c_args: qjs_c_args,
+      dependencies: qjs_dep,
+      build_by_default: false,
     ),
   )
 endif
@@ -497,14 +512,6 @@ executable(
   build_by_default: false,
 )
 
-executable(
-  'function_source',
-  'gen/function_source.c',
-  qjs_libc_srcs,
-
-  c_args: qjs_c_args,
-  dependencies: qjs_dep,
-)
 
 if examples.allowed()
   executable(
