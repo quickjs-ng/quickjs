@@ -149,13 +149,15 @@ if qjs_libc
   qjs_hdrs += qjs_libc_hdrs
 endif
 
+qjs_parser = get_option('parser')
+
 qjs_c_args = ['-D_GNU_SOURCE']
 
 if host_system == 'windows'
   qjs_c_args += ['-DWIN32_LEAN_AND_MEAN', '-D_WIN32_WINNT=0x0601']
 endif
 
-if not get_option('parser')
+if not qjs_parser
   qjs_c_args += ['-DQJS_DISABLE_PARSER']
 endif
 
@@ -188,10 +190,15 @@ qjs_lib = library(
   version: meson.project_version(),
 )
 
+qjs_export_variables = [
+  f'have_parser=@qjs_parser@'
+]
+
 qjs_dep = declare_dependency(
   link_with: qjs_lib,
   dependencies: qjs_sys_deps,
   include_directories: qjs_lib.private_dir_include(),
+  variables: qjs_export_variables,
 )
 
 if host_system == 'emscripten'
@@ -249,6 +256,7 @@ import('pkgconfig').generate(
   description: 'QuickJS, the Next Generation: a mighty JavaScript engine',
   url: 'https://github.com/quickjs-ng/quickjs',
   version: meson.project_version(),
+  variables: qjs_export_variables,
 )
 
 # QuickJS bytecode compiler
