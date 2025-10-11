@@ -413,7 +413,10 @@ if tests.allowed()
       'int_arith',
       'float_arith',
 
-      'set_collection_add',
+      'map_set',
+      'map_delete',
+      'weak_map_set',
+      'weak_map_delete',
 
       'array_for',
       'array_for_in',
