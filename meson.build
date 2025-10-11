@@ -259,6 +259,10 @@ import('pkgconfig').generate(
   variables: qjs_export_variables,
 )
 
+if not qjs_parser
+  subdir_done()
+endif
+
 # QuickJS bytecode compiler
 qjsc_srcs = files(
   'qjsc.c',
