@@ -300,6 +300,7 @@ qjs_exe = executable(
   c_args: qjs_c_args,
   link_with: qjs_libc ? [] : qjs_libc_lib,
   dependencies: [qjs_dep, mimalloc_dep],
+  export_dynamic: true,
 
   install: true,
 )
@@ -357,6 +358,7 @@ if meson.is_cross_build()
       c_args: qjs_c_args,
       link_with: qjs_native_lib,
       dependencies: [qjs_sys_native_deps, mimalloc_native_dep],
+      export_dynamic: true,
 
       build_by_default: false,
       native: true,
