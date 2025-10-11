@@ -502,7 +502,7 @@ if tests.allowed()
 endif
 
 # Unicode generator
-executable(
+unicode_gen = executable(
   'unicode_gen',
   'cutils.c',
   'libunicode.c',
@@ -512,6 +512,93 @@ executable(
   build_by_default: false,
 )
 
+run_target(
+  'libunicode-table.h',
+  command: [
+    unicode_gen,
+    meson.current_source_dir() / 'unicode',
+    files('libunicode-table.h'),
+  ],
+)
+
+# bytecode to c source code for builtin and examples
+alias_target('codegen',
+  run_target(
+    'codegen_repl.c',
+    command: [
+      qjsc_exe,
+      '-ss',
+      '-o', files('gen/repl.c'),
+      '-m',
+      '-n', 'repl.js',
+      files('repl.js'),
+    ],
+  ),
+  run_target(
+    'codegen_standalone.c',
+    command: [
+      qjsc_exe,
+      '-ss',
+      '-o', files('gen/standalone.c'),
+      '-m',
+      '-n', 'standalone.js',
+      files('standalone.js'),
+    ],
+  ),
+  run_target(
+    'codegen_function_source.c',
+    command: [
+      qjsc_exe,
+      '-e',
+      '-o', files('gen/function_source.c'),
+      '-n', 'tests/function_source.js',
+      files('tests/function_source.js'),
+    ],
+  ),
+  run_target(
+    'codegen_hello.c',
+    command: [
+      qjsc_exe,
+      '-e',
+      '-o', files('gen/hello.c'),
+      '-n', 'examples/hello.js',
+      files('examples/hello.js'),
+    ],
+  ),
+  run_target(
+    'codegen_hello_module.c',
+    command: [
+      qjsc_exe,
+      '-e',
+      '-o', files('gen/hello_module.c'),
+      '-m',
+      '-n', 'examples/hello_module.js',
+      files('examples/hello_module.js'),
+    ],
+  ),
+  run_target(
+    'codegen_test_fib.c',
+    command: [
+      qjsc_exe,
+      '-e',
+      '-o', files('gen/test_fib.c'),
+      '-m',
+      '-n', 'examples/test_fib.js',
+      files('examples/test_fib.js'),
+    ],
+  ),
+  run_target(
+    'codegen_builtin-array-fromasync.h',
+    command: [
+      qjsc_exe,
+      '-C',
+      '-ss',
+      '-o', files('builtin-array-fromasync.h'),
+      '-n', 'builtin-array-fromasync.js',
+      files('builtin-array-fromasync.js'),
+    ],
+  ),
+)
 
 if examples.allowed()
   executable(
