@@ -3158,20 +3158,36 @@ static JSValue js_os_readlink(JSContext *ctx, JSValueConst this_val,
     JS_FreeCString(ctx, path);
     return make_string_error(ctx, buf, err);
 }
+#endif
 
+#if !defined(__wasi__)
+#if defined(_WIN32)
+static char *build_envp(JSContext *ctx, JSValue obj)
+{
+#define MS_ENVP_BUFFSIZE 4096 // this does automatically double as needed
+    size_t key_len, str_len, buff_len = MS_ENVP_BUFFSIZE;
+    char *envp, *pair;
+#else
 static char **build_envp(JSContext *ctx, JSValue obj)
 {
-    uint32_t len, i;
-    JSPropertyEnum *tab;
-    char **envp, *pair;
-    const char *key, *str;
-    JSValue val;
     size_t key_len, str_len;
+    char **envp, *pair;
+#endif // WIN32
+    const char *key, *str;
+    uint32_t len, i;
+    JSPropertyEnum *tab;    
+    JSValue val;
+    
 
     if (JS_GetOwnPropertyNames(ctx, &tab, &len, obj,
                                JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
         return NULL;
+#ifdef _WIN32
+    envp = js_mallocz(ctx,buff_len);
+    pair = envp;
+#else
     envp = js_mallocz(ctx, sizeof(envp[0]) * ((size_t)len + 1));
+#endif
     if (!envp)
         goto fail;
     for(i = 0; i < len; i++) {
@@ -3189,17 +3205,33 @@ static char **build_envp(JSContext *ctx, JSValue obj)
         }
         key_len = strlen(key);
         str_len = strlen(str);
+#if defined(_WIN32)
+        /* syntax highither AND MSVC AND ClangCl would not handle char* + size_t + size_t */
+         if (&pair[key_len + str_len + 2] > &envp[buff_len]) {
+            size_t buff_len2 = buff_len;
+            buff_len *= 2;
+            char *envp2 = envp;
+            envp = js_mallocz(ctx,buff_len);
+            memcpy(envp, envp2, buff_len2);
+            js_free(ctx, envp2);
+        };
+#else
         pair = js_malloc(ctx, key_len + str_len + 2);
         if (!pair) {
             JS_FreeCString(ctx, key);
             JS_FreeCString(ctx, str);
             goto fail;
         }
+#endif // _WIN32
         memcpy(pair, key, key_len);
         pair[key_len] = '=';
         memcpy(pair + key_len + 1, str, str_len);
         pair[key_len + 1 + str_len] = '\0';
+#if defined(_WIN32)
+        pair += key_len + str_len + 2;
+#else
         envp[i] = pair;
+#endif
         JS_FreeCString(ctx, key);
         JS_FreeCString(ctx, str);
     }
@@ -3210,14 +3242,18 @@ static char **build_envp(JSContext *ctx, JSValue obj)
     return envp;
  fail:
     if (envp) {
+#if !defined(_WIN32)
         for(i = 0; i < len; i++)
             js_free(ctx, envp[i]);
+#endif // !_WIN32
         js_free(ctx, envp);
         envp = NULL;
     }
     goto done;
 }
+#endif // !(__wasi__)
 
+#if !defined(_WIN32) && !defined(__wasi__)
 /* execvpe is not available on non GNU systems */
 static int my_execvpe(const char *filename, char **argv, char **envp)
 {
@@ -3285,7 +3321,7 @@ static void js_os_exec_once_init(void)
      *(void **) (&js_os_exec_closefrom) = dlsym(RTLD_DEFAULT, "closefrom");
 }
 
-#endif
+#endif // !defined(EMSCRIPTEN) && !defined(__wasi__)
 
 /* exec(args[, options]) -> exitcode */
 static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
@@ -3293,13 +3329,15 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
 {
     JSValueConst options, args = argv[0];
     JSValue val, ret_val;
-    const char **exec_argv, *file = NULL, *str, *cwd = NULL;
-    char **envp = environ;
+    const char *file = NULL, *str, *cwd = NULL;
     uint32_t exec_argc, i;
-    int ret, pid, status;
-    bool block_flag = true, use_path = true;
+    int ret, pid;
+    bool block_flag = true, use_path = true, inherit = false;
     static const char *std_name[3] = { "stdin", "stdout", "stderr" };
     int std_fds[3];
+    char **envp = environ;
+    const char **exec_argv;
+    int status;
     uint32_t uid = -1, gid = -1;
     int ngroups = -1;
     gid_t groups[64];
@@ -3341,6 +3379,8 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             goto exception;
         if (get_bool_option(ctx, &use_path, options, "usePath"))
             goto exception;
+        if (get_bool_option(ctx, &inherit, options, "inherit"))
+            goto exception;
 
         val = JS_GetPropertyStr(ctx, options, "file");
         if (JS_IsException(val))
@@ -3368,6 +3408,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (JS_IsException(val))
                 goto exception;
             if (!JS_IsUndefined(val)) {
+                inherit = true;
                 int fd;
                 ret = JS_ToInt32(ctx, &fd, val);
                 JS_FreeValue(ctx, val);
@@ -3386,7 +3427,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (!envp)
                 goto exception;
         }
-
+        
         val = JS_GetPropertyStr(ctx, options, "uid");
         if (JS_IsException(val))
             goto exception;
@@ -3396,7 +3437,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (ret)
                 goto exception;
         }
-
+        
         val = JS_GetPropertyStr(ctx, options, "gid");
         if (JS_IsException(val))
             goto exception;
@@ -3439,10 +3480,10 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (idx < len)
                 goto exception;
         }
-
+        
     }
 
-#if !defined(EMSCRIPTEN) && !defined(__wasi__)
+#if !defined(EMSCRIPTEN) && !defined(__wasi__) 
     // should happen pre-fork because it calls dlsym()
     // and that's not an async-signal-safe function
     js_once(&js_os_exec_once, js_os_exec_once_init);
@@ -3458,9 +3499,15 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
         /* remap the stdin/stdout/stderr handles if necessary */
         for(i = 0; i < 3; i++) {
             if (std_fds[i] != i) {
-                if (dup2(std_fds[i], i) < 0)
+                if ( dup2(std_fds[i], i)  < 0)
                     _exit(127);
-            }
+                close (std_fds[i]);
+            } else if (!inherit) {
+                int fd = open("/dev/null", O_WRONLY);
+                if ( dup2(fd, i) < 0)
+                    _exit(127);
+                close(fd);
+            };
         }
 
         if (js_os_exec_closefrom) {
@@ -3533,6 +3580,303 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
  exception:
     ret_val = JS_EXCEPTION;
     goto done;
+}
+#endif 
+
+#if defined(_WIN32)
+/* exec(args[, options]) -> exitcode */
+static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
+                          int argc, JSValueConst *argv)
+{
+    JSValueConst options, args = argv[0];
+    JSValue val, ret_val;
+    const char *file = NULL, *str, *cwd = NULL;
+    uint32_t exec_argc, i, besafe;
+    int32_t excode, dwait;
+    int ret, pid;
+    bool block_flag = true, use_path = true, inherit = false;
+    static const char *std_name[3] = { "stdin", "stdout", "stderr" };
+    int std_fds[3];
+    int cmd_ind, cmd_strlen;
+    char cmd_buff [JS__PATH_MAX];
+    char *envp = 0;
+
+    for(i = 0; i < 3; i++)
+        std_fds[i] = i;
+
+    /* get the options, if any */
+    if (argc >= 2) {
+        options = argv[1];
+
+        if (get_bool_option(ctx, &block_flag, options, "block"))
+            goto exception;
+        if (get_bool_option(ctx, &use_path, options, "usePath"))
+            goto exception;
+        if (get_bool_option(ctx, &inherit, options, "inherit"))
+            goto exception;
+
+        val = JS_GetPropertyStr(ctx, options, "file");
+        if (JS_IsException(val))
+            goto exception;
+        if (!JS_IsUndefined(val)) {
+            file = JS_ToCString(ctx, val);
+            JS_FreeValue(ctx, val);
+            if (!file)
+                goto exception;
+        }
+
+        val = JS_GetPropertyStr(ctx, options, "cwd");
+        if (JS_IsException(val))
+            goto exception;
+        if (!JS_IsUndefined(val)) {
+            cwd = JS_ToCString(ctx, val);
+            JS_FreeValue(ctx, val);
+            if (!cwd)
+                goto exception;
+        }
+
+        /* stdin/stdout/stderr handles */
+        for(i = 0; i < 3; i++) {
+            val = JS_GetPropertyStr(ctx, options, std_name[i]);
+            if (JS_IsException(val))
+                goto exception;
+            if (!JS_IsUndefined(val)) {
+                int fd;
+                ret = JS_ToInt32(ctx, &fd, val);
+                JS_FreeValue(ctx, val);
+                if (ret)
+                    goto exception;
+                std_fds[i] = fd;
+                inherit = true;
+            }
+        }
+
+        val = JS_GetPropertyStr(ctx, options, "env");
+        if (JS_IsException(val))
+            goto exception;
+        if (!JS_IsUndefined(val)) {
+            envp = build_envp(ctx, val);
+            JS_FreeValue(ctx, val);
+            if (!envp)
+                goto exception;
+        }
+    }
+        
+    cmd_ind = 0;
+    if (file) 
+       cmd_strlen = strlen(file);
+    else 
+       cmd_strlen = 0;
+    if (cmd_strlen) {
+        strncpy(&cmd_buff[cmd_ind], file, cmd_strlen);
+        cmd_ind += cmd_strlen;
+    };
+
+   val = JS_GetPropertyStr(ctx, args, "length");
+    if (JS_IsException(val))
+       goto exception;
+    ret = JS_ToUint32(ctx, &exec_argc, val);
+    JS_FreeValue(ctx, val);
+    if (ret)
+       goto exception;
+    /* arbitrary limit to avoid overflow */
+    if (exec_argc < 1 || exec_argc > 65535) {   
+        JS_ThrowTypeError(ctx, "invalid number of arguments");
+        goto exception;
+    }
+    for (i = 0; i < exec_argc; i++) {
+        val = JS_GetPropertyUint32(ctx, args, i);
+        if (JS_IsException(val)) 
+           goto exception;
+        str = JS_ToCString(ctx, val);
+        JS_FreeValue(ctx, val);
+        if (!str)  
+           goto exception;
+        cmd_strlen = strlen(str);
+        if (cmd_strlen) {
+            if ((i != 0) || (file != 0)) {
+                cmd_buff[cmd_ind] = ' ';
+                cmd_ind++;
+            };
+            if ( (cmd_ind + cmd_strlen + 1) > JS__PATH_MAX ) {
+                JS_ThrowRangeError(ctx, "exec command line too long.");
+                goto exception;
+            };
+            strncpy(&cmd_buff[cmd_ind], str, cmd_strlen);
+            cmd_ind += cmd_strlen;
+        };   
+    }
+    cmd_buff[cmd_ind] = 0;
+
+    int cflags = NORMAL_PRIORITY_CLASS;
+    STARTUPINFO istart;
+    PROCESS_INFORMATION iproc;  
+    memset(&iproc, 0, sizeof(iproc));
+    memset(&istart, 0, sizeof(istart) );
+    istart.cb = sizeof(istart);
+
+    if (inherit) 
+    { 
+        istart.dwFlags = STARTF_USESTDHANDLES;
+    
+        istart.hStdInput = (HANDLE) _get_osfhandle( std_fds[0] );
+        if (istart.hStdInput == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stdin of process");
+            goto exception;
+        }
+
+        istart.hStdOutput = (HANDLE) _get_osfhandle( std_fds[1] );
+        if (istart.hStdOutput == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stdout of process");
+            goto exception;
+        }
+
+        istart.hStdError = (HANDLE) _get_osfhandle( std_fds[2] );
+        if (istart.hStdError == INVALID_HANDLE_VALUE) {
+            JS_ThrowInternalError(ctx, "failed to associate stderr of process");
+            goto exception;
+        }
+    } else cflags |= CREATE_NO_WINDOW; 
+        
+
+    besafe = excode = 0;
+    if (!CreateProcessA(file, cmd_buff, 0, 0, true, cflags, envp, cwd, &istart, &iproc) ) {
+        excode = GetLastError();
+        ret_val = JS_NewInt32(ctx, excode);
+    } else if (block_flag) {
+        while (block_flag) {
+            dwait = WaitForSingleObject(iproc.hProcess, INFINITE);        
+            if (dwait == WAIT_OBJECT_0) {
+                if (!GetExitCodeProcess (iproc.hProcess, (DWORD*) &excode))
+                    excode = GetLastError();
+                ret_val = JS_NewInt32(ctx, (int32_t) excode);
+                block_flag = 0;
+            } else {
+                besafe++; 
+                if (besafe==20) {
+                    JS_ThrowPlainError(ctx, "exec process did not complete after %d iterations.", besafe);
+                    goto exception;
+                };
+            };
+        };
+        CloseHandle(iproc.hProcess);
+        CloseHandle(iproc.hThread);
+    } else {
+        pid = iproc.dwProcessId; 
+        ret_val = JS_NewInt32(ctx, pid);
+    };
+    
+ done:
+    JS_FreeCString(ctx, file);
+    JS_FreeCString(ctx, cwd);
+    if (envp) js_free(ctx, envp);
+    return ret_val;
+ exception:
+    ret_val = JS_EXCEPTION;
+    goto done;
+}
+
+/* pipe() -> [read_fd, write_fd] or null if error */
+static JSValue js_os_pipe(JSContext *ctx, JSValueConst this_val,
+                          int argc, JSValueConst *argv)
+{
+    int pipe_fds[2], ret;
+    JSValue obj;
+    HANDLE pipe_handles[2];
+    struct _SECURITY_ATTRIBUTES secur;
+    secur.nLength = sizeof(secur);
+    secur.lpSecurityDescriptor = 0;
+    secur.bInheritHandle = true;
+#define WIN32_PIPE_BUFFSIZE 4096
+    ret = CreatePipe(&pipe_handles[0], &pipe_handles[1], &secur, WIN32_PIPE_BUFFSIZE);
+    if (ret == 0) 
+        return JS_NULL;
+    pipe_fds[0] = _open_osfhandle( (intptr_t) pipe_handles[0], 0 );
+    if (pipe_fds[0] == -1 ) {
+        CloseHandle(pipe_handles[0]);
+        return JS_NULL;
+    }
+    pipe_fds[1] = _open_osfhandle( (intptr_t) pipe_handles[1], 0 );
+    if (pipe_fds[1] == -1 ) {
+        CloseHandle(pipe_handles[1]);
+        return JS_NULL;
+    }    
+    obj = JS_NewArray(ctx);
+    if (JS_IsException(obj))
+        return obj;
+    JS_DefinePropertyValueUint32(ctx, obj, 0, JS_NewInt32(ctx, pipe_fds[0]),
+                                 JS_PROP_C_W_E);
+    JS_DefinePropertyValueUint32(ctx, obj, 1, JS_NewInt32(ctx, pipe_fds[1]),
+                                 JS_PROP_C_W_E);
+    return obj;
+}
+
+/* kill(pid) -> (NULL | err) : works like standard c/linux kill except signal is ignored */
+static JSValue js_os_kill(JSContext *ctx, JSValueConst this_val,
+                          int argc, JSValueConst *argv)
+{
+    int pid;
+    BOOL ret;
+    HANDLE ph;
+    DWORD flags = PROCESS_TERMINATE;
+    if (JS_ToInt32(ctx, &pid, argv[0]))
+        return JS_EXCEPTION;
+    ph = OpenProcess(flags, false, (DWORD) pid); 
+    if (!ph) 
+        return JS_NewInt32(ctx, GetLastError());
+    ret = TerminateProcess(ph, 0);
+    CloseHandle(ph);
+    if (ret) 
+        JS_NewInt32(ctx, 0);
+    int err = GetLastError();
+    return JS_NewInt32(ctx,err);
+}
+
+
+/* watchpid(pid, blocking) -> ret: < 0 = -error | ret: = 0 still waiting | ret: = pid complete
+     hybrid clone of waitpid that will work with Win32 + GNU systems except there's no status  */
+static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    int pid;
+    HANDLE ph;
+    int block = 0, ret; 
+    DWORD options = 0, flags = PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE;
+    if (JS_ToInt32(ctx, &pid, argv[0])) 
+        return JS_EXCEPTION;
+    if ( (argc > 1) && (JS_ToInt32(ctx, &block, argv[1]))) 
+        return JS_EXCEPTION;
+    if (block==1) 
+        options = INFINITE;
+    ph = OpenProcess(flags, false, (DWORD) pid);
+    if (!ph) 
+        return JS_NewInt32(ctx, -GetLastError());
+    ret = WaitForSingleObject((HANDLE) ph, options);
+    CloseHandle(ph);
+    if (ret == WAIT_TIMEOUT) 
+        return JS_NewInt32(ctx, 0); // timed out
+    if (ret != 0) 
+        return JS_NewInt32(ctx, -GetLastError());
+    return JS_NewInt32(ctx, pid);
+}
+#endif // _WIN32
+
+#if !defined(_WIN32) && !defined(__wasi__)
+static JSValue js_os_watchpid(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    int pid, status, block = 0, options = 0, ret;
+    if (JS_ToInt32(ctx, &pid, argv[0]))
+        return JS_EXCEPTION;
+    if ((argc > 1) && (JS_ToInt32(ctx, &block, argv[1]))) 
+        return JS_EXCEPTION;
+    if (!block) options = WNOHANG;
+    ret = waitpid(pid, &status, options);
+    if (ret == 0) 
+        return JS_NewInt32(ctx, 0);
+    if (ret==pid) 
+        return JS_NewInt32(ctx, pid);
+    return JS_NewInt32(ctx, -errno);
 }
 
 /* getpid() -> pid */
@@ -4172,17 +4516,18 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("sleep", 1, js_os_sleep ),
 #if !defined(__wasi__)
     JS_CFUNC_DEF("realpath", 1, js_os_realpath ),
+    JS_CFUNC_DEF("exec", 1, js_os_exec ),
+    JS_CFUNC_DEF("watchpid", 2, js_os_watchpid ),
+    JS_CFUNC_DEF("pipe", 0, js_os_pipe ),
+    JS_CFUNC_DEF("kill", 2, js_os_kill ),
 #endif
 #if !defined(_WIN32) && !defined(__wasi__)
     JS_CFUNC_MAGIC_DEF("lstat", 1, js_os_stat, 1 ),
     JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
     JS_CFUNC_DEF("readlink", 1, js_os_readlink ),
-    JS_CFUNC_DEF("exec", 1, js_os_exec ),
     JS_CFUNC_DEF("getpid", 0, js_os_getpid ),
     JS_CFUNC_DEF("waitpid", 2, js_os_waitpid ),
     OS_FLAG(WNOHANG),
-    JS_CFUNC_DEF("pipe", 0, js_os_pipe ),
-    JS_CFUNC_DEF("kill", 2, js_os_kill ),
     JS_CFUNC_DEF("dup", 1, js_os_dup ),
     JS_CFUNC_DEF("dup2", 2, js_os_dup2 ),
 #endif
