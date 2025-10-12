@@ -1850,13 +1850,18 @@ import * as bjson from "qjs:bjson";
     }
 
     function config_file(s) {
-        return (std.getenv("HOME") || std.getenv("USERPROFILE") || ".") + "/" + s;
+        var xdg_state_home = std.getenv("XDG_STATE_HOME");
+        if (xdg_state_home && xdg_state_home[0] === "/") return xdg_state_home + "/" + s;
+        var home = std.getenv("HOME");
+        if (os.platform === "linux" && home) xdg_state_home = home + "/.local/state";
+        if (os.stat(xdg_state_home + "/")[1] === 0) return xdg_state_home + "/" + s;
+        return (home || std.getenv("USERPROFILE") || ".") + "/." + s;
     }
     function save_history() {
         var s = history.slice(-1000).join('\n').trim();
         if (s) {
             try {
-                var f = std.open(config_file(".qjs_history"), "w");
+                var f = std.open(config_file("qjs_history"), "w");
                 f.puts(s + '\n');
                 f.close();
             } catch (e) {
@@ -1864,7 +1869,7 @@ import * as bjson from "qjs:bjson";
         }
     }
     function load_history() {
-        var a = std.loadFile(config_file(".qjs_history"));
+        var a = std.loadFile(config_file("qjs_history"));
         if (a) {
             history = a.trim().split('\n');
             history_index = history.length;
