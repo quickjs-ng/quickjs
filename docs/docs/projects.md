@@ -34,3 +34,7 @@ This project adds TypeScript/JavaScript support for Godot 4.x. It supports multi
 ## [quickjs_es_runtime](https://github.com/HiRoFa/quickjs_es_runtime)
 
 Rust wrapper with typescript, modules, promises, async/await and much more.
+
+## [Lua jsregexp](https://github.com/kmarius/jsregexp)
+
+JavaScript regular expressions for Lua.
