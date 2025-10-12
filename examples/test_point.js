@@ -1,8 +1,10 @@
 /* example of JS module importing a C module */
-import * as os from "qjs:os";
 
-const isWin = os.platform === 'win32';
-const { Point } = await import(`./point.${isWin ? 'dll' : 'so'}`);
+// This should look for:
+//  - point.qjs.dll on Win32,
+//  - point.qjs.so on Linux,
+//  - point.qjs.dylib on macOS
+const { Point } = await import(`./point.qjs`);
 
 function assert(b, str)
 {
