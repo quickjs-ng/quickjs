@@ -648,6 +648,62 @@ static void slice_string_tocstring(void)
     JS_FreeRuntime(rt);
 }
 
+static void js_writeobject_oom(void)
+{
+    // Test JS_WriteObject2 OOM handling by sweeping memory limits.
+    // This verifies that JS_WriteObject returns NULL (not corrupted data)
+    // when buffer allocation fails during serialization.
+    for (size_t limit_kb = 10; limit_kb <= 200; limit_kb += 1) {
+        JSRuntime *rt = JS_NewRuntime();
+        JSContext *ctx = JS_NewContext(rt);
+
+        size_t limit = limit_kb * 1024;
+        JS_SetMemoryLimit(rt, limit);
+
+        // Create object that needs ~30KB when serialized
+        static const char code[] = "({ data: new Array(3000).fill('test') })";
+        JSValue obj = JS_Eval(ctx, code, strlen(code), "<test>", JS_EVAL_TYPE_GLOBAL);
+
+        if (JS_IsException(obj)) {
+            // Can't even create the object at this limit - skip
+            JS_FreeValue(ctx, obj);
+            JS_FreeContext(ctx);
+            JS_FreeRuntime(rt);
+            continue;
+        }
+
+        // Try to serialize
+        size_t out_len = 0;
+        uint8_t *buf = JS_WriteObject(ctx, &out_len, obj, JS_WRITE_OBJ_REFERENCE);
+
+        if (buf != NULL) {
+            // Remove memory limit before decoding to ensure we're testing
+            // for data corruption, not OOM during decode
+            JS_SetMemoryLimit(rt, -1);
+
+            // Try to decode to check for corruption
+            JSValue decoded = JS_ReadObject(ctx, buf, out_len, JS_READ_OBJ_REFERENCE);
+            assert(!JS_IsException(decoded));
+
+            // Verify decoded data is complete
+            JSValue data_prop = JS_GetPropertyStr(ctx, decoded, "data");
+            assert(JS_IsArray(data_prop));
+            JSValue len_val = JS_GetPropertyStr(ctx, data_prop, "length");
+            int32_t array_len = 0;
+            JS_ToInt32(ctx, &array_len, len_val);
+            assert(array_len == 3000);
+            JS_FreeValue(ctx, len_val);
+            JS_FreeValue(ctx, data_prop);
+            JS_FreeValue(ctx, decoded);
+            js_free(ctx, buf);
+        }
+
+        JS_FreeValue(ctx, obj);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+}
+
 int main(void)
 {
     sync_call();
@@ -663,5 +719,6 @@ int main(void)
     new_errors();
     global_object_prototype();
     slice_string_tocstring();
+    js_writeobject_oom();
     return 0;
 }
