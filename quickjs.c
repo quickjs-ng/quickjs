@@ -29290,6 +29290,23 @@ static __exception JSAtom js_parse_from_clause(JSParseState *s)
     return module_name;
 }
 
+static bool has_unmatched_surrogate(const uint16_t *s, size_t n)
+{
+    size_t i;
+
+    for (i = 0; i < n; i++) {
+        if (is_lo_surrogate(s[i]))
+            return true;
+        if (!is_hi_surrogate(s[i]))
+            continue;
+        if (++i == n)
+            return true;
+        if (!is_lo_surrogate(s[i]))
+            return true;
+    }
+    return false;
+}
+
 static __exception int js_parse_export(JSParseState *s)
 {
     JSContext *ctx = s->ctx;
@@ -29343,6 +29360,11 @@ static __exception int js_parse_export(JSParseState *s)
                 if (token_is_ident(s->token.val)) {
                     export_name = JS_DupAtom(ctx, s->token.u.ident.atom);
                 } else if (s->token.val == TOK_STRING) {
+                    JSString *p = JS_VALUE_GET_STRING(s->token.u.str.str);
+                    if (p->is_wide_char && has_unmatched_surrogate(str16(p), p->len)) {
+                        js_parse_error(s, "illegal export name");
+                        return -1;
+                    }
                     export_name = JS_ValueToAtom(ctx, s->token.u.str.str);
                     if (export_name == JS_ATOM_NULL) {
                         return -1;
