@@ -29339,6 +29339,7 @@ static __exception int js_parse_export(JSParseState *s)
     switch(tok) {
     case '{':
         first_export = m->export_entries_count;
+        bool has_string_binding = false;
         while (s->token.val != '}') {
             if (token_is_ident(s->token.val)) {
                 local_name = JS_DupAtom(ctx, s->token.u.ident.atom);
@@ -29347,6 +29348,7 @@ static __exception int js_parse_export(JSParseState *s)
                 if (local_name == JS_ATOM_NULL) {
                     return -1;
                 }
+                has_string_binding = true;
             } else {
                 js_parse_error(s, "identifier or string expected");
                 return -1;
@@ -29409,6 +29411,9 @@ static __exception int js_parse_export(JSParseState *s)
                 me->export_type = JS_EXPORT_TYPE_INDIRECT;
                 me->u.req_module_idx = idx;
             }
+        } else if (has_string_binding) {
+            // Without 'from' clause, string literals cannot be used as local binding names
+            return js_parse_error(s, "string export name only allowed with 'from' clause");
         }
         break;
     case '*':
