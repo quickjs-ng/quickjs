@@ -5377,12 +5377,13 @@ JSValue JS_NewCFunction3(JSContext *ctx, JSCFunction *func,
                          cproto == JS_CFUNC_constructor_magic ||
                          cproto == JS_CFUNC_constructor_or_func ||
                          cproto == JS_CFUNC_constructor_or_func_magic);
-    if (!name)
-        name = "";
-    name_atom = JS_NewAtom(ctx, name);
-    if (name_atom == JS_ATOM_NULL) {
-        JS_FreeValue(ctx, func_obj);
-        return JS_EXCEPTION;
+    name_atom = JS_ATOM_empty_string;
+    if (name && *name) {
+        name_atom = JS_NewAtom(ctx, name);
+        if (name_atom == JS_ATOM_NULL) {
+            JS_FreeValue(ctx, func_obj);
+            return JS_EXCEPTION;
+        }
     }
     js_function_set_properties(ctx, func_obj, name_atom, length);
     JS_FreeAtom(ctx, name_atom);
@@ -5454,11 +5455,13 @@ static JSValue js_c_function_data_call(JSContext *ctx, JSValueConst func_obj,
     return s->func(ctx, this_val, argc, arg_buf, s->magic, vc(s->data));
 }
 
-JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
-                            int length, int magic, int data_len,
-                            JSValueConst *data)
+JSValue JS_NewCFunctionData2(JSContext *ctx, JSCFunctionData *func,
+                             const char *name,
+                             int length, int magic, int data_len,
+                             JSValueConst *data)
 {
     JSCFunctionDataRecord *s;
+    JSAtom name_atom;
     JSValue func_obj;
     int i;
 
@@ -5478,9 +5481,24 @@ JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
     for(i = 0; i < data_len; i++)
         s->data[i] = js_dup(data[i]);
     JS_SetOpaqueInternal(func_obj, s);
-    js_function_set_properties(ctx, func_obj,
-                               JS_ATOM_empty_string, length);
+    name_atom = JS_ATOM_empty_string;
+    if (name && *name) {
+        name_atom = JS_NewAtom(ctx, name);
+        if (name_atom == JS_ATOM_NULL) {
+            JS_FreeValue(ctx, func_obj);
+            return JS_EXCEPTION;
+        }
+    }
+    js_function_set_properties(ctx, func_obj, name_atom, length);
+    JS_FreeAtom(ctx, name_atom);
     return func_obj;
+}
+
+JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
+                            int length, int magic, int data_len,
+                            JSValueConst *data)
+{
+    return JS_NewCFunctionData2(ctx, func, NULL, length, magic, data_len, data);
 }
 
 static JSContext *js_autoinit_get_realm(JSProperty *pr)
