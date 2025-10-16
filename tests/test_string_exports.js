@@ -11,15 +11,15 @@ import { "string-name" as strMixed } from "./fixture_string_exports.js";
 import { regularExport, normalName } from "./fixture_string_exports.js";
 
 // Verify values
-assert(str1 === "value-1");
-assert(str2 === "value-2");
-assert(strMixed === "mixed-value");
-assert(regularExport === "regular");
-assert(normalName === "mixed-value");
+assert(str1, "value-1");
+assert(str2, "value-2");
+assert(strMixed, "mixed-value");
+assert(regularExport, "regular");
+assert(normalName, "mixed-value");
 
 // Verify module namespace has string-named exports
-assert(mod["string-export-1"] === "value-1");
-assert(mod["string-export-2"] === "value-2");
-assert(mod["string-name"] === "mixed-value");
-assert(mod.regularExport === "regular");
-assert(mod.normalName === "mixed-value");
+assert(mod["string-export-1"], "value-1");
+assert(mod["string-export-2"], "value-2");
+assert(mod["string-name"], "mixed-value");
+assert(mod.regularExport, "regular");
+assert(mod.normalName, "mixed-value");

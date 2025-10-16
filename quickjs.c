@@ -29345,13 +29345,11 @@ static __exception int js_parse_export(JSParseState *s)
                 local_name = JS_DupAtom(ctx, s->token.u.ident.atom);
             } else if (s->token.val == TOK_STRING) {
                 local_name = JS_ValueToAtom(ctx, s->token.u.str.str);
-                if (local_name == JS_ATOM_NULL) {
+                if (local_name == JS_ATOM_NULL)
                     return -1;
-                }
                 has_string_binding = true;
             } else {
-                js_parse_error(s, "identifier or string expected");
-                return -1;
+                return js_parse_error(s, "identifier or string expected");
             }
             export_name = JS_ATOM_NULL;
             if (next_token(s))
@@ -29421,7 +29419,6 @@ static __exception int js_parse_export(JSParseState *s)
             /* export ns from */
             if (next_token(s))
                 return -1;
-
             if (token_is_ident(s->token.val)) {
                 export_name = JS_DupAtom(ctx, s->token.u.ident.atom);
             } else if (s->token.val == TOK_STRING) {
@@ -29430,10 +29427,8 @@ static __exception int js_parse_export(JSParseState *s)
                     return -1;
                 }
             } else {
-                js_parse_error(s, "identifier or string expected");
-                return -1;
+                return js_parse_error(s, "identifier or string expected");
             }
-
             if (next_token(s))
                 goto fail1;
             module_name = js_parse_from_clause(s);
@@ -29611,12 +29606,10 @@ static __exception int js_parse_import(JSParseState *s)
                     import_name = JS_DupAtom(ctx, s->token.u.ident.atom);
                 } else if (s->token.val == TOK_STRING) {
                     import_name = JS_ValueToAtom(ctx, s->token.u.str.str);
-                    if (import_name == JS_ATOM_NULL) {
+                    if (import_name == JS_ATOM_NULL)
                         return -1;
-                    }
                 } else {
-                    js_parse_error(s, "identifier or string expected expected");
-                    return -1;
+                    return js_parse_error(s, "identifier or string expected expected");
                 }
                 local_name = JS_ATOM_NULL;
                 if (next_token(s))
