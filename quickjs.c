@@ -1120,8 +1120,6 @@ static __exception int JS_ToArrayLengthFree(JSContext *ctx, uint32_t *plen,
                                             JSValue val, bool is_array_ctor);
 static JSValue JS_EvalObject(JSContext *ctx, JSValueConst this_obj,
                              JSValueConst val, int flags, int scope_idx);
-JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-
 static __maybe_unused void JS_DumpString(JSRuntime *rt, JSString *p);
 static __maybe_unused void JS_DumpObjectHeader(JSRuntime *rt);
 static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p);
@@ -1234,7 +1232,7 @@ static JSValue JS_ToObjectFree(JSContext *ctx, JSValue val);
 static JSProperty *add_property(JSContext *ctx,
                                 JSObject *p, JSAtom prop, int prop_flags);
 static int JS_ToBigInt64Free(JSContext *ctx, int64_t *pres, JSValue val);
-JSValue JS_ThrowOutOfMemory(JSContext *ctx);
+static JSValue JS_ThrowStackOverflow(JSContext *ctx);
 static JSValue JS_ThrowTypeErrorRevokedProxy(JSContext *ctx);
 static JSValue js_proxy_getPrototypeOf(JSContext *ctx, JSValueConst obj);
 static int js_proxy_setPrototypeOf(JSContext *ctx, JSValueConst obj,
@@ -1276,7 +1274,7 @@ static JSValue JS_ThrowTypeErrorDetachedArrayBuffer(JSContext *ctx);
 static JSValue JS_ThrowTypeErrorArrayBufferOOB(JSContext *ctx);
 static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf, int var_idx,
                              bool is_arg);
-static JSValue js_generator_function_call(JSContext *ctx, JSValueConst func_obj,
+static JSValue js_call_generator_function(JSContext *ctx, JSValueConst func_obj,
                                           JSValueConst this_obj,
                                           int argc, JSValueConst *argv,
                                           int flags);
@@ -1342,7 +1340,7 @@ static JSValue JS_CreateAsyncFromSyncIterator(JSContext *ctx,
 static void js_c_function_data_finalizer(JSRuntime *rt, JSValueConst val);
 static void js_c_function_data_mark(JSRuntime *rt, JSValueConst val,
                                     JS_MarkFunc *mark_func);
-static JSValue js_c_function_data_call(JSContext *ctx, JSValueConst func_obj,
+static JSValue js_call_c_function_data(JSContext *ctx, JSValueConst func_obj,
                                        JSValueConst this_val,
                                        int argc, JSValueConst *argv, int flags);
 static JSAtom js_symbol_to_atom(JSContext *ctx, JSValueConst val);
@@ -1871,9 +1869,9 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     rt->class_array[JS_CLASS_MODULE_NS].exotic = &js_module_ns_exotic_methods;
 
     rt->class_array[JS_CLASS_C_FUNCTION].call = js_call_c_function;
-    rt->class_array[JS_CLASS_C_FUNCTION_DATA].call = js_c_function_data_call;
+    rt->class_array[JS_CLASS_C_FUNCTION_DATA].call = js_call_c_function_data;
     rt->class_array[JS_CLASS_BOUND_FUNCTION].call = js_call_bound_function;
-    rt->class_array[JS_CLASS_GENERATOR_FUNCTION].call = js_generator_function_call;
+    rt->class_array[JS_CLASS_GENERATOR_FUNCTION].call = js_call_generator_function;
     if (init_shape_hash(rt))
         goto fail;
 
@@ -5433,26 +5431,44 @@ static void js_c_function_data_mark(JSRuntime *rt, JSValueConst val,
     }
 }
 
-static JSValue js_c_function_data_call(JSContext *ctx, JSValueConst func_obj,
+static JSValue js_call_c_function_data(JSContext *ctx, JSValueConst func_obj,
                                        JSValueConst this_val,
                                        int argc, JSValueConst *argv, int flags)
 {
-    JSCFunctionDataRecord *s = JS_GetOpaque(func_obj, JS_CLASS_C_FUNCTION_DATA);
+    JSRuntime *rt = ctx->rt;
+    JSStackFrame sf_s, *sf = &sf_s, *prev_sf;
+    JSCFunctionDataRecord *s;
     JSValueConst *arg_buf;
+    JSValue ret;
+    size_t stack_size;
+    int arg_count;
     int i;
 
-    /* XXX: could add the function on the stack for debug */
-    if (unlikely(argc < s->length)) {
-        arg_buf = alloca(sizeof(arg_buf[0]) * s->length);
+    s = JS_GetOpaque(func_obj, JS_CLASS_C_FUNCTION_DATA);
+    if (!s)
+        return JS_EXCEPTION; // can't really happen
+    arg_buf = argv;
+    arg_count = s->length;
+    if (unlikely(argc < arg_count)) {
+        stack_size = arg_count * sizeof(arg_buf[0]);
+        if (js_check_stack_overflow(rt, stack_size))
+            return JS_ThrowStackOverflow(ctx);
+        arg_buf = alloca(stack_size);
         for(i = 0; i < argc; i++)
             arg_buf[i] = argv[i];
-        for(i = argc; i < s->length; i++)
+        for(i = argc; i < arg_count; i++)
             arg_buf[i] = JS_UNDEFINED;
-    } else {
-        arg_buf = argv;
     }
-
-    return s->func(ctx, this_val, argc, arg_buf, s->magic, vc(s->data));
+    prev_sf = rt->current_stack_frame;
+    sf->prev_frame = prev_sf;
+    rt->current_stack_frame = sf;
+    // TODO(bnoordhuis) switch realms like js_call_c_function does
+    sf->is_strict_mode = false;
+    sf->cur_func = unsafe_unconst(func_obj);
+    sf->arg_count = argc;
+    ret = s->func(ctx, this_val, argc, arg_buf, s->magic, vc(s->data));
+    rt->current_stack_frame = sf->prev_frame;
+    return ret;
 }
 
 JSValue JS_NewCFunctionData2(JSContext *ctx, JSCFunctionData *func,
@@ -19107,7 +19123,7 @@ static JSValue js_generator_next(JSContext *ctx, JSValueConst this_val,
     return ret;
 }
 
-static JSValue js_generator_function_call(JSContext *ctx, JSValueConst func_obj,
+static JSValue js_call_generator_function(JSContext *ctx, JSValueConst func_obj,
                                           JSValueConst this_obj,
                                           int argc, JSValueConst *argv,
                                           int flags)

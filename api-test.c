@@ -12,18 +12,31 @@ static JSValue eval(JSContext *ctx, const char *code)
     return JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_GLOBAL);
 }
 
+static JSValue cfunc_callback(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
+{
+    return JS_ThrowTypeError(ctx, "from cfunc");
+}
+
+static JSValue cfuncdata_callback(JSContext *ctx, JSValueConst this_val,
+                                  int argc, JSValueConst *argv,
+                                  int magic, JSValueConst *func_data)
+{
+    return JS_ThrowTypeError(ctx, "from cfuncdata");
+}
+
 static void cfunctions(void)
 {
     uint32_t length;
     const char *s;
-    JSValue ret;
+    JSValue ret, stack;
 
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx = JS_NewContext(rt);
-    JSValue cfunc = JS_NewCFunction(ctx, NULL, "cfunc", 42);
+    JSValue cfunc = JS_NewCFunction(ctx, cfunc_callback, "cfunc", 42);
     JSValue cfuncdata =
-        JS_NewCFunctionData2(ctx, NULL, "cfuncdata", /*length*/1337, /*magic*/0,
-                             /*data_len*/0, NULL);
+        JS_NewCFunctionData2(ctx, cfuncdata_callback, "cfuncdata",
+                             /*length*/1337, /*magic*/0, /*data_len*/0, NULL);
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyStr(ctx, global, "cfunc", cfunc);
     JS_SetPropertyStr(ctx, global, "cfuncdata", cfuncdata);
@@ -56,6 +69,40 @@ static void cfunctions(void)
     assert(JS_IsNumber(ret));
     assert(0 == JS_ToUint32(ctx, &length, ret));
     assert(length == 1337);
+
+    ret = eval(ctx, "cfunc()");
+    assert(JS_IsException(ret));
+    ret = JS_GetException(ctx);
+    assert(JS_IsError(ctx, ret));
+    stack = JS_GetPropertyStr(ctx, ret, "stack");
+    assert(JS_IsString(stack));
+    s = JS_ToCString(ctx, stack);
+    JS_FreeValue(ctx, stack);
+    assert(s);
+    assert(!strcmp(s, "    at cfunc (native)\n    at <eval> (<input>:1:1)\n"));
+    JS_FreeCString(ctx, s);
+    s = JS_ToCString(ctx, ret);
+    JS_FreeValue(ctx, ret);
+    assert(s);
+    assert(!strcmp(s, "TypeError: from cfunc"));
+    JS_FreeCString(ctx, s);
+
+    ret = eval(ctx, "cfuncdata()");
+    assert(JS_IsException(ret));
+    ret = JS_GetException(ctx);
+    assert(JS_IsError(ctx, ret));
+    stack = JS_GetPropertyStr(ctx, ret, "stack");
+    assert(JS_IsString(stack));
+    s = JS_ToCString(ctx, stack);
+    JS_FreeValue(ctx, stack);
+    assert(s);
+    assert(!strcmp(s, "    at cfuncdata (native)\n    at <eval> (<input>:1:1)\n"));
+    JS_FreeCString(ctx, s);
+    s = JS_ToCString(ctx, ret);
+    JS_FreeValue(ctx, ret);
+    assert(s);
+    assert(!strcmp(s, "TypeError: from cfuncdata"));
+    JS_FreeCString(ctx, s);
 
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
