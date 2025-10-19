@@ -73,7 +73,7 @@ static void cfunctions(void)
     ret = eval(ctx, "cfunc()");
     assert(JS_IsException(ret));
     ret = JS_GetException(ctx);
-    assert(JS_IsError(ctx, ret));
+    assert(JS_IsError(ret));
     stack = JS_GetPropertyStr(ctx, ret, "stack");
     assert(JS_IsString(stack));
     s = JS_ToCString(ctx, stack);
@@ -90,7 +90,7 @@ static void cfunctions(void)
     ret = eval(ctx, "cfuncdata()");
     assert(JS_IsException(ret));
     ret = JS_GetException(ctx);
-    assert(JS_IsError(ctx, ret));
+    assert(JS_IsError(ret));
     stack = JS_GetPropertyStr(ctx, ret, "stack");
     assert(JS_IsString(stack));
     s = JS_ToCString(ctx, stack);
@@ -137,7 +137,7 @@ static void sync_call(void)
     JS_FreeValue(ctx, ret);
     assert(JS_HasException(ctx));
     JSValue e = JS_GetException(ctx);
-    assert(JS_IsUncatchableError(ctx, e));
+    assert(JS_IsUncatchableError(e));
     JS_FreeValue(ctx, e);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
@@ -170,7 +170,7 @@ static void async_call(void)
     assert(r == -1);
     assert(JS_HasException(ctx));
     JSValue e = JS_GetException(ctx);
-    assert(JS_IsUncatchableError(ctx, e));
+    assert(JS_IsUncatchableError(e));
     JS_FreeValue(ctx, e);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
@@ -215,7 +215,7 @@ static void async_call_stack_overflow(void)
     }
     assert(r == 1);
     assert(!JS_HasException(ctx));
-    assert(JS_IsError(ctx, value)); // stack overflow should be caught
+    assert(JS_IsError(value)); // stack overflow should be caught
     JS_FreeValue(ctx, value);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
@@ -625,7 +625,7 @@ static void new_errors(void)
         JSValue obj = (*e->func)(ctx, "the %s", "needle");
         assert(!JS_IsException(obj));
         assert(JS_IsObject(obj));
-        assert(JS_IsError(ctx, obj));
+        assert(JS_IsError(obj));
         const char *haystack = JS_ToCString(ctx, obj);
         char needle[256];
         snprintf(needle, sizeof(needle), "%s: the needle", e->name);
