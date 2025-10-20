@@ -54133,6 +54133,43 @@ static bool array_buffer_is_resizable(const JSArrayBuffer *abuf)
     return abuf->max_byte_length >= 0;
 }
 
+static void js_array_buffer_update_typed_arrays(JSArrayBuffer *abuf)
+{
+    uint32_t size_log2, size_elem;
+    struct list_head *el;
+    JSTypedArray *ta;
+    JSObject *p;
+    uint8_t *data;
+    int64_t len;
+
+    len = abuf->byte_length;
+    data = abuf->data;
+    list_for_each(el, &abuf->array_list) {
+        ta = list_entry(el, JSTypedArray, link);
+        p = ta->obj;
+        if (p->class_id == JS_CLASS_DATAVIEW) {
+            if (ta->track_rab && ta->offset < len)
+                ta->length = len - ta->offset;
+            continue;
+        }
+        p->u.array.count = 0;
+        p->u.array.u.ptr = NULL;
+        size_log2 = typed_array_size_log2(p->class_id);
+        size_elem = 1 << size_log2;
+        if (ta->track_rab) {
+            if (len >= (int64_t)ta->offset + size_elem) {
+                p->u.array.count = (len - ta->offset) >> size_log2;
+                p->u.array.u.ptr = &data[ta->offset];
+            }
+        } else {
+            if (len >= (int64_t)ta->offset + ta->length) {
+                p->u.array.count = ta->length >> size_log2;
+                p->u.array.u.ptr = &data[ta->offset];
+            }
+        }
+    }
+}
+
 // ES #sec-arraybuffer.prototype.transfer
 static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
                                         int argc, JSValueConst *argv, int magic)
@@ -54185,6 +54222,7 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
     abuf->data = NULL;
     abuf->byte_length = 0;
     abuf->detached = true;
+    js_array_buffer_update_typed_arrays(abuf);
     return js_array_buffer_constructor3(ctx, JS_UNDEFINED, new_len, pmax_len,
                                         JS_CLASS_ARRAY_BUFFER,
                                         bs, abuf->free_func,
@@ -54194,11 +54232,7 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
 static JSValue js_array_buffer_resize(JSContext *ctx, JSValueConst this_val,
                                       int argc, JSValueConst *argv, int class_id)
 {
-    uint32_t size_log2, size_elem;
-    struct list_head *el;
     JSArrayBuffer *abuf;
-    JSTypedArray *ta;
-    JSObject *p;
     uint8_t *data;
     int64_t len;
 
@@ -54241,33 +54275,7 @@ static JSValue js_array_buffer_resize(JSContext *ctx, JSValueConst this_val,
         abuf->byte_length = len;
         abuf->data = data;
     }
-    data = abuf->data;
-    // update lengths of all typed arrays backed by this array buffer
-    list_for_each(el, &abuf->array_list) {
-        ta = list_entry(el, JSTypedArray, link);
-        p = ta->obj;
-        if (p->class_id == JS_CLASS_DATAVIEW) {
-            if (ta->track_rab && ta->offset < len)
-                ta->length = len - ta->offset;
-
-            continue;
-        }
-        p->u.array.count = 0;
-        p->u.array.u.ptr = NULL;
-        size_log2 = typed_array_size_log2(p->class_id);
-        size_elem = 1 << size_log2;
-        if (ta->track_rab) {
-            if (len >= (int64_t)ta->offset + size_elem) {
-                p->u.array.count = (len - ta->offset) >> size_log2;
-                p->u.array.u.ptr = &data[ta->offset];
-            }
-        } else {
-            if (len >= (int64_t)ta->offset + ta->length) {
-                p->u.array.count = ta->length >> size_log2;
-                p->u.array.u.ptr = &data[ta->offset];
-            }
-        }
-    }
+    js_array_buffer_update_typed_arrays(abuf);
     return JS_UNDEFINED;
 }
 
