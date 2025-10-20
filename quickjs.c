@@ -10419,13 +10419,13 @@ bool JS_IsDataView(JSValueConst val)
     return JS_CLASS_DATAVIEW == JS_GetClassID(val);
 }
 
-bool JS_IsError(JSContext *ctx, JSValueConst val)
+bool JS_IsError(JSValueConst val)
 {
     return JS_CLASS_ERROR == JS_GetClassID(val);
 }
 
 /* used to avoid catching interrupt exceptions */
-bool JS_IsUncatchableError(JSContext *ctx, JSValueConst val)
+bool JS_IsUncatchableError(JSValueConst val)
 {
     JSObject *p;
     if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
@@ -18688,7 +18688,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         build_backtrace(ctx, rt->current_exception, JS_UNDEFINED,
                         NULL, 0, 0, 0);
     }
-    if (!JS_IsUncatchableError(ctx, rt->current_exception)) {
+    if (!JS_IsUncatchableError(rt->current_exception)) {
         while (sp > stack_buf) {
             JSValue val = *--sp;
             JS_FreeValue(ctx, val);
@@ -19253,7 +19253,7 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
     func_ret = async_func_resume(ctx, &s->func_state);
     if (JS_IsException(func_ret)) {
     fail:
-        if (unlikely(JS_IsUncatchableError(ctx, ctx->rt->current_exception))) {
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
             is_success = false;
         } else {
             JSValue error = JS_GetException(ctx);
@@ -19262,7 +19262,7 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
             JS_FreeValue(ctx, error);
         resolved:
             if (unlikely(JS_IsException(ret2))) {
-                if (JS_IsUncatchableError(ctx, ctx->rt->current_exception)) {
+                if (JS_IsUncatchableError(ctx->rt->current_exception)) {
                     is_success = false;
                 } else {
                     abort(); /* BUG */
@@ -39383,7 +39383,7 @@ static const JSCFunctionListEntry js_error_proto_funcs[] = {
 static JSValue js_error_isError(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
-    return js_bool(JS_IsError(ctx, argv[0]));
+    return js_bool(JS_IsError(argv[0]));
 }
 
 static JSValue js_error_get_stackTraceLimit(JSContext *ctx, JSValueConst this_val)
@@ -50500,7 +50500,7 @@ static JSValue promise_reaction_job(JSContext *ctx, int argc,
     }
     is_reject = JS_IsException(res);
     if (is_reject) {
-        if (unlikely(JS_IsUncatchableError(ctx, ctx->rt->current_exception)))
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
             return JS_EXCEPTION;
         res = JS_GetException(ctx);
     }

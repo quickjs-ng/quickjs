@@ -1389,7 +1389,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
 
     if (JS_IsException(res_val)) {
         exception_val = JS_GetException(ctx);
-        is_error = JS_IsError(ctx, exception_val);
+        is_error = JS_IsError(exception_val);
         js_print_262(ctx, JS_NULL, 1, (JSValueConst *)&exception_val);
         if (is_error) {
             JSValue name, stack;
