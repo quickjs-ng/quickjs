@@ -590,6 +590,14 @@ function test_typed_array()
         caught = true;
     }
     assert(caught);
+
+    // https://github.com/quickjs-ng/quickjs/issues/1208
+    buffer = new ArrayBuffer(16);
+    a = new Uint8Array(buffer);
+    a.fill(42);
+    assert(a[0], 42);
+    buffer.transfer();
+    assert(a[0], undefined);
 }
 
 function test_json()
