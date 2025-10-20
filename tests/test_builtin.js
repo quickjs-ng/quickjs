@@ -586,6 +586,7 @@ function test_typed_array()
     try {
         new TypedArray(); // extensible but not instantiable
     } catch (e) {
+        assert(e instanceof TypeError);
         assert(/cannot be called/.test(e.message));
         caught = true;
     }
@@ -598,6 +599,25 @@ function test_typed_array()
     assert(a[0], 42);
     buffer.transfer();
     assert(a[0], undefined);
+
+    // https://github.com/quickjs-ng/quickjs/issues/1210
+    var buffer = new ArrayBuffer(16, {maxByteLength: 16});
+    var desc = Object.getOwnPropertyDescriptor(ArrayBuffer, Symbol.species);
+    assert(typeof desc.get, "function");
+    var get = function() {
+        buffer.resize(1);
+        return ArrayBuffer;
+    };
+    Object.defineProperty(ArrayBuffer, Symbol.species, {...desc, get});
+    let ex;
+    try {
+        buffer.slice();
+    } catch (ex_) {
+        ex = ex_;
+    }
+    Object.defineProperty(ArrayBuffer, Symbol.species, desc); // restore
+    assert(ex instanceof TypeError);
+    assert("ArrayBuffer is detached", ex.message);
 }
 
 function test_json()
