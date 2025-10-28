@@ -327,16 +327,6 @@ struct JSRuntime {
     JSRuntimeFinalizerState *finalizers;
 };
 
-struct JSClass {
-    uint32_t class_id; /* 0 means free entry */
-    JSAtom class_name;
-    JSClassFinalizer *finalizer;
-    JSClassGCMark *gc_mark;
-    JSClassCall *call;
-    /* pointers for exotic behavior, can be NULL if none are present */
-    const JSClassExoticMethods *exotic;
-};
-
 typedef struct JSStackFrame {
     struct JSStackFrame *prev_frame; /* NULL if first stack frame */
     JSValue cur_func; /* current function, JS_UNDEFINED if the frame is detached */
@@ -3610,6 +3600,13 @@ bool JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id)
             rt->class_array[class_id].class_id != 0);
 }
 
+const JSClass *JS_GetClass(JSRuntime *rt, JSClassID class_id)
+{
+    if(!JS_IsRegisteredClass(rt, class_id)) {
+        return NULL;
+    }
+    return &rt->class_array[class_id];
+}
 /* create a new object internal class. Return -1 if error, 0 if
    OK. The finalizer can be NULL if none is needed. */
 static int JS_NewClass1(JSRuntime *rt, JSClassID class_id,
