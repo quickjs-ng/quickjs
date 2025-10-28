@@ -3114,7 +3114,7 @@ static JSValue js_os_realpath(JSContext *ctx, JSValueConst this_val,
 }
 #endif
 
-#if !defined(_WIN32) && !defined(__wasi__)
+#if !defined(_WIN32) && !defined(__wasi__) && !defined(_TVOS) && !defined(_WATCHOS)
 static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -4173,7 +4173,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
 #if !defined(__wasi__)
     JS_CFUNC_DEF("realpath", 1, js_os_realpath ),
 #endif
-#if !defined(_WIN32) && !defined(__wasi__)
+#if !defined(_WIN32) && !defined(__wasi__) && !defined(_TVOS) && !defined(_WATCHOS)
     JS_CFUNC_MAGIC_DEF("lstat", 1, js_os_stat, 1 ),
     JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
     JS_CFUNC_DEF("readlink", 1, js_os_readlink ),
