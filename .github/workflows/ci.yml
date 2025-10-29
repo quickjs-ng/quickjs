@@ -222,6 +222,39 @@ jobs:
         buildType: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
+      - name: install ninja
+        run: |
+          choco install ninja
+          ninja.exe --version
+      - name: build
+        run: |
+          git submodule update --init --checkout --depth 1
+          cmake -B build -DQJS_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -DCMAKE_C_COMPILER=clang.exe -G "Ninja"
+          cmake --build build --config ${{matrix.buildType}}
+      - name: stats
+        run: |
+          build\qjs.exe -qd
+      - name: cxxtest
+        run: |
+          clang.exe -D JS_NAN_BOXING=0 -fsyntax-only cxxtest.cc
+          clang.exe -D JS_NAN_BOXING=1 -fsyntax-only cxxtest.cc
+      - name: test
+        run: |
+          cp build\fib.dll examples\
+          cp build\point.dll examples\
+          build\qjs.exe examples\test_fib.js
+          build\qjs.exe examples\test_point.js
+          build\run-test262.exe -c tests.conf
+          build\function_source.exe
+
+  windows-clang-cl:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        buildType: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
       - name: build
         run: |
           git submodule update --init --checkout --depth 1
