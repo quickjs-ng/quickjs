@@ -3609,15 +3609,14 @@ bool JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id)
     return (class_id < rt->class_count &&
             rt->class_array[class_id].class_id != 0);
 }
-JSAtom JS_GetClassName(JSRuntime *rt, JSClassID id)
+JSAtom JS_GetClassName(JSRuntime *rt, JSClassID class_id)
 {
-    if(!JS_IsRegisteredClass(rt, id)) {
+    if (JS_IsRegisteredClass(rt, class_id)) {
+        return JS_DupAtomRT(rt, rt->class_array[class_id].class_id);
+    } else {
         return JS_ATOM_NULL;
     }
-    JSAtom ret = rt->class_array[id].class_name;
-    JS_DupAtomRT(rt, ret);
-    return ret;
-}
+    }
 
 /* create a new object internal class. Return -1 if error, 0 if
    OK. The finalizer can be NULL if none is needed. */
