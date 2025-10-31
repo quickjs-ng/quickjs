@@ -70,6 +70,9 @@ int stackful_resume(stackful_schedule *S, int id) {
         return -1;
     }
 
+    // Save the caller's coroutine ID
+    int caller_id = S->running;
+    
     S->running = id;
     mco_result res = mco_resume(S->coroutines[id]);
 
@@ -82,7 +85,8 @@ int stackful_resume(stackful_schedule *S, int id) {
         S->count--;
     }
 
-    S->running = -1;
+    // Restore the caller's coroutine ID (not -1!)
+    S->running = caller_id;
     return res == MCO_SUCCESS ? 0 : -1;
 }
 

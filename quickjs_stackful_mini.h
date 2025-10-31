@@ -51,6 +51,13 @@ mco_state stackful_status(stackful_schedule *S, int id);
 /* 获取当前运行的协程 ID */
 int stackful_running(stackful_schedule *S);
 
+/* ========== Status constants (from minicoro) ========== */
+
+#define STACKFUL_STATUS_DEAD MCO_DEAD           /* 0 = Dead/finished */
+#define STACKFUL_STATUS_NORMAL MCO_NORMAL       /* 1 = Normal */
+#define STACKFUL_STATUS_RUNNING MCO_RUNNING     /* 2 = Running */
+#define STACKFUL_STATUS_SUSPENDED MCO_SUSPENDED /* 3 = Suspended */
+
 /* ========== QuickJS 集成 ========== */
 
 /* 启用 stackful 支持（注册 JS API） */
