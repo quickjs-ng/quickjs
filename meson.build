@@ -5,7 +5,6 @@ project(
   default_options: [
     'c_std=gnu11,c11',
     'warning_level=3',
-    'default_library=static',
   ],
   license: 'MIT',
   license_files: 'LICENSE',
