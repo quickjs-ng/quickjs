@@ -106,7 +106,8 @@ extern "C" {
 
 /* Borrowed from Folly */
 #ifndef JS_PRINTF_FORMAT
-#ifdef _MSC_VER
+/* Clang on Windows doesn't seem to support _Printf_format_string_ */
+#if defined(_MSC_VER) && !defined(__clang__)
 #include <sal.h>
 #define JS_PRINTF_FORMAT _Printf_format_string_
 #define JS_PRINTF_FORMAT_ATTR(format_param, dots_param)

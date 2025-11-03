@@ -222,10 +222,11 @@ static void js_set_thread_state(JSRuntime *rt, JSThreadState *ts)
     js_std_cmd(/*SetOpaque*/1, rt, ts);
 }
 
-#ifdef __GNUC__
+// Non-CL Clang on Windows does not define __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
-#endif // __GNUC__
+#endif // __GNUC__ || __clang__
 static JSValue js_printf_internal(JSContext *ctx,
                                   int argc, JSValueConst *argv, FILE *fp)
 {
@@ -441,9 +442,9 @@ fail:
     dbuf_free(&dbuf);
     return JS_EXCEPTION;
 }
-#ifdef __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop // ignored "-Wformat-nonliteral"
-#endif // __GNUC__
+#endif // __GNUC__ || __clang__
 
 uint8_t *js_load_file(JSContext *ctx, size_t *pbuf_len, const char *filename)
 {
