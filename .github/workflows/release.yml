@@ -14,7 +14,7 @@ jobs:
       matrix:
         arch: [aarch64, riscv64, x86, x86_64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: jirutka/setup-alpine@v1
         with:
           arch: ${{matrix.arch}}
@@ -43,7 +43,7 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: build
         run: |
           mkdir build
@@ -78,7 +78,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -108,7 +108,7 @@ jobs:
   wasi:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: setup wasi-sdk
         run: |
           wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.deb -P /tmp
