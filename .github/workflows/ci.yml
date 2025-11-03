@@ -26,7 +26,7 @@ jobs:
   codegen:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: build
         run: |
           make codegen
@@ -68,7 +68,7 @@ jobs:
           - { os: macos-14, configType: shared }
           - { os: macos-14, configType: asan+ubsan }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
 
@@ -182,7 +182,7 @@ jobs:
           - { arch: ARM64, vsArch: arm64, buildType: Debug, os: windows-11-arm }
           - { arch: ARM64, vsArch: arm64, buildType: Release, os: windows-11-arm }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: build
         run: |
           cmake -B build -DQJS_BUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -A ${{matrix.config.arch}}
@@ -221,7 +221,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: build
         run: |
           git submodule update --init --checkout --depth 1
@@ -253,7 +253,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: install ninja
         run: |
           choco install ninja
@@ -286,7 +286,7 @@ jobs:
         arch: [x64, Win32]
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install windows sdk
         uses: ChristopheLav/windows-sdk-install@v1
         with:
@@ -326,7 +326,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
@@ -370,7 +370,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -392,7 +392,7 @@ jobs:
   emscripten:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: mymindstorm/setup-emsdk@v14
       - name: check emsdk
         run: emcc -v
@@ -405,7 +405,7 @@ jobs:
   wasi:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: jcbhmr/setup-wasmtime@v2
       - name: setup wasi-sdk
         run: |
@@ -433,7 +433,7 @@ jobs:
         with:
             packages: make cmake gcc-g++ bash
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: build
         run: make
@@ -455,7 +455,7 @@ jobs:
   openbsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: build + test
         uses: vmactions/openbsd-vm@v1
         with:
@@ -469,7 +469,7 @@ jobs:
   freebsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: build + test
         uses: vmactions/freebsd-vm@v1
         with:
@@ -484,7 +484,7 @@ jobs:
     runs-on: ubuntu-latest
     container: reactnativecommunity/react-native-android:v13.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure android arm64
         # see build options you can use in https://developer.android.com/ndk/guides/cmake
         run: |
@@ -499,7 +499,7 @@ jobs:
   ios:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: configure
         run: |
           cmake -B build -GXcode -DCMAKE_SYSTEM_NAME:STRING=iOS -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED:BOOL=NO -DQJS_BUILD_LIBC=ON
@@ -514,7 +514,7 @@ jobs:
       QJS_BUILD_CLI_WITH_MIMALLOC: ON
       MIMALLOC_SHOW_STATS: 1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: install dependencies
         run: |
           sudo apt update && sudo apt -y install libmimalloc-dev
@@ -534,7 +534,7 @@ jobs:
       QJS_BUILD_CLI_WITH_STATIC_MIMALLOC: ON
       MIMALLOC_SHOW_STATS: 1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: install dependencies
         run: |
           brew install mimalloc
@@ -557,7 +557,7 @@ jobs:
           - { os: macos-latest }
     runs-on: ${{ matrix.config.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: build
         run: |
           make
@@ -577,7 +577,7 @@ jobs:
   jscheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: jscheck
         run: |
           make jscheck
@@ -585,7 +585,7 @@ jobs:
   parserless:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: build
         run: |
           make QJS_DISABLE_PARSER=ON QJS_BUILD_EXAMPLES=ON
@@ -764,7 +764,7 @@ jobs:
       # ... good job, microsoft :))))
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Activate MSVC and Configure
         if: ${{ matrix.platform == 'windows-latest' }}
         env: ${{ matrix.mode.extra_envs }}
