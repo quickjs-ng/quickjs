@@ -17,24 +17,22 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared-detached.js:34: RangeError: out-of-bound access
-test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared-detached.js:34: strict mode: RangeError: out-of-bound access
-test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared-resize-to-zero.js:33: RangeError: out-of-bound access
-test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared-resize-to-zero.js:33: strict mode: RangeError: out-of-bound access
-test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared.js:35: Test262Error: Expected a RangeError but got a Test262Error
-test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion-non-shared.js:35: strict mode: Test262Error: Expected a RangeError but got a Test262Error
-test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion.js:35: Test262Error: Expected a RangeError but got a Test262Error
-test262/test/built-ins/Atomics/notify/retrieve-length-before-index-coercion.js:35: strict mode: Test262Error: Expected a RangeError but got a Test262Error
-test262/test/built-ins/Atomics/wait/retrieve-length-before-index-coercion.js:38: Test262Error: Expected a RangeError but got a Test262Error
-test262/test/built-ins/Atomics/wait/retrieve-length-before-index-coercion.js:38: strict mode: Test262Error: Expected a RangeError but got a Test262Error
+test262/test/built-ins/Iterator/concat/next-method-returns-throwing-value.js:25: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
+test262/test/built-ins/Iterator/concat/next-method-returns-throwing-value.js:25: strict mode: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
+test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Unknown.js:16: SyntaxError: unknown unicode script
+test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Unknown.js:16: strict mode: SyntaxError: unknown unicode script
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Unknown.js:16: SyntaxError: unknown unicode script
+test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Unknown.js:16: strict mode: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/property-escapes/special-property-value-Script_Extensions-Unknown.js:14: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/property-escapes/special-property-value-Script_Extensions-Unknown.js:14: strict mode: SyntaxError: unknown unicode script
-test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
-test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: strict mode: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
+test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
+test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: strict mode: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
 test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
 test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: strict mode: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
-test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
-test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: strict mode: Test262Error: Actual argument shouldn't be nullish. Unicode property escapes with v flag
+test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-17.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 👨🏻‍🐰‍👨🏼 (U+01F468 U+01F3FB U+00200D U+01F430 U+00200D U+01F468 U+01F3FC)
+test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-17.0.js:16: strict mode: Test262Error: `\p{RGI_Emoji}` should match 👨🏻‍🐰‍👨🏼 (U+01F468 U+01F3FB U+00200D U+01F430 U+00200D U+01F468 U+01F3FC)
+test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
+test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: strict mode: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
 test262/test/built-ins/String/prototype/matchAll/regexp-prototype-matchAll-v-u-flag.js:73: Test262Error: Actual [] and expected [𠮷, 𠮷, 𠮷, 0, 3, 6] should have the same contents. 
 test262/test/built-ins/String/prototype/matchAll/regexp-prototype-matchAll-v-u-flag.js:73: strict mode: Test262Error: Actual [] and expected [𠮷, 𠮷, 𠮷, 0, 3, 6] should have the same contents. 
 test262/test/built-ins/String/prototype/replace/regexp-prototype-replace-v-u-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«"𠮷a𠮷b𠮷"», «"XaXbX"») to be true
@@ -79,7 +77,12 @@ test262/test/language/expressions/in/private-field-invalid-assignment-target.js:
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/object/computed-property-name-topropertykey-before-value-evaluation.js:31: Test262Error: Expected SameValue(«"bad"», «"ok"») to be true
 test262/test/language/expressions/object/computed-property-name-topropertykey-before-value-evaluation.js:31: strict mode: Test262Error: Expected SameValue(«"bad"», «"ok"») to be true
+test262/test/language/module-code/ambiguous-export-bindings/import-and-export-propagates-binding.js:75: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/imp' is ambiguous
+test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguous-if-export-star-as-from-and-import-star-as-and-export.js:74: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/nam' is ambiguous
+test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguous-if-export-star-as-from.js:75: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/nam' is ambiguous
+test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguous-if-import-star-as-and-export.js:74: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/nam' is ambiguous
 test262/test/language/module-code/top-level-await/module-graphs-does-not-hang.js:10: TypeError: $DONE() not called
+test262/test/language/module-code/top-level-await/rejection-order.js:20: TypeError: $DONE() not called
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: SyntaxError: invalid property name
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: strict mode: SyntaxError: invalid property name
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-set-followed-by-generator-asi.js:40: SyntaxError: invalid property name
