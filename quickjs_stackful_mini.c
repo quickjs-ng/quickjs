@@ -3,13 +3,34 @@
  * QuickJS Stackful Coroutine Implementation (based on Tina)
  * 
  * Migration: Minicoro → Tina (2025-11-01)
+ * Migration: Symmetric → Asymmetric coroutines (2025-11-04)
+ * 
+ * Asymmetric coroutine model (aligned with ltask Lua coroutines):
+ * - resume: always from dispatcher to target coroutine
+ * - yield: always from coroutine back to dispatcher
+ * - S->running is managed internally, external code doesn't touch it
  */
 
 #define TINA_IMPLEMENTATION
 #include "quickjs_stackful_mini.h"
+
+// Optional: coroutine tracing (jtask-specific debug feature)
+#ifdef ENABLE_CORO_TRACE
+#include "coroutine_trace.h"
+#else
+// Stub macros when tracing is disabled
+#define CORO_TRACE_CREATE(id, caller, count) ((void)0)
+#define CORO_TRACE_RESUME(from, to, from_real, to_real) ((void)0)
+#define CORO_TRACE_RESUME_RET(from, to, to_real, from_real, status) ((void)0)
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _MSC_VER
+#include <execinfo.h>  // For backtrace
+#endif
 
 #define DEFAULT_COROUTINE 16
 #define TINA_DEFAULT_STACK_SIZE (1024*1024)  /* 1MB, safe for modern systems */
@@ -18,10 +39,19 @@
 #define STACKFUL_DEBUG 0
 
 #if STACKFUL_DEBUG
-#define DEBUG_LOG(...) DEBUG_LOG( __VA_ARGS__)
+#define DEBUG_LOG(...) fprintf(stderr, __VA_ARGS__)
 #else
 #define DEBUG_LOG(...) ((void)0)
 #endif
+
+/* Thread-local storage for current coroutine (replaces S->running) */
+#ifdef _MSC_VER
+    #define THREAD_LOCAL __declspec(thread)
+#else
+    #define THREAD_LOCAL _Thread_local
+#endif
+
+static THREAD_LOCAL tina* tl_current_coro = NULL;
 
 /* ========== Data storage functions ========== */
 
@@ -59,14 +89,18 @@ static void tina_storage_clear(tina_storage *s) {
 
 static void* tina_entry_wrapper(tina *coro, void *value) {
     tina_wrapper *wrapper = (tina_wrapper*)coro->user_data;
-    
-    DEBUG_LOG( "[tina_entry_wrapper] Coroutine starting\n");
-    
-    /* Call the original function with the original user_data */
-    wrapper->user_func(wrapper->user_data);
-    
-    DEBUG_LOG( "[tina_entry_wrapper] Coroutine finished\n");
-    
+
+    DEBUG_LOG("[tina_entry_wrapper] Coroutine starting, value=%p\n", value);
+
+    /* Call the original function with user_data AND the resume value */
+    wrapper->user_func(wrapper->user_data, value);
+
+    DEBUG_LOG("[tina_entry_wrapper] Coroutine finished\n");
+
+    /* Asymmetric coroutine: simply return, Tina will automatically:
+     * 1. Set coro->completed = true
+     * 2. Return to the caller (dispatcher)
+     */
     return NULL;
 }
 
@@ -78,16 +112,18 @@ stackful_schedule* stackful_open(JSRuntime *rt, JSContext *main_ctx) {
         DEBUG_LOG( "[stackful_open] ERROR: Failed to allocate scheduler\n");
         return NULL;
     }
-    
+
     S->rt = rt;
     S->main_ctx = main_ctx;
     S->cap = DEFAULT_COROUTINE;
     S->count = 0;
-    S->running = -1;
-    
+
+    /* Initialize dispatcher (empty coroutine for symmetric mode) */
+    S->dispatcher = TINA_EMPTY;  /* Copy TINA_EMPTY including canary values */
+
     S->coroutines = calloc(S->cap, sizeof(tina_wrapper*));
     S->storages = calloc(S->cap, sizeof(tina_storage));
-    
+
     if (!S->coroutines || !S->storages) {
         DEBUG_LOG( "[stackful_open] ERROR: Failed to allocate arrays\n");
         free(S->coroutines);
@@ -95,8 +131,8 @@ stackful_schedule* stackful_open(JSRuntime *rt, JSContext *main_ctx) {
         free(S);
         return NULL;
     }
-    
-    // DEBUG_LOG( "[stackful_open] Scheduler created (cap=%d)\n", S->cap);
+
+    DEBUG_LOG( "[stackful_open] Scheduler created with symmetric coroutines (cap=%d)\n", S->cap);
     return S;
 }
 
@@ -169,7 +205,7 @@ int stackful_new(stackful_schedule *S, stackful_func func, void *ud) {
     /* Create wrapper */
     tina_wrapper *wrapper = malloc(sizeof(tina_wrapper));
     if (!wrapper) {
-        DEBUG_LOG( "[stackful_new] ERROR: Failed to allocate wrapper\n");
+        DEBUG_LOG("[stackful_new] ERROR: Failed to allocate wrapper\n");
         return -1;
     }
     
@@ -177,7 +213,8 @@ int stackful_new(stackful_schedule *S, stackful_func func, void *ud) {
     wrapper->user_func = func;
     wrapper->status = STACKFUL_STATUS_SUSPENDED;
     wrapper->yield_count = 0;
-    
+    wrapper->self_id = id;  /* Store self ID for asymmetric yield */
+
     /* Create Tina coroutine */
     wrapper->coro = tina_init(NULL, TINA_DEFAULT_STACK_SIZE, tina_entry_wrapper, wrapper);
     
@@ -191,127 +228,261 @@ int stackful_new(stackful_schedule *S, stackful_func func, void *ud) {
     S->count++;
     
     DEBUG_LOG( "[stackful_new] Created coroutine id=%d (count=%d)\n", id, S->count);
+    CORO_TRACE_CREATE(id, -1, S->count);
     
     return id;
 }
 
 int stackful_resume(stackful_schedule *S, int id) {
     if (!S || id < 0 || id >= S->cap || !S->coroutines[id]) {
-        DEBUG_LOG( "[stackful_resume] ERROR: Invalid coroutine id=%d\n", id);
+        DEBUG_LOG("[stackful_resume] ERROR: Invalid coroutine id=%d\n", id);
         return -1;
     }
-    
-    tina_wrapper *wrapper = S->coroutines[id];
-    
-    if (wrapper->status == STACKFUL_STATUS_DEAD) {
-        DEBUG_LOG( "[stackful_resume] ERROR: Coroutine id=%d already dead\n", id);
+
+    tina_wrapper *target = S->coroutines[id];
+
+    if (target->status == STACKFUL_STATUS_DEAD) {
+        DEBUG_LOG("[stackful_resume] ERROR: Coroutine id=%d already dead\n", id);
         return -1;
     }
+
+    DEBUG_LOG("[stackful_resume] Resuming coroutine %d (status=%d)\n", id, target->status);
+
+    /* Save current coroutine (for nested resume support) */
+    tina* saved_current_coro = tl_current_coro;
+    DEBUG_LOG("[stackful_resume] Saved previous current_coro=%p\n", saved_current_coro);
+
+    /* Disable GC before entering Tina stack to prevent GC from scanning Tina stack */
+    size_t old_gc_threshold = JS_GetGCThreshold(S->rt);
+    JS_SetGCThreshold(S->rt, (size_t)-1);
+    DEBUG_LOG("[stackful_resume] GC disabled (old_threshold=%zu)\n", old_gc_threshold);
+
+    /* Set thread-local current coroutine for yield */
+    tl_current_coro = target->coro;
+    target->status = STACKFUL_STATUS_RUNNING;
+    CORO_TRACE_RESUME(-1, id, -1, id);
+
+    /* ========== ASYMMETRIC COROUTINE: Use tina_resume (proper asymmetric API) ========== */
+    DEBUG_LOG("[stackful_resume] Calling tina_resume(coro %d, NULL)\n", id);
+
+    void *result = tina_resume(target->coro, NULL);
+
+    DEBUG_LOG("[stackful_resume] Returned from tina_swap\n");
     
-    /* Save caller context */
-    int caller_id = S->running;
-    
-    DEBUG_LOG( "[stackful_resume] caller_id=%d, resuming coro_id=%d, status=%d\n",
-            caller_id, id, wrapper->status);
-    
-    /* Update status */
-    S->running = id;
-    wrapper->status = STACKFUL_STATUS_RUNNING;
-    
-    /* Resume Tina coroutine */
-    void *result = tina_resume(wrapper->coro, NULL);
-    
-    DEBUG_LOG( "[stackful_resume] tina_resume(%d) returned\n", id);
-    
+    /* CRITICAL FIX: Update QuickJS stack top after switching to coroutine's C stack
+     * QuickJS detects stack overflow by checking C stack pointer against stack_limit,
+     * but stackful coroutine uses a different C stack. Must update stack_top/stack_limit
+     * to match the current stack position to avoid false "Maximum call stack size exceeded" errors */
+    JS_UpdateStackTop(S->rt);
+
+    /* Restore GC threshold after leaving Tina stack */
+    JS_SetGCThreshold(S->rt, old_gc_threshold);
+    DEBUG_LOG("[stackful_resume] GC restored (threshold=%zu)\n", old_gc_threshold);
+
     /* Check completion */
-    if (wrapper->coro->completed) {
-        DEBUG_LOG( "[stackful_resume] Coroutine %d completed, cleaning up\n", id);
-        
-        wrapper->status = STACKFUL_STATUS_DEAD;
-        
-        /* Cleanup - Tina's coro is inside buffer, only free buffer */
-        if (wrapper->coro->buffer) {
-            free(wrapper->coro->buffer);
+    if (target->coro->completed) {
+        DEBUG_LOG("[stackful_resume] Coroutine %d completed, cleaning up\n", id);
+
+        target->status = STACKFUL_STATUS_DEAD;
+
+        /* Cleanup */
+        if (target->coro->buffer) {
+            free(target->coro->buffer);
         }
-        /* Don't free wrapper->coro - it points inside the buffer! */
-        free(wrapper);
-        
+        free(target);
+
         S->coroutines[id] = NULL;
         S->count--;
-        
-        DEBUG_LOG( "[stackful_resume] Coroutine %d destroyed (count=%d)\n", id, S->count);
+
+        /* Clear thread-local current coroutine */
+        tl_current_coro = NULL;
+
+        DEBUG_LOG("[stackful_resume] Coroutine %d destroyed (count=%d)\n", id, S->count);
     } else {
         /* Yielded */
-        wrapper->status = STACKFUL_STATUS_SUSPENDED;
-        wrapper->yield_count++;
-        
-        DEBUG_LOG( "[stackful_resume] Coroutine %d suspended (yield_count=%d)\n",
-                id, wrapper->yield_count);
+        target->status = STACKFUL_STATUS_SUSPENDED;
+        target->yield_count++;
+
+        DEBUG_LOG("[stackful_resume] Coroutine %d suspended (yield_count=%d)\n",
+                id, target->yield_count);
     }
+
+    /* Restore previous current coroutine (for nested resume support) */
+    tl_current_coro = saved_current_coro;
+    DEBUG_LOG("[stackful_resume] Restored current_coro=%p\n", tl_current_coro);
     
-    /* Restore caller context */
-    S->running = caller_id;
-    
-    DEBUG_LOG( "[stackful_resume] restored caller_id=%d\n", caller_id);
-    
+    CORO_TRACE_RESUME_RET(-1, id, id, -1, target->status);
+
+    DEBUG_LOG("[stackful_resume] After resume\n");
+
     return 0;
+}
+
+void* stackful_resume_with_value(stackful_schedule *S, int id, void *value) {
+    if (!S || id < 0 || id >= S->cap || !S->coroutines[id]) {
+        DEBUG_LOG("[stackful_resume_with_value] ERROR: Invalid coroutine id=%d\n", id);
+        return NULL;
+    }
+
+    tina_wrapper *target = S->coroutines[id];
+
+    if (target->status == STACKFUL_STATUS_DEAD) {
+        DEBUG_LOG("[stackful_resume_with_value] ERROR: Coroutine id=%d already dead\n", id);
+        return NULL;
+    }
+
+    DEBUG_LOG("[stackful_resume_with_value] Resuming coroutine %d with value=%p\n", id, value);
+
+    /* Save current coroutine (for nested resume support) */
+    tina* saved_current_coro = tl_current_coro;
+    DEBUG_LOG("[stackful_resume_with_value] Saved previous current_coro=%p\n", saved_current_coro);
+
+    /* Disable GC before entering Tina stack to prevent GC from scanning Tina stack */
+    size_t old_gc_threshold = JS_GetGCThreshold(S->rt);
+    JS_SetGCThreshold(S->rt, (size_t)-1);
+    DEBUG_LOG("[stackful_resume_with_value] GC disabled (old_threshold=%zu)\n", old_gc_threshold);
+
+    /* Set thread-local current coroutine for yield */
+    tl_current_coro = target->coro;
+    target->status = STACKFUL_STATUS_RUNNING;
+
+    /* ========== ASYMMETRIC COROUTINE: Use tina_resume (proper asymmetric API) ========== */
+    DEBUG_LOG("[stackful_resume_with_value] Calling tina_resume(coro %d, value=%p)\n",
+            id, value);
+
+    void *result = tina_resume(target->coro, value);
+
+    DEBUG_LOG("[stackful_resume_with_value] Returned from tina_swap, result=%p\n", result);
+    
+    /* CRITICAL FIX: Update QuickJS stack top after switching to coroutine's C stack
+     * QuickJS detects stack overflow by checking C stack pointer against stack_limit,
+     * but stackful coroutine uses a different C stack. Must update stack_top/stack_limit
+     * to match the current stack position to avoid false "Maximum call stack size exceeded" errors */
+    JS_UpdateStackTop(S->rt);
+
+    /* Restore GC threshold after leaving Tina stack */
+    JS_SetGCThreshold(S->rt, old_gc_threshold);
+    DEBUG_LOG("[stackful_resume_with_value] GC restored (threshold=%zu)\n", old_gc_threshold);
+
+    /* Check completion */
+    if (target->coro->completed) {
+        DEBUG_LOG("[stackful_resume_with_value] Coroutine %d completed, cleaning up\n", id);
+
+        target->status = STACKFUL_STATUS_DEAD;
+
+        /* Cleanup */
+        if (target->coro->buffer) {
+            free(target->coro->buffer);
+        }
+        free(target);
+
+        S->coroutines[id] = NULL;
+        S->count--;
+
+        /* Clear thread-local current coroutine */
+        tl_current_coro = NULL;
+
+        DEBUG_LOG("[stackful_resume_with_value] Coroutine %d destroyed (count=%d)\n", id, S->count);
+        
+        /* Return NULL for completed coroutine */
+        result = NULL;
+    } else {
+        /* Yielded */
+        target->status = STACKFUL_STATUS_SUSPENDED;
+        target->yield_count++;
+
+        DEBUG_LOG("[stackful_resume_with_value] Coroutine %d suspended (yield_count=%d)\n",
+                id, target->yield_count);
+    }
+
+    /* Restore previous current coroutine (for nested resume support) */
+    tl_current_coro = saved_current_coro;
+    DEBUG_LOG("[stackful_resume_with_value] Restored current_coro=%p\n", tl_current_coro);
+
+    DEBUG_LOG("[stackful_resume_with_value] After resume, returning result=%p\n", result);
+
+    return result;
 }
 
 void stackful_yield(stackful_schedule *S) {
     if (!S) {
-        DEBUG_LOG( "[stackful_yield] ERROR: NULL scheduler\n");
+        DEBUG_LOG("[stackful_yield] ERROR: NULL scheduler\n");
         return;
     }
-    
-    int id = S->running;
-    if (id < 0) {
-        DEBUG_LOG( "[stackful_yield] ERROR: Not running in coroutine (running=%d)\n", id);
+
+    if (!tl_current_coro) {
+        DEBUG_LOG("[stackful_yield] ERROR: No current coroutine (yield called outside coroutine)\n");
         return;
     }
-    
-    if (id >= S->cap || !S->coroutines[id]) {
-        DEBUG_LOG( "[stackful_yield] ERROR: Invalid coroutine id=%d\n", id);
-        return;
+
+    DEBUG_LOG("[stackful_yield] Coroutine yielding to dispatcher\n");
+
+    /* ========== ASYMMETRIC COROUTINE: Use tina_yield (proper asymmetric API) ========== */
+    tina_yield(tl_current_coro, NULL);
+
+    DEBUG_LOG("[stackful_yield] Coroutine resumed after yield\n");
+}
+
+void* stackful_yield_with_value(stackful_schedule *S, void *value) {
+    if (!S) {
+        DEBUG_LOG("[stackful_yield_with_value] ERROR: NULL scheduler\n");
+        return NULL;
     }
-    
-    tina_wrapper *wrapper = S->coroutines[id];
-    
-    DEBUG_LOG( "[stackful_yield] coro_id=%d about to yield\n", id);
-    
-    /* Tina yield */
-    tina_yield(wrapper->coro, NULL);
-    
-    DEBUG_LOG( "[stackful_yield] coro_id=%d resumed after yield\n", id);
+
+    if (!tl_current_coro) {
+        DEBUG_LOG("[stackful_yield_with_value] ERROR: No current coroutine (yield called outside coroutine)\n");
+        return NULL;
+    }
+
+    DEBUG_LOG("[stackful_yield_with_value] Coroutine yielding to dispatcher with value=%p\n", value);
+
+    /* ========== ASYMMETRIC COROUTINE: Use tina_yield (proper asymmetric API) ========== */
+    void *result = tina_yield(tl_current_coro, value);
+
+    DEBUG_LOG("[stackful_yield_with_value] Coroutine resumed after yield, got value=%p\n", result);
+
+    return result;
 }
 
 void stackful_yield_with_flag(stackful_schedule *S, int flag) {
     if (!S) {
-        DEBUG_LOG( "[stackful_yield_with_flag] ERROR: NULL scheduler\n");
+        DEBUG_LOG("[stackful_yield_with_flag] ERROR: NULL scheduler\n");
+        return;
+    }
+
+    if (!tl_current_coro) {
+        DEBUG_LOG("[stackful_yield_with_flag] ERROR: No current coroutine (yield called outside coroutine)\n");
+        return;
+    }
+
+    /* Get current coroutine ID from wrapper */
+    tina_wrapper *wrapper = (tina_wrapper*)tl_current_coro->user_data;
+    if (!wrapper) {
+        DEBUG_LOG("[stackful_yield_with_flag] ERROR: No wrapper found for current coroutine\n");
         return;
     }
     
-    int id = S->running;
-    if (id < 0 || id >= S->cap || !S->coroutines[id]) {
-        DEBUG_LOG( "[stackful_yield_with_flag] ERROR: Invalid running id=%d\n", id);
+    int coro_id = wrapper->self_id;
+    
+    if (coro_id < 0 || coro_id >= S->cap) {
+        DEBUG_LOG("[stackful_yield_with_flag] ERROR: Invalid coro_id=%d\n", coro_id);
         return;
     }
-    
-    tina_wrapper *wrapper = S->coroutines[id];
-    tina_storage *storage = &S->storages[id];
-    
-    DEBUG_LOG( "[stackful_yield_with_flag] coro_id=%d pushing flag=%d before yield\n",
-            id, flag);
-    
+
+    tina_storage *storage = &S->storages[coro_id];
+
+    DEBUG_LOG("[stackful_yield_with_flag] coro_id=%d pushing flag=%d before yield\n", coro_id, flag);
+
     /* Push flag to storage */
     if (tina_storage_push(storage, &flag, sizeof(int)) < 0) {
-        DEBUG_LOG( "[stackful_yield_with_flag] ERROR: Failed to push flag\n");
+        DEBUG_LOG("[stackful_yield_with_flag] ERROR: Failed to push flag\n");
         return;
     }
-    
-    /* Yield */
-    tina_yield(wrapper->coro, NULL);
-    
-    DEBUG_LOG( "[stackful_yield_with_flag] coro_id=%d resumed after yield\n", id);
+
+    /* ========== ASYMMETRIC COROUTINE: Use tina_yield (proper asymmetric API) ========== */
+    tina_yield(tl_current_coro, NULL);
+
+    DEBUG_LOG("[stackful_yield_with_flag] coro_id=%d resumed after yield\n", coro_id);
 }
 
 int stackful_pop_continue_flag(stackful_schedule *S, int id) {
@@ -339,6 +510,35 @@ int stackful_pop_continue_flag(stackful_schedule *S, int id) {
     return flag;
 }
 
+/* ========== Generic data storage API ========== */
+
+int stackful_push_data(stackful_schedule *S, int id, const void *data, size_t len) {
+    if (!S || id < 0 || id >= S->cap || !S->coroutines[id]) {
+        return -1;
+    }
+    
+    tina_storage *storage = &S->storages[id];
+    return tina_storage_push(storage, data, len);
+}
+
+int stackful_pop_data(stackful_schedule *S, int id, void *data, size_t len) {
+    if (!S || id < 0 || id >= S->cap || !S->coroutines[id]) {
+        return -1;
+    }
+    
+    tina_storage *storage = &S->storages[id];
+    return tina_storage_pop(storage, data, len);
+}
+
+size_t stackful_get_stored_bytes(stackful_schedule *S, int id) {
+    if (!S || id < 0 || id >= S->cap || !S->coroutines[id]) {
+        return 0;
+    }
+    
+    tina_storage *storage = &S->storages[id];
+    return tina_storage_bytes(storage);
+}
+
 stackful_status_t stackful_status(stackful_schedule *S, int id) {
     if (!S || id < 0 || id >= S->cap || !S->coroutines[id]) {
         return STACKFUL_STATUS_DEAD;
@@ -347,63 +547,90 @@ stackful_status_t stackful_status(stackful_schedule *S, int id) {
     return S->coroutines[id]->status;
 }
 
+/* ========== Coroutine introspection (aligned with Lua coroutine.running) ========== */
+
+/**
+ * Get the ID of the currently running coroutine
+ * 
+ * Equivalent to Lua's coroutine.running() - returns the current coroutine identifier.
+ * This is a core part of the stackful coroutine wrapper API.
+ * 
+ * Implementation: O(1) lookup using thread-local tl_current_coro and wrapper->self_id
+ * 
+ * @param S  Scheduler (unused but kept for API consistency)
+ * @return   Current coroutine ID (>= 0), or -1 if not running in a coroutine
+ */
 int stackful_running(stackful_schedule *S) {
-    if (!S) return -1;
-    return S->running;
+    (void)S;  /* Unused - kept for API compatibility */
+    
+    /* Not running in a coroutine context (dispatcher/main thread) */
+    if (!tl_current_coro) {
+        return -1;
+    }
+    
+    /* O(1) lookup: tina stores wrapper pointer in coro->user_data */
+    tina_wrapper *wrapper = (tina_wrapper*)tl_current_coro->user_data;
+    if (wrapper) {
+        DEBUG_LOG("[stackful_running] Current coroutine ID: %d\n", wrapper->self_id);
+        return wrapper->self_id;
+    }
+    
+    /* Inconsistent state - shouldn't happen if tl_current_coro is properly managed */
+    DEBUG_LOG("[stackful_running] ERROR: tl_current_coro set but wrapper not found\n");
+    return -1;
 }
 
 /* ========== QuickJS Integration ========== */
 
-static stackful_schedule *g_stackful_schedule = NULL;
+/* Helper: Get stackful scheduler from JSContext opaque (service_ud) */
+static stackful_schedule* get_scheduler_from_ctx(JSContext *ctx) {
+    // Get service_ud from context opaque
+    const void *opaque = JS_GetContextOpaque(ctx);
+    if (!opaque) {
+        return NULL;
+    }
+    
+    // service_ud contains task and id, we need to get service from service_pool
+    // This is a bit complex, so for now we use a simpler approach:
+    // Store scheduler pointer directly in JS context using JS_SetContextOpaque
+    // But service.c already uses opaque for service_ud...
+    
+    // Alternative: use thread-local storage or get from service via task pointer
+    // For now, return NULL and handle in callers
+    return NULL;
+}
 
 /* JS: Stackful.yield() */
 static JSValue js_stackful_yield(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv) {
-    if (!g_stackful_schedule) {
-        return JS_ThrowInternalError(ctx, "Stackful not initialized");
-    }
-
-    stackful_yield(g_stackful_schedule);
-    return JS_UNDEFINED;
+    // NOTE: This JS API is deprecated and should not be used
+    // Use jtask.yield_control() instead which has access to service context
+    return JS_ThrowInternalError(ctx, "Stackful.yield() is deprecated, use jtask.yield_control()");
 }
 
 /* JS: Stackful.running() */
 static JSValue js_stackful_running(JSContext *ctx, JSValueConst this_val,
                                     int argc, JSValueConst *argv) {
-    if (!g_stackful_schedule) {
-        return JS_NewInt32(ctx, -1);
-    }
-
-    return JS_NewInt32(ctx, stackful_running(g_stackful_schedule));
+    // NOTE: This JS API is deprecated
+    return JS_ThrowInternalError(ctx, "Stackful.running() is deprecated, use jtask APIs");
 }
 
 /* JS: Stackful.status(id) */
 static JSValue js_stackful_status(JSContext *ctx, JSValueConst this_val,
                                    int argc, JSValueConst *argv) {
-    if (!g_stackful_schedule) {
-        return JS_UNDEFINED;
-    }
-
-    if (argc < 1) {
-        return JS_ThrowTypeError(ctx, "需要协程 ID");
-    }
-
-    int id;
-    if (JS_ToInt32(ctx, &id, argv[0]) < 0) {
-        return JS_EXCEPTION;
-    }
-
-    stackful_status_t status = stackful_status(g_stackful_schedule, id);
-    return JS_NewInt32(ctx, (int)status);
+    // NOTE: This JS API is deprecated
+    return JS_ThrowInternalError(ctx, "Stackful.status() is deprecated, use jtask APIs");
 }
 
 int stackful_enable_js_api(JSContext *ctx, stackful_schedule *S) {
     if (!ctx || !S) {
-        DEBUG_LOG( "[stackful_enable_js_api] ERROR: Invalid arguments\n");
+        DEBUG_LOG("[stackful_enable_js_api] ERROR: Invalid arguments\n");
         return -1;
     }
     
-    g_stackful_schedule = S;
+    // NOTE: Removed global variable g_stackful_schedule for thread safety
+    // Each service has its own stackful_sched in struct service
+    // JS APIs should use jtask.* functions which have access to service context
 
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue stackful_obj = JS_NewObject(ctx);
@@ -431,11 +658,13 @@ int stackful_enable_js_api(JSContext *ctx, stackful_schedule *S) {
     JS_SetPropertyStr(ctx, global, "Stackful", stackful_obj);
     JS_FreeValue(ctx, global);
     
-    DEBUG_LOG( "[stackful_enable_js_api] JS API registered\n");
+    DEBUG_LOG("[stackful_enable_js_api] JS API registered (deprecated, use jtask APIs)\n");
 
     return 0;
 }
 
 stackful_schedule* stackful_get_global_schedule(void) {
-    return g_stackful_schedule;
+    // NOTE: This function is deprecated and should not be used
+    // It was used for global variable access which causes thread safety issues
+    return NULL;
 }
