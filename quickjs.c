@@ -283,11 +283,11 @@ struct JSRuntime {
 
     JSValue current_exception;
     /* true if inside an out of memory error, to avoid recursing */
-    bool in_out_of_memory;
+    _Bool in_out_of_memory : 1;
     /* true if inside build_backtrace, to avoid recursing */
-    bool in_build_stack_trace;
+    _Bool in_build_stack_trace : 1;
     /* true if inside JS_FreeRuntime */
-    bool in_free;
+    _Bool in_free : 1;
 
     struct JSStackFrame *current_stack_frame;
 
@@ -314,7 +314,7 @@ struct JSRuntime {
     /* used to allocate, free and clone SharedArrayBuffers */
     JSSharedArrayBufferFunctions sab_funcs;
 
-    bool can_block; /* true if Atomics.wait can block */
+    _Bool can_block : 1; /* true if Atomics.wait can block */
     uint32_t dump_flags : 24;
 
     /* Shape hash table */
@@ -512,7 +512,7 @@ typedef struct JSWeakRefRecord {
 
 typedef struct JSMapRecord {
     int ref_count; /* used during enumeration to avoid freeing the record */
-    bool empty; /* true if the record is deleted */
+    _Bool empty : 1; /* true if the record is deleted */
     struct JSMapState *map;
     struct list_head link;
     struct list_head hash_link;
@@ -521,7 +521,7 @@ typedef struct JSMapRecord {
 } JSMapRecord;
 
 typedef struct JSMapState {
-    bool is_weak; /* true if WeakSet/WeakMap */
+    _Bool is_weak : 1; /* true if WeakSet/WeakMap */
     struct list_head records; /* list of JSMapRecord.link */
     uint32_t record_count;
     struct list_head *hash_table;
@@ -751,7 +751,7 @@ typedef enum JSIteratorHelperKindEnum {
 
 typedef struct JSForInIterator {
     JSValue obj;
-    bool is_array;
+    _Bool is_array : 1;
     uint32_t array_length;
     uint32_t idx;
 } JSForInIterator;
@@ -785,13 +785,13 @@ typedef struct JSTypedArray {
     JSObject *buffer; /* based array buffer */
     uint32_t offset; /* byte offset in the array buffer */
     uint32_t length; /* byte length in the array buffer */
-    bool track_rab; /* auto-track length of backing array buffer */
+    _Bool track_rab : 1; /* auto-track length of backing array buffer */
 } JSTypedArray;
 
 typedef struct JSAsyncFunctionState {
     JSValue this_val; /* 'this' generator argument */
     int argc; /* number of function arguments */
-    bool throw_flag; /* used to throw an exception in JS_CallInternal() */
+    _Bool throw_flag : 1; /* used to throw an exception in JS_CallInternal() */
     JSStackFrame frame;
 } JSAsyncFunctionState;
 
@@ -800,7 +800,7 @@ typedef struct JSAsyncFunctionState {
 typedef struct JSAsyncFunctionData {
     JSGCObjectHeader header; /* must come first */
     JSValue resolving_funcs[2];
-    bool is_active; /* true if the async function state is valid */
+    _Bool is_active : 1; /* true if the async function state is valid */
     JSAsyncFunctionState func_state;
 } JSAsyncFunctionData;
 
@@ -871,9 +871,9 @@ struct JSModuleDef {
     JSValue module_ns;
     JSValue func_obj; /* only used for JS modules */
     JSModuleInitFunc *init_func; /* only used for C modules */
-    bool has_tla; /* true if func_obj contains await */
-    bool resolved;
-    bool func_created;
+    _Bool has_tla : 1; /* true if func_obj contains await */
+    _Bool resolved : 1;
+    _Bool func_created : 1;
     JSModuleStatus status : 8;
     /* temp use during js_module_link() & js_module_evaluate() */
     int dfs_index, dfs_ancestor_index;
@@ -883,14 +883,14 @@ struct JSModuleDef {
     int async_parent_modules_count;
     int async_parent_modules_size;
     int pending_async_dependencies;
-    bool async_evaluation;
+    _Bool async_evaluation : 1;
     int64_t async_evaluation_timestamp;
     JSModuleDef *cycle_root;
     JSValue promise; /* corresponds to spec field: capability */
     JSValue resolving_funcs[2]; /* corresponds to spec field: capability */
     /* true if evaluation yielded an exception. It is saved in
        eval_exception */
-    bool eval_has_exception;
+    _Bool eval_has_exception : 1;
     JSValue eval_exception;
     JSValue meta_obj; /* for import.meta */
 };
@@ -1043,7 +1043,7 @@ typedef struct JSCallSiteData {
     JSValue filename;
     JSValue func;
     JSValue func_name;
-    bool native;
+    _Bool native : 1;
     int line_num;
     int col_num;
 } JSCallSiteData;
@@ -22703,7 +22703,7 @@ typedef struct JSParsePos {
     int last_col_num;
     int line_num;
     int col_num;
-    bool got_lf;
+    _Bool got_lf : 1;
     const uint8_t *ptr;
     const uint8_t *eol;
     const uint8_t *mark;
@@ -23116,9 +23116,9 @@ static JSAtom get_private_setter_name(JSContext *ctx, JSAtom name)
 typedef struct {
     JSFunctionDef *fields_init_fd;
     int computed_fields_count;
-    bool need_brand;
+    _Bool need_brand : 1;
     int brand_push_pos;
-    bool is_static;
+    _Bool is_static : 1;
 } ClassFieldsDef;
 
 static __exception int emit_class_init_start(JSParseState *s,
@@ -35137,11 +35137,11 @@ typedef enum BCTagEnum {
 typedef struct BCWriterState {
     JSContext *ctx;
     DynBuf dbuf;
-    bool allow_bytecode;
-    bool allow_sab;
-    bool allow_reference;
-    bool allow_source;
-    bool allow_debug;
+    _Bool allow_bytecode : 1;
+    _Bool allow_sab : 1;
+    _Bool allow_reference : 1;
+    _Bool allow_source : 1;
+    _Bool allow_debug : 1;
     uint32_t first_atom;
     uint32_t *atom_to_idx;
     int atom_to_idx_size;
@@ -36004,9 +36004,9 @@ typedef struct BCReaderState {
     uint32_t idx_to_atom_count;
     JSAtom *idx_to_atom;
     int error_state;
-    bool allow_sab;
-    bool allow_bytecode;
-    bool allow_reference;
+    _Bool allow_sab : 1;
+    _Bool allow_bytecode : 1;
+    _Bool allow_reference  : 1;
     /* object references */
     JSObject **objects;
     int objects_count;
@@ -41618,7 +41618,7 @@ static JSValue js_iterator_constructor(JSContext *ctx, JSValueConst new_target,
 // |index|, |count| and |running| because tcc miscompiles them
 typedef struct JSIteratorConcatData {
     int index, count;             // elements (not pairs!) in values[] array
-    bool running;
+    _Bool running : 1;
     JSValue iter, next, values[]; // array of (object, method) pairs
 } JSIteratorConcatData;
 
@@ -46225,8 +46225,8 @@ exception:
 typedef struct JSRegExpStringIteratorData {
     JSValue iterating_regexp;
     JSValue iterated_string;
-    bool global;
-    bool unicode;
+    _Bool global : 1;
+    _Bool unicode : 1;
     int done;
 } JSRegExpStringIteratorData;
 
@@ -50421,13 +50421,13 @@ typedef struct JSPromiseData {
     JSPromiseStateEnum promise_state;
     /* 0=fulfill, 1=reject, list of JSPromiseReactionData.link */
     struct list_head promise_reactions[2];
-    bool is_handled; /* Note: only useful to debug */
+    _Bool is_handled : 1; /* Note: only useful to debug */
     JSValue promise_result;
 } JSPromiseData;
 
 typedef struct JSPromiseFunctionDataResolved {
     int ref_count;
-    bool already_resolved;
+    _Bool already_resolved : 1;
 } JSPromiseFunctionDataResolved;
 
 typedef struct JSPromiseFunctionData {
@@ -57092,7 +57092,7 @@ static JSValue js_atomics_isLockFree(JSContext *ctx,
 
 typedef struct JSAtomicsWaiter {
     struct list_head link;
-    bool linked;
+    _Bool linked : 1;
     js_cond_t cond;
     int32_t *ptr;
 } JSAtomicsWaiter;
