@@ -20011,12 +20011,12 @@ typedef enum JSParseExportEnum {
 typedef struct JSFunctionDef {
     JSContext *ctx;
     struct JSFunctionDef *parent;
-    struct list_head child_list; /* list of JSFunctionDef.link */
-    struct list_head link;
-
     int parent_cpool_idx; /* index in the constant pool of the parent
                              or -1 if none */
     int parent_scope_level; /* scope level in parent at point of definition */
+    struct list_head child_list; /* list of JSFunctionDef.link */
+    struct list_head link;
+
     int eval_type; /* only valid if is_eval = true */
 
     /* Pack all boolean flags together as 1-bit fields to reduce struct size
