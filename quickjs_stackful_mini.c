@@ -246,11 +246,21 @@ int stackful_resume(stackful_schedule *S, int id) {
         return -1;
     }
 
-    DEBUG_LOG("[stackful_resume] Resuming coroutine %d (status=%d)\n", id, target->status);
+    /* Get caller coroutine ID for nested context tracking */
+    int caller_id = -1;
+    if (tl_current_coro) {
+        tina_wrapper *caller = (tina_wrapper*)tl_current_coro->user_data;
+        caller_id = caller ? caller->self_id : -1;
+    }
+
+    DEBUG_LOG("[stackful_resume] === RESUME START ===\n");
+    DEBUG_LOG("[stackful_resume] target_id=%d, status=%d\n", id, target->status);
+    DEBUG_LOG("[stackful_resume] caller_id=%d, tl_current_coro=%p (BEFORE SAVE)\n",
+              caller_id, (void*)tl_current_coro);
 
     /* Save current coroutine (for nested resume support) */
     tina* saved_current_coro = tl_current_coro;
-    DEBUG_LOG("[stackful_resume] Saved previous current_coro=%p\n", saved_current_coro);
+    DEBUG_LOG("[stackful_resume] SAVED: saved_current_coro=%p\n", (void*)saved_current_coro);
 
     /* Disable GC before entering Tina stack to prevent GC from scanning Tina stack */
     size_t old_gc_threshold = JS_GetGCThreshold(S->rt);
@@ -259,15 +269,19 @@ int stackful_resume(stackful_schedule *S, int id) {
 
     /* Set thread-local current coroutine for yield */
     tl_current_coro = target->coro;
+    DEBUG_LOG("[stackful_resume] SET: tl_current_coro=%p (target coro %d)\n",
+              (void*)tl_current_coro, id);
     target->status = STACKFUL_STATUS_RUNNING;
     CORO_TRACE_RESUME(-1, id, -1, id);
 
     /* ========== ASYMMETRIC COROUTINE: Use tina_resume (proper asymmetric API) ========== */
-    DEBUG_LOG("[stackful_resume] Calling tina_resume(coro %d, NULL)\n", id);
+    DEBUG_LOG("[stackful_resume] >>> CALLING tina_resume(coro %d, NULL)\n", id);
 
     void *result = tina_resume(target->coro, NULL);
 
-    DEBUG_LOG("[stackful_resume] Returned from tina_swap\n");
+    DEBUG_LOG("[stackful_resume] <<< RETURNED from tina_resume\n");
+    DEBUG_LOG("[stackful_resume] tl_current_coro=%p (should still be target)\n",
+              (void*)tl_current_coro);
     
     /* CRITICAL FIX: Update QuickJS stack top after switching to coroutine's C stack
      * QuickJS detects stack overflow by checking C stack pointer against stack_limit,
@@ -308,12 +322,16 @@ int stackful_resume(stackful_schedule *S, int id) {
     }
 
     /* Restore previous current coroutine (for nested resume support) */
+    DEBUG_LOG("[stackful_resume] RESTORING: tl_current_coro from %p to %p\n",
+              (void*)tl_current_coro, (void*)saved_current_coro);
     tl_current_coro = saved_current_coro;
-    DEBUG_LOG("[stackful_resume] Restored current_coro=%p\n", tl_current_coro);
-    
+    DEBUG_LOG("[stackful_resume] RESTORED: tl_current_coro=%p (caller_id=%d)\n",
+              (void*)tl_current_coro, caller_id);
+
     CORO_TRACE_RESUME_RET(-1, id, id, -1, target->status);
 
-    DEBUG_LOG("[stackful_resume] After resume\n");
+    DEBUG_LOG("[stackful_resume] === RESUME END ===\n");
+    DEBUG_LOG("[stackful_resume] target_id=%d\n", id);
 
     return 0;
 }
@@ -331,11 +349,21 @@ void* stackful_resume_with_value(stackful_schedule *S, int id, void *value) {
         return NULL;
     }
 
-    DEBUG_LOG("[stackful_resume_with_value] Resuming coroutine %d with value=%p\n", id, value);
+    /* Get caller coroutine ID for nested context tracking */
+    int caller_id = -1;
+    if (tl_current_coro) {
+        tina_wrapper *caller = (tina_wrapper*)tl_current_coro->user_data;
+        caller_id = caller ? caller->self_id : -1;
+    }
+
+    DEBUG_LOG("[stackful_resume_with_value] === RESUME START ===\n");
+    DEBUG_LOG("[stackful_resume_with_value] target_id=%d, value=%p\n", id, value);
+    DEBUG_LOG("[stackful_resume_with_value] caller_id=%d, tl_current_coro=%p (BEFORE SAVE)\n",
+              caller_id, (void*)tl_current_coro);
 
     /* Save current coroutine (for nested resume support) */
     tina* saved_current_coro = tl_current_coro;
-    DEBUG_LOG("[stackful_resume_with_value] Saved previous current_coro=%p\n", saved_current_coro);
+    DEBUG_LOG("[stackful_resume_with_value] SAVED: saved_current_coro=%p\n", (void*)saved_current_coro);
 
     /* Disable GC before entering Tina stack to prevent GC from scanning Tina stack */
     size_t old_gc_threshold = JS_GetGCThreshold(S->rt);
@@ -344,15 +372,19 @@ void* stackful_resume_with_value(stackful_schedule *S, int id, void *value) {
 
     /* Set thread-local current coroutine for yield */
     tl_current_coro = target->coro;
+    DEBUG_LOG("[stackful_resume_with_value] SET: tl_current_coro=%p (target coro %d)\n",
+              (void*)tl_current_coro, id);
     target->status = STACKFUL_STATUS_RUNNING;
 
     /* ========== ASYMMETRIC COROUTINE: Use tina_resume (proper asymmetric API) ========== */
-    DEBUG_LOG("[stackful_resume_with_value] Calling tina_resume(coro %d, value=%p)\n",
+    DEBUG_LOG("[stackful_resume_with_value] >>> CALLING tina_resume(coro %d, value=%p)\n",
             id, value);
 
     void *result = tina_resume(target->coro, value);
 
-    DEBUG_LOG("[stackful_resume_with_value] Returned from tina_swap, result=%p\n", result);
+    DEBUG_LOG("[stackful_resume_with_value] <<< RETURNED from tina_resume, result=%p\n", result);
+    DEBUG_LOG("[stackful_resume_with_value] tl_current_coro=%p (should still be target)\n",
+              (void*)tl_current_coro);
     
     /* CRITICAL FIX: Update QuickJS stack top after switching to coroutine's C stack
      * QuickJS detects stack overflow by checking C stack pointer against stack_limit,
@@ -396,10 +428,14 @@ void* stackful_resume_with_value(stackful_schedule *S, int id, void *value) {
     }
 
     /* Restore previous current coroutine (for nested resume support) */
+    DEBUG_LOG("[stackful_resume_with_value] RESTORING: tl_current_coro from %p to %p\n",
+              (void*)tl_current_coro, (void*)saved_current_coro);
     tl_current_coro = saved_current_coro;
-    DEBUG_LOG("[stackful_resume_with_value] Restored current_coro=%p\n", tl_current_coro);
+    DEBUG_LOG("[stackful_resume_with_value] RESTORED: tl_current_coro=%p (caller_id=%d)\n",
+              (void*)tl_current_coro, caller_id);
 
-    DEBUG_LOG("[stackful_resume_with_value] After resume, returning result=%p\n", result);
+    DEBUG_LOG("[stackful_resume_with_value] === RESUME END ===\n");
+    DEBUG_LOG("[stackful_resume_with_value] target_id=%d, result=%p\n", id, result);
 
     return result;
 }
@@ -434,12 +470,20 @@ void* stackful_yield_with_value(stackful_schedule *S, void *value) {
         return NULL;
     }
 
-    DEBUG_LOG("[stackful_yield_with_value] Coroutine yielding to dispatcher with value=%p\n", value);
+    /* Get current coroutine ID for better logging */
+    tina_wrapper *wrapper = (tina_wrapper*)tl_current_coro->user_data;
+    int coro_id = wrapper ? wrapper->self_id : -1;
+
+    DEBUG_LOG("[stackful_yield_with_value] === YIELD START ===\n");
+    DEBUG_LOG("[stackful_yield_with_value] coro_id=%d, tl_current_coro=%p, value=%p\n",
+              coro_id, (void*)tl_current_coro, value);
 
     /* ========== ASYMMETRIC COROUTINE: Use tina_yield (proper asymmetric API) ========== */
     void *result = tina_yield(tl_current_coro, value);
 
-    DEBUG_LOG("[stackful_yield_with_value] Coroutine resumed after yield, got value=%p\n", result);
+    DEBUG_LOG("[stackful_yield_with_value] === YIELD RESUMED ===\n");
+    DEBUG_LOG("[stackful_yield_with_value] coro_id=%d, tl_current_coro=%p, got result=%p\n",
+              coro_id, (void*)tl_current_coro, result);
 
     return result;
 }
@@ -562,21 +606,26 @@ stackful_status_t stackful_status(stackful_schedule *S, int id) {
  */
 int stackful_running(stackful_schedule *S) {
     (void)S;  /* Unused - kept for API compatibility */
-    
+
+    DEBUG_LOG("[stackful_running] CALLED: tl_current_coro=%p\n", (void*)tl_current_coro);
+
     /* Not running in a coroutine context (dispatcher/main thread) */
     if (!tl_current_coro) {
+        DEBUG_LOG("[stackful_running] RETURN: -1 (not in coroutine)\n");
         return -1;
     }
-    
+
     /* O(1) lookup: tina stores wrapper pointer in coro->user_data */
     tina_wrapper *wrapper = (tina_wrapper*)tl_current_coro->user_data;
     if (wrapper) {
-        DEBUG_LOG("[stackful_running] Current coroutine ID: %d\n", wrapper->self_id);
+        DEBUG_LOG("[stackful_running] RETURN: %d (tl_current_coro=%p, wrapper=%p)\n",
+                  wrapper->self_id, (void*)tl_current_coro, (void*)wrapper);
         return wrapper->self_id;
     }
-    
+
     /* Inconsistent state - shouldn't happen if tl_current_coro is properly managed */
-    DEBUG_LOG("[stackful_running] ERROR: tl_current_coro set but wrapper not found\n");
+    DEBUG_LOG("[stackful_running] ERROR: tl_current_coro=%p set but wrapper not found\n",
+              (void*)tl_current_coro);
     return -1;
 }
 
