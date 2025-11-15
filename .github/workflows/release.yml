@@ -7,6 +7,19 @@ on:
       - "v*.*.*"
 
 jobs:
+  check_meson_version:
+    runs-on: ubuntu-22.04
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: install meson and ninja
+        run: |
+          pip install --upgrade meson ninja
+      - name: check meson version
+        run: |
+          MESON_VERSION=$(meson introspect meson.build --projectinfo | jq -r '.version')
+          test "${{ github.ref_name }}" = "v${MESON_VERSION}"
+
   linux:
     runs-on: ubuntu-22.04
     strategy:
@@ -125,7 +138,7 @@ jobs:
           path: build/qjs-wasi.wasm
 
   upload-to-release:
-    needs: [linux, macos, windows, wasi]
+    needs: [linux, macos, windows, wasi, check_meson_version]
     runs-on: ubuntu-22.04
     steps:
       - name: get assets
