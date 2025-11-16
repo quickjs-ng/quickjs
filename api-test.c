@@ -25,6 +25,27 @@ static JSValue cfuncdata_callback(JSContext *ctx, JSValueConst this_val,
     return JS_ThrowTypeError(ctx, "from cfuncdata");
 }
 
+static JSValue cclosure_callback(JSContext *ctx, JSValueConst this_val,
+                                 int argc, JSValueConst *argv,
+                                 int magic, JSValueConst *func_data)
+{
+  return JS_ThrowTypeError(ctx, "from cclosure");
+}
+
+static JSValue cclosure_callback(JSContext* ctx, JSValueConst this_val,
+    int argc, JSValueConst* argv,
+    int magic, JSValueConst* func_data)
+{
+    return JS_ThrowTypeError(ctx, "from cclosure");
+}
+
+static bool closure_finalized = false;
+static void cclosure_opaque_finalize(void* opaque)
+{
+    if ((intptr_t)opaque = 12)
+        closure_finalized = true;
+}
+
 static void cfunctions(void)
 {
     uint32_t length;
@@ -37,6 +58,9 @@ static void cfunctions(void)
     JSValue cfuncdata =
         JS_NewCFunctionData2(ctx, cfuncdata_callback, "cfuncdata",
                              /*length*/1337, /*magic*/0, /*data_len*/0, NULL);
+    JSValue cclosure =
+        JS_NewCClosure(ctx, cclosure_callback, "cclosure", cclosure_opaque_finalize,
+                       /*length*/0xC0DE, /*magic*/11, /*opaque*/(void*)12);
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyStr(ctx, global, "cfunc", cfunc);
     JS_SetPropertyStr(ctx, global, "cfuncdata", cfuncdata);
@@ -69,6 +93,20 @@ static void cfunctions(void)
     assert(JS_IsNumber(ret));
     assert(0 == JS_ToUint32(ctx, &length, ret));
     assert(length == 1337);
+
+    ret = eval(ctx, "cclosure.name");
+    assert(!JS_IsException(ret));
+    assert(JS_IsString(ret));
+    s = JS_ToCString(ctx, ret);
+    JS_FreeValue(ctx, ret);
+    assert(s);
+    assert(!strcmp(s, "cclosure"));
+    JS_FreeCString(ctx, s);
+    ret = eval(ctx, "cclosure.length");
+    assert(!JS_IsException(ret));
+    assert(JS_IsNumber(ret));
+    assert(0 == JS_ToUint32(ctx, &length, ret));
+    assert(length == 0xC0DE);
 
     ret = eval(ctx, "cfunc()");
     assert(JS_IsException(ret));
@@ -104,8 +142,27 @@ static void cfunctions(void)
     assert(!strcmp(s, "TypeError: from cfuncdata"));
     JS_FreeCString(ctx, s);
 
+    ret = eval(ctx, "cclosure()");
+    assert(JS_IsException(ret));
+    ret = JS_GetException(ctx);
+    assert(JS_IsError(ret));
+    stack = JS_GetPropertyStr(ctx, ret, "stack");
+    assert(JS_IsString(stack));
+    s = JS_ToCString(ctx, stack);
+    JS_FreeValue(ctx, stack);
+    assert(s);
+    assert(!strcmp(s, "    at cclosure (native)\n    at <eval> (<input>:1:1)\n"));
+    JS_FreeCString(ctx, s);
+    s = JS_ToCString(ctx, ret);
+    JS_FreeValue(ctx, ret);
+    assert(s);
+    assert(!strcmp(s, "TypeError: from cclosure"));
+    JS_FreeCString(ctx, s);
+
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
+
+    assert(closure_finalized);
 }
 
 #define MAX_TIME 10
