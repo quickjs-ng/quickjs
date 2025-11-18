@@ -5636,7 +5636,7 @@ JSValue JS_NewCClosure(JSContext* ctx, JSCClosure* func, const char* name,
     s->magic = magic;
     s->opaque = opaque;
     s->opaque_finalize = opaque_finalize;
-    JS_SetOpaque(func_obj, s);
+    JS_SetOpaqueInternal(func_obj, s);
     name_atom = JS_ATOM_empty_string;
     if (name && *name) {
         name_atom = JS_NewAtom(ctx, name);
