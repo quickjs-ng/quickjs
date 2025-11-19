@@ -642,7 +642,7 @@ jobs:
 
           - name: clang+sanitize
             args: >-
-              "-Db_sanitize=address,undefined"
+              "-Db_sanitize=address,undefined -Db_lundef=false"
             extra_envs:
               CC: clang
               CXX: clang++
@@ -656,7 +656,7 @@ jobs:
           # Use Visual Studio supplied clang-cl instead.
           - name: clang-cl+sanitize
             args: >-
-              "-Db_sanitize=address,undefined"
+              "-Db_sanitize=address,undefined -Db_lundef=false"
             extra_envs:
               CC: clang-cl
               CXX: clang-cl
