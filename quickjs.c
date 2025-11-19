@@ -1345,7 +1345,7 @@ static void js_c_function_data_mark(JSRuntime *rt, JSValueConst val,
 static JSValue js_call_c_function_data(JSContext *ctx, JSValueConst func_obj,
                                        JSValueConst this_val,
                                        int argc, JSValueConst *argv, int flags);
-static void js_c_closure_finalizer(JSRuntime *rt, JSValue val);
+static void js_c_closure_finalizer(JSRuntime *rt, JSValueConst val);
 static JSValue js_call_c_closure(JSContext *ctx, JSValueConst func_obj,
                                  JSValueConst this_val,
                                  int argc, JSValueConst *argv, int flags);
@@ -5563,7 +5563,7 @@ typedef struct JSCClosureRecord {
     void (*opaque_finalize)(void*);
 } JSCClosureRecord;
 
-static void js_c_closure_finalizer(JSRuntime *rt, JSValue val)
+static void js_c_closure_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSCClosureRecord *s = JS_GetOpaque(val, JS_CLASS_C_CLOSURE);
 
@@ -5579,33 +5579,51 @@ static JSValue js_call_c_closure(JSContext *ctx, JSValueConst func_obj,
                                  JSValueConst this_val,
                                  int argc, JSValueConst *argv, int flags)
 {
-    JSCClosureRecord *s = JS_GetOpaque(func_obj, JS_CLASS_C_CLOSURE);
-    JSValueConst *arg_buf;
+    JSRuntime* rt = ctx->rt;
+    JSStackFrame sf_s, * sf = &sf_s, * prev_sf;
+    JSCClosureRecord* s = JS_GetOpaque(func_obj, JS_CLASS_C_CLOSURE);
+    JSValueConst* arg_buf;
+    JSValue ret;
+    int arg_count;
     int i;
+    size_t stack_size;
 
-    /* XXX: could add the function on the stack for debug */
-    if (unlikely(argc < s->length)) {
-        arg_buf = alloca(sizeof(arg_buf[0]) * s->length);
-        for(i = 0; i < argc; i++)
+    arg_buf = argv;
+    arg_count = s->length;
+    if (unlikely(argc < arg_count)) {
+        stack_size = arg_count * sizeof(arg_buf[0]);
+        if (js_check_stack_overflow(rt, stack_size))
+            return JS_ThrowStackOverflow(ctx);
+        arg_buf = alloca(stack_size);
+        for (i = 0; i < argc; i++)
             arg_buf[i] = argv[i];
-        for(i = argc; i < s->length; i++)
+        for (i = argc; i < arg_count; i++)
             arg_buf[i] = JS_UNDEFINED;
-    } else {
-        arg_buf = argv;
     }
 
-    return s->func(ctx, this_val, argc, arg_buf, s->magic, s->opaque);
+    prev_sf = rt->current_stack_frame;
+    sf->prev_frame = prev_sf;
+    rt->current_stack_frame = sf;
+    // TODO(bnoordhuis) switch realms like js_call_c_function does
+    sf->is_strict_mode = false;
+    sf->cur_func = unsafe_unconst(func_obj);
+    sf->arg_count = argc;
+    ret = s->func(ctx, this_val, argc, arg_buf, s->magic, s->opaque);
+    rt->current_stack_frame = sf->prev_frame;
+
+    return ret;
 }
 
-JSValue JS_NewCClosure(JSContext *ctx, JSCClosure *func,
-                       int length, int magic, void *opaque,
-                       void (*opaque_finalize)(void*))
+JSValue JS_NewCClosure(JSContext* ctx, JSCClosure* func, const char* name,
+                       JSCClosureFinalizerFunc *opaque_finalize,
+                       int length, int magic, void* opaque)
 {
-    JSCClosureRecord *s;
+    JSCClosureRecord* s;
+    JSAtom name_atom;
     JSValue func_obj;
 
     func_obj = JS_NewObjectProtoClass(ctx, ctx->function_proto,
-                                      JS_CLASS_C_CLOSURE);
+        JS_CLASS_C_CLOSURE);
     if (JS_IsException(func_obj))
         return func_obj;
     s = js_malloc(ctx, sizeof(*s));
@@ -5619,8 +5637,16 @@ JSValue JS_NewCClosure(JSContext *ctx, JSCClosure *func,
     s->opaque = opaque;
     s->opaque_finalize = opaque_finalize;
     JS_SetOpaque(func_obj, s);
-    js_function_set_properties(ctx, func_obj,
-                               JS_ATOM_empty_string, length);
+    name_atom = JS_ATOM_empty_string;
+    if (name && *name) {
+        name_atom = JS_NewAtom(ctx, name);
+        if (name_atom == JS_ATOM_NULL) {
+            JS_FreeValue(ctx, func_obj);
+            return JS_EXCEPTION;
+        }
+    }
+    js_function_set_properties(ctx, func_obj, name_atom, length);
+    JS_FreeAtom(ctx, name_atom);
     return func_obj;
 }
 

@@ -1166,9 +1166,11 @@ JS_EXTERN JSValue JS_NewCFunctionData2(JSContext *ctx, JSCFunctionData *func,
                                        const char *name,
                                        int length, int magic, int data_len,
                                        JSValueConst *data);
-JS_EXTERN JSValue JS_NewCClosure(JSContext *ctx, JSCClosure *func,
-                       int length, int magic, void *opaque,
-                       void (*opaque_finalize)(void*));
+typedef void JSCClosureFinalizerFunc(void*);
+JS_EXTERN JSValue JS_NewCClosure(JSContext* ctx, JSCClosure* func,
+                                 const char* name,
+                                 JSCClosureFinalizerFunc* opaque_finalize,
+                                 int length, int magic, void* opaque);
 
 static inline JSValue JS_NewCFunction(JSContext *ctx, JSCFunction *func,
                                       const char *name, int length)
