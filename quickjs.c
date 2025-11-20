@@ -17998,8 +17998,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     sp[-2] = js_int32(r);
                     sp--;
                 } else if (JS_VALUE_IS_BOTH_FLOAT(op1, op2)) {
+                    JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
                     sp[-2] = js_float64(JS_VALUE_GET_FLOAT64(op1) +
                                         JS_VALUE_GET_FLOAT64(op2));
+                    JS_X87_FPCW_RESTORE(fpcw);
                     sp--;
                 } else {
                 add_slow:
@@ -18066,8 +18068,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     sp[-2] = js_int32(r);
                     sp--;
                 } else if (JS_VALUE_IS_BOTH_FLOAT(op1, op2)) {
+                    JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
                     sp[-2] = js_float64(JS_VALUE_GET_FLOAT64(op1) -
                                         JS_VALUE_GET_FLOAT64(op2));
+                    JS_X87_FPCW_RESTORE(fpcw);
                     sp--;
                 } else {
                     goto binary_arith_slow;
@@ -18098,7 +18102,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     sp[-2] = js_int32(r);
                     sp--;
                 } else if (JS_VALUE_IS_BOTH_FLOAT(op1, op2)) {
+                    JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
                     d = JS_VALUE_GET_FLOAT64(op1) * JS_VALUE_GET_FLOAT64(op2);
+                    JS_X87_FPCW_RESTORE(fpcw);
                 mul_fp_res:
                     sp[-2] = js_float64(d);
                     sp--;
@@ -52277,7 +52283,9 @@ static double set_date_fields(double fields[minimum_length(7)], int is_local) {
     int yi, mi, i;
     int64_t days;
     volatile double temp;  /* enforce evaluation order */
+    double d = NAN;
 
+    JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
     /* emulate 21.4.1.15 MakeDay ( year, month, date ) */
     y = fields[0];
     m = fields[1];
@@ -52287,7 +52295,7 @@ static double set_date_fields(double fields[minimum_length(7)], int is_local) {
     if (mn < 0)
         mn += 12;
     if (ym < -271821 || ym > 275760)
-        return NAN;
+        goto out;
 
     yi = ym;
     mi = mn;
@@ -52319,14 +52327,17 @@ static double set_date_fields(double fields[minimum_length(7)], int is_local) {
     /* emulate 21.4.1.16 MakeDate ( day, time ) */
     tv = (temp = day * 86400000) + time;   /* prevent generation of FMA */
     if (!isfinite(tv))
-        return NAN;
+        goto out;
 
     /* adjust for local time and clip */
     if (is_local) {
         int64_t ti = tv < INT64_MIN ? INT64_MIN : tv >= 0x1p63 ? INT64_MAX : (int64_t)tv;
         tv += getTimezoneOffset(ti) * 60000;
     }
-    return time_clip(tv);
+    d = time_clip(tv);
+out:
+    JS_X87_FPCW_RESTORE(fpcw);
+    return d;
 }
 
 static JSValue get_date_field(JSContext *ctx, JSValueConst this_val,
