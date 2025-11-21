@@ -13395,12 +13395,17 @@ static int js_is_array(JSContext *ctx, JSValueConst val)
 
 static double js_math_pow(double a, double b)
 {
+    double d;
+
     if (unlikely(!isfinite(b)) && fabs(a) == 1) {
         /* not compatible with IEEE 754 */
-        return NAN;
+        d = NAN;
     } else {
-        return pow(a, b);
+        JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
+        d = pow(a, b);
+        JS_X87_FPCW_RESTORE(fpcw);
     }
+    return d;
 }
 
 JSValue JS_NewBigInt64(JSContext *ctx, int64_t v)
@@ -13820,11 +13825,15 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
             }
             break;
         case OP_div:
+            JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
             sp[-2] = js_number((double)v1 / (double)v2);
+            JS_X87_FPCW_RESTORE(fpcw);
             return 0;
         case OP_mod:
             if (v1 < 0 || v2 <= 0) {
+                JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
                 sp[-2] = js_number(fmod(v1, v2));
+                JS_X87_FPCW_RESTORE(fpcw);
                 return 0;
             } else {
                 v = (int64_t)v1 % (int64_t)v2;
@@ -13888,6 +13897,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
         if (JS_ToFloat64Free(ctx, &d2, op2))
             goto exception;
     handle_float64:
+        JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
         switch(op) {
         case OP_sub:
             dr = d1 - d2;
@@ -13907,6 +13917,7 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
         default:
             abort();
         }
+        JS_X87_FPCW_RESTORE(fpcw);
         sp[-2] = js_float64(dr);
     }
     return 0;
@@ -14023,7 +14034,9 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         }
         if (JS_ToFloat64Free(ctx, &d2, op2))
             goto exception;
+        JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
         sp[-2] = js_float64(d1 + d2);
+        JS_X87_FPCW_RESTORE(fpcw);
     }
     return 0;
  exception:

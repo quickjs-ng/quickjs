@@ -636,8 +636,7 @@ int js_thread_join(js_thread_t thrd);
 
 // JS requires strict rounding behavior. Turn on 64-bits double precision
 // and disable x87 80-bits extended precision for intermediate floating-point
-// results.
-// 0x300 is extended  precision, 0x200 is double precision.
+// results. 0x300 is extended  precision, 0x200 is double precision.
 // Note that `*&cw` in the asm constraints looks redundant but isn't.
 #if defined(__i386__) && !defined(_MSC_VER)
 #define JS_X87_FPCW_SAVE_AND_ADJUST(cw)                                     \
