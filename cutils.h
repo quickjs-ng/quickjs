@@ -634,6 +634,25 @@ int js_thread_join(js_thread_t thrd);
 
 #endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
 
+// JS requires strict rounding behavior. Turn on 64-bits double precision
+// and disable x87 80-bits extended precision for intermediate floating-point
+// results. 0x300 is extended  precision, 0x200 is double precision.
+// Note that `*&cw` in the asm constraints looks redundant but isn't.
+#if defined(__i386__) && !defined(_MSC_VER)
+#define JS_X87_FPCW_SAVE_AND_ADJUST(cw)                                     \
+    unsigned short cw;                                                      \
+    __asm__ __volatile__("fnstcw %0" : "=m"(*&cw));                         \
+    do {                                                                    \
+        unsigned short t = 0x200 | (cw & ~0x300);                           \
+        __asm__ __volatile__("fldcw %0" : /*empty*/ : "m"(*&t));            \
+    } while (0)
+#define JS_X87_FPCW_RESTORE(cw)                                             \
+    __asm__ __volatile__("fldcw %0" : /*empty*/ : "m"(*&cw))
+#else
+#define JS_X87_FPCW_SAVE_AND_ADJUST(cw)
+#define JS_X87_FPCW_RESTORE(cw)
+#endif
+
 #ifdef __cplusplus
 } /* extern "C" { */
 #endif
