@@ -65,6 +65,11 @@ JS_EXTERN void js_std_promise_rejection_tracker(JSContext *ctx,
                                                 JSValueConst reason,
                                                 bool is_handled,
                                                 void *opaque);
+// Defaults to JS_NewRuntime, no-op if compiled without worker support.
+// Call before creating the first worker thread.
+JS_EXTERN void js_std_set_worker_new_runtime_func(JSRuntime *(*func)(void));
+// Defaults to JS_NewContext, no-op if compiled without worker support.
+// Call before creating the first worker thread.
 JS_EXTERN void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt));
 
 #undef JS_EXTERN

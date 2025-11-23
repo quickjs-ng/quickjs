@@ -3654,7 +3654,8 @@ typedef struct {
     uint64_t buf[];
 } JSSABHeader;
 
-static JSContext *(*js_worker_new_context_func)(JSRuntime *rt);
+static JSRuntime *(*js_worker_new_runtime_func)(void) = JS_NewRuntime;
+static JSContext *(*js_worker_new_context_func)(JSRuntime *rt) = JS_NewContext;
 
 static int atomic_add_int(int *ptr, int v)
 {
@@ -3783,7 +3784,7 @@ static void worker_func(void *opaque)
     JSContext *ctx;
     JSValue val;
 
-    rt = JS_NewRuntime();
+    rt = js_worker_new_runtime_func();
     if (rt == NULL) {
         fprintf(stderr, "JS_NewRuntime failure");
         exit(1);
@@ -4061,6 +4062,13 @@ static const JSCFunctionListEntry js_worker_proto_funcs[] = {
 };
 
 #endif /* USE_WORKER */
+
+void js_std_set_worker_new_runtime_func(JSRuntime *(*func)(void))
+{
+#ifdef USE_WORKER
+    js_worker_new_runtime_func = func;
+#endif
+}
 
 void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
 {
