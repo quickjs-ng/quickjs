@@ -5560,7 +5560,7 @@ typedef struct JSCClosureRecord {
     uint16_t length;
     uint16_t magic;
     void *opaque;
-    void (*opaque_finalize)(void*);
+    void (*opaque_finalize)(void *opaque);
 } JSCClosureRecord;
 
 static void js_c_closure_finalizer(JSRuntime *rt, JSValueConst val)
@@ -5579,10 +5579,10 @@ static JSValue js_call_c_closure(JSContext *ctx, JSValueConst func_obj,
                                  JSValueConst this_val,
                                  int argc, JSValueConst *argv, int flags)
 {
-    JSRuntime* rt = ctx->rt;
-    JSStackFrame sf_s, * sf = &sf_s, * prev_sf;
-    JSCClosureRecord* s = JS_GetOpaque(func_obj, JS_CLASS_C_CLOSURE);
-    JSValueConst* arg_buf;
+    JSRuntime *rt = ctx->rt;
+    JSStackFrame sf_s, *sf = &sf_s, *prev_sf;
+    JSCClosureRecord *s = JS_GetOpaque(func_obj, JS_CLASS_C_CLOSURE);
+    JSValueConst *arg_buf;
     JSValue ret;
     int arg_count;
     int i;
@@ -5614,11 +5614,11 @@ static JSValue js_call_c_closure(JSContext *ctx, JSValueConst func_obj,
     return ret;
 }
 
-JSValue JS_NewCClosure(JSContext* ctx, JSCClosure* func, const char* name,
+JSValue JS_NewCClosure(JSContext *ctx, JSCClosure *func, const char *name,
                        JSCClosureFinalizerFunc *opaque_finalize,
-                       int length, int magic, void* opaque)
+                       int length, int magic, void *opaque)
 {
-    JSCClosureRecord* s;
+    JSCClosureRecord *s;
     JSAtom name_atom;
     JSValue func_obj;
 

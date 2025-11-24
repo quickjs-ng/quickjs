@@ -33,7 +33,8 @@ static JSValue cclosure_callback(JSContext *ctx, JSValueConst this_val,
 }
 
 static bool closure_finalized = false;
-static void cclosure_opaque_finalize(void* opaque)
+
+static void cclosure_opaque_finalize(void *opaque)
 {
     if ((intptr_t)opaque == 12)
         closure_finalized = true;
