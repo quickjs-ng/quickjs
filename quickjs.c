@@ -248,6 +248,11 @@ typedef struct JSValueLink {
     JSValueConst value;
 } JSValueLink;
 
+typedef struct JSAsyncStack {
+    struct JSStackFrame *cutoff; // current sync stackframe cutoff
+    DynBuf *current;             // list of JSSimpleFrame elements
+} JSAsyncStack;
+
 struct JSRuntime {
     JSMallocFunctions mf;
     JSMallocState malloc_state;
@@ -326,6 +331,7 @@ struct JSRuntime {
     void *user_opaque;
     void *libc_opaque;
     JSRuntimeFinalizerState *finalizers;
+    JSAsyncStack async_stack;
 };
 
 struct JSClass {
@@ -352,6 +358,11 @@ typedef struct JSStackFrame {
        the function is running. */
     JSValue *cur_sp;
 } JSStackFrame;
+
+typedef struct JSSimpleFrame {
+    JSValue cur_func;
+    uint8_t *cur_pc;
+} JSSimpleFrame;
 
 typedef enum {
     JS_GC_OBJ_TYPE_JS_OBJECT,
@@ -900,6 +911,7 @@ typedef struct JSJobEntry {
     struct list_head link;
     JSContext *ctx;
     JSJobFunc *job_func;
+    DynBuf async_stack;
     int argc;
     JSValue argv[];
 } JSJobEntry;
@@ -1364,7 +1376,8 @@ static void js_set_uncatchable_error(JSContext *ctx, JSValueConst val,
                                      bool flag);
 
 static JSValue js_new_callsite(JSContext *ctx, JSCallSiteData *csd);
-static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFrame *sf);
+static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd,
+                                 JSValueConst cur_func, uint8_t *cur_pc);
 static void js_new_callsite_data2(JSContext *ctx, JSCallSiteData *csd, const char *filename, int line_num, int col_num);
 static void _JS_AddIntrinsicCallSite(JSContext *ctx);
 
@@ -2008,11 +2021,56 @@ void JS_SetSharedArrayBufferFunctions(JSRuntime *rt,
     rt->sab_funcs = *sf;
 }
 
+static int js_capture_stack(DynBuf *as, JSStackFrame *stop, JSStackFrame *sf)
+{
+    if (sf == stop)
+        return 0;
+    // record stack frames in reverse order (oldest frame first)
+    // so we can keep appending new frames after await points
+    // TODO(bnoordhuis) bound recursion depth in case sync stack is big
+    if (js_capture_stack(as, stop, sf->prev_frame))
+        return -1;
+    JSSimpleFrame f = {sf->cur_func, sf->cur_pc};
+    if (dbuf_put(as, &f, sizeof(f)))
+        return -1;
+    js_dup(f.cur_func);
+    return 0;
+}
+
+static int js_copy_stack(DynBuf *src, DynBuf *dst)
+{
+    JSSimpleFrame f;
+    size_t i;
+
+    if (src) {
+        for (i = 0; i < src->size; i += sizeof(f)) {
+            memcpy(&f, &src->buf[i], sizeof(f));
+            if (dbuf_put(dst, &f, sizeof(f)))
+                return -1;
+            js_dup(f.cur_func);
+        }
+    }
+    return 0;
+}
+
+static void js_free_stack(JSRuntime *rt, DynBuf *as)
+{
+    JSSimpleFrame f;
+    size_t i;
+
+    for (i = 0; i < as->size; i += sizeof(f)) {
+        memcpy(&f, &as->buf[i], sizeof(f));
+        JS_FreeValueRT(rt, f.cur_func);
+    }
+    dbuf_free(as);
+}
+
 /* return 0 if OK, < 0 if exception */
 int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
                   int argc, JSValueConst *argv)
 {
     JSRuntime *rt = ctx->rt;
+    JSStackFrame *sf = rt->current_stack_frame;
     JSJobEntry *e;
     int i;
 
@@ -2021,6 +2079,9 @@ int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
     e = js_malloc(ctx, sizeof(*e) + argc * sizeof(JSValue));
     if (!e)
         return -1;
+    js_dbuf_init(ctx, &e->async_stack);
+    js_copy_stack(rt->async_stack.current, &e->async_stack);
+    js_capture_stack(&e->async_stack, rt->async_stack.cutoff, sf);
     e->ctx = ctx;
     e->job_func = job_func;
     e->argc = argc;
@@ -2040,6 +2101,7 @@ bool JS_IsJobPending(JSRuntime *rt)
    executed successfully. the context of the job is stored in '*pctx' */
 int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx)
 {
+    JSAsyncStack old, *as;
     JSContext *ctx;
     JSJobEntry *e;
     JSValue res;
@@ -2052,16 +2114,20 @@ int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx)
 
     /* get the first pending job and execute it */
     e = list_entry(rt->job_list.next, JSJobEntry, link);
-    list_del(&e->link);
     ctx = e->ctx;
+    list_del(&e->link);
+    as = &rt->async_stack;
+    old = *as;
+    *as = (JSAsyncStack){rt->current_stack_frame, &e->async_stack};
     res = e->job_func(e->ctx, e->argc, vc(e->argv));
+    *as = old;
     for(i = 0; i < e->argc; i++)
         JS_FreeValue(ctx, e->argv[i]);
+    ret = 1;
     if (JS_IsException(res))
         ret = -1;
-    else
-        ret = 1;
     JS_FreeValue(ctx, res);
+    js_free_stack(rt, &e->async_stack);
     js_free(ctx, e);
     *pctx = ctx;
     return ret;
@@ -2154,6 +2220,7 @@ void JS_FreeRuntime(JSRuntime *rt)
 
     list_for_each_safe(el, el1, &rt->job_list) {
         JSJobEntry *e = list_entry(el, JSJobEntry, link);
+        js_free_stack(rt, &e->async_stack);
         for(i = 0; i < e->argc; i++)
             JS_FreeValueRT(rt, e->argv[i]);
         js_free_rt(rt, e);
@@ -5296,6 +5363,19 @@ static bool js_class_has_bytecode(JSClassID class_id)
             class_id == JS_CLASS_ASYNC_GENERATOR_FUNCTION);
 }
 
+static bool js_function_backtrace_barrier(JSValueConst val)
+{
+    JSObject *p;
+
+    if (JS_TAG_OBJECT == JS_VALUE_GET_TAG(val)) {
+        // TODO(bnoordhuis) punch through proxies?
+        p = JS_VALUE_GET_OBJ(val);
+        if (js_class_has_bytecode(p->class_id))
+            return p->u.func.function_bytecode->backtrace_barrier;
+    }
+    return false;
+}
+
 /* return NULL without exception if not a function or no bytecode */
 static JSFunctionBytecode *JS_GetFunctionBytecode(JSValueConst val)
 {
@@ -6976,23 +7056,65 @@ static bool can_add_backtrace(JSValueConst obj)
 #define JS_BACKTRACE_FLAG_SINGLE_LEVEL     (1 << 1)
 #define JS_BACKTRACE_FLAG_FILTER_FUNC      (1 << 2)
 
+static void backtrace1(JSContext *ctx, DynBuf *dbuf, JSValueConst cur_func,
+                       uint8_t *cur_pc)
+{
+    JSFunctionBytecode *b;
+    JSObject *p;
+    const char *func_name_str;
+    const char *str1;
+
+    p = JS_VALUE_GET_OBJ(cur_func);
+    b = NULL;
+    if (js_class_has_bytecode(p->class_id))
+        b = p->u.func.function_bytecode;
+    /* func_name_str is UTF-8 encoded if needed */
+    str1 = "<anonymous>";
+    func_name_str = get_func_name(ctx, cur_func);
+    if (func_name_str && *func_name_str)
+        str1 = func_name_str;
+    dbuf_printf(dbuf, "    at %s", str1);
+    JS_FreeCString(ctx, func_name_str);
+
+    if (b && cur_pc) {
+        const char *atom_str;
+        int line_num1, col_num1;
+        uint32_t pc;
+
+        pc = cur_pc - b->byte_code_buf - 1;
+        line_num1 = find_line_num(ctx, b, pc, &col_num1);
+        atom_str = b->filename ? JS_AtomToCString(ctx, b->filename) : NULL;
+        dbuf_printf(dbuf, " (%s", atom_str ? atom_str : "<null>");
+        JS_FreeCString(ctx, atom_str);
+        if (line_num1 != -1)
+            dbuf_printf(dbuf, ":%d:%d", line_num1, col_num1);
+        dbuf_putc(dbuf, ')');
+    } else if (b) {
+        // FIXME(bnoordhuis) Missing `sf->cur_pc = pc` in bytecode
+        // handler in JS_CallInternal. Almost never user observable
+        // except with intercepting JS proxies that throw exceptions.
+        dbuf_printf(dbuf, " (missing)");
+    } else {
+        dbuf_printf(dbuf, " (native)");
+    }
+    dbuf_putc(dbuf, '\n');
+}
+
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
 static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                             JSValueConst filter_func, const char *filename,
                             int line_num, int col_num, int backtrace_flags)
 {
-    JSStackFrame *sf, *sf_start;
+    JSStackFrame *sf, *sf_start, *sf_end;
     JSValue stack, prepare, saved_exception;
-    DynBuf dbuf;
-    const char *func_name_str;
-    const char *str1;
-    JSObject *p;
-    JSFunctionBytecode *b;
-    bool backtrace_barrier, has_prepare, has_filter_func;
+    DynBuf dbuf, *as;
+    JSSimpleFrame f;
+    bool has_prepare, has_filter_func;
     JSRuntime *rt;
     JSCallSiteData csd[64];
     uint32_t i;
+    size_t k;
     double d;
     int stack_trace_limit;
 
@@ -7054,10 +7176,13 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
 
     sf_start = rt->current_stack_frame;
 
+    // NULL or the frame to start stitching in async stack frames
+    sf_end = rt->async_stack.cutoff;
+
     /* Find the frame we want to start from. Note that when a filter is used the filter
        function will be the first, but we also specify we want to skip the first one. */
     if (has_filter_func) {
-        for (sf = sf_start; sf != NULL && i < stack_trace_limit; sf = sf->prev_frame) {
+        for (sf = sf_start; sf != sf_end; sf = sf->prev_frame) {
             if (js_same_value(ctx, sf->cur_func, filter_func)) {
                 sf_start = sf;
                 break;
@@ -7065,62 +7190,49 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
         }
     }
 
-    for (sf = sf_start; sf != NULL && i < stack_trace_limit; sf = sf->prev_frame) {
+    for (sf = sf_start; sf != sf_end; sf = sf->prev_frame) {
+        if (i >= stack_trace_limit)
+            break;
         if (backtrace_flags & JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL) {
             backtrace_flags &= ~JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL;
             continue;
         }
-
-        p = JS_VALUE_GET_OBJ(sf->cur_func);
-        b = NULL;
-        backtrace_barrier = false;
-
-        if (js_class_has_bytecode(p->class_id)) {
-            b = p->u.func.function_bytecode;
-            backtrace_barrier = b->backtrace_barrier;
-        }
-
         if (has_prepare) {
-            js_new_callsite_data(ctx, &csd[i], sf);
+            js_new_callsite_data(ctx, &csd[i], sf->cur_func, sf->cur_pc);
         } else {
-            /* func_name_str is UTF-8 encoded if needed */
-            func_name_str = get_func_name(ctx, sf->cur_func);
-            if (!func_name_str || func_name_str[0] == '\0')
-                str1 = "<anonymous>";
-            else
-                str1 = func_name_str;
-            dbuf_printf(&dbuf, "    at %s", str1);
-            JS_FreeCString(ctx, func_name_str);
-
-            if (b && sf->cur_pc) {
-                const char *atom_str;
-                int line_num1, col_num1;
-                uint32_t pc;
-
-                pc = sf->cur_pc - b->byte_code_buf - 1;
-                line_num1 = find_line_num(ctx, b, pc, &col_num1);
-                atom_str = b->filename ? JS_AtomToCString(ctx, b->filename) : NULL;
-                dbuf_printf(&dbuf, " (%s", atom_str ? atom_str : "<null>");
-                JS_FreeCString(ctx, atom_str);
-                if (line_num1 != -1)
-                    dbuf_printf(&dbuf, ":%d:%d", line_num1, col_num1);
-                dbuf_putc(&dbuf, ')');
-            } else if (b) {
-                // FIXME(bnoordhuis) Missing `sf->cur_pc = pc` in bytecode
-                // handler in JS_CallInternal. Almost never user observable
-                // except with intercepting JS proxies that throw exceptions.
-                dbuf_printf(&dbuf, " (missing)");
-            } else {
-                dbuf_printf(&dbuf, " (native)");
-            }
-            dbuf_putc(&dbuf, '\n');
+            backtrace1(ctx, &dbuf, sf->cur_func, sf->cur_pc);
         }
         i++;
-
-        /* stop backtrace if JS_EVAL_FLAG_BACKTRACE_BARRIER was used */
-        if (backtrace_barrier)
+        // stop backtrace if JS_EVAL_FLAG_BACKTRACE_BARRIER was used
+        if (js_function_backtrace_barrier(sf->cur_func))
             break;
     }
+
+    // stitch in async stack frames if there are any
+    as = rt->async_stack.current;
+    if (as) {
+        k = as->size;
+        while (k > 0) {
+            k -= sizeof(f);
+            if (i >= stack_trace_limit)
+                break;
+            if (backtrace_flags & JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL) {
+                backtrace_flags &= ~JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL;
+                continue;
+            }
+            memcpy(&f, &as->buf[k], sizeof(f));
+            if (has_prepare) {
+                js_new_callsite_data(ctx, &csd[i], f.cur_func, f.cur_pc);
+            } else {
+                backtrace1(ctx, &dbuf, f.cur_func, f.cur_pc);
+            }
+            i++;
+            // stop backtrace if JS_EVAL_FLAG_BACKTRACE_BARRIER was used
+            if (js_function_backtrace_barrier(f.cur_func))
+                break;
+        }
+    }
+
  done:
     if (has_prepare) {
         int j = 0, k;
@@ -57994,28 +58106,27 @@ static JSValue js_new_callsite(JSContext *ctx, JSCallSiteData *csd) {
     return obj;
 }
 
-static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFrame *sf)
+static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd,
+                                 JSValueConst cur_func, uint8_t *cur_pc)
 {
     const char *func_name_str;
     JSObject *p;
 
-    csd->func = js_dup(sf->cur_func);
+    csd->func = js_dup(cur_func);
     /* func_name_str is UTF-8 encoded if needed */
-    func_name_str = get_func_name(ctx, sf->cur_func);
-    if (!func_name_str || func_name_str[0] == '\0')
-        csd->func_name = JS_NULL;
-    else
+    csd->func_name = JS_NULL;
+    func_name_str = get_func_name(ctx, cur_func);
+    if (func_name_str && *func_name_str)
         csd->func_name = JS_NewString(ctx, func_name_str);
     JS_FreeCString(ctx, func_name_str);
     if (JS_IsException(csd->func_name))
         csd->func_name = JS_NULL;
 
-    p = JS_VALUE_GET_OBJ(sf->cur_func);
+    p = JS_VALUE_GET_OBJ(cur_func);
     if (js_class_has_bytecode(p->class_id)) {
         JSFunctionBytecode *b = p->u.func.function_bytecode;
         int line_num1, col_num1;
-        line_num1 = find_line_num(ctx, b,
-                                  sf->cur_pc - b->byte_code_buf - 1,
+        line_num1 = find_line_num(ctx, b, cur_pc - b->byte_code_buf - 1,
                                   &col_num1);
         csd->native = false;
         csd->line_num = line_num1;
