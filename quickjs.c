@@ -41781,12 +41781,12 @@ static void js_iterator_concat_mark(JSRuntime *rt, JSValueConst val,
 }
 
 static JSValue js_iterator_concat_next(JSContext *ctx, JSValueConst this_val,
-                                       int argc, JSValueConst *argv)
+                                       int argc, JSValueConst *argv,
+                                       int *pdone, int magic)
 {
     JSValue iter, item, next, val, *obj, *meth;
     JSIteratorConcatData *it;
-    JSPropertyDescriptor d;
-    int done, ret;
+    int done;
 
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_CONCAT);
     if (!it)
@@ -41794,8 +41794,10 @@ static JSValue js_iterator_concat_next(JSContext *ctx, JSValueConst this_val,
     if (it->running)
         return JS_ThrowTypeError(ctx, "already running");
 next:
-    if (it->index >= it->count)
-        return js_create_iterator_result(ctx, JS_UNDEFINED, /*done*/true);
+    if (it->index >= it->count) {
+        *pdone = true;
+        return JS_UNDEFINED;
+    }
     obj = &it->values[it->index + 0];
     meth = &it->values[it->index + 1];
     iter = it->iter;
@@ -41817,8 +41819,10 @@ next:
     it->running = false;
     if (JS_IsException(item))
         return JS_EXCEPTION;
-    if (!done)
-        return js_create_iterator_result(ctx, item, /*done*/false);
+    if (!done) {
+        *pdone = false;
+        return item;
+    }
     // done==1 means really done, done==2 means "unknown, inspect object"
     if (done == 2) {
         val = JS_GetProperty(ctx, item, JS_ATOM_done);
@@ -41839,38 +41843,10 @@ next:
         it->index += 2;
         goto next;
     }
-    // not done, construct { done: false, value: xxx } object
-    // copy .value verbatim from source object, spec doesn't
-    // allow dereferencing getters here
-    d = (JSPropertyDescriptor){
-        .value = JS_UNDEFINED,
-        .getter = JS_UNDEFINED,
-        .setter = JS_UNDEFINED,
-    };
-    ret = JS_GetOwnProperty(ctx, &d, item, JS_ATOM_value);
+    val = JS_GetProperty(ctx, item, JS_ATOM_value);
     JS_FreeValue(ctx, item);
-    if (ret < 0)
-        return JS_EXCEPTION;
-    if (d.flags & JS_PROP_GETSET) {
-        d.flags |= JS_PROP_HAS_GET | JS_PROP_HAS_SET;
-    } else {
-        d.flags |= JS_PROP_HAS_VALUE;
-    }
-    item = JS_NewObject(ctx);
-    if (JS_IsException(item))
-        goto fail;
-    if (JS_DefinePropertyValue(ctx, item, JS_ATOM_done, JS_FALSE,
-                               JS_PROP_C_W_E) < 0) {
-        goto fail;
-    }
-    if (JS_DefineProperty(ctx, item, JS_ATOM_value, d.value, d.getter,
-                          d.setter, d.flags | JS_PROP_C_W_E) < 0) {
-    fail:
-        JS_FreeValue(ctx, item);
-        item = JS_EXCEPTION;
-    }
-    js_free_desc(ctx, &d);
-    return item;
+    *pdone = false;
+    return val;
 }
 
 static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
@@ -41902,13 +41878,8 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
     return ret;
 }
 
-// note: |next| and |return| don't use JS_ITERATOR_NEXT_DEF because |next|
-// has to return a full { value: xxx, done: xxx } step object - it must
-// copy getters and setters from the inner iterator's step object
-// slightly inefficient because of the intermediate step object that is
-// created but that can't be helped right now
 static const JSCFunctionListEntry js_iterator_concat_proto_funcs[] = {
-    JS_CFUNC_DEF("next", 1, js_iterator_concat_next ),
+    JS_ITERATOR_NEXT_DEF("next", 1, js_iterator_concat_next, 0 ),
     JS_CFUNC_DEF("return", 1, js_iterator_concat_return ),
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Iterator Concat", JS_PROP_CONFIGURABLE ),
 };
