@@ -115,7 +115,7 @@ and the `examples/hello.js` JavaScript file:
 
 ```bash
 # Make sure you are in the QuickJS source directory.
-$ cc hello.c cutils.c libbf.c libregexp.c libunicode.c quickjs.c quickjs-libc.c -I. -o hello
+$ cc hello.c cutils.c dtoa.c libregexp.c libunicode.c quickjs.c quickjs-libc.c -I. -o hello
 ```
 
 The resulting binary `hello` will be in the current directory.
