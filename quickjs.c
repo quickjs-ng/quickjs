@@ -41746,11 +41746,11 @@ static JSValue js_iterator_constructor(JSContext *ctx, JSValueConst new_target,
     return js_create_from_ctor(ctx, new_target, JS_CLASS_ITERATOR);
 }
 
-// note: deliberately doesn't use space-saving bit fields for
-// |index|, |count| and |running| because tcc miscompiles them
 typedef struct JSIteratorConcatData {
-    int index, count;             // elements (not pairs!) in values[] array
-    bool running;
+    uint32_t index : 31; // elements (not pairs!) in values[] array
+    uint32_t unused : 1;
+    uint32_t count : 31;
+    uint32_t running : 1;
     JSValue iter, next, values[]; // array of (object, method) pairs
 } JSIteratorConcatData;
 
@@ -41761,7 +41761,7 @@ static void js_iterator_concat_finalizer(JSRuntime *rt, JSValueConst val)
     if (it) {
         JS_FreeValueRT(rt, it->iter);
         JS_FreeValueRT(rt, it->next);
-        for (int i = it->index; i < it->count; i++)
+        for (uint32_t i = it->index; i < it->count; i++)
             JS_FreeValueRT(rt, it->values[i]);
         js_free_rt(rt, it);
     }
@@ -41775,7 +41775,7 @@ static void js_iterator_concat_mark(JSRuntime *rt, JSValueConst val,
     if (it) {
         JS_MarkValue(rt, it->iter, mark_func);
         JS_MarkValue(rt, it->next, mark_func);
-        for (int i = it->index; i < it->count; i++)
+        for (uint32_t i = it->index; i < it->count; i++)
             JS_MarkValue(rt, it->values[i], mark_func);
     }
 }
@@ -41950,7 +41950,7 @@ static JSValue js_iterator_concat(JSContext *ctx, JSValueConst this_val,
     JS_SetOpaqueInternal(obj, it);
     return obj;
 fail:
-    for (int i = 0; i < it->count; i++)
+    for (uint32_t i = 0; i < it->count; i++)
         JS_FreeValue(ctx, it->values[i]);
     js_free(ctx, it);
     return JS_EXCEPTION;
