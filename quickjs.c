@@ -2840,7 +2840,7 @@ static int JS_InitAtoms(JSRuntime *rt)
     return 0;
 }
 
-static JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v)
+JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v)
 {
     JSAtomStruct *p;
 

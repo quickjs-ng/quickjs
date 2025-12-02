@@ -542,6 +542,7 @@ JS_EXTERN JSAtom JS_NewAtomLen(JSContext *ctx, const char *str, size_t len);
 JS_EXTERN JSAtom JS_NewAtom(JSContext *ctx, const char *str);
 JS_EXTERN JSAtom JS_NewAtomUInt32(JSContext *ctx, uint32_t n);
 JS_EXTERN JSAtom JS_DupAtom(JSContext *ctx, JSAtom v);
+JS_EXTERN JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v);
 JS_EXTERN void JS_FreeAtom(JSContext *ctx, JSAtom v);
 JS_EXTERN void JS_FreeAtomRT(JSRuntime *rt, JSAtom v);
 JS_EXTERN JSValue JS_AtomToValue(JSContext *ctx, JSAtom atom);
