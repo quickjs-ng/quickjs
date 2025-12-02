@@ -17,8 +17,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/Iterator/concat/next-method-returns-throwing-value.js:25: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
-test262/test/built-ins/Iterator/concat/next-method-returns-throwing-value.js:25: strict mode: Test262Error: Expected a Test262Error to be thrown but no exception was thrown at all
 test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Unknown.js:16: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Unknown.js:16: strict mode: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Unknown.js:16: SyntaxError: unknown unicode script
