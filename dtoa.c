@@ -1518,6 +1518,7 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
          (radix != 10 && (*p == '@' ||
                           (radix_bits >= 1 && radix_bits <= 4 && (*p == 'p' || *p == 'P'))))) &&
         p > p_start) {
+        const char *p_before_exp = p;
         bool exp_is_neg;
         int c;
         is_bin_exp = (*p == 'p' || *p == 'P');
@@ -1530,8 +1531,10 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
             p++;
         }
         c = to_digit(*p);
-        if (c >= 10)
-            goto fail; /* XXX: could stop before the exponent part */
+        if (c >= 10) {
+            p = p_before_exp;
+            goto after_exp; /* no digit, backtrack */
+        }
         expn = c;
         p++;
         for(;;) {
@@ -1560,7 +1563,7 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
             goto done;
         }
     }
-
+ after_exp:
     if (p == p_start)
         goto fail;
 
