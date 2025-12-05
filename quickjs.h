@@ -862,6 +862,8 @@ JS_EXTERN bool JS_IsArray(JSValueConst val);
 JS_EXTERN bool JS_IsProxy(JSValueConst val);
 JS_EXTERN JSValue JS_GetProxyTarget(JSContext *ctx, JSValueConst proxy);
 JS_EXTERN JSValue JS_GetProxyHandler(JSContext *ctx, JSValueConst proxy);
+JS_EXTERN JSValue JS_NewProxy(JSContext *ctx, JSValueConst target,
+                              JSValueConst handler);
 
 JS_EXTERN JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
 JS_EXTERN bool JS_IsDate(JSValueConst v);
