@@ -4360,6 +4360,14 @@ void JS_FreeCString(JSContext *ctx, const char *ptr)
     JS_FreeValue(ctx, JS_MKPTR(JS_TAG_STRING, (JSString *)ptr - 1));
 }
 
+void JS_FreeCStringRT(JSRuntime *rt, const char *ptr)
+{
+    if (!ptr)
+        return;
+    /* purposely removing constness */
+    JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_STRING, (JSString *)ptr - 1));
+}
+
 static int memcmp16_8(const uint16_t *src1, const uint8_t *src2, int len)
 {
     int c, i;
