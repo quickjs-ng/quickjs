@@ -51,6 +51,14 @@ import * as bjson from "qjs:bjson";
     var Infinity = g.Infinity;
     var console = g.console;
 
+    // auto-completion keywords
+    var keywords = [
+        "await ", "catch (", "class ", "const ", "else ", "export ", "for ",
+        "function ", "if (", "import ", "instanceof ", "let ", "new ",
+        "return", "super ", "this", "try {", "typeof ", "var ", "while (",
+        "yield ",
+    ];
+
     var colors = {
         none:    "\x1b[0m",
         black:   "\x1b[30m",
@@ -219,6 +227,10 @@ import * as bjson from "qjs:bjson";
     function is_word(c) {
         return typeof c === "string" &&
             (is_alpha(c) || is_digit(c) || c == '_' || c == '$');
+    }
+
+    function is_blank(c) {
+        return typeof c === "string" && "\t\r\n\f\v".includes(c[0])
     }
 
     function ucs_length(str) {
@@ -602,12 +614,23 @@ import * as bjson from "qjs:bjson";
         cursor_pos = 0;
     }
 
+    // returns true if |line| looks something like "object.prop"
+    function is_named_property(line, end) {
+        var pos = end;
+        while (pos > 0 && is_word(line[pos - 1]))
+            pos--;
+        while (pos > 0 && is_blank(line[pos - 1]))
+            pos--;
+        return pos > 0 && line[pos - 1] === ".";
+    }
+
     function get_context_word(line, end) {
         var pos = end;
         while (pos > 0 && is_word(line[pos - 1]))
             pos--;
         return line.slice(pos, end);
     }
+
     function get_context_object(line, pos) {
         if (pos <= 0)
             return g;
@@ -664,6 +687,12 @@ import * as bjson from "qjs:bjson";
         s = get_context_word(line, pos);
         ctx_obj = get_context_object(line, pos - s.length);
         r = [];
+        if (!is_named_property(line, pos)) {
+            for (const kw of keywords) {
+                if (kw.startsWith(s))
+                    r.push(kw);
+            }
+        }
         /* enumerate properties from object and its prototype chain,
            add non-numeric regular properties with s as e prefix
          */
@@ -727,12 +756,14 @@ import * as bjson from "qjs:bjson";
         }
         if (last_fun === completion && tab.length == 1) {
             /* append parentheses to function names */
-            var m = res.ctx[tab[0]];
+            s = tab[0];
+            var m = res.ctx[s];
             if (typeof m == "function") {
                 insert('(');
                 if (m.length == 0)
                     insert(')');
-            } else if (typeof m == "object") {
+            } else if (typeof m == "object" ||
+                       typeof m == "undefined" && s == "this") {
                 insert('.');
             }
         }
