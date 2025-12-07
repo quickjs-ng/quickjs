@@ -382,6 +382,44 @@ static void module_serde(void)
     JS_FreeRuntime(rt);
 }
 
+static void runtime_cstring_free(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    // string -> cstring + JS_FreeCStringRT
+    {
+        JSValue ret = eval(ctx, "\"testStringPleaseIgnore\"");
+        assert(JS_IsString(ret));
+        const char *s = JS_ToCString(ctx, ret);
+        assert(s);
+        assert(strcmp(s, "testStringPleaseIgnore") == 0);
+        JS_FreeCStringRT(rt, s);
+        JS_FreeValue(ctx, ret);
+    }
+    // string -> cstring + JS_FreeCStringRT, destroying the source value first
+    {
+        JSValue ret = eval(ctx, "\"testStringPleaseIgnore\"");
+        assert(JS_IsString(ret));
+        const char *s = JS_ToCString(ctx, ret);
+        assert(s);
+        JS_FreeValue(ctx, ret);
+        assert(strcmp(s, "testStringPleaseIgnore") == 0);
+        JS_FreeCStringRT(rt, s);
+    }
+    // number -> cstring + JS_FreeCStringRT
+    {
+        JSValue ret = eval(ctx, "123987");
+        assert(JS_IsNumber(ret));
+        const char *s = JS_ToCString(ctx, ret);
+        assert(s);
+        assert(strcmp(s, "123987") == 0);
+        JS_FreeCStringRT(rt, s);
+        JS_FreeValue(ctx, ret);
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void two_byte_string(void)
 {
     JSRuntime *rt = JS_NewRuntime();
@@ -804,6 +842,7 @@ int main(void)
     raw_context_global_var();
     is_array();
     module_serde();
+    runtime_cstring_free();
     two_byte_string();
     weak_map_gc_check();
     promise_hook();
