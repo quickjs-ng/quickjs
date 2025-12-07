@@ -1010,7 +1010,9 @@ typedef struct {
 JS_EXTERN void JS_SetSharedArrayBufferFunctions(JSRuntime *rt, const JSSharedArrayBufferFunctions *sf);
 
 typedef enum JSPromiseStateEnum {
-    JS_PROMISE_PENDING,
+    // argument to JS_PromiseState() was not in fact a promise
+    JS_PROMISE_NOT_A_PROMISE = -1,
+    JS_PROMISE_PENDING       =  0,
     JS_PROMISE_FULFILLED,
     JS_PROMISE_REJECTED,
 } JSPromiseStateEnum;
