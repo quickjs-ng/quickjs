@@ -432,6 +432,7 @@ typedef enum {
 
 enum {
     JS_BUILTIN_ARRAY_FROMASYNC = 1,
+    JS_BUILTIN_ITERATOR_ZIP,
 };
 
 /* must be large enough to have a negligible runtime cost and small
@@ -7714,6 +7715,40 @@ int JS_IsInstanceOf(JSContext *ctx, JSValueConst val, JSValueConst obj)
 }
 
 #include "builtin-array-fromasync.h"
+#include "builtin-iterator-zip.h"
+
+// like Function.prototype.call but monkey patch-proof
+static JSValue js_call_function(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    return JS_Call(ctx, argv[1], argv[0], argc-2, argv+2);
+}
+
+// note: takes ownership of |argv|
+static JSValue js_bytecode_eval(JSContext *ctx, const uint8_t *bytecode,
+                                size_t len, int argc, JSValue *argv)
+{
+    JSValue obj, fun, result;
+    int i;
+
+    obj = JS_ReadObject(ctx, bytecode, len, JS_READ_OBJ_BYTECODE);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    fun = JS_EvalFunction(ctx, obj);
+    if (JS_IsException(fun))
+        return JS_EXCEPTION;
+    assert(JS_IsFunction(ctx, fun));
+    result = JS_Call(ctx, fun, JS_UNDEFINED, argc, vc(argv));
+    for (i = 0; i < argc; i++)
+        JS_FreeValue(ctx, argv[i]);
+    JS_FreeValue(ctx, fun);
+    if (JS_SetPrototypeInternal(ctx, result, ctx->function_proto,
+                                /*throw_flag*/true) < 0) {
+        JS_FreeValue(ctx, result);
+        return JS_EXCEPTION;
+    }
+    return result;
+}
 
 static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                                     void *opaque)
@@ -7723,19 +7758,10 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
         abort();
     case JS_BUILTIN_ARRAY_FROMASYNC:
         {
-            JSValue obj = JS_ReadObject(ctx, qjsc_builtin_array_fromasync,
-                                        sizeof(qjsc_builtin_array_fromasync),
-                                        JS_READ_OBJ_BYTECODE);
-            if (JS_IsException(obj))
-                return JS_EXCEPTION;
-            JSValue fun = JS_EvalFunction(ctx, obj);
-            if (JS_IsException(fun))
-                return JS_EXCEPTION;
-            assert(JS_IsFunction(ctx, fun));
-            JSValue args[] = {
+            JSValue argv[] = {
                 JS_NewCFunction(ctx, js_array_constructor, "Array", 0),
-                JS_NewCFunctionMagic(ctx, js_error_constructor, "TypeError", 1,
-                                     JS_CFUNC_constructor_or_func_magic,
+                JS_NewCFunctionMagic(ctx, js_error_constructor, "TypeError",
+                                     1, JS_CFUNC_constructor_or_func_magic,
                                      JS_TYPE_ERROR),
                 JS_AtomToValue(ctx, JS_ATOM_Symbol_asyncIterator),
                 JS_NewCFunctionMagic(ctx, js_object_defineProperty,
@@ -7743,16 +7769,27 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                                      JS_CFUNC_generic_magic, 0),
                 JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
             };
-            JSValue result = JS_Call(ctx, fun, JS_UNDEFINED,
-                                     countof(args), vc(args));
-            for (size_t i = 0; i < countof(args); i++)
-                JS_FreeValue(ctx, args[i]);
-            JS_FreeValue(ctx, fun);
-            if (JS_SetPrototypeInternal(ctx, result, ctx->function_proto,
-                                        /*throw_flag*/true) < 0) {
-                JS_FreeValue(ctx, result);
-                return JS_EXCEPTION;
-            }
+            return js_bytecode_eval(ctx, qjsc_builtin_array_fromasync,
+                                    sizeof(qjsc_builtin_array_fromasync),
+                                    countof(argv), argv);
+        }
+    case JS_BUILTIN_ITERATOR_ZIP:
+        {
+            JSValue argv[] = {
+                js_dup(ctx->class_proto[JS_CLASS_ITERATOR_HELPER]),
+                JS_NewCFunctionMagic(ctx, js_error_constructor, "InternalError",
+                                     1, JS_CFUNC_constructor_or_func_magic,
+                                     JS_INTERNAL_ERROR),
+                JS_NewCFunctionMagic(ctx, js_error_constructor, "TypeError",
+                                     1, JS_CFUNC_constructor_or_func_magic,
+                                     JS_TYPE_ERROR),
+                JS_NewCFunction(ctx, js_call_function, "call", 2),
+                JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
+            };
+            JSValue result = js_bytecode_eval(ctx, qjsc_builtin_iterator_zip,
+                                              sizeof(qjsc_builtin_iterator_zip),
+                                              countof(argv), argv);
+            JS_SetConstructorBit(ctx, result, false);
             return result;
         }
     }
@@ -53738,6 +53775,9 @@ void JS_AddIntrinsicBaseObjects(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, obj,
                                js_iterator_funcs,
                                countof(js_iterator_funcs));
+    JS_DefineAutoInitProperty(ctx, obj, JS_ATOM_zip, JS_AUTOINIT_ID_BYTECODE,
+                              (void *)(uintptr_t)JS_BUILTIN_ITERATOR_ZIP,
+                              JS_PROP_WRITABLE|JS_PROP_CONFIGURABLE);
 
     ctx->class_proto[JS_CLASS_ITERATOR_CONCAT] = JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ITERATOR_CONCAT],

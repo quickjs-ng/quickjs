@@ -19,6 +19,7 @@ const quickjs_libc_c = loadFile("quickjs-libc.c")
 const quickjs_libc_h = loadFile("quickjs-libc.h")
 const quickjs_opcode_h = loadFile("quickjs-opcode.h")
 const gen_builtin_array_fromasync_h = loadFile("builtin-array-fromasync.h")
+const gen_builtin_iterator_zip_h = loadFile("builtin-iterator-zip.h")
 
 let source = "#if defined(QJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU_SOURCE)\n"
            + "#define _GNU_SOURCE\n"
@@ -45,5 +46,7 @@ source = source.replace(/#include "quickjs-opcode.h"/g, quickjs_opcode_h)
 source = source.replace(/#include "libregexp-opcode.h"/g, libregexp_opcode_h)
 source = source.replace(/#include "builtin-array-fromasync.h"/g,
                         gen_builtin_array_fromasync_h)
+source = source.replace(/#include "builtin-iterator-zip.h"/g,
+                        gen_builtin_iterator_zip_h)
 source = source.replace(/#include "[^"]+"/g, "")
 writeFile(execArgv[2] ?? "quickjs-amalgam.c", source)

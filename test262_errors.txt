@@ -17,6 +17,86 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/Iterator/zipKeyed/basic-longest.js:15: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/basic-longest.js:15: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/basic-shortest.js:15: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/basic-shortest.js:15: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/basic-strict.js:15: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/basic-strict.js:15: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/is-function.js:14: Test262Error: The value of `typeof Iterator.zipKeyed` is 'function' Expected SameValue(«"undefined"», «"function"») to be true
+test262/test/built-ins/Iterator/zipKeyed/is-function.js:14: strict mode: Test262Error: The value of `typeof Iterator.zipKeyed` is 'function' Expected SameValue(«"undefined"», «"function"») to be true
+test262/test/built-ins/Iterator/zipKeyed/iterables-containing-string-objects.js:14: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-containing-string-objects.js:14: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-after-reading-options.js:43: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-after-reading-options.js:43: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-deleted.js:46: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-deleted.js:46: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-enumerable.js:74: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-enumerable.js:74: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-get-abrupt-completion.js:59: Test262Error: Expected a ExpectedError but got a TypeError
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-get-abrupt-completion.js:59: strict mode: Test262Error: Expected a ExpectedError but got a TypeError
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-get-iterator-flattenable-abrupt-completion.js:109: Test262Error: Actual [] and expected [close second iterator, close first iterator] should have the same contents. 
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-get-iterator-flattenable-abrupt-completion.js:109: strict mode: Test262Error: Actual [] and expected [close second iterator, close first iterator] should have the same contents. 
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-get-own-property-abrupt-completion.js:57: Test262Error: Expected a ExpectedError but got a TypeError
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-get-own-property-abrupt-completion.js:57: strict mode: Test262Error: Expected a ExpectedError but got a TypeError
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-inherited.js:23: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-inherited.js:23: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-symbol-key.js:19: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-symbol-key.js:19: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-undefined.js:18: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration-undefined.js:18: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration.js:46: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterables-iteration.js:46: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-iterator-close-abrupt-completion.js:100: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-iterator-close-abrupt-completion.js:100: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-iterator-step-value-abrupt-completion.js:117: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-iterator-step-value-abrupt-completion.js:117: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-longest-iterator-close-abrupt-completion.js:110: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-longest-iterator-close-abrupt-completion.js:110: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-shortest-iterator-close-abrupt-completion.js:113: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-shortest-iterator-close-abrupt-completion.js:113: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-strict-iterator-close-i-is-not-zero-abrupt-completion.js:97: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-strict-iterator-close-i-is-not-zero-abrupt-completion.js:97: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-strict-iterator-close-i-is-zero-abrupt-completion.js:111: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-strict-iterator-close-i-is-zero-abrupt-completion.js:111: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-strict-iterator-step-abrupt-completion.js:114: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration-strict-iterator-step-abrupt-completion.js:114: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration.js:86: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/iterator-zip-iteration.js:86: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/length.js:18: TypeError: Cannot convert undefined or null to object
+test262/test/built-ins/Iterator/zipKeyed/length.js:18: strict mode: TypeError: Cannot convert undefined or null to object
+test262/test/built-ins/Iterator/zipKeyed/name.js:25: TypeError: Cannot convert undefined or null to object
+test262/test/built-ins/Iterator/zipKeyed/name.js:25: strict mode: TypeError: Cannot convert undefined or null to object
+test262/test/built-ins/Iterator/zipKeyed/options-mode.js:39: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/options-mode.js:39: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/options-padding.js:34: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/options-padding.js:34: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/options.js:38: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/options.js:38: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/padding-iteration-get-abrupt-completion.js:58: Test262Error: Expected a ExpectedError but got a TypeError
+test262/test/built-ins/Iterator/zipKeyed/padding-iteration-get-abrupt-completion.js:58: strict mode: Test262Error: Expected a ExpectedError but got a TypeError
+test262/test/built-ins/Iterator/zipKeyed/padding-iteration.js:50: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/padding-iteration.js:50: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/prop-desc.js:18: Test262Error: obj should have an own property zipKeyed
+test262/test/built-ins/Iterator/zipKeyed/prop-desc.js:18: strict mode: Test262Error: obj should have an own property zipKeyed
+test262/test/built-ins/Iterator/zipKeyed/proto.js:13: TypeError: not an object
+test262/test/built-ins/Iterator/zipKeyed/proto.js:13: strict mode: TypeError: not an object
+test262/test/built-ins/Iterator/zipKeyed/result-is-iterator.js:13: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/result-is-iterator.js:13: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/results-object-from-array.js:25: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/results-object-from-array.js:25: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/results-object-has-default-attributes.js:93: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/results-object-has-default-attributes.js:93: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/results-object-has-no-undefined-iterables-properties.js:25: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/results-object-has-no-undefined-iterables-properties.js:25: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/suspended-start-iterator-close-calls-next.js:68: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/suspended-start-iterator-close-calls-next.js:68: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/suspended-start-iterator-close-calls-return.js:72: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/suspended-start-iterator-close-calls-return.js:72: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/suspended-yield-iterator-close-calls-next.js:87: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/suspended-yield-iterator-close-calls-next.js:87: strict mode: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/suspended-yield-iterator-close-calls-return.js:80: TypeError: not a function
+test262/test/built-ins/Iterator/zipKeyed/suspended-yield-iterator-close-calls-return.js:80: strict mode: TypeError: not a function
 test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Unknown.js:16: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Unknown.js:16: strict mode: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Unknown.js:16: SyntaxError: unknown unicode script
