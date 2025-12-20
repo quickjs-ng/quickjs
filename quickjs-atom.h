@@ -179,6 +179,7 @@ DEF(ok, "ok")
 DEF(toJSON, "toJSON")
 DEF(maxByteLength, "maxByteLength")
 DEF(zip, "zip")
+DEF(zipKeyed, "zipKeyed")
 /* class names */
 DEF(Object, "Object")
 DEF(Array, "Array")
