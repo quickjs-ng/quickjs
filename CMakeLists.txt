@@ -274,13 +274,21 @@ target_compile_definitions(cutils PRIVATE ${qjs_defines})
 target_link_libraries(cutils PRIVATE ${qjs_libs})
 
 add_library(qjs ${qjs_sources})
-target_compile_definitions(qjs PRIVATE ${qjs_defines})
+target_compile_definitions(qjs PRIVATE ${qjs_defines} QUICKJS_NG_INTERNAL)
 target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(qjs PUBLIC ${qjs_libs})
 target_link_libraries(qjs PRIVATE $<BUILD_INTERFACE:cutils>)
+
+get_target_property(QJS_LIB_TYPE qjs TYPE)
+# Pass a compiler definition so that Windows gets its declspec's right.
+if(QJS_LIB_TYPE STREQUAL "SHARED_LIBRARY")
+    # We use PUBLIC here because we want the consumers to also have this
+    # definition.
+    target_compile_definitions(qjs PUBLIC QUICKJS_NG_DLL)
+endif()
 
 if(EMSCRIPTEN)
     add_executable(qjs_wasm ${qjs_sources})
@@ -448,7 +456,7 @@ set_target_properties(qjs PROPERTIES
     VERSION ${QJS_VERSION_MAJOR}.${QJS_VERSION_MINOR}.${QJS_VERSION_PATCH}
     SOVERSION ${QJS_VERSION_MAJOR}
 )
-install(FILES quickjs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES quickjs.h quickjs-ng-util.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 if(QJS_BUILD_LIBC)
     install(FILES quickjs-libc.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()

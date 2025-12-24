@@ -138,6 +138,7 @@ qjs_srcs = files(
 )
 qjs_hdrs = files(
   'quickjs.h',
+  'quickjs-ng-util.h'
 )
 
 qjs_libc = get_option('libc')
@@ -165,7 +166,7 @@ qjs_libc_lib = static_library(
   qjs_libc_srcs,
 
   dependencies: qjs_sys_deps,
-  c_args: qjs_c_args,
+  c_args: [qjs_c_args, '-DQUICKJS_NG_INTERNAL'],
   gnu_symbol_visibility: 'hidden',
 )
 
@@ -191,7 +192,8 @@ qjs_lib = library(
   dependencies: qjs_sys_deps,
   link_whole: qjs_libc ? qjs_libc_lib : [],
   link_with: cutils_lib,
-  c_args: qjs_c_args,
+  c_args: [qjs_c_args, '-DQUICKJS_NG_INTERNAL'],
+  c_shared_args: ['-DQUICKJS_NG_DLL'],
   gnu_symbol_visibility: 'hidden',
 
   install: true,
@@ -202,7 +204,15 @@ qjs_export_variables = [
   f'have_parser=@qjs_parser@'
 ]
 
+# Be conservative here: only pass -DQUICKJS_NG_DLL iff default_library ==
+# 'shared', thus qjs is guarranteed to be a DLL. Not passing -DQUICKJS_NG_DLL if
+# qjs is a DLL is not harmful, but passing the definition for DLL qjs is desired.
+# Alternatively, if -DQUICKJS_NG_DLL is passed for static qjs, the consumers
+# will not compile.
+qjs_dep_args = get_option('default_library') == 'shared' ? ['-DQUICKJS_NG_DLL'] : []
+
 qjs_dep = declare_dependency(
+  compile_args: qjs_dep_args,
   link_with: qjs_lib,
   dependencies: qjs_sys_deps,
   include_directories: qjs_lib.private_dir_include(),
