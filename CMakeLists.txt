@@ -233,6 +233,7 @@ xoption(QJS_BUILD_LIBC "Build standard library modules as part of the library" O
 macro(add_qjs_libc_if_needed target)
     if(NOT QJS_BUILD_LIBC)
         target_sources(${target} PRIVATE quickjs-libc.c)
+        target_link_libraries(${target} PRIVATE cutils)
     endif()
 endmacro()
 macro(add_static_if_needed target)
@@ -245,7 +246,6 @@ macro(add_static_if_needed target)
 endmacro()
 
 set(qjs_sources
-    cutils.c
     dtoa.c
     libregexp.c
     libunicode.c
@@ -278,6 +278,10 @@ if(M_LIBRARIES OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC")
     list(APPEND qjs_libs m)
 endif()
 
+add_library(cutils STATIC cutils.c)
+target_compile_definitions(cutils PRIVATE ${qjs_defines})
+target_link_libraries(cutils PRIVATE ${qjs_libs})
+
 add_library(qjs ${qjs_sources})
 target_compile_definitions(qjs PRIVATE ${qjs_defines})
 target_include_directories(qjs PUBLIC
@@ -285,6 +289,7 @@ target_include_directories(qjs PUBLIC
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(qjs PUBLIC ${qjs_libs})
+target_link_libraries(qjs PRIVATE $<BUILD_INTERFACE:cutils>)
 
 if(EMSCRIPTEN)
     add_executable(qjs_wasm ${qjs_sources})
@@ -314,7 +319,7 @@ add_executable(qjsc
 add_qjs_libc_if_needed(qjsc)
 add_static_if_needed(qjsc)
 target_compile_definitions(qjsc PRIVATE ${qjs_defines})
-target_link_libraries(qjsc qjs)
+target_link_libraries(qjsc qjs cutils)
 
 
 # QuickJS CLI
@@ -331,7 +336,7 @@ set_target_properties(qjs_exe PROPERTIES
     OUTPUT_NAME "qjs"
 )
 target_compile_definitions(qjs_exe PRIVATE ${qjs_defines})
-target_link_libraries(qjs_exe qjs)
+target_link_libraries(qjs_exe qjs cutils)
 if(NOT WIN32)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
@@ -384,7 +389,7 @@ if(NOT EMSCRIPTEN)
     )
     add_qjs_libc_if_needed(run-test262)
     target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
-    target_link_libraries(run-test262 qjs)
+    target_link_libraries(run-test262 qjs cutils)
 endif()
 
 # Interrupt test
@@ -394,17 +399,17 @@ add_executable(api-test
     api-test.c
 )
 target_compile_definitions(api-test PRIVATE ${qjs_defines})
-target_link_libraries(api-test qjs)
+target_link_libraries(api-test qjs cutils)
 
 # Unicode generator
 #
 
 add_executable(unicode_gen EXCLUDE_FROM_ALL
-    cutils.c
     libunicode.c
     unicode_gen.c
 )
 target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
+target_link_libraries(unicode_gen PRIVATE cutils)
 
 add_executable(function_source
     gen/function_source.c
