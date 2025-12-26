@@ -131,7 +131,6 @@ qjs_sys_deps += dependency('threads', required: false)
 qjs_sys_deps += dependency('dl', required: false)
 
 qjs_srcs = files(
-  'cutils.c',
   'dtoa.c',
   'libregexp.c',
   'libunicode.c',
@@ -170,6 +169,14 @@ qjs_libc_lib = static_library(
   gnu_symbol_visibility: 'hidden',
 )
 
+cutils_lib = static_library(
+  'cutils',
+  'cutils.c',
+
+  dependencies: qjs_sys_deps,
+  c_args: qjs_c_args
+)
+
 qjs_lib = library(
   'qjs',
   qjs_srcs,
@@ -183,6 +190,7 @@ qjs_lib = library(
 
   dependencies: qjs_sys_deps,
   link_whole: qjs_libc ? qjs_libc_lib : [],
+  link_with: cutils_lib,
   c_args: qjs_c_args,
   gnu_symbol_visibility: 'hidden',
 
@@ -272,7 +280,10 @@ qjsc_exe = executable(
   qjsc_srcs,
 
   c_args: qjs_c_args,
-  link_with: qjs_libc ? [] : qjs_libc_lib,
+  link_with: [
+    qjs_libc ? [] : qjs_libc_lib,
+    cutils_lib
+  ],
   dependencies: qjs_dep,
 
   install: true,
@@ -298,7 +309,10 @@ qjs_exe = executable(
   qjs_exe_srcs,
 
   c_args: qjs_c_args,
-  link_with: qjs_libc ? [] : qjs_libc_lib,
+  link_with: [
+    qjs_libc ? [] : qjs_libc_lib,
+    cutils_lib
+  ],
   dependencies: [qjs_dep, mimalloc_dep],
   export_dynamic: true,
 
@@ -381,6 +395,7 @@ if tests.allowed()
       'run-test262.c',
       qjs_libc_srcs,
 
+      link_with: cutils_lib,
       c_args: qjs_c_args,
       dependencies: qjs_dep,
     )
@@ -482,6 +497,7 @@ if tests.allowed()
       'api-test',
       'api-test.c',
 
+      link_with: cutils_lib,
       c_args: qjs_c_args,
       dependencies: qjs_dep,
       build_by_default: false,
@@ -506,9 +522,9 @@ endif
 # Unicode generator
 unicode_gen = executable(
   'unicode_gen',
-  'cutils.c',
   'unicode_gen.c',
 
+  link_with: cutils_lib,
   c_args: qjs_c_args,
   build_by_default: false,
 )
