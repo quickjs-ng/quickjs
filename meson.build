@@ -5,7 +5,6 @@ project(
   default_options: [
     'c_std=gnu11,c11',
     'warning_level=3',
-    'default_library=static',
   ],
   license: 'MIT',
   license_files: 'LICENSE',
@@ -131,7 +130,6 @@ qjs_sys_deps += dependency('threads', required: false)
 qjs_sys_deps += dependency('dl', required: false)
 
 qjs_srcs = files(
-  'cutils.c',
   'dtoa.c',
   'libregexp.c',
   'libunicode.c',
@@ -139,6 +137,7 @@ qjs_srcs = files(
 )
 qjs_hdrs = files(
   'quickjs.h',
+  'quickjs-ng-util.h'
 )
 
 qjs_libc = get_option('libc')
@@ -166,8 +165,16 @@ qjs_libc_lib = static_library(
   qjs_libc_srcs,
 
   dependencies: qjs_sys_deps,
-  c_args: qjs_c_args,
+  c_args: [qjs_c_args, '-DQUICKJS_NG_INTERNAL'],
   gnu_symbol_visibility: 'hidden',
+)
+
+cutils_lib = static_library(
+  'cutils',
+  'cutils.c',
+
+  dependencies: qjs_sys_deps,
+  c_args: qjs_c_args
 )
 
 qjs_lib = library(
@@ -183,7 +190,9 @@ qjs_lib = library(
 
   dependencies: qjs_sys_deps,
   link_whole: qjs_libc ? qjs_libc_lib : [],
-  c_args: qjs_c_args,
+  link_with: cutils_lib,
+  c_args: [qjs_c_args, '-DQUICKJS_NG_INTERNAL'],
+  c_shared_args: ['-DQUICKJS_NG_DLL'],
   gnu_symbol_visibility: 'hidden',
 
   install: true,
@@ -194,7 +203,15 @@ qjs_export_variables = [
   f'have_parser=@qjs_parser@'
 ]
 
+# Be conservative here: only pass -DQUICKJS_NG_DLL iff default_library ==
+# 'shared', thus qjs is guarranteed to be a DLL. Not passing -DQUICKJS_NG_DLL if
+# qjs is a DLL is not harmful, but passing the definition for DLL qjs is desired.
+# Alternatively, if -DQUICKJS_NG_DLL is passed for static qjs, the consumers
+# will not compile.
+qjs_dep_args = get_option('default_library') == 'shared' ? ['-DQUICKJS_NG_DLL'] : []
+
 qjs_dep = declare_dependency(
+  compile_args: qjs_dep_args,
   link_with: qjs_lib,
   dependencies: qjs_sys_deps,
   include_directories: qjs_lib.private_dir_include(),
@@ -272,7 +289,10 @@ qjsc_exe = executable(
   qjsc_srcs,
 
   c_args: qjs_c_args,
-  link_with: qjs_libc ? [] : qjs_libc_lib,
+  link_with: [
+    qjs_libc ? [] : qjs_libc_lib,
+    cutils_lib
+  ],
   dependencies: qjs_dep,
 
   install: true,
@@ -298,7 +318,10 @@ qjs_exe = executable(
   qjs_exe_srcs,
 
   c_args: qjs_c_args,
-  link_with: qjs_libc ? [] : qjs_libc_lib,
+  link_with: [
+    qjs_libc ? [] : qjs_libc_lib,
+    cutils_lib
+  ],
   dependencies: [qjs_dep, mimalloc_dep],
   export_dynamic: true,
 
@@ -381,6 +404,7 @@ if tests.allowed()
       'run-test262.c',
       qjs_libc_srcs,
 
+      link_with: cutils_lib,
       c_args: qjs_c_args,
       dependencies: qjs_dep,
     )
@@ -482,6 +506,7 @@ if tests.allowed()
       'api-test',
       'api-test.c',
 
+      link_with: cutils_lib,
       c_args: qjs_c_args,
       dependencies: qjs_dep,
       build_by_default: false,
@@ -506,9 +531,9 @@ endif
 # Unicode generator
 unicode_gen = executable(
   'unicode_gen',
-  'cutils.c',
   'unicode_gen.c',
 
+  link_with: cutils_lib,
   c_args: qjs_c_args,
   build_by_default: false,
 )

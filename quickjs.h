@@ -33,19 +33,13 @@
 #include <string.h>
 #include <math.h>
 
+#include "quickjs-ng-util.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define QUICKJS_NG 1
-
-#if defined(__GNUC__) || defined(__clang__)
-#define js_force_inline       inline __attribute__((always_inline))
-#define JS_EXTERN __attribute__((visibility("default")))
-#else
-#define js_force_inline  inline
-#define JS_EXTERN /* nothing */
-#endif
 
 /* Borrowed from Folly */
 #ifndef JS_PRINTF_FORMAT
@@ -434,87 +428,87 @@ typedef void JSRuntimeFinalizer(JSRuntime *rt, void *arg);
 
 typedef struct JSGCObjectHeader JSGCObjectHeader;
 
-JS_EXTERN JSRuntime *JS_NewRuntime(void);
+QUICKJS_NG_API JSRuntime *JS_NewRuntime(void);
 /* info lifetime must exceed that of rt */
-JS_EXTERN void JS_SetRuntimeInfo(JSRuntime *rt, const char *info);
+QUICKJS_NG_API void JS_SetRuntimeInfo(JSRuntime *rt, const char *info);
 /* use 0 to disable memory limit */
-JS_EXTERN void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
-JS_EXTERN void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
-JS_EXTERN uint64_t JS_GetDumpFlags(JSRuntime *rt);
-JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
-JS_EXTERN void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
+QUICKJS_NG_API void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
+QUICKJS_NG_API void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
+QUICKJS_NG_API uint64_t JS_GetDumpFlags(JSRuntime *rt);
+QUICKJS_NG_API size_t JS_GetGCThreshold(JSRuntime *rt);
+QUICKJS_NG_API void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
 /* use 0 to disable maximum stack size check */
-JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
+QUICKJS_NG_API void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
 /* should be called when changing thread to update the stack top value
    used to check stack overflow. */
-JS_EXTERN void JS_UpdateStackTop(JSRuntime *rt);
-JS_EXTERN JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque);
-JS_EXTERN void JS_FreeRuntime(JSRuntime *rt);
-JS_EXTERN void *JS_GetRuntimeOpaque(JSRuntime *rt);
-JS_EXTERN void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);
-JS_EXTERN int JS_AddRuntimeFinalizer(JSRuntime *rt,
+QUICKJS_NG_API void JS_UpdateStackTop(JSRuntime *rt);
+QUICKJS_NG_API JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque);
+QUICKJS_NG_API void JS_FreeRuntime(JSRuntime *rt);
+QUICKJS_NG_API void *JS_GetRuntimeOpaque(JSRuntime *rt);
+QUICKJS_NG_API void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);
+QUICKJS_NG_API int JS_AddRuntimeFinalizer(JSRuntime *rt,
                                      JSRuntimeFinalizer *finalizer, void *arg);
 typedef void JS_MarkFunc(JSRuntime *rt, JSGCObjectHeader *gp);
-JS_EXTERN void JS_MarkValue(JSRuntime *rt, JSValueConst val,
+QUICKJS_NG_API void JS_MarkValue(JSRuntime *rt, JSValueConst val,
                             JS_MarkFunc *mark_func);
-JS_EXTERN void JS_RunGC(JSRuntime *rt);
-JS_EXTERN bool JS_IsLiveObject(JSRuntime *rt, JSValueConst obj);
+QUICKJS_NG_API void JS_RunGC(JSRuntime *rt);
+QUICKJS_NG_API bool JS_IsLiveObject(JSRuntime *rt, JSValueConst obj);
 
-JS_EXTERN JSContext *JS_NewContext(JSRuntime *rt);
-JS_EXTERN void JS_FreeContext(JSContext *s);
-JS_EXTERN JSContext *JS_DupContext(JSContext *ctx);
-JS_EXTERN void *JS_GetContextOpaque(JSContext *ctx);
-JS_EXTERN void JS_SetContextOpaque(JSContext *ctx, void *opaque);
-JS_EXTERN JSRuntime *JS_GetRuntime(JSContext *ctx);
-JS_EXTERN void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj);
-JS_EXTERN JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
-JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
+QUICKJS_NG_API JSContext *JS_NewContext(JSRuntime *rt);
+QUICKJS_NG_API void JS_FreeContext(JSContext *s);
+QUICKJS_NG_API JSContext *JS_DupContext(JSContext *ctx);
+QUICKJS_NG_API void *JS_GetContextOpaque(JSContext *ctx);
+QUICKJS_NG_API void JS_SetContextOpaque(JSContext *ctx, void *opaque);
+QUICKJS_NG_API JSRuntime *JS_GetRuntime(JSContext *ctx);
+QUICKJS_NG_API void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj);
+QUICKJS_NG_API JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
+QUICKJS_NG_API JSValue JS_GetFunctionProto(JSContext *ctx);
 
 /* the following functions are used to select the intrinsic object to
    save memory */
-JS_EXTERN JSContext *JS_NewContextRaw(JSRuntime *rt);
-JS_EXTERN void JS_AddIntrinsicBaseObjects(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicDate(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicEval(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicRegExpCompiler(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicRegExp(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicJSON(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicProxy(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicMapSet(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicTypedArrays(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicPromise(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicBigInt(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicWeakRef(JSContext *ctx);
-JS_EXTERN void JS_AddPerformance(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicDOMException(JSContext *ctx);
+QUICKJS_NG_API JSContext *JS_NewContextRaw(JSRuntime *rt);
+QUICKJS_NG_API void JS_AddIntrinsicBaseObjects(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicDate(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicEval(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicRegExpCompiler(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicRegExp(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicJSON(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicProxy(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicMapSet(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicTypedArrays(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicPromise(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicBigInt(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicWeakRef(JSContext *ctx);
+QUICKJS_NG_API void JS_AddPerformance(JSContext *ctx);
+QUICKJS_NG_API void JS_AddIntrinsicDOMException(JSContext *ctx);
 
 /* for equality comparisons and sameness */
-JS_EXTERN int JS_IsEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2);
-JS_EXTERN bool JS_IsStrictEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2);
-JS_EXTERN bool JS_IsSameValue(JSContext *ctx, JSValueConst op1, JSValueConst op2);
+QUICKJS_NG_API int JS_IsEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2);
+QUICKJS_NG_API bool JS_IsStrictEqual(JSContext *ctx, JSValueConst op1, JSValueConst op2);
+QUICKJS_NG_API bool JS_IsSameValue(JSContext *ctx, JSValueConst op1, JSValueConst op2);
 /* Similar to same-value equality, but +0 and -0 are considered equal. */
-JS_EXTERN bool JS_IsSameValueZero(JSContext *ctx, JSValueConst op1, JSValueConst op2);
+QUICKJS_NG_API bool JS_IsSameValueZero(JSContext *ctx, JSValueConst op1, JSValueConst op2);
 
 /* Only used for running 262 tests. TODO(saghul) add build time flag. */
-JS_EXTERN JSValue js_string_codePointRange(JSContext *ctx, JSValueConst this_val,
+QUICKJS_NG_API JSValue js_string_codePointRange(JSContext *ctx, JSValueConst this_val,
                                            int argc, JSValueConst *argv);
 
-JS_EXTERN void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size);
-JS_EXTERN void *js_malloc_rt(JSRuntime *rt, size_t size);
-JS_EXTERN void js_free_rt(JSRuntime *rt, void *ptr);
-JS_EXTERN void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size);
-JS_EXTERN size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr);
-JS_EXTERN void *js_mallocz_rt(JSRuntime *rt, size_t size);
+QUICKJS_NG_API void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size);
+QUICKJS_NG_API void *js_malloc_rt(JSRuntime *rt, size_t size);
+QUICKJS_NG_API void js_free_rt(JSRuntime *rt, void *ptr);
+QUICKJS_NG_API void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size);
+QUICKJS_NG_API size_t js_malloc_usable_size_rt(JSRuntime *rt, const void *ptr);
+QUICKJS_NG_API void *js_mallocz_rt(JSRuntime *rt, size_t size);
 
-JS_EXTERN void *js_calloc(JSContext *ctx, size_t count, size_t size);
-JS_EXTERN void *js_malloc(JSContext *ctx, size_t size);
-JS_EXTERN void js_free(JSContext *ctx, void *ptr);
-JS_EXTERN void *js_realloc(JSContext *ctx, void *ptr, size_t size);
-JS_EXTERN size_t js_malloc_usable_size(JSContext *ctx, const void *ptr);
-JS_EXTERN void *js_realloc2(JSContext *ctx, void *ptr, size_t size, size_t *pslack);
-JS_EXTERN void *js_mallocz(JSContext *ctx, size_t size);
-JS_EXTERN char *js_strdup(JSContext *ctx, const char *str);
-JS_EXTERN char *js_strndup(JSContext *ctx, const char *s, size_t n);
+QUICKJS_NG_API void *js_calloc(JSContext *ctx, size_t count, size_t size);
+QUICKJS_NG_API void *js_malloc(JSContext *ctx, size_t size);
+QUICKJS_NG_API void js_free(JSContext *ctx, void *ptr);
+QUICKJS_NG_API void *js_realloc(JSContext *ctx, void *ptr, size_t size);
+QUICKJS_NG_API size_t js_malloc_usable_size(JSContext *ctx, const void *ptr);
+QUICKJS_NG_API void *js_realloc2(JSContext *ctx, void *ptr, size_t size, size_t *pslack);
+QUICKJS_NG_API void *js_mallocz(JSContext *ctx, size_t size);
+QUICKJS_NG_API char *js_strdup(JSContext *ctx, const char *str);
+QUICKJS_NG_API char *js_strndup(JSContext *ctx, const char *s, size_t n);
 
 typedef struct JSMemoryUsage {
     int64_t malloc_size, malloc_limit, memory_used_size;
@@ -532,27 +526,27 @@ typedef struct JSMemoryUsage {
     int64_t binary_object_count, binary_object_size;
 } JSMemoryUsage;
 
-JS_EXTERN void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s);
-JS_EXTERN void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt);
+QUICKJS_NG_API void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s);
+QUICKJS_NG_API void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt);
 
 /* atom support */
 #define JS_ATOM_NULL 0
 
-JS_EXTERN JSAtom JS_NewAtomLen(JSContext *ctx, const char *str, size_t len);
-JS_EXTERN JSAtom JS_NewAtom(JSContext *ctx, const char *str);
-JS_EXTERN JSAtom JS_NewAtomUInt32(JSContext *ctx, uint32_t n);
-JS_EXTERN JSAtom JS_DupAtom(JSContext *ctx, JSAtom v);
-JS_EXTERN JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v);
-JS_EXTERN void JS_FreeAtom(JSContext *ctx, JSAtom v);
-JS_EXTERN void JS_FreeAtomRT(JSRuntime *rt, JSAtom v);
-JS_EXTERN JSValue JS_AtomToValue(JSContext *ctx, JSAtom atom);
-JS_EXTERN JSValue JS_AtomToString(JSContext *ctx, JSAtom atom);
-JS_EXTERN const char *JS_AtomToCStringLen(JSContext *ctx, size_t *plen, JSAtom atom);
+QUICKJS_NG_API JSAtom JS_NewAtomLen(JSContext *ctx, const char *str, size_t len);
+QUICKJS_NG_API JSAtom JS_NewAtom(JSContext *ctx, const char *str);
+QUICKJS_NG_API JSAtom JS_NewAtomUInt32(JSContext *ctx, uint32_t n);
+QUICKJS_NG_API JSAtom JS_DupAtom(JSContext *ctx, JSAtom v);
+QUICKJS_NG_API JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v);
+QUICKJS_NG_API void JS_FreeAtom(JSContext *ctx, JSAtom v);
+QUICKJS_NG_API void JS_FreeAtomRT(JSRuntime *rt, JSAtom v);
+QUICKJS_NG_API JSValue JS_AtomToValue(JSContext *ctx, JSAtom atom);
+QUICKJS_NG_API JSValue JS_AtomToString(JSContext *ctx, JSAtom atom);
+QUICKJS_NG_API const char *JS_AtomToCStringLen(JSContext *ctx, size_t *plen, JSAtom atom);
 static inline const char *JS_AtomToCString(JSContext *ctx, JSAtom atom) 
 {
     return JS_AtomToCStringLen(ctx, NULL, atom);
 }
-JS_EXTERN JSAtom JS_ValueToAtom(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API JSAtom JS_ValueToAtom(JSContext *ctx, JSValueConst val);
 
 /* object class support */
 
@@ -631,41 +625,41 @@ typedef struct JSEvalOptions {
 } JSEvalOptions;
 
 #define JS_INVALID_CLASS_ID 0
-JS_EXTERN JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id);
+QUICKJS_NG_API JSClassID JS_NewClassID(JSRuntime *rt, JSClassID *pclass_id);
 /* Returns the class ID if `v` is an object, otherwise returns JS_INVALID_CLASS_ID. */
-JS_EXTERN JSClassID JS_GetClassID(JSValueConst v);
-JS_EXTERN int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def);
-JS_EXTERN bool JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id);
+QUICKJS_NG_API JSClassID JS_GetClassID(JSValueConst v);
+QUICKJS_NG_API int JS_NewClass(JSRuntime *rt, JSClassID class_id, const JSClassDef *class_def);
+QUICKJS_NG_API bool JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id);
 /* Returns the class name or JS_ATOM_NULL if `id` is not a registered class. Must be freed with JS_FreeAtom. */
-JS_EXTERN JSAtom JS_GetClassName(JSRuntime *rt, JSClassID class_id);
+QUICKJS_NG_API JSAtom JS_GetClassName(JSRuntime *rt, JSClassID class_id);
 
 /* value handling */
 
-static js_force_inline JSValue JS_NewBool(JSContext *ctx, bool val)
+static QUICKJS_NG_FORCE_INLINE JSValue JS_NewBool(JSContext *ctx, bool val)
 {
     (void)&ctx;
     return JS_MKVAL(JS_TAG_BOOL, (val != 0));
 }
 
-static js_force_inline JSValue JS_NewInt32(JSContext *ctx, int32_t val)
+static QUICKJS_NG_FORCE_INLINE JSValue JS_NewInt32(JSContext *ctx, int32_t val)
 {
     (void)&ctx;
     return JS_MKVAL(JS_TAG_INT, val);
 }
 
-static js_force_inline JSValue JS_NewFloat64(JSContext *ctx, double val)
+static QUICKJS_NG_FORCE_INLINE JSValue JS_NewFloat64(JSContext *ctx, double val)
 {
     (void)&ctx;
     return __JS_NewFloat64(val);
 }
 
-static js_force_inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
+static QUICKJS_NG_FORCE_INLINE JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
 {
     (void)&ctx;
     return JS_MKVAL(JS_TAG_CATCH_OFFSET, val);
 }
 
-static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
+static QUICKJS_NG_FORCE_INLINE JSValue JS_NewInt64(JSContext *ctx, int64_t val)
 {
     JSValue v;
     if (val >= INT32_MIN && val <= INT32_MAX) {
@@ -676,7 +670,7 @@ static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
     return v;
 }
 
-static js_force_inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
+static QUICKJS_NG_FORCE_INLINE JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
 {
     JSValue v;
     if (val <= INT32_MAX) {
@@ -687,9 +681,9 @@ static js_force_inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
     return v;
 }
 
-JS_EXTERN JSValue JS_NewNumber(JSContext *ctx, double d);
-JS_EXTERN JSValue JS_NewBigInt64(JSContext *ctx, int64_t v);
-JS_EXTERN JSValue JS_NewBigUint64(JSContext *ctx, uint64_t v);
+QUICKJS_NG_API JSValue JS_NewNumber(JSContext *ctx, double d);
+QUICKJS_NG_API JSValue JS_NewBigInt64(JSContext *ctx, int64_t v);
+QUICKJS_NG_API JSValue JS_NewBigUint64(JSContext *ctx, uint64_t v);
 
 static inline bool JS_IsNumber(JSValueConst v)
 {
@@ -748,69 +742,69 @@ static inline bool JS_IsModule(JSValueConst v)
     return JS_VALUE_GET_TAG(v) == JS_TAG_MODULE;
 }
 
-JS_EXTERN JSValue JS_Throw(JSContext *ctx, JSValue obj);
-JS_EXTERN JSValue JS_GetException(JSContext *ctx);
-JS_EXTERN bool JS_HasException(JSContext *ctx);
-JS_EXTERN bool JS_IsError(JSValueConst val);
-JS_EXTERN bool JS_IsUncatchableError(JSValueConst val);
-JS_EXTERN void JS_SetUncatchableError(JSContext *ctx, JSValueConst val);
-JS_EXTERN void JS_ClearUncatchableError(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API JSValue JS_Throw(JSContext *ctx, JSValue obj);
+QUICKJS_NG_API JSValue JS_GetException(JSContext *ctx);
+QUICKJS_NG_API bool JS_HasException(JSContext *ctx);
+QUICKJS_NG_API bool JS_IsError(JSValueConst val);
+QUICKJS_NG_API bool JS_IsUncatchableError(JSValueConst val);
+QUICKJS_NG_API void JS_SetUncatchableError(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API void JS_ClearUncatchableError(JSContext *ctx, JSValueConst val);
 // Shorthand for:
 //  JSValue exc = JS_GetException(ctx);
 //  JS_ClearUncatchableError(ctx, exc);
 //  JS_Throw(ctx, exc);
-JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
-JS_EXTERN JSValue JS_NewError(JSContext *ctx);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewRangeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewReferenceError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewSyntaxError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewTypeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowRangeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowReferenceError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowSyntaxError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowTypeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowDOMException(JSContext *ctx, const char *name, JS_PRINTF_FORMAT const char *fmt, ...);
-JS_EXTERN JSValue JS_ThrowOutOfMemory(JSContext *ctx);
-JS_EXTERN void JS_FreeValue(JSContext *ctx, JSValue v);
-JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
-JS_EXTERN JSValue JS_DupValue(JSContext *ctx, JSValueConst v);
-JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v);
-JS_EXTERN int JS_ToBool(JSContext *ctx, JSValueConst val); /* return -1 for JS_EXCEPTION */
+QUICKJS_NG_API void JS_ResetUncatchableError(JSContext *ctx);
+QUICKJS_NG_API JSValue JS_NewError(JSContext *ctx);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewRangeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewReferenceError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewSyntaxError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewTypeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowRangeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowReferenceError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowSyntaxError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_ThrowTypeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowDOMException(JSContext *ctx, const char *name, JS_PRINTF_FORMAT const char *fmt, ...);
+QUICKJS_NG_API JSValue JS_ThrowOutOfMemory(JSContext *ctx);
+QUICKJS_NG_API void JS_FreeValue(JSContext *ctx, JSValue v);
+QUICKJS_NG_API void JS_FreeValueRT(JSRuntime *rt, JSValue v);
+QUICKJS_NG_API JSValue JS_DupValue(JSContext *ctx, JSValueConst v);
+QUICKJS_NG_API JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v);
+QUICKJS_NG_API int JS_ToBool(JSContext *ctx, JSValueConst val); /* return -1 for JS_EXCEPTION */
 static inline JSValue JS_ToBoolean(JSContext *ctx, JSValueConst val)
 {
     return JS_NewBool(ctx, JS_ToBool(ctx, val));
 }
-JS_EXTERN JSValue JS_ToNumber(JSContext *ctx, JSValueConst val);
-JS_EXTERN int JS_ToInt32(JSContext *ctx, int32_t *pres, JSValueConst val);
+QUICKJS_NG_API JSValue JS_ToNumber(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API int JS_ToInt32(JSContext *ctx, int32_t *pres, JSValueConst val);
 static inline int JS_ToUint32(JSContext *ctx, uint32_t *pres, JSValueConst val)
 {
     return JS_ToInt32(ctx, (int32_t*)pres, val);
 }
-JS_EXTERN int JS_ToInt64(JSContext *ctx, int64_t *pres, JSValueConst val);
-JS_EXTERN int JS_ToIndex(JSContext *ctx, uint64_t *plen, JSValueConst val);
-JS_EXTERN int JS_ToFloat64(JSContext *ctx, double *pres, JSValueConst val);
+QUICKJS_NG_API int JS_ToInt64(JSContext *ctx, int64_t *pres, JSValueConst val);
+QUICKJS_NG_API int JS_ToIndex(JSContext *ctx, uint64_t *plen, JSValueConst val);
+QUICKJS_NG_API int JS_ToFloat64(JSContext *ctx, double *pres, JSValueConst val);
 /* return an exception if 'val' is a Number */
-JS_EXTERN int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValueConst val);
-JS_EXTERN int JS_ToBigUint64(JSContext *ctx, uint64_t *pres, JSValueConst val);
+QUICKJS_NG_API int JS_ToBigInt64(JSContext *ctx, int64_t *pres, JSValueConst val);
+QUICKJS_NG_API int JS_ToBigUint64(JSContext *ctx, uint64_t *pres, JSValueConst val);
 /* same as JS_ToInt64() but allow BigInt */
-JS_EXTERN int JS_ToInt64Ext(JSContext *ctx, int64_t *pres, JSValueConst val);
+QUICKJS_NG_API int JS_ToInt64Ext(JSContext *ctx, int64_t *pres, JSValueConst val);
 
-JS_EXTERN JSValue JS_NewStringLen(JSContext *ctx, const char *str1, size_t len1);
+QUICKJS_NG_API JSValue JS_NewStringLen(JSContext *ctx, const char *str1, size_t len1);
 static inline JSValue JS_NewString(JSContext *ctx, const char *str) {
     return JS_NewStringLen(ctx, str, strlen(str));
 }
 // makes a copy of the input; does not check if the input is valid UTF-16,
 // that is the responsibility of the caller
-JS_EXTERN JSValue JS_NewTwoByteString(JSContext *ctx, const uint16_t *buf,
+QUICKJS_NG_API JSValue JS_NewTwoByteString(JSContext *ctx, const uint16_t *buf,
                                       size_t len);
-JS_EXTERN JSValue JS_NewAtomString(JSContext *ctx, const char *str);
-JS_EXTERN JSValue JS_ToString(JSContext *ctx, JSValueConst val);
-JS_EXTERN JSValue JS_ToPropertyKey(JSContext *ctx, JSValueConst val);
-JS_EXTERN const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValueConst val1, bool cesu8);
+QUICKJS_NG_API JSValue JS_NewAtomString(JSContext *ctx, const char *str);
+QUICKJS_NG_API JSValue JS_ToString(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API JSValue JS_ToPropertyKey(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValueConst val1, bool cesu8);
 static inline const char *JS_ToCStringLen(JSContext *ctx, size_t *plen, JSValueConst val1)
 {
     return JS_ToCStringLen2(ctx, plen, val1, 0);
@@ -819,82 +813,82 @@ static inline const char *JS_ToCString(JSContext *ctx, JSValueConst val1)
 {
     return JS_ToCStringLen2(ctx, NULL, val1, 0);
 }
-JS_EXTERN void JS_FreeCString(JSContext *ctx, const char *ptr);
-JS_EXTERN void JS_FreeCStringRT(JSRuntime *rt, const char *ptr);
+QUICKJS_NG_API void JS_FreeCString(JSContext *ctx, const char *ptr);
+QUICKJS_NG_API void JS_FreeCStringRT(JSRuntime *rt, const char *ptr);
 
-JS_EXTERN JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto,
+QUICKJS_NG_API JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto,
                                          JSClassID class_id);
-JS_EXTERN JSValue JS_NewObjectClass(JSContext *ctx, JSClassID class_id);
-JS_EXTERN JSValue JS_NewObjectProto(JSContext *ctx, JSValueConst proto);
-JS_EXTERN JSValue JS_NewObject(JSContext *ctx);
+QUICKJS_NG_API JSValue JS_NewObjectClass(JSContext *ctx, JSClassID class_id);
+QUICKJS_NG_API JSValue JS_NewObjectProto(JSContext *ctx, JSValueConst proto);
+QUICKJS_NG_API JSValue JS_NewObject(JSContext *ctx);
 // takes ownership of the values
-JS_EXTERN JSValue JS_NewObjectFrom(JSContext *ctx, int count,
+QUICKJS_NG_API JSValue JS_NewObjectFrom(JSContext *ctx, int count,
                                    const JSAtom *props,
                                    const JSValue *values);
 // takes ownership of the values
-JS_EXTERN JSValue JS_NewObjectFromStr(JSContext *ctx, int count,
+QUICKJS_NG_API JSValue JS_NewObjectFromStr(JSContext *ctx, int count,
                                       const char **props,
                                       const JSValue *values);
-JS_EXTERN JSValue JS_ToObject(JSContext *ctx, JSValueConst val);
-JS_EXTERN JSValue JS_ToObjectString(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API JSValue JS_ToObject(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API JSValue JS_ToObjectString(JSContext *ctx, JSValueConst val);
 
-JS_EXTERN bool JS_IsFunction(JSContext* ctx, JSValueConst val);
-JS_EXTERN bool JS_IsConstructor(JSContext* ctx, JSValueConst val);
-JS_EXTERN bool JS_SetConstructorBit(JSContext *ctx, JSValueConst func_obj, bool val);
+QUICKJS_NG_API bool JS_IsFunction(JSContext* ctx, JSValueConst val);
+QUICKJS_NG_API bool JS_IsConstructor(JSContext* ctx, JSValueConst val);
+QUICKJS_NG_API bool JS_SetConstructorBit(JSContext *ctx, JSValueConst func_obj, bool val);
 
-JS_EXTERN bool JS_IsRegExp(JSValueConst val);
-JS_EXTERN bool JS_IsMap(JSValueConst val);
-JS_EXTERN bool JS_IsSet(JSValueConst val);
-JS_EXTERN bool JS_IsWeakRef(JSValueConst val);
-JS_EXTERN bool JS_IsWeakSet(JSValueConst val);
-JS_EXTERN bool JS_IsWeakMap(JSValueConst val);
-JS_EXTERN bool JS_IsDataView(JSValueConst val);
+QUICKJS_NG_API bool JS_IsRegExp(JSValueConst val);
+QUICKJS_NG_API bool JS_IsMap(JSValueConst val);
+QUICKJS_NG_API bool JS_IsSet(JSValueConst val);
+QUICKJS_NG_API bool JS_IsWeakRef(JSValueConst val);
+QUICKJS_NG_API bool JS_IsWeakSet(JSValueConst val);
+QUICKJS_NG_API bool JS_IsWeakMap(JSValueConst val);
+QUICKJS_NG_API bool JS_IsDataView(JSValueConst val);
 
-JS_EXTERN JSValue JS_NewArray(JSContext *ctx);
+QUICKJS_NG_API JSValue JS_NewArray(JSContext *ctx);
 // takes ownership of the values
-JS_EXTERN JSValue JS_NewArrayFrom(JSContext *ctx, int count,
+QUICKJS_NG_API JSValue JS_NewArrayFrom(JSContext *ctx, int count,
                                   const JSValue *values);
 // reader beware: JS_IsArray used to "punch" through proxies and check
 // if the target object is an array but it no longer does; use JS_IsProxy
 // and JS_GetProxyTarget instead, and remember that the target itself can
 // also be a proxy, ad infinitum
-JS_EXTERN bool JS_IsArray(JSValueConst val);
+QUICKJS_NG_API bool JS_IsArray(JSValueConst val);
 
-JS_EXTERN bool JS_IsProxy(JSValueConst val);
-JS_EXTERN JSValue JS_GetProxyTarget(JSContext *ctx, JSValueConst proxy);
-JS_EXTERN JSValue JS_GetProxyHandler(JSContext *ctx, JSValueConst proxy);
-JS_EXTERN JSValue JS_NewProxy(JSContext *ctx, JSValueConst target,
+QUICKJS_NG_API bool JS_IsProxy(JSValueConst val);
+QUICKJS_NG_API JSValue JS_GetProxyTarget(JSContext *ctx, JSValueConst proxy);
+QUICKJS_NG_API JSValue JS_GetProxyHandler(JSContext *ctx, JSValueConst proxy);
+QUICKJS_NG_API JSValue JS_NewProxy(JSContext *ctx, JSValueConst target,
                               JSValueConst handler);
 
-JS_EXTERN JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
-JS_EXTERN bool JS_IsDate(JSValueConst v);
+QUICKJS_NG_API JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
+QUICKJS_NG_API bool JS_IsDate(JSValueConst v);
 
-JS_EXTERN JSValue JS_GetProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop);
-JS_EXTERN JSValue JS_GetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API JSValue JS_GetProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop);
+QUICKJS_NG_API JSValue JS_GetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
                                        uint32_t idx);
-JS_EXTERN JSValue JS_GetPropertyInt64(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API JSValue JS_GetPropertyInt64(JSContext *ctx, JSValueConst this_obj,
                                       int64_t idx);
-JS_EXTERN JSValue JS_GetPropertyStr(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API JSValue JS_GetPropertyStr(JSContext *ctx, JSValueConst this_obj,
                                     const char *prop);
 
-JS_EXTERN int JS_SetProperty(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API int JS_SetProperty(JSContext *ctx, JSValueConst this_obj,
                              JSAtom prop, JSValue val);
-JS_EXTERN int JS_SetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API int JS_SetPropertyUint32(JSContext *ctx, JSValueConst this_obj,
                                    uint32_t idx, JSValue val);
-JS_EXTERN int JS_SetPropertyInt64(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API int JS_SetPropertyInt64(JSContext *ctx, JSValueConst this_obj,
                                   int64_t idx, JSValue val);
-JS_EXTERN int JS_SetPropertyStr(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API int JS_SetPropertyStr(JSContext *ctx, JSValueConst this_obj,
                                 const char *prop, JSValue val);
-JS_EXTERN int JS_HasProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop);
-JS_EXTERN int JS_IsExtensible(JSContext *ctx, JSValueConst obj);
-JS_EXTERN int JS_PreventExtensions(JSContext *ctx, JSValueConst obj);
-JS_EXTERN int JS_DeleteProperty(JSContext *ctx, JSValueConst obj, JSAtom prop, int flags);
-JS_EXTERN int JS_SetPrototype(JSContext *ctx, JSValueConst obj, JSValueConst proto_val);
-JS_EXTERN JSValue JS_GetPrototype(JSContext *ctx, JSValueConst val);
-JS_EXTERN int JS_GetLength(JSContext *ctx, JSValueConst obj, int64_t *pres);
-JS_EXTERN int JS_SetLength(JSContext *ctx, JSValueConst obj, int64_t len);
-JS_EXTERN int JS_SealObject(JSContext *ctx, JSValueConst obj);
-JS_EXTERN int JS_FreezeObject(JSContext *ctx, JSValueConst obj);
+QUICKJS_NG_API int JS_HasProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop);
+QUICKJS_NG_API int JS_IsExtensible(JSContext *ctx, JSValueConst obj);
+QUICKJS_NG_API int JS_PreventExtensions(JSContext *ctx, JSValueConst obj);
+QUICKJS_NG_API int JS_DeleteProperty(JSContext *ctx, JSValueConst obj, JSAtom prop, int flags);
+QUICKJS_NG_API int JS_SetPrototype(JSContext *ctx, JSValueConst obj, JSValueConst proto_val);
+QUICKJS_NG_API JSValue JS_GetPrototype(JSContext *ctx, JSValueConst val);
+QUICKJS_NG_API int JS_GetLength(JSContext *ctx, JSValueConst obj, int64_t *pres);
+QUICKJS_NG_API int JS_SetLength(JSContext *ctx, JSValueConst obj, int64_t len);
+QUICKJS_NG_API int JS_SealObject(JSContext *ctx, JSValueConst obj);
+QUICKJS_NG_API int JS_FreezeObject(JSContext *ctx, JSValueConst obj);
 
 #define JS_GPN_STRING_MASK  (1 << 0)
 #define JS_GPN_SYMBOL_MASK  (1 << 1)
@@ -904,21 +898,21 @@ JS_EXTERN int JS_FreezeObject(JSContext *ctx, JSValueConst obj);
 /* set theJSPropertyEnum.is_enumerable field */
 #define JS_GPN_SET_ENUM     (1 << 5)
 
-JS_EXTERN int JS_GetOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
+QUICKJS_NG_API int JS_GetOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
                                      uint32_t *plen, JSValueConst obj,
                                      int flags);
-JS_EXTERN int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
+QUICKJS_NG_API int JS_GetOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
                                 JSValueConst obj, JSAtom prop);
-JS_EXTERN void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
+QUICKJS_NG_API void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
                                    uint32_t len);
 
-JS_EXTERN JSValue JS_Call(JSContext *ctx, JSValueConst func_obj,
+QUICKJS_NG_API JSValue JS_Call(JSContext *ctx, JSValueConst func_obj,
                           JSValueConst this_obj, int argc, JSValueConst *argv);
-JS_EXTERN JSValue JS_Invoke(JSContext *ctx, JSValueConst this_val, JSAtom atom,
+QUICKJS_NG_API JSValue JS_Invoke(JSContext *ctx, JSValueConst this_val, JSAtom atom,
                             int argc, JSValueConst *argv);
-JS_EXTERN JSValue JS_CallConstructor(JSContext *ctx, JSValueConst func_obj,
+QUICKJS_NG_API JSValue JS_CallConstructor(JSContext *ctx, JSValueConst func_obj,
                                      int argc, JSValueConst *argv);
-JS_EXTERN JSValue JS_CallConstructor2(JSContext *ctx, JSValueConst func_obj,
+QUICKJS_NG_API JSValue JS_CallConstructor2(JSContext *ctx, JSValueConst func_obj,
                                       JSValueConst new_target,
                                       int argc, JSValueConst *argv);
 /* Try to detect if the input is a module. Returns true if parsing the input
@@ -928,54 +922,54 @@ JS_EXTERN JSValue JS_CallConstructor2(JSContext *ctx, JSValueConst func_obj,
  * |input| can be either ASCII or UTF-8 encoded source code.
  * Returns false if QuickJS was built with -DQJS_DISABLE_PARSER.
  */
-JS_EXTERN bool JS_DetectModule(const char *input, size_t input_len);
+QUICKJS_NG_API bool JS_DetectModule(const char *input, size_t input_len);
 /* 'input' must be zero terminated i.e. input[input_len] = '\0'. */
-JS_EXTERN JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
+QUICKJS_NG_API JSValue JS_Eval(JSContext *ctx, const char *input, size_t input_len,
                           const char *filename, int eval_flags);
-JS_EXTERN JSValue JS_Eval2(JSContext *ctx, const char *input, size_t input_len,
+QUICKJS_NG_API JSValue JS_Eval2(JSContext *ctx, const char *input, size_t input_len,
                            JSEvalOptions *options);
-JS_EXTERN JSValue JS_EvalThis(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API JSValue JS_EvalThis(JSContext *ctx, JSValueConst this_obj,
                               const char *input, size_t input_len,
                               const char *filename, int eval_flags);
-JS_EXTERN JSValue JS_EvalThis2(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API JSValue JS_EvalThis2(JSContext *ctx, JSValueConst this_obj,
                               const char *input, size_t input_len,
                               JSEvalOptions *options);
-JS_EXTERN JSValue JS_GetGlobalObject(JSContext *ctx);
-JS_EXTERN int JS_IsInstanceOf(JSContext *ctx, JSValueConst val, JSValueConst obj);
-JS_EXTERN int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API JSValue JS_GetGlobalObject(JSContext *ctx);
+QUICKJS_NG_API int JS_IsInstanceOf(JSContext *ctx, JSValueConst val, JSValueConst obj);
+QUICKJS_NG_API int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
                                 JSAtom prop, JSValueConst val,
                                 JSValueConst getter, JSValueConst setter,
                                 int flags);
-JS_EXTERN int JS_DefinePropertyValue(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API int JS_DefinePropertyValue(JSContext *ctx, JSValueConst this_obj,
                                      JSAtom prop, JSValue val, int flags);
-JS_EXTERN int JS_DefinePropertyValueUint32(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API int JS_DefinePropertyValueUint32(JSContext *ctx, JSValueConst this_obj,
                                            uint32_t idx, JSValue val, int flags);
-JS_EXTERN int JS_DefinePropertyValueStr(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API int JS_DefinePropertyValueStr(JSContext *ctx, JSValueConst this_obj,
                                         const char *prop, JSValue val, int flags);
-JS_EXTERN int JS_DefinePropertyGetSet(JSContext *ctx, JSValueConst this_obj,
+QUICKJS_NG_API int JS_DefinePropertyGetSet(JSContext *ctx, JSValueConst this_obj,
                                       JSAtom prop, JSValue getter, JSValue setter,
                                       int flags);
 /* Only supported for custom classes, returns 0 on success < 0 otherwise. */
-JS_EXTERN int JS_SetOpaque(JSValueConst obj, void *opaque);
-JS_EXTERN void *JS_GetOpaque(JSValueConst obj, JSClassID class_id);
-JS_EXTERN void *JS_GetOpaque2(JSContext *ctx, JSValueConst obj, JSClassID class_id);
-JS_EXTERN void *JS_GetAnyOpaque(JSValueConst obj, JSClassID *class_id);
+QUICKJS_NG_API int JS_SetOpaque(JSValueConst obj, void *opaque);
+QUICKJS_NG_API void *JS_GetOpaque(JSValueConst obj, JSClassID class_id);
+QUICKJS_NG_API void *JS_GetOpaque2(JSContext *ctx, JSValueConst obj, JSClassID class_id);
+QUICKJS_NG_API void *JS_GetAnyOpaque(JSValueConst obj, JSClassID *class_id);
 
 /* 'buf' must be zero terminated i.e. buf[buf_len] = '\0'. */
-JS_EXTERN JSValue JS_ParseJSON(JSContext *ctx, const char *buf, size_t buf_len,
+QUICKJS_NG_API JSValue JS_ParseJSON(JSContext *ctx, const char *buf, size_t buf_len,
                                const char *filename);
-JS_EXTERN JSValue JS_JSONStringify(JSContext *ctx, JSValueConst obj,
+QUICKJS_NG_API JSValue JS_JSONStringify(JSContext *ctx, JSValueConst obj,
                                    JSValueConst replacer, JSValueConst space0);
 
 typedef void JSFreeArrayBufferDataFunc(JSRuntime *rt, void *opaque, void *ptr);
-JS_EXTERN JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
+QUICKJS_NG_API JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
                                     JSFreeArrayBufferDataFunc *free_func, void *opaque,
                                     bool is_shared);
-JS_EXTERN JSValue JS_NewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len);
-JS_EXTERN void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj);
-JS_EXTERN uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize, JSValueConst obj);
-JS_EXTERN bool JS_IsArrayBuffer(JSValueConst obj);
-JS_EXTERN uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj);
+QUICKJS_NG_API JSValue JS_NewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len);
+QUICKJS_NG_API void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj);
+QUICKJS_NG_API uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize, JSValueConst obj);
+QUICKJS_NG_API bool JS_IsArrayBuffer(JSValueConst obj);
+QUICKJS_NG_API uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj);
 
 typedef enum JSTypedArrayEnum {
     JS_TYPED_ARRAY_UINT8C = 0,
@@ -992,25 +986,25 @@ typedef enum JSTypedArrayEnum {
     JS_TYPED_ARRAY_FLOAT64,
 } JSTypedArrayEnum;
 
-JS_EXTERN JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValueConst *argv,
+QUICKJS_NG_API JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValueConst *argv,
                                    JSTypedArrayEnum array_type);
-JS_EXTERN JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValueConst obj,
+QUICKJS_NG_API JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValueConst obj,
                                          size_t *pbyte_offset,
                                          size_t *pbyte_length,
                                          size_t *pbytes_per_element);
-JS_EXTERN JSValue JS_NewUint8Array(JSContext *ctx, uint8_t *buf, size_t len,
+QUICKJS_NG_API JSValue JS_NewUint8Array(JSContext *ctx, uint8_t *buf, size_t len,
                                    JSFreeArrayBufferDataFunc *free_func, void *opaque,
                                    bool is_shared);
 /* returns -1 if not a typed array otherwise return a JSTypedArrayEnum value */
-JS_EXTERN int JS_GetTypedArrayType(JSValueConst obj);
-JS_EXTERN JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len);
+QUICKJS_NG_API int JS_GetTypedArrayType(JSValueConst obj);
+QUICKJS_NG_API JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len);
 typedef struct {
     void *(*sab_alloc)(void *opaque, size_t size);
     void (*sab_free)(void *opaque, void *ptr);
     void (*sab_dup)(void *opaque, void *ptr);
     void *sab_opaque;
 } JSSharedArrayBufferFunctions;
-JS_EXTERN void JS_SetSharedArrayBufferFunctions(JSRuntime *rt, const JSSharedArrayBufferFunctions *sf);
+QUICKJS_NG_API void JS_SetSharedArrayBufferFunctions(JSRuntime *rt, const JSSharedArrayBufferFunctions *sf);
 
 typedef enum JSPromiseStateEnum {
     // argument to JS_PromiseState() was not in fact a promise
@@ -1020,13 +1014,13 @@ typedef enum JSPromiseStateEnum {
     JS_PROMISE_REJECTED,
 } JSPromiseStateEnum;
 
-JS_EXTERN JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs);
-JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx,
+QUICKJS_NG_API JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs);
+QUICKJS_NG_API JSPromiseStateEnum JS_PromiseState(JSContext *ctx,
                                              JSValueConst promise);
-JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise);
-JS_EXTERN bool JS_IsPromise(JSValueConst val);
+QUICKJS_NG_API JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise);
+QUICKJS_NG_API bool JS_IsPromise(JSValueConst val);
 
-JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global);
+QUICKJS_NG_API JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global);
 
 typedef enum JSPromiseHookType {
     JS_PROMISE_HOOK_INIT,     // emitted when a new promise is created
@@ -1042,22 +1036,22 @@ typedef enum JSPromiseHookType {
 typedef void JSPromiseHook(JSContext *ctx, JSPromiseHookType type,
                            JSValueConst promise, JSValueConst parent_promise,
                            void *opaque);
-JS_EXTERN void JS_SetPromiseHook(JSRuntime *rt, JSPromiseHook promise_hook,
+QUICKJS_NG_API void JS_SetPromiseHook(JSRuntime *rt, JSPromiseHook promise_hook,
                                  void *opaque);
 
 /* is_handled = true means that the rejection is handled */
 typedef void JSHostPromiseRejectionTracker(JSContext *ctx, JSValueConst promise,
                                            JSValueConst reason,
                                            bool is_handled, void *opaque);
-JS_EXTERN void JS_SetHostPromiseRejectionTracker(JSRuntime *rt, JSHostPromiseRejectionTracker *cb, void *opaque);
+QUICKJS_NG_API void JS_SetHostPromiseRejectionTracker(JSRuntime *rt, JSHostPromiseRejectionTracker *cb, void *opaque);
 
 /* return != 0 if the JS code needs to be interrupted */
 typedef int JSInterruptHandler(JSRuntime *rt, void *opaque);
-JS_EXTERN void JS_SetInterruptHandler(JSRuntime *rt, JSInterruptHandler *cb, void *opaque);
+QUICKJS_NG_API void JS_SetInterruptHandler(JSRuntime *rt, JSInterruptHandler *cb, void *opaque);
 /* if can_block is true, Atomics.wait() can be used */
-JS_EXTERN void JS_SetCanBlock(JSRuntime *rt, bool can_block);
+QUICKJS_NG_API void JS_SetCanBlock(JSRuntime *rt, bool can_block);
 /* set the [IsHTMLDDA] internal slot */
-JS_EXTERN void JS_SetIsHTMLDDA(JSContext *ctx, JSValueConst obj);
+QUICKJS_NG_API void JS_SetIsHTMLDDA(JSContext *ctx, JSValueConst obj);
 
 typedef struct JSModuleDef JSModuleDef;
 
@@ -1071,22 +1065,22 @@ typedef JSModuleDef *JSModuleLoaderFunc(JSContext *ctx,
 
 /* module_normalize = NULL is allowed and invokes the default module
    filename normalizer */
-JS_EXTERN void JS_SetModuleLoaderFunc(JSRuntime *rt,
+QUICKJS_NG_API void JS_SetModuleLoaderFunc(JSRuntime *rt,
                                       JSModuleNormalizeFunc *module_normalize,
                                       JSModuleLoaderFunc *module_loader, void *opaque);
 /* return the import.meta object of a module */
-JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
-JS_EXTERN JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
-JS_EXTERN JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
+QUICKJS_NG_API JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
+QUICKJS_NG_API JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
+QUICKJS_NG_API JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
 
 /* JS Job support */
 
 typedef JSValue JSJobFunc(JSContext *ctx, int argc, JSValueConst *argv);
-JS_EXTERN int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
+QUICKJS_NG_API int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
                             int argc, JSValueConst *argv);
 
-JS_EXTERN bool JS_IsJobPending(JSRuntime *rt);
-JS_EXTERN int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx);
+QUICKJS_NG_API bool JS_IsJobPending(JSRuntime *rt);
+QUICKJS_NG_API int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx);
 
 /* Structure to retrieve (de)serialized SharedArrayBuffer objects. */
 typedef struct JSSABTab {
@@ -1101,28 +1095,28 @@ typedef struct JSSABTab {
 #define JS_WRITE_OBJ_REFERENCE (1 << 3) /* allow object references to encode arbitrary object graph */
 #define JS_WRITE_OBJ_STRIP_SOURCE  (1 << 4) /* do not write source code information */
 #define JS_WRITE_OBJ_STRIP_DEBUG   (1 << 5) /* do not write debug information */
-JS_EXTERN uint8_t *JS_WriteObject(JSContext *ctx, size_t *psize, JSValueConst obj, int flags);
-JS_EXTERN uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
+QUICKJS_NG_API uint8_t *JS_WriteObject(JSContext *ctx, size_t *psize, JSValueConst obj, int flags);
+QUICKJS_NG_API uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
                                    int flags, JSSABTab *psab_tab);
 
 #define JS_READ_OBJ_BYTECODE  (1 << 0) /* allow function/module */
 #define JS_READ_OBJ_ROM_DATA  (0)      /* avoid duplicating 'buf' data (obsolete, broken by ICs) */
 #define JS_READ_OBJ_SAB       (1 << 2) /* allow SharedArrayBuffer */
 #define JS_READ_OBJ_REFERENCE (1 << 3) /* allow object references */
-JS_EXTERN JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len, int flags);
-JS_EXTERN JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
+QUICKJS_NG_API JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len, int flags);
+QUICKJS_NG_API JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
                                  int flags, JSSABTab *psab_tab);
 /* instantiate and evaluate a bytecode function. Only used when
    reading a script or module with JS_ReadObject() */
-JS_EXTERN JSValue JS_EvalFunction(JSContext *ctx, JSValue fun_obj);
+QUICKJS_NG_API JSValue JS_EvalFunction(JSContext *ctx, JSValue fun_obj);
 /* load the dependencies of the module 'obj'. Useful when JS_ReadObject()
    returns a module. */
-JS_EXTERN int JS_ResolveModule(JSContext *ctx, JSValueConst obj);
+QUICKJS_NG_API int JS_ResolveModule(JSContext *ctx, JSValueConst obj);
 
 /* only exported for os.Worker() */
-JS_EXTERN JSAtom JS_GetScriptOrModuleName(JSContext *ctx, int n_stack_levels);
+QUICKJS_NG_API JSAtom JS_GetScriptOrModuleName(JSContext *ctx, int n_stack_levels);
 /* only exported for os.Worker() */
-JS_EXTERN JSValue JS_LoadModule(JSContext *ctx, const char *basename,
+QUICKJS_NG_API JSValue JS_LoadModule(JSContext *ctx, const char *basename,
                                 const char *filename);
 
 /* C function definition */
@@ -1158,22 +1152,22 @@ typedef union JSCFunctionType {
                              int argc, JSValueConst *argv, int *pdone, int magic);
 } JSCFunctionType;
 
-JS_EXTERN JSValue JS_NewCFunction2(JSContext *ctx, JSCFunction *func,
+QUICKJS_NG_API JSValue JS_NewCFunction2(JSContext *ctx, JSCFunction *func,
                                    const char *name,
                                    int length, JSCFunctionEnum cproto, int magic);
-JS_EXTERN JSValue JS_NewCFunction3(JSContext *ctx, JSCFunction *func,
+QUICKJS_NG_API JSValue JS_NewCFunction3(JSContext *ctx, JSCFunction *func,
                                    const char *name,
                                    int length, JSCFunctionEnum cproto, int magic,
                                    JSValueConst proto_val);
-JS_EXTERN JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
+QUICKJS_NG_API JSValue JS_NewCFunctionData(JSContext *ctx, JSCFunctionData *func,
                                       int length, int magic, int data_len,
                                       JSValueConst *data);
-JS_EXTERN JSValue JS_NewCFunctionData2(JSContext *ctx, JSCFunctionData *func,
+QUICKJS_NG_API JSValue JS_NewCFunctionData2(JSContext *ctx, JSCFunctionData *func,
                                        const char *name,
                                        int length, int magic, int data_len,
                                        JSValueConst *data);
 typedef void JSCClosureFinalizerFunc(void*);
-JS_EXTERN JSValue JS_NewCClosure(JSContext *ctx, JSCClosure *func,
+QUICKJS_NG_API JSValue JS_NewCClosure(JSContext *ctx, JSCClosure *func,
                                  const char *name,
                                  JSCClosureFinalizerFunc *opaque_finalize,
                                  int length, int magic, void *opaque);
@@ -1193,7 +1187,7 @@ static inline JSValue JS_NewCFunctionMagic(JSContext *ctx, JSCFunctionMagic *fun
     ft.generic_magic = func;
     return JS_NewCFunction2(ctx, ft.generic, name, length, cproto, magic);
 }
-JS_EXTERN void JS_SetConstructor(JSContext *ctx, JSValueConst func_obj,
+QUICKJS_NG_API void JS_SetConstructor(JSContext *ctx, JSValueConst func_obj,
                                  JSValueConst proto);
 
 /* C property definition */
@@ -1259,7 +1253,7 @@ typedef struct JSCFunctionListEntry {
 #define JS_ALIAS_DEF(name, from) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_ALIAS, 0, { .alias = { from, -1 } } }
 #define JS_ALIAS_BASE_DEF(name, from, base) { name, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE, JS_DEF_ALIAS, 0, { .alias = { from, base } } }
 
-JS_EXTERN int JS_SetPropertyFunctionList(JSContext *ctx, JSValueConst obj,
+QUICKJS_NG_API int JS_SetPropertyFunctionList(JSContext *ctx, JSValueConst obj,
                                           const JSCFunctionListEntry *tab,
                                           int len);
 
@@ -1267,16 +1261,16 @@ JS_EXTERN int JS_SetPropertyFunctionList(JSContext *ctx, JSValueConst obj,
 
 typedef int JSModuleInitFunc(JSContext *ctx, JSModuleDef *m);
 
-JS_EXTERN JSModuleDef *JS_NewCModule(JSContext *ctx, const char *name_str,
+QUICKJS_NG_API JSModuleDef *JS_NewCModule(JSContext *ctx, const char *name_str,
                                      JSModuleInitFunc *func);
 /* can only be called before the module is instantiated */
-JS_EXTERN int JS_AddModuleExport(JSContext *ctx, JSModuleDef *m, const char *name_str);
-JS_EXTERN int JS_AddModuleExportList(JSContext *ctx, JSModuleDef *m,
+QUICKJS_NG_API int JS_AddModuleExport(JSContext *ctx, JSModuleDef *m, const char *name_str);
+QUICKJS_NG_API int JS_AddModuleExportList(JSContext *ctx, JSModuleDef *m,
                                       const JSCFunctionListEntry *tab, int len);
 /* can only be called after the module is instantiated */
-JS_EXTERN int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *export_name,
+QUICKJS_NG_API int JS_SetModuleExport(JSContext *ctx, JSModuleDef *m, const char *export_name,
                                  JSValue val);
-JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
+QUICKJS_NG_API int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
                                      const JSCFunctionListEntry *tab, int len);
 
 /* Version */
@@ -1286,13 +1280,10 @@ JS_EXTERN int JS_SetModuleExportList(JSContext *ctx, JSModuleDef *m,
 #define QJS_VERSION_PATCH 0
 #define QJS_VERSION_SUFFIX ""
 
-JS_EXTERN const char* JS_GetVersion(void);
+QUICKJS_NG_API const char* JS_GetVersion(void);
 
 /* Integration point for quickjs-libc.c, not for public use. */
-JS_EXTERN uintptr_t js_std_cmd(int cmd, ...);
-
-#undef JS_EXTERN
-#undef js_force_inline
+QUICKJS_NG_API uintptr_t js_std_cmd(int cmd, ...);
 
 #ifdef __cplusplus
 } /* extern "C" { */
