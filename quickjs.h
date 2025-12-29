@@ -535,6 +535,9 @@ typedef struct JSMemoryUsage {
 JS_EXTERN void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s);
 JS_EXTERN void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt);
 
+typedef int (*JS_MemoryUsageCB)(void* opaque, const char* data, size_t data_len);
+JS_EXTERN int JS_WriteMemoryUsage(JS_MemoryUsageCB cb, const JSMemoryUsage *s, JSRuntime *rt, void* opaque);
+
 /* atom support */
 #define JS_ATOM_NULL 0
 

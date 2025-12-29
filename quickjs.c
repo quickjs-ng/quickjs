@@ -6808,6 +6808,147 @@ void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt)
     }
 }
 
+int JS_WriteMemoryUsage(JS_MemoryUsageCB cb, const JSMemoryUsage *s, JSRuntime *rt, void* opaque){
+    // 200 should be enough memory for each buffer
+    char buf[200];
+    #define JS_WriteMemoryUsageCB_STR(cb, buf) \
+        if (cb(opaque, buf, strlen(buf)) < 0) return -1;
+    
+    #define JS_WriteMemoryUsageCB_FMT(cb, format, ...) \
+        snprintf(buf, 200, format, __VA_ARGS__); \
+        JS_WriteMemoryUsageCB_STR(cb, buf)
+    
+    if (cb == 0){
+        return -1;
+    }
+    JS_WriteMemoryUsageCB_FMT(cb, "QuickJS-ng memory usage -- %s version, %d-bit, %s Endian, malloc limit: %"PRId64"\n\n",
+        JS_GetVersion(), (int)sizeof(void *) * 8, is_be() ? "Big" : "Little", s->malloc_limit);
+    if (rt) {
+        static const struct {
+            const char *name;
+            size_t size;
+        } object_types[] = {
+            { "JSRuntime", sizeof(JSRuntime) },
+            { "JSContext", sizeof(JSContext) },
+            { "JSObject", sizeof(JSObject) },
+            { "JSString", sizeof(JSString) },
+            { "JSFunctionBytecode", sizeof(JSFunctionBytecode) },
+        };
+        int i, usage_size_ok = 0;
+        for(i = 0; i < countof(object_types); i++) {
+            unsigned int size = object_types[i].size;
+            void *p = js_malloc_rt(rt, size);
+            if (p) {
+                unsigned int size1 = js_malloc_usable_size_rt(rt, p);
+                if (size1 >= size) {
+                    usage_size_ok = 1;
+                    JS_WriteMemoryUsageCB_FMT(cb, "  %3u + %-2u  %s\n",
+                            size, size1 - size, object_types[i].name);
+                }
+                js_free_rt(rt, p);
+            }
+        }
+        if (!usage_size_ok) {
+            JS_WriteMemoryUsageCB_STR(cb, "  malloc_usable_size unavailable\n");
+        }
+        {
+            int obj_classes[JS_CLASS_INIT_COUNT + 1] = { 0 };
+            int class_id;
+            struct list_head *el;
+            list_for_each(el, &rt->gc_obj_list) {
+                JSGCObjectHeader *gp = list_entry(el, JSGCObjectHeader, link);
+                JSObject *p;
+                if (gp->gc_obj_type == JS_GC_OBJ_TYPE_JS_OBJECT) {
+                    p = (JSObject *)gp;
+                    obj_classes[min_uint32(p->class_id, JS_CLASS_INIT_COUNT)]++;
+                }
+            }
+            JS_WriteMemoryUsageCB_STR(cb, "\n" "JSObject classes\n");
+            if (obj_classes[0])
+                JS_WriteMemoryUsageCB_FMT(cb, "  %5d  %2.0d %s\n", obj_classes[0], 0, "none");
+            for (class_id = 1; class_id < JS_CLASS_INIT_COUNT; class_id++) {
+                if (obj_classes[class_id] && class_id < rt->class_count) {
+                    char buf[ATOM_GET_STR_BUF_SIZE];
+                    JS_WriteMemoryUsageCB_FMT(cb, "  %5d  %2.0d %s\n", obj_classes[class_id], class_id,
+                            JS_AtomGetStrRT(rt, buf, sizeof(buf), rt->class_array[class_id].class_name));
+                }
+            }
+            if (obj_classes[JS_CLASS_INIT_COUNT])
+                JS_WriteMemoryUsageCB_FMT(cb, "  %5d  %2.0d %s\n", obj_classes[JS_CLASS_INIT_COUNT], 0, "other");
+        }
+        JS_WriteMemoryUsageCB_STR(cb, "\n");
+    }
+    JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8s %8s\n", "NAME", "COUNT", "SIZE");
+
+    if (s->malloc_count) {
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per block)\n",
+                "memory allocated", s->malloc_count, s->malloc_size,
+                (double)s->malloc_size / s->malloc_count);
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%d overhead, %0.1f average slack)\n",
+                "memory used", s->memory_used_count, s->memory_used_size,
+                MALLOC_OVERHEAD, ((double)(s->malloc_size - s->memory_used_size) /
+                                  s->memory_used_count));
+    }
+    if (s->atom_count) {
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per atom)\n",
+                "atoms", s->atom_count, s->atom_size,
+                (double)s->atom_size / s->atom_count);
+    }
+    if (s->str_count) {
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per string)\n",
+                "strings", s->str_count, s->str_size,
+                (double)s->str_size / s->str_count);
+    }
+    if (s->obj_count) {
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per object)\n",
+                "objects", s->obj_count, s->obj_size,
+                (double)s->obj_size / s->obj_count);
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per object)\n",
+                "  properties", s->prop_count, s->prop_size,
+                (double)s->prop_count / s->obj_count);
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per shape)\n",
+                "  shapes", s->shape_count, s->shape_size,
+                (double)s->shape_size / s->shape_count);
+    }
+    if (s->js_func_count) {
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"\n",
+                "bytecode functions", s->js_func_count, s->js_func_size);
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per function)\n",
+                "  bytecode", s->js_func_count, s->js_func_code_size,
+                (double)s->js_func_code_size / s->js_func_count);
+        if (s->js_func_pc2line_count) {
+            JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per function)\n",
+                    "  pc2line", s->js_func_pc2line_count,
+                    s->js_func_pc2line_size,
+                    (double)s->js_func_pc2line_size / s->js_func_pc2line_count);
+        }
+    }
+    if (s->c_func_count) {
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64"\n", "C functions", s->c_func_count);
+    }
+    if (s->array_count) {
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64"\n", "arrays", s->array_count);
+        if (s->fast_array_count) {
+            JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64"\n", "  fast arrays", s->fast_array_count);
+            JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"  (%0.1f per fast array)\n",
+                    "  elements", s->fast_array_elements,
+                    s->fast_array_elements * (int)sizeof(JSValue),
+                    (double)s->fast_array_elements / s->fast_array_count);
+        }
+    }
+    if (s->binary_object_count) {
+        JS_WriteMemoryUsageCB_FMT(cb, "%-20s %8"PRId64" %8"PRId64"\n",
+                "binary objects", s->binary_object_count, s->binary_object_size);
+    }
+    #undef JS_WriteMemoryUsageCB_STR
+    #undef JS_WriteMemoryUsageCB_FMT
+    return 0;
+};
+
+
+
+
+
 JSValue JS_GetGlobalObject(JSContext *ctx)
 {
     return js_dup(ctx->global_obj);
