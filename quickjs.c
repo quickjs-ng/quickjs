@@ -20347,15 +20347,15 @@ static const JSOpCode opcode_info[OP_COUNT + (OP_TEMP_END - OP_TEMP_START)] = {
 static void json_free_token(JSParseState *s, JSToken *token) {
     // Only free actual allocated values
     switch(token->val) {
-        case TOK_NUMBER:
-            JS_FreeValue(s->ctx, token->u.num.val);
-            break;
-        case TOK_STRING:
-            JS_FreeValue(s->ctx, token->u.str.str);
-            break;
-        case TOK_IDENT:
-            JS_FreeAtom(s->ctx, token->u.ident.atom);
-            break;
+    case TOK_NUMBER:
+        JS_FreeValue(s->ctx, token->u.num.val);
+        break;
+    case TOK_STRING:
+        JS_FreeValue(s->ctx, token->u.str.str);
+        break;
+    case TOK_IDENT:
+        JS_FreeAtom(s->ctx, token->u.ident.atom);
+        break;
     }
 }
 
@@ -21461,9 +21461,8 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
                 goto fail;
         }
 
-        if (p >= s->buf_end) {
+        if (p >= s->buf_end)
             goto end_of_input;
-        }
 
         c = *p++;
         if (c == '"')
