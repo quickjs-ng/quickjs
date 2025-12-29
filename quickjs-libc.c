@@ -58,7 +58,9 @@
 #else
 #include <sys/ioctl.h>
 #include <poll.h>
-#if !defined(__wasi__)
+#if defined(__wasi__)
+#include <wasi/api.h>
+#else
 #include <dlfcn.h>
 #include <termios.h>
 #include <sys/resource.h>
@@ -825,7 +827,11 @@ static JSValue js_std_exit(JSContext *ctx, JSValueConst this_val,
     int status;
     if (JS_ToInt32(ctx, &status, argv[0]))
         status = -1;
+#if defined(__wasi__)
+    __wasi_proc_exit(status);
+#else
     exit(status);
+#endif
     return JS_UNDEFINED;
 }
 
