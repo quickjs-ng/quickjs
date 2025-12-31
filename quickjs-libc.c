@@ -2753,6 +2753,99 @@ done:
 }
 #endif // defined(_WIN32)
 
+#ifdef QJS_WASI_REACTOR
+/*
+ * Poll for I/O events and invoke registered read/write handlers.
+ * This is specifically for the reactor model where the host controls the
+ * event loop and needs to trigger I/O handler callbacks when data is available.
+ *
+ * Unlike js_os_poll(), this function:
+ * - Does NOT run timers (js_std_loop_once handles that)
+ * - Uses a caller-specified timeout instead of timer-based min_delay
+ * - Returns immediately after invoking one handler (like js_os_poll)
+ *
+ * Parameters:
+ *   ctx: The JavaScript context
+ *   timeout_ms: Poll timeout in milliseconds
+ *               0 = non-blocking (return immediately)
+ *               >0 = wait up to timeout_ms for I/O
+ *               -1 = block indefinitely (not recommended for reactor)
+ *
+ * Returns:
+ *   0: Success (handler was invoked or no handlers registered)
+ *   -1: Error or no I/O handlers registered
+ *   -2: Exception occurred in handler
+ */
+int js_std_poll_io(JSContext *ctx, int timeout_ms)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    int r, w, ret, nfds;
+    JSOSRWHandler *rh;
+    struct list_head *el;
+    struct pollfd *pfd, *pfds, pfds_local[64];
+
+    /* Check if there are any I/O handlers registered */
+    if (list_empty(&ts->os_rw_handlers))
+        return 0; /* no handlers, nothing to do */
+
+    nfds = 0;
+    list_for_each(el, &ts->os_rw_handlers) {
+        rh = list_entry(el, JSOSRWHandler, link);
+        nfds += (!JS_IsNull(rh->rw_func[0]) || !JS_IsNull(rh->rw_func[1]));
+    }
+
+    if (nfds == 0)
+        return 0; /* no active handlers */
+
+    pfd = pfds = pfds_local;
+    if (nfds > (int)countof(pfds_local)) {
+        pfd = pfds = js_malloc(ctx, nfds * sizeof(*pfd));
+        if (!pfd)
+            return -1;
+    }
+
+    list_for_each(el, &ts->os_rw_handlers) {
+        rh = list_entry(el, JSOSRWHandler, link);
+        r = POLLIN * !JS_IsNull(rh->rw_func[0]);
+        w = POLLOUT * !JS_IsNull(rh->rw_func[1]);
+        if (r || w)
+            *pfd++ = (struct pollfd){rh->fd, r|w, 0};
+    }
+
+    ret = 0;
+    nfds = poll(pfds, nfds, timeout_ms);
+    if (nfds < 0) {
+        ret = -1;
+        goto done;
+    }
+
+    for (pfd = pfds; nfds-- > 0; pfd++) {
+        rh = find_rh(ts, pfd->fd);
+        if (rh) {
+            r = (POLLERR|POLLHUP|POLLNVAL|POLLIN) * !JS_IsNull(rh->rw_func[0]);
+            w = (POLLERR|POLLHUP|POLLNVAL|POLLOUT) * !JS_IsNull(rh->rw_func[1]);
+            if (r & pfd->revents) {
+                ret = call_handler(ctx, rh->rw_func[0]);
+                if (ret < 0)
+                    ret = -2; /* exception in handler */
+                goto done;
+            }
+            if (w & pfd->revents) {
+                ret = call_handler(ctx, rh->rw_func[1]);
+                if (ret < 0)
+                    ret = -2; /* exception in handler */
+                goto done;
+            }
+        }
+    }
+
+done:
+    if (pfds != pfds_local)
+        js_free(ctx, pfds);
+    return ret;
+}
+#endif /* QJS_WASI_REACTOR */
 
 static JSValue make_obj_error(JSContext *ctx,
                               JSValue obj,
@@ -4547,6 +4640,53 @@ int js_std_loop(JSContext *ctx)
 done:
     return JS_HasException(ctx);
 }
+
+#ifdef QJS_WASI_REACTOR
+/*
+ * Run one iteration of the event loop (non-blocking).
+ *
+ * Executes all pending microtasks (promise jobs), then checks timers
+ * and runs at most one expired timer callback.
+ *
+ * Returns:
+ *   > 0: Next timer fires in this many milliseconds; call again after delay
+ *     0: More work pending; call again immediately (via queueMicrotask)
+ *    -1: No pending work; event loop is idle
+ *    -2: An exception occurred; call js_std_dump_error() for details
+ */
+int js_std_loop_once(JSContext *ctx)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSContext *ctx1;
+    int err, min_delay;
+
+    /* execute all pending jobs */
+    for(;;) {
+        err = JS_ExecutePendingJob(rt, &ctx1);
+        if (err < 0)
+            return -2; /* error */
+        if (err == 0)
+            break;
+    }
+
+    /* run at most one expired timer */
+    if (js_os_run_timers(rt, ctx, ts, &min_delay) < 0)
+        return -2; /* error in timer callback */
+
+    /* check if more work is pending */
+    if (JS_IsJobPending(rt))
+        return 0; /* more microtasks pending */
+
+    if (min_delay == 0)
+        return 0; /* timer ready to fire immediately */
+
+    if (min_delay > 0)
+        return min_delay; /* next timer delay in ms */
+
+    return -1; /* idle, no pending work */
+}
+#endif /* QJS_WASI_REACTOR */
 
 /* Wait for a promise and execute pending jobs while waiting for
    it. Return the promise result or JS_EXCEPTION in case of promise

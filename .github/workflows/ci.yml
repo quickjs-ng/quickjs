@@ -418,6 +418,11 @@ jobs:
           wasmtime run build/qjs -qd
           echo "console.log('hello wasi!');" > t.js
           wasmtime run --dir . build/qjs t.js
+      - name: test reactor
+        run: |
+          cmake -B build-reactor -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_WASI_REACTOR=ON
+          make -C build-reactor qjs_wasi_reactor
+          /opt/wasi-sdk/bin/llvm-nm build-reactor/qjs.wasm | grep -q " T qjs_init$"
 
   cygwin:
     runs-on: windows-latest

@@ -129,6 +129,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
         -lwasi-emulated-process-clocks
         -lwasi-emulated-signal
     )
+    option(QJS_WASI_REACTOR "Build WASI reactor (re-entrant, exports instead of _start)" OFF)
 endif()
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -335,6 +336,35 @@ target_link_libraries(qjs_exe qjs)
 if(NOT WIN32)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
+
+# WASI Reactor build
+#
+if(QJS_WASI_REACTOR)
+    add_executable(qjs_wasi_reactor
+        gen/repl.c
+        gen/standalone.c
+        qjs.c
+    )
+    add_qjs_libc_if_needed(qjs_wasi_reactor)
+    set_target_properties(qjs_wasi_reactor PROPERTIES
+        OUTPUT_NAME "qjs"
+        SUFFIX ".wasm"
+    )
+    target_compile_definitions(qjs_wasi_reactor PRIVATE ${qjs_defines} QJS_WASI_REACTOR)
+    target_link_libraries(qjs_wasi_reactor qjs)
+    target_link_options(qjs_wasi_reactor PRIVATE
+        -mexec-model=reactor
+        -Wl,--export=qjs_init
+        -Wl,--export=qjs_init_argv
+        -Wl,--export=qjs_eval
+        -Wl,--export=qjs_loop_once
+        -Wl,--export=qjs_poll_io
+        -Wl,--export=qjs_destroy
+        -Wl,--export=malloc
+        -Wl,--export=free
+    )
+endif()
+
 if(QJS_BUILD_CLI_WITH_MIMALLOC OR QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
     find_package(mimalloc REQUIRED)
     # Upstream mimalloc doesn't provide a way to know if both libraries are supported.

@@ -746,3 +746,338 @@ start:
     JS_FreeRuntime(rt);
     return 1;
 }
+
+#if defined(__wasi__) && defined(QJS_WASI_REACTOR)
+/*
+ * WASI Reactor exports for embedding QuickJS in JavaScript hosts.
+ *
+ * Usage: call qjs_run() with argc/argv just like CLI, then call
+ * qjs_loop_once() repeatedly to drive the event loop.
+ */
+
+static JSRuntime *reactor_rt;
+static JSContext *reactor_ctx;
+static int reactor_ready;
+
+int qjs_init_argv(int argc, char **argv);
+
+/*
+ * Initialize with no arguments (empty runtime, no script loaded).
+ * Use qjs_eval() to evaluate code after calling this.
+ * Returns 0 on success, -1 on error.
+ */
+__attribute__((export_name("qjs_init")))
+int qjs_init(void)
+{
+    static char *empty_argv[] = { "qjs", NULL };
+    return qjs_init_argv(1, empty_argv);
+}
+
+/*
+ * Initialize and run script (like main() but stops before event loop).
+ * Pass same arguments as CLI: e.g. ["qjs", "--std", "script.js"]
+ * Returns 0 on success, -1 on error.
+ */
+__attribute__((export_name("qjs_init_argv")))
+int qjs_init_argv(int argc, char **argv)
+{
+    struct trace_malloc_data trace_data = { NULL };
+    int optind = 1;
+    char exebuf[JS__PATH_MAX];
+    size_t exebuf_size = sizeof(exebuf);
+    char *expr = NULL;
+    char *dump_flags_str = NULL;
+    int standalone = 0;
+    int interactive = 0;
+    int dump_flags = 0;
+    int trace_memory = 0;
+    int empty_run = 0;
+    int module = -1;
+    int load_std = 0;
+    char *include_list[32];
+    int i, include_count = 0;
+    int64_t memory_limit = -1;
+    int64_t stack_size = -1;
+
+    if (reactor_rt)
+        return -1; /* already initialized */
+
+    qjs__argc = argc;
+    qjs__argv = argv;
+
+    if (!js_exepath(exebuf, &exebuf_size) && is_standalone(exebuf)) {
+        standalone = 1;
+        goto start;
+    }
+
+    dump_flags_str = getenv("QJS_DUMP_FLAGS");
+    dump_flags = dump_flags_str ? strtol(dump_flags_str, NULL, 16) : 0;
+
+    while (optind < argc && *argv[optind] == '-') {
+        char *arg = argv[optind] + 1;
+        const char *longopt = "";
+        char *optarg = NULL;
+        if (!*arg)
+            break;
+        optind++;
+        if (*arg == '-') {
+            longopt = arg + 1;
+            optarg = strchr(longopt, '=');
+            if (optarg)
+                *optarg++ = '\0';
+            arg += strlen(arg);
+            if (!*longopt)
+                break;
+        }
+        for (; *arg || *longopt; longopt = "") {
+            char opt = *arg;
+            if (opt) {
+                arg++;
+                if (!optarg && *arg)
+                    optarg = arg;
+            }
+            if (opt == 'h' || opt == '?' || !strcmp(longopt, "help")) {
+                return -1; /* help not useful in reactor mode */
+            }
+            if (opt == 'e' || !strcmp(longopt, "eval")) {
+                if (!optarg) {
+                    if (optind >= argc)
+                        return -1;
+                    optarg = argv[optind++];
+                }
+                expr = optarg;
+                break;
+            }
+            if (opt == 'I' || !strcmp(longopt, "include")) {
+                if (optind >= argc || include_count >= countof(include_list))
+                    return -1;
+                include_list[include_count++] = argv[optind++];
+                continue;
+            }
+            if (opt == 'i' || !strcmp(longopt, "interactive")) {
+                interactive++;
+                continue;
+            }
+            if (opt == 'm' || !strcmp(longopt, "module")) {
+                module = 1;
+                continue;
+            }
+            if (opt == 'C' || !strcmp(longopt, "script")) {
+                module = 0;
+                continue;
+            }
+            if (opt == 'd' || !strcmp(longopt, "dump")) {
+                continue; /* ignore in reactor */
+            }
+            if (opt == 'D' || !strcmp(longopt, "dump-flags")) {
+                dump_flags = optarg ? strtol(optarg, NULL, 16) : 0;
+                break;
+            }
+            if (opt == 'T' || !strcmp(longopt, "trace")) {
+                trace_memory++;
+                continue;
+            }
+            if (!strcmp(longopt, "std")) {
+                load_std = 1;
+                continue;
+            }
+            if (opt == 'q' || !strcmp(longopt, "quit")) {
+                empty_run++;
+                continue;
+            }
+            if (!strcmp(longopt, "memory-limit")) {
+                if (!optarg) {
+                    if (optind >= argc)
+                        return -1;
+                    optarg = argv[optind++];
+                }
+                memory_limit = parse_limit(optarg);
+                break;
+            }
+            if (!strcmp(longopt, "stack-size")) {
+                if (!optarg) {
+                    if (optind >= argc)
+                        return -1;
+                    optarg = argv[optind++];
+                }
+                stack_size = parse_limit(optarg);
+                break;
+            }
+            /* skip compile/out/exe options - not useful in reactor */
+            if (opt == 'c' || !strcmp(longopt, "compile") ||
+                opt == 'o' || !strcmp(longopt, "out") ||
+                !strcmp(longopt, "exe")) {
+                return -1;
+            }
+            return -1; /* unknown option */
+        }
+    }
+
+start:
+    if (trace_memory) {
+        js_trace_malloc_init(&trace_data);
+        reactor_rt = JS_NewRuntime2(&trace_mf, &trace_data);
+    } else {
+        reactor_rt = JS_NewRuntime();
+    }
+    if (!reactor_rt)
+        return -1;
+
+    if (memory_limit >= 0)
+        JS_SetMemoryLimit(reactor_rt, (size_t)memory_limit);
+    if (stack_size >= 0)
+        JS_SetMaxStackSize(reactor_rt, (size_t)stack_size);
+    if (dump_flags != 0)
+        JS_SetDumpFlags(reactor_rt, dump_flags);
+
+    js_std_set_worker_new_context_func(JS_NewCustomContext);
+    js_std_init_handlers(reactor_rt);
+    reactor_ctx = JS_NewCustomContext(reactor_rt);
+    if (!reactor_ctx)
+        goto fail;
+
+    JS_SetModuleLoaderFunc(reactor_rt, NULL, js_module_loader, NULL);
+    JS_SetHostPromiseRejectionTracker(reactor_rt, js_std_promise_rejection_tracker, NULL);
+
+    if (!empty_run) {
+        js_std_add_helpers(reactor_ctx, argc - optind, argv + optind);
+
+        if (load_std) {
+            const char *str =
+                "import * as bjson from 'qjs:bjson';\n"
+                "import * as std from 'qjs:std';\n"
+                "import * as os from 'qjs:os';\n"
+                "globalThis.bjson = bjson;\n"
+                "globalThis.std = std;\n"
+                "globalThis.os = os;\n";
+            if (eval_buf(reactor_ctx, str, strlen(str), "<input>", JS_EVAL_TYPE_MODULE))
+                goto fail;
+        }
+
+        for (i = 0; i < include_count; i++) {
+            if (eval_file(reactor_ctx, include_list[i], 0))
+                goto fail;
+        }
+
+        if (standalone) {
+            JSValue ns = load_standalone_module(reactor_ctx);
+            if (JS_IsException(ns))
+                goto fail;
+            JSValue func = JS_GetPropertyStr(reactor_ctx, ns, "runStandalone");
+            JS_FreeValue(reactor_ctx, ns);
+            if (JS_IsException(func))
+                goto fail;
+            JSValue ret = JS_Call(reactor_ctx, func, JS_UNDEFINED, 0, NULL);
+            JS_FreeValue(reactor_ctx, func);
+            if (JS_IsException(ret)) {
+                JS_FreeValue(reactor_ctx, ret);
+                goto fail;
+            }
+            JS_FreeValue(reactor_ctx, ret);
+        } else if (expr) {
+            int flags = module ? JS_EVAL_TYPE_MODULE : 0;
+            if (eval_buf(reactor_ctx, expr, strlen(expr), "<cmdline>", flags))
+                goto fail;
+        } else if (optind < argc) {
+            const char *filename = argv[optind];
+            if (eval_file(reactor_ctx, filename, module))
+                goto fail;
+        } else if (interactive) {
+            JS_SetHostPromiseRejectionTracker(reactor_rt, NULL, NULL);
+            js_std_eval_binary(reactor_ctx, qjsc_repl, qjsc_repl_size, 0);
+        }
+    }
+
+    reactor_ready = 1;
+    return 0;
+
+fail:
+    if (reactor_ctx) {
+        js_std_free_handlers(reactor_rt);
+        JS_FreeContext(reactor_ctx);
+        reactor_ctx = NULL;
+    }
+    if (reactor_rt) {
+        JS_FreeRuntime(reactor_rt);
+        reactor_rt = NULL;
+    }
+    return -1;
+}
+
+__attribute__((export_name("qjs_eval")))
+int qjs_eval(const char *code, int len, const char *filename, int is_module)
+{
+    if (!reactor_ready)
+        return -1;
+
+    const char *fname = filename ? filename : "<eval>";
+    int flags = is_module ? JS_EVAL_TYPE_MODULE : JS_EVAL_TYPE_GLOBAL;
+    JSValue val;
+
+    if (is_module) {
+        val = JS_Eval(reactor_ctx, code, len, fname,
+                      flags | JS_EVAL_FLAG_COMPILE_ONLY);
+        if (!JS_IsException(val)) {
+            js_module_set_import_meta(reactor_ctx, val, true, true);
+            val = JS_EvalFunction(reactor_ctx, val);
+        }
+    } else {
+        val = JS_Eval(reactor_ctx, code, len, fname, flags);
+    }
+
+    if (JS_IsException(val)) {
+        JS_FreeValue(reactor_ctx, val);
+        return -1;
+    }
+
+    JS_FreeValue(reactor_ctx, val);
+    return 0;
+}
+
+__attribute__((export_name("qjs_loop_once")))
+int qjs_loop_once(void)
+{
+    if (!reactor_ready)
+        return -2;
+    return js_std_loop_once(reactor_ctx);
+}
+
+/*
+ * Poll for I/O events and invoke registered read/write handlers.
+ * Call this when the host knows that stdin (or other fds) have data available.
+ *
+ * Parameters:
+ *   timeout_ms: Poll timeout in milliseconds
+ *               0 = non-blocking (check and return immediately)
+ *               >0 = wait up to timeout_ms for I/O events
+ *               -1 = block indefinitely (not recommended)
+ *
+ * Returns:
+ *   0: Success (handler invoked or no handlers registered)
+ *   -1: Error or no I/O handlers
+ *   -2: Not initialized or exception in handler
+ */
+__attribute__((export_name("qjs_poll_io")))
+int qjs_poll_io(int timeout_ms)
+{
+    if (!reactor_ready)
+        return -2;
+    return js_std_poll_io(reactor_ctx, timeout_ms);
+}
+
+__attribute__((export_name("qjs_destroy")))
+void qjs_destroy(void)
+{
+    if (reactor_ctx) {
+        js_std_free_handlers(reactor_rt);
+        JS_FreeContext(reactor_ctx);
+        reactor_ctx = NULL;
+    }
+    if (reactor_rt) {
+        JS_FreeRuntime(reactor_rt);
+        reactor_rt = NULL;
+    }
+    reactor_ready = 0;
+}
+
+#endif /* __wasi__ && QJS_WASI_REACTOR */
