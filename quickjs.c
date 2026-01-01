@@ -12322,7 +12322,7 @@ static JSValue js_atof(JSContext *ctx, const char *str, const char **pp,
         if (!(flags & ATOD_INT_ONLY) &&
             (atod_type == ATOD_TYPE_FLOAT64) &&
             js__strstart(p, "Infinity", &p)) {
-            double d = INF;
+            double d = INFINITY;
             if (is_neg)
                 d = -d;
             val = js_float64(d);
@@ -44872,7 +44872,7 @@ static JSValue js_math_min_max(JSContext *ctx, JSValueConst this_val,
     uint32_t tag;
 
     if (unlikely(argc == 0)) {
-        return js_float64(is_max ? NEG_INF : INF);
+        return js_float64(is_max ? -INFINITY : INFINITY);
     }
 
     tag = JS_VALUE_GET_TAG(argv[0]);
