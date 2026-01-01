@@ -75,15 +75,6 @@ extern "C" {
 #  define __maybe_unused __attribute__((unused))
 #endif
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#include <math.h>
-#define INF INFINITY
-#define NEG_INF -INFINITY
-#else
-#define INF (1.0/0.0)
-#define NEG_INF (-1.0/0.0)
-#endif
-
 #ifndef offsetof
 #define offsetof(type, field) ((size_t) &((type *)0)->field)
 #endif
