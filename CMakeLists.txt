@@ -32,6 +32,12 @@ else()
     set(WATCHOS FALSE)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+    set(SUNOS TRUE)
+else()
+    set(SUNOS FALSE)
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "No build type selected, default to Release")
     set(CMAKE_BUILD_TYPE "Release")
@@ -62,7 +68,9 @@ xcheck_add_c_compiler_flag(-Wno-unused-but-set-variable)
 xcheck_add_c_compiler_flag(-Wno-unused-result)
 xcheck_add_c_compiler_flag(-Wno-stringop-truncation)
 xcheck_add_c_compiler_flag(-Wno-array-bounds)
+if(NOT SUNOS)
 xcheck_add_c_compiler_flag(-funsigned-char)
+endif()
 
 # ClangCL is command line compatible with MSVC, so 'MSVC' is set.
 if(MSVC)

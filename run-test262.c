@@ -38,6 +38,7 @@
 #else
 #include <dirent.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #endif
 
 #include "cutils.h"
@@ -418,6 +419,11 @@ static void consider_test_file(const char *path, const char *name, int is_dir)
     while (pathlen > 0 && ispathsep(path[pathlen-1]))
         pathlen--;
     snprintf(s, sizeof(s), "%.*s/%s", (int)pathlen, path, name);
+#if !defined(_WIN32) && !defined(DT_DIR)
+    struct stat st;
+    if (is_dir < 0)
+        is_dir = !stat(s, &st) && S_ISDIR(st.st_mode);
+#endif
     if (is_dir)
         find_test_files(s);
     else
@@ -448,7 +454,11 @@ static void find_test_files(const char *path)
     n = scandir(path, &ds, NULL, alphasort);
     for (i = 0; i < n; i++) {
         d = ds[i];
+#ifdef DT_DIR
         consider_test_file(path, d->d_name, d->d_type == DT_DIR);
+#else
+        consider_test_file(path, d->d_name, -1);
+#endif
         free(d);
     }
     free(ds);

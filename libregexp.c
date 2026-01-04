@@ -31,6 +31,10 @@
 #include "cutils.h"
 #include "libregexp.h"
 
+#if defined(__sun)
+#include <alloca.h>
+#endif
+
 /*
   TODO:
 
