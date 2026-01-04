@@ -941,7 +941,7 @@ uint64_t js__hrtime_ns(void) {
   struct timeval tv;
   if (gettimeofday(&tv, NULL))
     abort();
-  return ((uint64_t)tv.tv_sec * NANOSEC) + tv.tv_usec * 1000;
+  return tv.tv_sec * NANOSEC + tv.tv_usec * 1000;
 #else
   struct timespec t;
 
