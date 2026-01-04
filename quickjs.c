@@ -40,9 +40,6 @@
 #include <intrin.h>
 #endif
 #include <time.h>
-#ifndef __DJGPP
-#include <fenv.h>
-#endif
 #include <math.h>
 
 #include "cutils.h"
