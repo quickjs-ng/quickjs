@@ -420,12 +420,12 @@ static void runtime_cstring_free(void)
     JS_FreeRuntime(rt);
 }
 
-static void two_byte_string(void)
+static void utf16_string(void)
 {
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx = JS_NewContext(rt);
     {
-        JSValue v = JS_NewTwoByteString(ctx, NULL, 0);
+        JSValue v = JS_NewStringUTF16(ctx, NULL, 0);
         assert(!JS_IsException(v));
         const char *s = JS_ToCString(ctx, v);
         assert(s);
@@ -434,23 +434,23 @@ static void two_byte_string(void)
         JS_FreeValue(ctx, v);
     }
     {
-        JSValue v = JS_NewTwoByteString(ctx, (uint16_t[]){'o','k'}, 2);
+        JSValue v = JS_NewStringUTF16(ctx, (uint16_t[]){'o','k'}, 2);
         assert(!JS_IsException(v));
         const char *s = JS_ToCString(ctx, v);
         assert(s);
         assert(!strcmp(s, "ok"));
         JS_FreeCString(ctx, s);
         size_t n;
-        const uint16_t *u = JS_ToCStringTwoByteLen(ctx, &n, v);
+        const uint16_t *u = JS_ToCStringLenUTF16(ctx, &n, v);
         assert(u);
         assert(n == 2);
         assert(u[0] == 'o');
         assert(u[1] == 'k');
-        JS_FreeCStringTwoByte(ctx, u);
+        JS_FreeCStringUTF16(ctx, u);
         JS_FreeValue(ctx, v);
     }
     {
-        JSValue v = JS_NewTwoByteString(ctx, (uint16_t[]){0xD800}, 1);
+        JSValue v = JS_NewStringUTF16(ctx, (uint16_t[]){0xD800}, 1);
         assert(!JS_IsException(v));
         const char *s = JS_ToCString(ctx, v);
         assert(s);
@@ -458,23 +458,23 @@ static void two_byte_string(void)
         assert(!strcmp(s, "\xED\xA0\x80"));
         JS_FreeCString(ctx, s);
         size_t n;
-        const uint16_t *u = JS_ToCStringTwoByteLen(ctx, &n, v);
+        const uint16_t *u = JS_ToCStringLenUTF16(ctx, &n, v);
         assert(u);
         assert(n == 1);
         assert(u[0] == 0xD800);
-        JS_FreeCStringTwoByte(ctx, u);
+        JS_FreeCStringUTF16(ctx, u);
         JS_FreeValue(ctx, v);
     }
     {
         JSValue v = JS_NewStringLen(ctx, "ok", 2); // ascii -> ucs
         assert(!JS_IsException(v));
         size_t n;
-        const uint16_t *u = JS_ToCStringTwoByteLen(ctx, &n, v);
+        const uint16_t *u = JS_ToCStringLenUTF16(ctx, &n, v);
         assert(u);
         assert(n == 2);
         assert(u[0] == 'o');
         assert(u[1] == 'k');
-        JS_FreeCStringTwoByte(ctx, u);
+        JS_FreeCStringUTF16(ctx, u);
         JS_FreeValue(ctx, v);
     }
     JS_FreeContext(ctx);
@@ -868,7 +868,7 @@ int main(void)
     is_array();
     module_serde();
     runtime_cstring_free();
-    two_byte_string();
+    utf16_string();
     weak_map_gc_check();
     promise_hook();
     dump_memory_usage();
