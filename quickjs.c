@@ -42858,7 +42858,7 @@ static const JSCFunctionListEntry js_number_funcs[] = {
     JS_PROP_DOUBLE_DEF("MAX_SAFE_INTEGER", 9007199254740991.0, 0 ), /* ES6 */
     JS_PROP_DOUBLE_DEF("MIN_SAFE_INTEGER", -9007199254740991.0, 0 ), /* ES6 */
     // workarounds for msvc & djgpp where NAN and INFINITY
-    // are not constant-time expressions
+    // are not compile-time expressions
     JS_PROP_U2D_DEF("NaN",               0x7FF8ull<<48, 0 ),
     JS_PROP_U2D_DEF("NEGATIVE_INFINITY", 0xFFF0ull<<48, 0 ),
     JS_PROP_U2D_DEF("POSITIVE_INFINITY", 0x7FF0ull<<48, 0 ),
