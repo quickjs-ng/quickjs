@@ -44935,12 +44935,48 @@ static JSValue js_string_codePointAt(JSContext *ctx, JSValueConst this_val,
 static JSValue js_string_concat(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
+    int i, is_wide_char;
+    JSString *p, *q;
+    int64_t len;
+    uint32_t n;
     JSValue r;
-    int i;
+    char *d;
 
-    /* XXX: Use more efficient method */
-    /* XXX: This method is OK if r has a single refcount */
-    /* XXX: should use string_buffer? */
+    if (JS_TAG_STRING != JS_VALUE_GET_TAG(this_val))
+        goto slow_path;
+    p = JS_VALUE_GET_STRING(this_val);
+    len = p->len;
+    is_wide_char = p->is_wide_char;
+    for (i = 0; i < argc; i++) {
+        if (JS_TAG_STRING != JS_VALUE_GET_TAG(argv[i]))
+            goto slow_path;
+        p = JS_VALUE_GET_STRING(argv[i]);
+        if (p->is_wide_char ^ is_wide_char)
+            goto slow_path;
+        len += p->len;
+    }
+    if (len > INT_MAX>>is_wide_char)
+        return JS_ThrowOutOfMemory(ctx);
+    p = JS_VALUE_GET_STRING(this_val);
+    if (p->len == len)
+        return js_dup(this_val);
+    q = js_alloc_string(ctx, len, is_wide_char);
+    if (!q)
+        return JS_EXCEPTION;
+    d = strv(q);
+    n = p->len << is_wide_char;
+    memcpy(d, strv(p), n);
+    d += n;
+    for (i = 0; i < argc; i++) {
+        p = JS_VALUE_GET_STRING(argv[i]);
+        n = p->len << is_wide_char;
+        memcpy(d, strv(p), n);
+        d += n;
+    }
+    if (!is_wide_char)
+        *d = '\0';
+    return JS_MKPTR(JS_TAG_STRING, q);
+slow_path:
     r = JS_ToStringCheckObject(ctx, this_val);
     for (i = 0; i < argc; i++) {
         if (JS_IsException(r))
