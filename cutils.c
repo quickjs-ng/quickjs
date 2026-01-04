@@ -937,12 +937,19 @@ uint64_t js__hrtime_ns(void) {
 }
 #else
 uint64_t js__hrtime_ns(void) {
+#ifdef __DJGPP
+  struct timeval tv;
+  if (gettimeofday(&tv, NULL))
+    abort();
+  return tv.tv_sec * NANOSEC + tv.tv_usec * 1000;
+#else
   struct timespec t;
 
   if (clock_gettime(CLOCK_MONOTONIC, &t))
     abort();
 
   return t.tv_sec * NANOSEC + t.tv_nsec;
+#endif
 }
 #endif
 
