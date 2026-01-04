@@ -819,8 +819,17 @@ static inline const char *JS_ToCString(JSContext *ctx, JSValueConst val1)
 {
     return JS_ToCStringLen2(ctx, NULL, val1, 0);
 }
+JS_EXTERN const uint16_t *JS_ToCStringTwoByteLen(JSContext *ctx, size_t *plen,
+                                                 JSValueConst val1);
+static inline const uint16_t *JS_ToCStringTwoByte(JSContext *ctx,
+                                                  JSValueConst val1)
+{
+    return JS_ToCStringTwoByteLen(ctx, NULL, val1);
+}
 JS_EXTERN void JS_FreeCString(JSContext *ctx, const char *ptr);
 JS_EXTERN void JS_FreeCStringRT(JSRuntime *rt, const char *ptr);
+JS_EXTERN void JS_FreeCStringTwoByte(JSContext *ctx, const uint16_t *ptr);
+JS_EXTERN void JS_FreeCStringTwoByteRT(JSRuntime *rt, const uint16_t *ptr);
 
 JS_EXTERN JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto,
                                          JSClassID class_id);

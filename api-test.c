@@ -440,6 +440,13 @@ static void two_byte_string(void)
         assert(s);
         assert(!strcmp(s, "ok"));
         JS_FreeCString(ctx, s);
+        size_t n;
+        const uint16_t *u = JS_ToCStringTwoByteLen(ctx, &n, v);
+        assert(u);
+        assert(n == 2);
+        assert(u[0] == 'o');
+        assert(u[1] == 'k');
+        JS_FreeCStringTwoByte(ctx, u);
         JS_FreeValue(ctx, v);
     }
     {
@@ -450,6 +457,24 @@ static void two_byte_string(void)
         // questionable but surrogates don't map to UTF-8 without WTF-8
         assert(!strcmp(s, "\xED\xA0\x80"));
         JS_FreeCString(ctx, s);
+        size_t n;
+        const uint16_t *u = JS_ToCStringTwoByteLen(ctx, &n, v);
+        assert(u);
+        assert(n == 1);
+        assert(u[0] == 0xD800);
+        JS_FreeCStringTwoByte(ctx, u);
+        JS_FreeValue(ctx, v);
+    }
+    {
+        JSValue v = JS_NewStringLen(ctx, "ok", 2); // ascii -> ucs
+        assert(!JS_IsException(v));
+        size_t n;
+        const uint16_t *u = JS_ToCStringTwoByteLen(ctx, &n, v);
+        assert(u);
+        assert(n == 2);
+        assert(u[0] == 'o');
+        assert(u[1] == 'k');
+        JS_FreeCStringTwoByte(ctx, u);
         JS_FreeValue(ctx, v);
     }
     JS_FreeContext(ctx);
