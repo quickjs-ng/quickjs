@@ -50,7 +50,7 @@ extern "C" {
 #elif defined(_WIN32)
 #include <windows.h>
 #endif
-#if !defined(_WIN32) && !defined(EMSCRIPTEN) && !defined(__wasi__)
+#if !defined(_WIN32) && !defined(EMSCRIPTEN) && !defined(__wasi__) && !defined(__DJGPP)
 #include <errno.h>
 #include <pthread.h>
 #endif
@@ -578,7 +578,7 @@ int js_exepath(char* buffer, size_t* size);
 
 /* Cross-platform threading APIs. */
 
-#if defined(EMSCRIPTEN) || defined(__wasi__)
+#if defined(EMSCRIPTEN) || defined(__wasi__) || defined(__DJGPP)
 
 #define JS_HAVE_THREADS 0
 
