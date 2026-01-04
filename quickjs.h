@@ -805,8 +805,8 @@ static inline JSValue JS_NewString(JSContext *ctx, const char *str) {
 }
 // makes a copy of the input; does not check if the input is valid UTF-16,
 // that is the responsibility of the caller
-JS_EXTERN JSValue JS_NewTwoByteString(JSContext *ctx, const uint16_t *buf,
-                                      size_t len);
+JS_EXTERN JSValue JS_NewStringUTF16(JSContext *ctx, const uint16_t *buf,
+                                    size_t len);
 JS_EXTERN JSValue JS_NewAtomString(JSContext *ctx, const char *str);
 JS_EXTERN JSValue JS_ToString(JSContext *ctx, JSValueConst val);
 JS_EXTERN JSValue JS_ToPropertyKey(JSContext *ctx, JSValueConst val);
@@ -819,17 +819,21 @@ static inline const char *JS_ToCString(JSContext *ctx, JSValueConst val1)
 {
     return JS_ToCStringLen2(ctx, NULL, val1, 0);
 }
-JS_EXTERN const uint16_t *JS_ToCStringTwoByteLen(JSContext *ctx, size_t *plen,
-                                                 JSValueConst val1);
-static inline const uint16_t *JS_ToCStringTwoByte(JSContext *ctx,
-                                                  JSValueConst val1)
+// returns a utf-16 version of the string in native endianness; the
+// string is not nul terminated and can contain unmatched surrogates
+// |*plen| is in uint16s, not code points; a surrogate pair such as
+// U+D834 U+DF06 has len=2; an unmatched surrogate has len=1
+JS_EXTERN const uint16_t *JS_ToCStringLenUTF16(JSContext *ctx, size_t *plen,
+                                               JSValueConst val1);
+static inline const uint16_t *JS_ToCStringUTF16(JSContext *ctx,
+                                                JSValueConst val1)
 {
-    return JS_ToCStringTwoByteLen(ctx, NULL, val1);
+    return JS_ToCStringLenUTF16(ctx, NULL, val1);
 }
 JS_EXTERN void JS_FreeCString(JSContext *ctx, const char *ptr);
 JS_EXTERN void JS_FreeCStringRT(JSRuntime *rt, const char *ptr);
-JS_EXTERN void JS_FreeCStringTwoByte(JSContext *ctx, const uint16_t *ptr);
-JS_EXTERN void JS_FreeCStringTwoByteRT(JSRuntime *rt, const uint16_t *ptr);
+JS_EXTERN void JS_FreeCStringUTF16(JSContext *ctx, const uint16_t *ptr);
+JS_EXTERN void JS_FreeCStringRT_UTF16(JSRuntime *rt, const uint16_t *ptr);
 
 JS_EXTERN JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto,
                                          JSClassID class_id);

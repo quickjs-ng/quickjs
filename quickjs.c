@@ -4177,7 +4177,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
     return JS_MKPTR(JS_TAG_STRING, str);
 }
 
-JSValue JS_NewTwoByteString(JSContext *ctx, const uint16_t *buf, size_t len)
+JSValue JS_NewStringUTF16(JSContext *ctx, const uint16_t *buf, size_t len)
 {
     JSString *str;
 
@@ -4354,8 +4354,8 @@ fail:
     return NULL;
 }
 
-const uint16_t *JS_ToCStringTwoByteLen(JSContext *ctx, size_t *plen,
-                                       JSValueConst val1)
+const uint16_t *JS_ToCStringLenUTF16(JSContext *ctx, size_t *plen,
+                                     JSValueConst val1)
 {
     JSString *p, *q;
     uint32_t i;
@@ -4402,12 +4402,12 @@ void JS_FreeCStringRT(JSRuntime *rt, const char *ptr)
     return js_free_cstring(rt, ptr);
 }
 
-void JS_FreeCStringTwoByte(JSContext *ctx, const uint16_t *ptr)
+void JS_FreeCStringUTF16(JSContext *ctx, const uint16_t *ptr)
 {
     return js_free_cstring(ctx->rt, ptr);
 }
 
-void JS_FreeCStringTwoByteRT(JSRuntime *rt, const uint16_t *ptr)
+void JS_FreeCStringRT_UTF16(JSRuntime *rt, const uint16_t *ptr)
 {
     return js_free_cstring(rt, ptr);
 }
