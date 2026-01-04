@@ -44847,7 +44847,7 @@ static double js_fmin(double a, double b)
         a1.u64 |= b1.u64;
         return a1.d;
     } else {
-        return fmin(a, b);
+        return a < b ? a : b;
     }
 }
 
@@ -44861,7 +44861,7 @@ static double js_fmax(double a, double b)
         a1.u64 &= b1.u64;
         return a1.d;
     } else {
-        return fmax(a, b);
+        return a < b ? b : a;
     }
 }
 
