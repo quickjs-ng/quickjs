@@ -37,7 +37,7 @@ int main(int argc, char **argv)
   rt = JS_NewRuntime();
   js_std_set_worker_new_context_func(JS_NewCustomContext);
   js_std_init_handlers(rt);
-  JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
+  JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, js_module_check_attributes, NULL);
   ctx = JS_NewCustomContext(rt);
   js_std_add_helpers(ctx, argc, argv);
   js_std_eval_binary(ctx, qjsc_hello, qjsc_hello_size, 0);
