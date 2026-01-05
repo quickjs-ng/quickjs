@@ -39,12 +39,76 @@ extern "C" {
 
 #define QUICKJS_NG 1
 
+/* Helpers. */
+#if defined(_WIN32) || defined(__CYGWIN__)
+# define QUICKJS_NG_PLAT_WIN32 1
+#endif /* defined(_WIN32) || defined(__CYGWIN__) */
+
 #if defined(__GNUC__) || defined(__clang__)
-#define js_force_inline       inline __attribute__((always_inline))
-#define JS_EXTERN __attribute__((visibility("default")))
+# define QUICKJS_NG_CC_GNULIKE 1
+#endif /* defined(__GNUC__) || defined(__clang__) */
+
+/*
+ * `js_force_inline` -- helper macro forcing the inlining of a function.
+ */
+#ifdef QUICKJS_NG_PLAT_WIN32
+# ifdef QUICKJS_NG_CC_GNULIKE
+#  define js_force_inline inline __attribute__((always_inline))
+# else
+#  define js_force_inline __forceinline
+# endif
 #else
-#define js_force_inline  inline
-#define JS_EXTERN /* nothing */
+# ifdef QUICKJS_NG_CC_GNULIKE
+#  define js_force_inline inline __attribute__((always_inline))
+# else
+#  define js_force_inline inline
+# endif
+#endif /* QUICKJS_NG_PLAT_WIN32 */
+
+/*
+ * `JS_EXTERN` -- helper macro that must be used to mark the external
+ * interfaces of libqjs.
+ *
+ * Define BUILDING_QJS_SHARED when building and USING_QJS_SHARED when using
+ * shared libqjs.
+ *
+ * Windows note: The `__declspec` syntax is supported by both Clang and GCC.
+ * If building qjs, the BUILDING_QJS_SHARED macro must be defined for libqjs
+ * (and only for it) to properly export symbols.
+ */
+#ifdef QUICKJS_NG_PLAT_WIN32
+# if defined(BUILDING_QJS_SHARED)
+#  define JS_EXTERN __declspec(dllexport)
+# elif defined(USING_QJS_SHARED)
+#  define JS_EXTERN __declspec(dllimport)
+# else
+#  define JS_EXTERN /* nothing */
+# endif
+#else
+# ifdef QUICKJS_NG_CC_GNULIKE
+#  define JS_EXTERN __attribute__((visibility("default")))
+# else
+#  define JS_EXTERN /* nothing */
+# endif
+#endif /* QUICKJS_NG_PLAT_WIN32 */
+
+/*
+ * `JS_LIBC_EXTERN` -- helper macro that must be used to mark the extern
+ * interfaces of quickjs-libc specifically.
+ */
+#if defined(QUICKJS_NG_BUILD) && !defined(QJS_BUILD_LIBC) && defined(QUICKJS_NG_PLAT_WIN32)
+/*
+ * We are building QuickJS-NG, quickjs-libc is a static library and we are on
+ * Windows. Then, make sure to not export any interfaces.
+ */
+# define JS_LIBC_EXTERN /* nothing */
+#else
+/*
+ * Otherwise, if we are either (1) not building QuickJS-NG, (2) libc is built as
+ * a part of libqjs, or (3) we are not on Windows, define JS_LIBC_EXTERN to
+ * JS_EXTERN.
+ */
+# define JS_LIBC_EXTERN JS_EXTERN
 #endif
 
 /* Borrowed from Folly */
@@ -64,6 +128,9 @@ extern "C" {
 #endif
 #endif
 #endif
+
+#undef QUICKJS_NG_CC_GNULIKE
+#undef QUICKJS_NG_PLAT_WIN32
 
 typedef struct JSRuntime JSRuntime;
 typedef struct JSContext JSContext;
@@ -1325,7 +1392,6 @@ JS_EXTERN const char* JS_GetVersion(void);
 /* Integration point for quickjs-libc.c, not for public use. */
 JS_EXTERN uintptr_t js_std_cmd(int cmd, ...);
 
-#undef JS_EXTERN
 #undef js_force_inline
 
 #ifdef __cplusplus
