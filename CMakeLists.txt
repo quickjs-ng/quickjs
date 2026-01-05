@@ -10,6 +10,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
 
+# Used to properly define QJS_LIBC_EXTERN.
+add_compile_definitions(QUICKJS_NG_BUILD)
+
 # MINGW doesn't exist in older cmake versions, newer versions don't know
 # about CMAKE_COMPILER_IS_MINGW, and there is no unique CMAKE_C_COMPILER_ID
 # for mingw-based compilers...
@@ -253,6 +256,8 @@ set(qjs_sources
 
 if(QJS_BUILD_LIBC)
     list(APPEND qjs_sources quickjs-libc.c)
+    # The definition must be added to the entire project.
+    add_compile_definitions(QJS_BUILD_LIBC)
 endif()
 list(APPEND qjs_defines _GNU_SOURCE)
 if(WIN32)
@@ -282,13 +287,21 @@ target_compile_definitions(cutils PRIVATE ${qjs_defines})
 target_link_libraries(cutils PRIVATE ${qjs_libs})
 
 add_library(qjs ${qjs_sources})
-target_compile_definitions(qjs PRIVATE ${qjs_defines})
+target_compile_definitions(qjs PRIVATE ${qjs_defines} QUICKJS_NG_QJS_INTERNAL)
 target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(qjs PUBLIC ${qjs_libs})
 target_link_libraries(qjs PRIVATE $<BUILD_INTERFACE:cutils>)
+
+# Pass a compiler definition so that Windows gets its declspec's right.
+get_target_property(QJS_LIB_TYPE qjs TYPE)
+if(QJS_LIB_TYPE STREQUAL "SHARED_LIBRARY")
+    # We use PUBLIC here because we want the consumers to also have this
+    # definition.
+    target_compile_definitions(qjs PUBLIC QUICKJS_NG_DLL)
+endif()
 
 if(NOT QJS_BUILD_LIBC)
     add_library(qjs-libc STATIC quickjs-libc.c)
