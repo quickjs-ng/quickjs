@@ -65,6 +65,11 @@
 #define NO_TM_GMTOFF
 #endif
 
+#if defined(__sun)
+#include <alloca.h>
+#define NO_TM_GMTOFF
+#endif
+
 // atomic_store etc. are completely busted in recent versions of tcc;
 // somehow the compiler forgets to load |ptr| into %rdi when calling
 // the __atomic_*() helpers in its lib/stdatomic.c and lib/atomic.S

@@ -59,6 +59,10 @@ extern "C" {
 #include <unistd.h>
 #endif
 
+#if defined(__sun)
+#undef __maybe_unused
+#endif
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #  define likely(x)       (x)
 #  define unlikely(x)     (x)

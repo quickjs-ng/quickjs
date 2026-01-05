@@ -73,6 +73,11 @@ typedef sig_t sighandler_t;
 #define environ (*_NSGetEnviron())
 #endif
 
+#ifdef __sun
+typedef void (*sighandler_t)(int);
+extern char **environ;
+#endif
+
 #if defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__)
 typedef sig_t sighandler_t;
 extern char **environ;
