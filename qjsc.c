@@ -645,7 +645,7 @@ int main(int argc, char **argv)
         }
 
         /* add the module loader */
-        fprintf(fo, "  JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);\n");
+        fprintf(fo, "  JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, js_module_check_attributes, NULL);\n");
 
         fprintf(fo,
                 "  ctx = JS_NewCustomContext(rt);\n"

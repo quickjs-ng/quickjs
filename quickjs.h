@@ -1082,15 +1082,36 @@ typedef char *JSModuleNormalizeFunc(JSContext *ctx,
 typedef JSModuleDef *JSModuleLoaderFunc(JSContext *ctx,
                                         const char *module_name, void *opaque);
 
+/* module loader with import attributes support */
+typedef JSModuleDef *JSModuleLoaderFunc2(JSContext *ctx,
+                                         const char *module_name, void *opaque,
+                                         JSValueConst attributes);
+
+/* return -1 if exception, 0 if OK */
+typedef int JSModuleCheckSupportedImportAttributes(JSContext *ctx, void *opaque,
+                                                   JSValueConst attributes);
+
 /* module_normalize = NULL is allowed and invokes the default module
    filename normalizer */
 JS_EXTERN void JS_SetModuleLoaderFunc(JSRuntime *rt,
                                       JSModuleNormalizeFunc *module_normalize,
                                       JSModuleLoaderFunc *module_loader, void *opaque);
+
+/* same as JS_SetModuleLoaderFunc but with import attributes support */
+JS_EXTERN void JS_SetModuleLoaderFunc2(JSRuntime *rt,
+                                       JSModuleNormalizeFunc *module_normalize,
+                                       JSModuleLoaderFunc2 *module_loader,
+                                       JSModuleCheckSupportedImportAttributes *module_check_attrs,
+                                       void *opaque);
+
 /* return the import.meta object of a module */
 JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
+
+/* associate a JSValue to a C module */
+JS_EXTERN int JS_SetModulePrivateValue(JSContext *ctx, JSModuleDef *m, JSValue val);
+JS_EXTERN JSValue JS_GetModulePrivateValue(JSContext *ctx, JSModuleDef *m);
 
 /* JS Job support */
 
