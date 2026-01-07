@@ -3659,8 +3659,8 @@ typedef struct {
     uint64_t buf[];
 } JSSABHeader;
 
-static JSRuntime *(*js_worker_new_runtime_func)(void) = JS_NewRuntime;
-static JSContext *(*js_worker_new_context_func)(JSRuntime *rt) = JS_NewContext;
+static JSRuntime *(*js_worker_new_runtime_func)(void);
+static JSContext *(*js_worker_new_context_func)(JSRuntime *rt);
 
 static int atomic_add_int(int *ptr, int v)
 {
@@ -3783,13 +3783,18 @@ static JSClassDef js_worker_class = {
 
 static void worker_func(void *opaque)
 {
+    JSRuntime *(*new_runtime_func)(void);
+    JSContext *(*new_context_func)(JSRuntime *);
     WorkerFuncArgs *args = opaque;
     JSRuntime *rt;
     JSThreadState *ts;
     JSContext *ctx;
     JSValue val;
 
-    rt = js_worker_new_runtime_func();
+    new_runtime_func = js_worker_new_runtime_func;
+    if (!new_runtime_func)
+        new_runtime_func = JS_NewRuntime;
+    rt = new_runtime_func();
     if (rt == NULL) {
         fprintf(stderr, "JS_NewRuntime failure");
         exit(1);
@@ -3805,9 +3810,13 @@ static void worker_func(void *opaque)
 
     /* function pointer to avoid linking the whole JS_NewContext() if
        not needed */
-    ctx = js_worker_new_context_func(rt);
+    new_context_func = js_worker_new_context_func;
+    if (!new_context_func)
+        new_context_func = JS_NewContext;
+    ctx = new_context_func(rt);
     if (ctx == NULL) {
         fprintf(stderr, "JS_NewContext failure");
+        exit(1);
     }
 
     JS_SetCanBlock(rt, true);
