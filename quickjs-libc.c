@@ -2856,6 +2856,115 @@ done:
 }
 #endif // defined(_WIN32)
 
+#if defined(_WIN32)
+int js_std_poll_io(JSContext *ctx, int timeout_ms)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    int count;
+    JSOSRWHandler *rh;
+    struct list_head *el;
+    HANDLE handles[MAXIMUM_WAIT_OBJECTS];
+
+    /* Check if there are any I/O handlers registered */
+    if (list_empty(&ts->os_rw_handlers))
+        return 0; /* no handlers, nothing to do */
+
+    count = 0;
+    list_for_each(el, &ts->os_rw_handlers) {
+        rh = list_entry(el, JSOSRWHandler, link);
+        if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0]))
+            handles[count++] = (HANDLE)_get_osfhandle(rh->fd);
+        if (count == (int)countof(handles))
+            break;
+    }
+
+    if (count == 0)
+        return 0; /* no active handlers */
+
+    DWORD ret, timeout = (timeout_ms < 0) ? INFINITE : (DWORD)timeout_ms;
+    ret = WaitForMultipleObjects(count, handles, FALSE, timeout);
+    if (ret < (DWORD)count) {
+        list_for_each(el, &ts->os_rw_handlers) {
+            rh = list_entry(el, JSOSRWHandler, link);
+            if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0])) {
+                int r = call_handler(ctx, rh->rw_func[0]);
+                return (r < 0) ? -2 : 0;
+            }
+        }
+    }
+    return 0;
+}
+#else // !defined(_WIN32)
+int js_std_poll_io(JSContext *ctx, int timeout_ms)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    int r, w, ret, nfds;
+    JSOSRWHandler *rh;
+    struct list_head *el;
+    struct pollfd *pfd, *pfds, pfds_local[64];
+
+    /* Check if there are any I/O handlers registered */
+    if (list_empty(&ts->os_rw_handlers))
+        return 0; /* no handlers, nothing to do */
+
+    nfds = 0;
+    list_for_each(el, &ts->os_rw_handlers) {
+        rh = list_entry(el, JSOSRWHandler, link);
+        nfds += (!JS_IsNull(rh->rw_func[0]) || !JS_IsNull(rh->rw_func[1]));
+    }
+
+    if (nfds == 0)
+        return 0; /* no active handlers */
+
+    pfd = pfds = pfds_local;
+    if (nfds > (int)countof(pfds_local)) {
+        pfd = pfds = js_malloc(ctx, nfds * sizeof(*pfd));
+        if (!pfd)
+            return -1;
+    }
+
+    list_for_each(el, &ts->os_rw_handlers) {
+        rh = list_entry(el, JSOSRWHandler, link);
+        r = POLLIN * !JS_IsNull(rh->rw_func[0]);
+        w = POLLOUT * !JS_IsNull(rh->rw_func[1]);
+        if (r || w)
+            *pfd++ = (struct pollfd){rh->fd, r|w, 0};
+    }
+
+    ret = 0;
+    nfds = poll(pfds, nfds, timeout_ms);
+    if (nfds < 0) {
+        ret = -1;
+        goto done;
+    }
+
+    for (pfd = pfds; nfds-- > 0; pfd++) {
+        rh = find_rh(ts, pfd->fd);
+        if (rh) {
+            r = (POLLERR|POLLHUP|POLLNVAL|POLLIN) * !JS_IsNull(rh->rw_func[0]);
+            w = (POLLERR|POLLHUP|POLLNVAL|POLLOUT) * !JS_IsNull(rh->rw_func[1]);
+            if (r & pfd->revents) {
+                ret = call_handler(ctx, rh->rw_func[0]);
+                if (ret < 0)
+                    ret = -2; /* exception in handler */
+                goto done;
+            }
+            if (w & pfd->revents) {
+                ret = call_handler(ctx, rh->rw_func[1]);
+                if (ret < 0)
+                    ret = -2; /* exception in handler */
+                goto done;
+            }
+        }
+    }
+done:
+    if (pfds != pfds_local)
+        js_free(ctx, pfds);
+    return ret;
+}
+#endif // defined(_WIN32)
 
 static JSValue make_obj_error(JSContext *ctx,
                               JSValue obj,
@@ -4658,6 +4767,39 @@ int js_std_loop(JSContext *ctx)
     }
 done:
     return JS_HasException(ctx);
+}
+
+int js_std_loop_once(JSContext *ctx)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSContext *ctx1;
+    int err, min_delay;
+
+    /* execute all pending jobs */
+    for(;;) {
+        err = JS_ExecutePendingJob(rt, &ctx1);
+        if (err < 0)
+            return -2; /* error */
+        if (err == 0)
+            break;
+    }
+
+    /* run at most one expired timer */
+    if (js_os_run_timers(rt, ctx, ts, &min_delay) < 0)
+        return -2; /* error in timer callback */
+
+    /* check if more work is pending */
+    if (JS_IsJobPending(rt))
+        return 0; /* more microtasks pending */
+
+    if (min_delay == 0)
+        return 0; /* timer ready to fire immediately */
+
+    if (min_delay > 0)
+        return min_delay; /* next timer delay in ms */
+
+    return -1; /* idle, no pending work */
 }
 
 /* Wait for a promise and execute pending jobs while waiting for
