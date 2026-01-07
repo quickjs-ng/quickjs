@@ -1,5 +1,5 @@
 ;(function(IteratorHelper, InternalError, TypeError, call,
-           hasOwnEnumProperty, getOwnProperties, Symbol·iterator) {
+           hasOwnEnumProperty, getOwnPropertyKeys, Symbol·iterator) {
     function check(v, s) {
         if (typeof v === "object" && v !== null) return
         throw new TypeError(s)
@@ -41,7 +41,7 @@
         let iters = []
         let nexts = []
         let pads = []
-        for (let key of getOwnProperties(iterables)) keys[count++] = key
+        for (let key of getOwnPropertyKeys(iterables)) keys[count++] = key
         try {
             for (let i = 0; i < count; i++) {
                 let del = true

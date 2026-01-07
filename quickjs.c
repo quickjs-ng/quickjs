@@ -7779,8 +7779,8 @@ static JSValue js_call_function(JSContext *ctx, JSValueConst this_val,
 }
 
 // returns enumerable and non-enumerable strings *and* symbols
-static JSValue js_getOwnProperties(JSContext *ctx, JSValueConst this_val,
-                                   int argc, JSValueConst *argv)
+static JSValue js_getOwnPropertyKeys(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv)
 {
     int flags = JS_GPN_STRING_MASK|JS_GPN_SYMBOL_MASK;
     return JS_GetOwnPropertyNames2(ctx, argv[0], flags, JS_ITERATOR_KIND_KEY);
@@ -7895,8 +7895,8 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
                 JS_NewCFunction(ctx, js_call_function, "call", 2),
                 JS_NewCFunction(ctx, js_hasOwnEnumProperty,
                                 "hasOwnEnumProperty", 2),
-                JS_NewCFunction(ctx, js_getOwnProperties,
-                                "getOwnProperties", 1),
+                JS_NewCFunction(ctx, js_getOwnPropertyKeys,
+                                "getOwnPropertyKeys", 1),
                 JS_AtomToValue(ctx, JS_ATOM_Symbol_iterator),
             };
             JSValue result = js_bytecode_eval(ctx, qjsc_builtin_iterator_zip_keyed,
