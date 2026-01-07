@@ -166,19 +166,15 @@ if not qjs_parser
   qjs_c_args += ['-DQJS_DISABLE_PARSER']
 endif
 
-if not qjs_libc
-  qjs_libc_lib = []
-else
-  qjs_libc_lib = static_library(
-    'quickjs-libc',
-    qjs_libc_srcs,
+qjs_libc_lib = static_library(
+  'quickjs-libc',
+  qjs_libc_srcs,
 
-    dependencies: qjs_sys_deps,
-    c_args: qjs_c_args,
-    gnu_symbol_visibility: 'hidden',
-    build_by_default: false,
-  )
-endif
+  dependencies: qjs_sys_deps,
+  c_args: qjs_c_args,
+  gnu_symbol_visibility: 'hidden',
+  build_by_default: false,
+)
 
 qjs_lib = library(
   'qjs',
