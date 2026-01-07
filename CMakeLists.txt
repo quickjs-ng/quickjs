@@ -10,6 +10,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
 
+# Used to properly define QJS_LIBC_EXTERN.
+add_compile_definitions(QUICKJS_NG_BUILD)
+
 # MINGW doesn't exist in older cmake versions, newer versions don't know
 # about CMAKE_COMPILER_IS_MINGW, and there is no unique CMAKE_C_COMPILER_ID
 # for mingw-based compilers...
@@ -232,7 +235,7 @@ endif()
 xoption(QJS_BUILD_LIBC "Build standard library modules as part of the library" OFF)
 macro(add_qjs_libc_if_needed target)
     if(NOT QJS_BUILD_LIBC)
-        target_sources(${target} PRIVATE quickjs-libc.c)
+        target_link_libraries(${target} PRIVATE qjs-libc)
     endif()
 endmacro()
 macro(add_static_if_needed target)
@@ -245,7 +248,6 @@ macro(add_static_if_needed target)
 endmacro()
 
 set(qjs_sources
-    cutils.c
     dtoa.c
     libregexp.c
     libunicode.c
@@ -254,6 +256,8 @@ set(qjs_sources
 
 if(QJS_BUILD_LIBC)
     list(APPEND qjs_sources quickjs-libc.c)
+    # The definition must be added to the entire project.
+    add_compile_definitions(QJS_BUILD_LIBC)
 endif()
 list(APPEND qjs_defines _GNU_SOURCE)
 if(WIN32)
@@ -278,13 +282,32 @@ if(M_LIBRARIES OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC")
     list(APPEND qjs_libs m)
 endif()
 
+add_library(cutils STATIC cutils.c)
+target_compile_definitions(cutils PRIVATE ${qjs_defines})
+target_link_libraries(cutils PRIVATE ${qjs_libs})
+
 add_library(qjs ${qjs_sources})
-target_compile_definitions(qjs PRIVATE ${qjs_defines})
+target_compile_definitions(qjs PRIVATE ${qjs_defines} QUICKJS_NG_QJS_INTERNAL)
 target_include_directories(qjs PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_link_libraries(qjs PUBLIC ${qjs_libs})
+target_link_libraries(qjs PRIVATE $<BUILD_INTERFACE:cutils>)
+
+# Pass a compiler definition so that Windows gets its declspec's right.
+get_target_property(QJS_LIB_TYPE qjs TYPE)
+if(QJS_LIB_TYPE STREQUAL "SHARED_LIBRARY")
+    # We use PUBLIC here because we want the consumers to also have this
+    # definition.
+    target_compile_definitions(qjs PUBLIC QUICKJS_NG_DLL)
+endif()
+
+if(NOT QJS_BUILD_LIBC)
+    add_library(qjs-libc STATIC quickjs-libc.c)
+    target_compile_definitions(qjs-libc PRIVATE ${qjs_defines})
+    target_link_libraries(qjs-libc PRIVATE ${qjs_libs} qjs cutils)
+endif()
 
 if(EMSCRIPTEN)
     add_executable(qjs_wasm ${qjs_sources})
@@ -301,7 +324,7 @@ if(EMSCRIPTEN)
         -sEXPORTED_RUNTIME_METHODS=ccall,cwrap
     )
     target_compile_definitions(qjs_wasm PRIVATE ${qjs_defines})
-    target_link_libraries(qjs_wasm m)
+    target_link_libraries(qjs_wasm PRIVATE m)
 endif()
 
 
@@ -314,7 +337,7 @@ add_executable(qjsc
 add_qjs_libc_if_needed(qjsc)
 add_static_if_needed(qjsc)
 target_compile_definitions(qjsc PRIVATE ${qjs_defines})
-target_link_libraries(qjsc qjs)
+target_link_libraries(qjsc PRIVATE qjs cutils)
 
 
 # QuickJS CLI
@@ -331,7 +354,7 @@ set_target_properties(qjs_exe PROPERTIES
     OUTPUT_NAME "qjs"
 )
 target_compile_definitions(qjs_exe PRIVATE ${qjs_defines})
-target_link_libraries(qjs_exe qjs)
+target_link_libraries(qjs_exe PRIVATE qjs cutils)
 if(NOT WIN32)
     set_target_properties(qjs_exe PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
@@ -339,9 +362,9 @@ if(QJS_BUILD_CLI_WITH_MIMALLOC OR QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
     find_package(mimalloc REQUIRED)
     # Upstream mimalloc doesn't provide a way to know if both libraries are supported.
     if(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
-        target_link_libraries(qjs_exe mimalloc-static)
+        target_link_libraries(qjs_exe PRIVATE mimalloc-static)
     else()
-        target_link_libraries(qjs_exe mimalloc)
+        target_link_libraries(qjs_exe PRIVATE mimalloc)
     endif()
 endif()
 
@@ -354,7 +377,7 @@ if(NOT EMSCRIPTEN)
     )
     add_qjs_libc_if_needed(run-test262)
     target_compile_definitions(run-test262 PRIVATE ${qjs_defines})
-    target_link_libraries(run-test262 qjs)
+    target_link_libraries(run-test262 PRIVATE qjs cutils)
 endif()
 
 # Interrupt test
@@ -364,17 +387,17 @@ add_executable(api-test
     api-test.c
 )
 target_compile_definitions(api-test PRIVATE ${qjs_defines})
-target_link_libraries(api-test qjs)
+target_link_libraries(api-test PRIVATE qjs cutils)
 
 # Unicode generator
 #
 
 add_executable(unicode_gen EXCLUDE_FROM_ALL
-    cutils.c
     libunicode.c
     unicode_gen.c
 )
 target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
+target_link_libraries(unicode_gen PRIVATE cutils)
 
 add_executable(function_source
     gen/function_source.c
@@ -382,7 +405,7 @@ add_executable(function_source
 add_qjs_libc_if_needed(function_source)
 target_include_directories(function_source PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(function_source PRIVATE ${qjs_defines})
-target_link_libraries(function_source qjs)
+target_link_libraries(function_source PRIVATE qjs)
 
 # Examples
 #
@@ -394,7 +417,7 @@ if(QJS_BUILD_EXAMPLES)
     add_qjs_libc_if_needed(hello)
     target_include_directories(hello PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(hello PRIVATE ${qjs_defines})
-    target_link_libraries(hello qjs)
+    target_link_libraries(hello PRIVATE qjs)
 
     add_executable(hello_module
         gen/hello_module.c
@@ -402,7 +425,7 @@ if(QJS_BUILD_EXAMPLES)
     add_qjs_libc_if_needed(hello_module)
     target_include_directories(hello_module PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(hello_module PRIVATE ${qjs_defines})
-    target_link_libraries(hello_module qjs)
+    target_link_libraries(hello_module PRIVATE qjs)
 
     add_library(fib MODULE examples/fib.c)
     set_target_properties(fib PROPERTIES
@@ -411,7 +434,7 @@ if(QJS_BUILD_EXAMPLES)
     )
     target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
     if(WIN32)
-        target_link_libraries(fib qjs)
+        target_link_libraries(fib PRIVATE qjs)
     elseif(APPLE)
         target_link_options(fib PRIVATE -undefined dynamic_lookup)
     endif()
@@ -423,7 +446,7 @@ if(QJS_BUILD_EXAMPLES)
     )
     target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
     if(WIN32)
-        target_link_libraries(point qjs)
+        target_link_libraries(point PRIVATE qjs)
     elseif(APPLE)
         target_link_options(point PRIVATE -undefined dynamic_lookup)
     endif()
@@ -435,7 +458,7 @@ if(QJS_BUILD_EXAMPLES)
     add_qjs_libc_if_needed(test_fib)
     target_include_directories(test_fib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(test_fib PRIVATE ${qjs_defines})
-    target_link_libraries(test_fib qjs)
+    target_link_libraries(test_fib PRIVATE qjs)
 endif()
 
 # Install target
