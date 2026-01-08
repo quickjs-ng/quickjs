@@ -344,6 +344,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     if(QJS_WASI_REACTOR)
         add_executable(qjs_wasi
             quickjs-libc.c
+            qjs-wasi-reactor.c
         )
         set_target_properties(qjs_wasi PROPERTIES
             OUTPUT_NAME "qjs"
