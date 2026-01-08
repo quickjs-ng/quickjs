@@ -14103,9 +14103,11 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
             }
             break;
         case OP_div:
-            JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
-            sp[-2] = js_number((double)v1 / (double)v2);
-            JS_X87_FPCW_RESTORE(fpcw);
+            {
+                JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
+                sp[-2] = js_number((double)v1 / (double)v2);
+                JS_X87_FPCW_RESTORE(fpcw);
+            }
             return 0;
         case OP_mod:
             if (v1 < 0 || v2 <= 0) {
