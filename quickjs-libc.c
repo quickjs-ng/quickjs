@@ -2673,8 +2673,13 @@ static int handle_posted_message(JSRuntime *rt, JSContext *ctx,
 
 #endif // USE_WORKER
 
+/* flags for js_os_poll_internal */
+#define JS_OS_POLL_RUN_TIMERS  (1 << 0)
+#define JS_OS_POLL_WORKERS     (1 << 1)
+#define JS_OS_POLL_SIGNALS     (1 << 2)
+
 #if defined(_WIN32)
-static int js_os_poll(JSContext *ctx)
+static int js_os_poll_internal(JSContext *ctx, int timeout_ms, int flags)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
@@ -2685,13 +2690,17 @@ static int js_os_poll(JSContext *ctx)
 
     /* XXX: handle signals if useful */
 
-    if (js_os_run_timers(rt, ctx, ts, &min_delay))
-        return -1;
-    if (min_delay == 0)
-        return 0; // expired timer
-    if (min_delay < 0)
-        if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))
-            return -1; /* no more events */
+    min_delay = timeout_ms;
+
+    if (flags & JS_OS_POLL_RUN_TIMERS) {
+        if (js_os_run_timers(rt, ctx, ts, &min_delay))
+            return -1;
+        if (min_delay == 0)
+            return 0; // expired timer
+        if (min_delay < 0)
+            if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))
+                return -1; /* no more events */
+    }
 
     count = 0;
     list_for_each(el, &ts->os_rw_handlers) {
@@ -2702,13 +2711,15 @@ static int js_os_poll(JSContext *ctx)
             break;
     }
 
-    list_for_each(el, &ts->port_list) {
-        JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
-        if (JS_IsNull(port->on_message_func))
-            continue;
-        handles[count++] = port->recv_pipe->waker.handle;
-        if (count == (int)countof(handles))
-            break;
+    if (flags & JS_OS_POLL_WORKERS) {
+        list_for_each(el, &ts->port_list) {
+            JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
+            if (JS_IsNull(port->on_message_func))
+                continue;
+            handles[count++] = port->recv_pipe->waker.handle;
+            if (count == (int)countof(handles))
+                break;
+        }
     }
 
     if (count > 0) {
@@ -2716,7 +2727,7 @@ static int js_os_poll(JSContext *ctx)
         if (min_delay != -1)
             timeout = min_delay;
         ret = WaitForMultipleObjects(count, handles, FALSE, timeout);
-        if (ret < count) {
+        if (ret < (DWORD)count) {
             list_for_each(el, &ts->os_rw_handlers) {
                 rh = list_entry(el, JSOSRWHandler, link);
                 if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0])) {
@@ -2725,25 +2736,42 @@ static int js_os_poll(JSContext *ctx)
                 }
             }
 
-            list_for_each(el, &ts->port_list) {
-                JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
-                if (!JS_IsNull(port->on_message_func)) {
-                    JSWorkerMessagePipe *ps = port->recv_pipe;
-                    if (ps->waker.handle == handles[ret]) {
-                        if (handle_posted_message(rt, ctx, port))
-                            goto done;
+            if (flags & JS_OS_POLL_WORKERS) {
+                list_for_each(el, &ts->port_list) {
+                    JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
+                    if (!JS_IsNull(port->on_message_func)) {
+                        JSWorkerMessagePipe *ps = port->recv_pipe;
+                        if (ps->waker.handle == handles[ret]) {
+                            if (handle_posted_message(rt, ctx, port))
+                                goto done;
+                        }
                     }
                 }
             }
         }
-    } else {
+    } else if (min_delay > 0) {
         Sleep(min_delay);
     }
 done:
     return 0;
 }
-#else // !defined(_WIN32)
+
 static int js_os_poll(JSContext *ctx)
+{
+    return js_os_poll_internal(ctx, -1,
+        JS_OS_POLL_RUN_TIMERS | JS_OS_POLL_WORKERS | JS_OS_POLL_SIGNALS);
+}
+
+int js_std_poll_io(JSContext *ctx, int timeout_ms)
+{
+    int ret = js_os_poll_internal(ctx, timeout_ms, 0);
+    /* map return codes: -1 on error stays -1, negative from handler becomes -2 */
+    if (ret < -1)
+        return -2;
+    return ret;
+}
+#else // !defined(_WIN32)
+static int js_os_poll_internal(JSContext *ctx, int timeout_ms, int flags)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
@@ -2752,8 +2780,11 @@ static int js_os_poll(JSContext *ctx)
     struct list_head *el;
     struct pollfd *pfd, *pfds, pfds_local[64];
 
+    min_delay = timeout_ms;
+
     /* only check signals in the main thread */
-    if (!ts->recv_pipe &&
+    if ((flags & JS_OS_POLL_SIGNALS) &&
+        !ts->recv_pipe &&
         unlikely(os_pending_signals != 0)) {
         JSOSSignalHandler *sh;
         uint64_t mask;
@@ -2768,13 +2799,15 @@ static int js_os_poll(JSContext *ctx)
         }
     }
 
-    if (js_os_run_timers(rt, ctx, ts, &min_delay))
-        return -1;
-    if (min_delay == 0)
-        return 0; // expired timer
-    if (min_delay < 0)
-        if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))
-            return -1; /* no more events */
+    if (flags & JS_OS_POLL_RUN_TIMERS) {
+        if (js_os_run_timers(rt, ctx, ts, &min_delay))
+            return -1;
+        if (min_delay == 0)
+            return 0; // expired timer
+        if (min_delay < 0)
+            if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))
+                return -1; /* no more events */
+    }
 
     nfds = 0;
     list_for_each(el, &ts->os_rw_handlers) {
@@ -2783,11 +2816,24 @@ static int js_os_poll(JSContext *ctx)
     }
 
 #ifdef USE_WORKER
-    list_for_each(el, &ts->port_list) {
-        JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
-        nfds += !JS_IsNull(port->on_message_func);
+    if (flags & JS_OS_POLL_WORKERS) {
+        list_for_each(el, &ts->port_list) {
+            JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
+            nfds += !JS_IsNull(port->on_message_func);
+        }
     }
 #endif // USE_WORKER
+
+    if (nfds == 0) {
+        if (min_delay > 0) {
+            struct timespec ts_sleep = {
+                .tv_sec = min_delay / 1000,
+                .tv_nsec = (min_delay % 1000) * 1000000L
+            };
+            nanosleep(&ts_sleep, NULL);
+        }
+        return 0;
+    }
 
     pfd = pfds = pfds_local;
     if (nfds > (int)countof(pfds_local)) {
@@ -2805,11 +2851,13 @@ static int js_os_poll(JSContext *ctx)
     }
 
 #ifdef USE_WORKER
-    list_for_each(el, &ts->port_list) {
-        JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
-        if (!JS_IsNull(port->on_message_func)) {
-            JSWorkerMessagePipe *ps = port->recv_pipe;
-            *pfd++ = (struct pollfd){ps->waker.read_fd, POLLIN, 0};
+    if (flags & JS_OS_POLL_WORKERS) {
+        list_for_each(el, &ts->port_list) {
+            JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
+            if (!JS_IsNull(port->on_message_func)) {
+                JSWorkerMessagePipe *ps = port->recv_pipe;
+                *pfd++ = (struct pollfd){ps->waker.read_fd, POLLIN, 0};
+            }
         }
     }
 #endif // USE_WORKER
@@ -2819,6 +2867,10 @@ static int js_os_poll(JSContext *ctx)
     // i.e., it's probably good enough for now
     ret = 0;
     nfds = poll(pfds, nfds, min_delay);
+    if (nfds < 0) {
+        ret = -1;
+        goto done;
+    }
     for (pfd = pfds; nfds-- > 0; pfd++) {
         rh = find_rh(ts, pfd->fd);
         if (rh) {
@@ -2834,8 +2886,9 @@ static int js_os_poll(JSContext *ctx)
                 goto done;
                 /* must stop because the list may have been modified */
             }
-        } else {
+        }
 #ifdef USE_WORKER
+        else if (flags & JS_OS_POLL_WORKERS) {
             list_for_each(el, &ts->port_list) {
                 JSWorkerMessageHandler *port = list_entry(el, JSWorkerMessageHandler, link);
                 if (!JS_IsNull(port->on_message_func)) {
@@ -2846,122 +2899,27 @@ static int js_os_poll(JSContext *ctx)
                     }
                 }
             }
-#endif // USE_WORKER
         }
+#endif // USE_WORKER
     }
 done:
     if (pfds != pfds_local)
         js_free(ctx, pfds);
     return ret;
 }
-#endif // defined(_WIN32)
 
-#if defined(_WIN32)
-int js_std_poll_io(JSContext *ctx, int timeout_ms)
+static int js_os_poll(JSContext *ctx)
 {
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    JSThreadState *ts = js_get_thread_state(rt);
-    int count;
-    JSOSRWHandler *rh;
-    struct list_head *el;
-    HANDLE handles[MAXIMUM_WAIT_OBJECTS];
-
-    /* Check if there are any I/O handlers registered */
-    if (list_empty(&ts->os_rw_handlers))
-        return 0; /* no handlers, nothing to do */
-
-    count = 0;
-    list_for_each(el, &ts->os_rw_handlers) {
-        rh = list_entry(el, JSOSRWHandler, link);
-        if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0]))
-            handles[count++] = (HANDLE)_get_osfhandle(rh->fd);
-        if (count == (int)countof(handles))
-            break;
-    }
-
-    if (count == 0)
-        return 0; /* no active handlers */
-
-    DWORD ret, timeout = (timeout_ms < 0) ? INFINITE : (DWORD)timeout_ms;
-    ret = WaitForMultipleObjects(count, handles, FALSE, timeout);
-    if (ret < (DWORD)count) {
-        list_for_each(el, &ts->os_rw_handlers) {
-            rh = list_entry(el, JSOSRWHandler, link);
-            if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0])) {
-                int r = call_handler(ctx, rh->rw_func[0]);
-                return (r < 0) ? -2 : 0;
-            }
-        }
-    }
-    return 0;
+    return js_os_poll_internal(ctx, -1,
+        JS_OS_POLL_RUN_TIMERS | JS_OS_POLL_WORKERS | JS_OS_POLL_SIGNALS);
 }
-#else // !defined(_WIN32)
+
 int js_std_poll_io(JSContext *ctx, int timeout_ms)
 {
-    JSRuntime *rt = JS_GetRuntime(ctx);
-    JSThreadState *ts = js_get_thread_state(rt);
-    int r, w, ret, nfds;
-    JSOSRWHandler *rh;
-    struct list_head *el;
-    struct pollfd *pfd, *pfds, pfds_local[64];
-
-    /* Check if there are any I/O handlers registered */
-    if (list_empty(&ts->os_rw_handlers))
-        return 0; /* no handlers, nothing to do */
-
-    nfds = 0;
-    list_for_each(el, &ts->os_rw_handlers) {
-        rh = list_entry(el, JSOSRWHandler, link);
-        nfds += (!JS_IsNull(rh->rw_func[0]) || !JS_IsNull(rh->rw_func[1]));
-    }
-
-    if (nfds == 0)
-        return 0; /* no active handlers */
-
-    pfd = pfds = pfds_local;
-    if (nfds > (int)countof(pfds_local)) {
-        pfd = pfds = js_malloc(ctx, nfds * sizeof(*pfd));
-        if (!pfd)
-            return -1;
-    }
-
-    list_for_each(el, &ts->os_rw_handlers) {
-        rh = list_entry(el, JSOSRWHandler, link);
-        r = POLLIN * !JS_IsNull(rh->rw_func[0]);
-        w = POLLOUT * !JS_IsNull(rh->rw_func[1]);
-        if (r || w)
-            *pfd++ = (struct pollfd){rh->fd, r|w, 0};
-    }
-
-    ret = 0;
-    nfds = poll(pfds, nfds, timeout_ms);
-    if (nfds < 0) {
-        ret = -1;
-        goto done;
-    }
-
-    for (pfd = pfds; nfds-- > 0; pfd++) {
-        rh = find_rh(ts, pfd->fd);
-        if (rh) {
-            r = (POLLERR|POLLHUP|POLLNVAL|POLLIN) * !JS_IsNull(rh->rw_func[0]);
-            w = (POLLERR|POLLHUP|POLLNVAL|POLLOUT) * !JS_IsNull(rh->rw_func[1]);
-            if (r & pfd->revents) {
-                ret = call_handler(ctx, rh->rw_func[0]);
-                if (ret < 0)
-                    ret = -2; /* exception in handler */
-                goto done;
-            }
-            if (w & pfd->revents) {
-                ret = call_handler(ctx, rh->rw_func[1]);
-                if (ret < 0)
-                    ret = -2; /* exception in handler */
-                goto done;
-            }
-        }
-    }
-done:
-    if (pfds != pfds_local)
-        js_free(ctx, pfds);
+    int ret = js_os_poll_internal(ctx, timeout_ms, 0);
+    /* map return codes: -1 on error stays -1, negative from handler becomes -2 */
+    if (ret < -1)
+        return -2;
     return ret;
 }
 #endif // defined(_WIN32)
