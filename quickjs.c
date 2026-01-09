@@ -357,7 +357,7 @@ typedef struct JSStackFrame {
                         instruction after the call */
     uint16_t var_ref_count; /* number of var refs */
     uint16_t arg_count;
-    uint8_t is_strict_mode : 1;
+    bool is_strict_mode;
     /* only used in generators. Current stack pointer value. NULL if
        the function is running. */
     JSValue *cur_sp;
