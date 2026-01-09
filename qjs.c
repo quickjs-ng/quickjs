@@ -35,6 +35,7 @@
 #include "cutils.h"
 #include "quickjs.h"
 #include "quickjs-libc.h"
+#include "qjs-common.h"
 
 #ifdef QJS_USE_MIMALLOC
 #include <mimalloc.h>
@@ -42,6 +43,10 @@
 
 extern const uint8_t qjsc_repl[];
 extern const uint32_t qjsc_repl_size;
+static int qjs__argc;
+static char **qjs__argv;
+
+#ifndef QJS_NO_MAIN
 extern const uint8_t qjsc_standalone[];
 extern const uint32_t qjsc_standalone_size;
 
@@ -50,10 +55,6 @@ extern const uint32_t qjsc_standalone_size;
 static const char trailer_magic[] = "quickjs2";
 static const int trailer_magic_size = sizeof(trailer_magic) - 1;
 static const int trailer_size = TRAILER_SIZE;
-
-static int qjs__argc;
-static char **qjs__argv;
-
 
 static bool is_standalone(const char *exe)
 {
@@ -103,9 +104,10 @@ static JSValue load_standalone_module(JSContext *ctx)
     JS_FreeValue(ctx, obj);
     return JS_GetModuleNamespace(ctx, m);
 }
+#endif /* !QJS_NO_MAIN */
 
-static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
-                    const char *filename, int eval_flags)
+int qjs_eval_buf(JSContext *ctx, const void *buf, int buf_len,
+                 const char *filename, int eval_flags)
 {
     bool use_realpath;
     JSValue val;
@@ -142,7 +144,7 @@ end:
     return ret;
 }
 
-static int eval_file(JSContext *ctx, const char *filename, int module)
+int qjs_eval_file(JSContext *ctx, const char *filename, int module)
 {
     uint8_t *buf;
     int ret, eval_flags;
@@ -162,12 +164,12 @@ static int eval_file(JSContext *ctx, const char *filename, int module)
         eval_flags = JS_EVAL_TYPE_MODULE;
     else
         eval_flags = JS_EVAL_TYPE_GLOBAL;
-    ret = eval_buf(ctx, buf, buf_len, filename, eval_flags);
+    ret = qjs_eval_buf(ctx, buf, buf_len, filename, eval_flags);
     js_free(ctx, buf);
     return ret;
 }
 
-static int64_t parse_limit(const char *arg) {
+int64_t qjs_parse_limit(const char *arg) {
     char *p;
     unsigned long unit = 1024; /* default to traditional KB */
     double d = strtod(arg, &p);
@@ -196,6 +198,229 @@ static int64_t parse_limit(const char *arg) {
     return (int64_t)(d * unit);
 }
 
+void qjs_config_init(QJSConfig *cfg)
+{
+    memset(cfg, 0, sizeof(*cfg));
+    cfg->module = -1;
+    cfg->memory_limit = -1;
+    cfg->stack_size = -1;
+}
+
+int qjs_config_parse_args(QJSConfig *cfg, int argc, char **argv, int *poptind)
+{
+    int optind = *poptind;
+
+    /* cannot use getopt because we want to pass the command line to
+       the script */
+    while (optind < argc && *argv[optind] == '-') {
+        char *arg = argv[optind] + 1;
+        const char *longopt = "";
+        char *optarg = NULL;
+        /* a single - is not an option, it also stops argument scanning */
+        if (!*arg)
+            break;
+        optind++;
+        if (*arg == '-') {
+            longopt = arg + 1;
+            optarg = strchr(longopt, '=');
+            if (optarg)
+                *optarg++ = '\0';
+            arg += strlen(arg);
+            /* -- stops argument scanning */
+            if (!*longopt)
+                break;
+        }
+        for (; *arg || *longopt; longopt = "") {
+            char opt = *arg;
+            if (opt) {
+                arg++;
+                if (!optarg && *arg)
+                    optarg = arg;
+            }
+#ifndef QJS_NO_MAIN
+            if (opt == 'h' || opt == '?' || !strcmp(longopt, "help")) {
+                return QJS_PARSE_HELP;
+            }
+#endif
+            if (opt == 'e' || !strcmp(longopt, "eval")) {
+                if (!optarg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "qjs: missing expression for -e\n");
+                        return QJS_PARSE_ERROR;
+                    }
+                    optarg = argv[optind++];
+                }
+                cfg->expr = optarg;
+                break;
+            }
+            if (opt == 'I' || !strcmp(longopt, "include")) {
+                if (optind >= argc) {
+                    fprintf(stderr, "expecting filename");
+                    return QJS_PARSE_ERROR;
+                }
+                if (cfg->include_count >= QJS_INCLUDE_MAX) {
+                    fprintf(stderr, "too many included files");
+                    return QJS_PARSE_ERROR;
+                }
+                cfg->include_list[cfg->include_count++] = argv[optind++];
+                continue;
+            }
+#ifndef QJS_NO_MAIN
+            if (opt == 'i' || !strcmp(longopt, "interactive")) {
+                cfg->interactive++;
+                continue;
+            }
+#endif
+            if (opt == 'm' || !strcmp(longopt, "module")) {
+                cfg->module = 1;
+                continue;
+            }
+#ifndef QJS_NO_MAIN
+            if (opt == 'C' || !strcmp(longopt, "script")) {
+                cfg->module = 0;
+                continue;
+            }
+            if (opt == 'd' || !strcmp(longopt, "dump")) {
+                cfg->dump_memory++;
+                continue;
+            }
+            if (opt == 'D' || !strcmp(longopt, "dump-flags")) {
+                cfg->dump_flags = optarg ? strtol(optarg, NULL, 16) : 0;
+                break;
+            }
+            if (opt == 'T' || !strcmp(longopt, "trace")) {
+                cfg->trace_memory++;
+                continue;
+            }
+#endif
+            if (!strcmp(longopt, "std")) {
+                cfg->load_std = 1;
+                continue;
+            }
+#ifndef QJS_NO_MAIN
+            if (opt == 'q' || !strcmp(longopt, "quit")) {
+                cfg->empty_run++;
+                continue;
+            }
+#endif
+            if (!strcmp(longopt, "memory-limit")) {
+                if (!optarg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "expecting memory limit");
+                        return QJS_PARSE_ERROR;
+                    }
+                    optarg = argv[optind++];
+                }
+                cfg->memory_limit = qjs_parse_limit(optarg);
+                break;
+            }
+            if (!strcmp(longopt, "stack-size")) {
+                if (!optarg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "expecting stack size");
+                        return QJS_PARSE_ERROR;
+                    }
+                    optarg = argv[optind++];
+                }
+                cfg->stack_size = qjs_parse_limit(optarg);
+                break;
+            }
+#ifndef QJS_NO_MAIN
+            if (opt == 'c' || !strcmp(longopt, "compile")) {
+                if (!optarg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "qjs: missing file for -c\n");
+                        return QJS_PARSE_ERROR;
+                    }
+                    optarg = argv[optind++];
+                }
+                cfg->compile_file = optarg;
+                break;
+            }
+            if (opt == 'o' || !strcmp(longopt, "out")) {
+                if (!optarg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "qjs: missing file for -o\n");
+                        return QJS_PARSE_ERROR;
+                    }
+                    optarg = argv[optind++];
+                }
+                cfg->out = optarg;
+                break;
+            }
+            if (!strcmp(longopt, "exe")) {
+                if (!optarg) {
+                    if (optind >= argc) {
+                        fprintf(stderr, "qjs: missing file for --exe\n");
+                        return QJS_PARSE_ERROR;
+                    }
+                    optarg = argv[optind++];
+                }
+                cfg->exe = optarg;
+                break;
+            }
+            if (opt) {
+                fprintf(stderr, "qjs: unknown option '-%c'\n", opt);
+            } else {
+                fprintf(stderr, "qjs: unknown option '--%s'\n", longopt);
+            }
+            return QJS_PARSE_HELP;
+#else
+            break; /* ignore unknown options in reactor builds */
+#endif
+        }
+    }
+
+    *poptind = optind;
+    return QJS_PARSE_OK;
+}
+
+void qjs_set_argv(int argc, char **argv)
+{
+    qjs__argc = argc;
+    qjs__argv = argv;
+}
+
+void qjs_setup_runtime(JSRuntime *rt)
+{
+    js_std_set_worker_new_context_func(qjs_new_context);
+    js_std_init_handlers(rt);
+    JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, js_module_check_attributes, NULL);
+    JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker, NULL);
+}
+
+int qjs_apply_config(JSContext *ctx, const QJSConfig *cfg, int argc, char **argv)
+{
+    int i;
+
+    js_std_add_helpers(ctx, argc, argv);
+
+    if (cfg->load_std) {
+        const char *str =
+            "import * as bjson from 'qjs:bjson';\n"
+            "import * as std from 'qjs:std';\n"
+            "import * as os from 'qjs:os';\n"
+            "globalThis.bjson = bjson;\n"
+            "globalThis.std = std;\n"
+            "globalThis.os = os;\n";
+        if (qjs_eval_buf(ctx, str, strlen(str), "<input>", JS_EVAL_TYPE_MODULE))
+            return -1;
+    }
+
+    for (i = 0; i < cfg->include_count; i++) {
+        if (qjs_eval_file(ctx, cfg->include_list[i], 0))
+            return -1;
+    }
+
+    if (cfg->expr) {
+        int flags = cfg->module == 1 ? JS_EVAL_TYPE_MODULE : 0;
+        if (qjs_eval_buf(ctx, cfg->expr, strlen(cfg->expr), "<cmdline>", flags))
+            return -1;
+    }
+
+    return 0;
+}
+
 static JSValue js_gc(JSContext *ctx, JSValueConst this_val,
                      int argc, JSValueConst *argv)
 {
@@ -220,7 +445,7 @@ static const JSCFunctionListEntry global_obj[] = {
 };
 
 /* also used to initialize the worker context */
-static JSContext *JS_NewCustomContext(JSRuntime *rt)
+JSContext *qjs_new_context(JSRuntime *rt)
 {
     JSContext *ctx;
     ctx = JS_NewContext(rt);
@@ -250,6 +475,7 @@ static JSContext *JS_NewCustomContext(JSRuntime *rt)
     return ctx;
 }
 
+#ifndef QJS_NO_MAIN
 struct trace_malloc_data {
     uint8_t *base;
 };
@@ -337,6 +563,7 @@ static const JSMallocFunctions trace_mf = {
     js_trace_realloc,
     js__malloc_usable_size
 };
+#endif /* !QJS_NO_MAIN */
 
 #ifdef QJS_USE_MIMALLOC
 static void *js_mi_calloc(void *opaque, size_t count, size_t size)
@@ -395,204 +622,49 @@ void help(void)
     exit(1);
 }
 
+#ifndef QJS_NO_MAIN
 int main(int argc, char **argv)
 {
     JSRuntime *rt;
     JSContext *ctx;
     JSValue ret = JS_UNDEFINED;
     struct trace_malloc_data trace_data = { NULL };
+    QJSConfig cfg;
     int r = 0;
     int optind = 1;
     char exebuf[JS__PATH_MAX];
     size_t exebuf_size = sizeof(exebuf);
-    char *compile_file = NULL;
-    char *exe = NULL;
-    char *expr = NULL;
     char *dump_flags_str = NULL;
-    char *out = NULL;
     int standalone = 0;
-    int interactive = 0;
-    int dump_memory = 0;
-    int dump_flags = 0;
-    int trace_memory = 0;
-    int empty_run = 0;
-    int module = -1;
-    int load_std = 0;
-    char *include_list[32];
-    int i, include_count = 0;
-    int64_t memory_limit = -1;
-    int64_t stack_size = -1;
+    int i;
 
     /* save for later */
-    qjs__argc = argc;
-    qjs__argv = argv;
+    qjs_set_argv(argc, argv);
+
+    qjs_config_init(&cfg);
 
     /* check if this is a standalone executable */
-
     if (!js_exepath(exebuf, &exebuf_size) && is_standalone(exebuf)) {
         standalone = 1;
         goto start;
     }
 
     dump_flags_str = getenv("QJS_DUMP_FLAGS");
-    dump_flags = dump_flags_str ? strtol(dump_flags_str, NULL, 16) : 0;
+    cfg.dump_flags = dump_flags_str ? strtol(dump_flags_str, NULL, 16) : 0;
 
-    /* cannot use getopt because we want to pass the command line to
-       the script */
-    while (optind < argc && *argv[optind] == '-') {
-        char *arg = argv[optind] + 1;
-        const char *longopt = "";
-        char *optarg = NULL;
-        /* a single - is not an option, it also stops argument scanning */
-        if (!*arg)
-            break;
-        optind++;
-        if (*arg == '-') {
-            longopt = arg + 1;
-            optarg = strchr(longopt, '=');
-            if (optarg)
-                *optarg++ = '\0';
-            arg += strlen(arg);
-            /* -- stops argument scanning */
-            if (!*longopt)
-                break;
-        }
-        for (; *arg || *longopt; longopt = "") {
-            char opt = *arg;
-            if (opt) {
-                arg++;
-                if (!optarg && *arg)
-                    optarg = arg;
-            }
-            if (opt == 'h' || opt == '?' || !strcmp(longopt, "help")) {
-                help();
-                continue;
-            }
-            if (opt == 'e' || !strcmp(longopt, "eval")) {
-                if (!optarg) {
-                    if (optind >= argc) {
-                        fprintf(stderr, "qjs: missing expression for -e\n");
-                        exit(1);
-                    }
-                    optarg = argv[optind++];
-                }
-                expr = optarg;
-                break;
-            }
-            if (opt == 'I' || !strcmp(longopt, "include")) {
-                if (optind >= argc) {
-                    fprintf(stderr, "expecting filename");
-                    exit(1);
-                }
-                if (include_count >= countof(include_list)) {
-                    fprintf(stderr, "too many included files");
-                    exit(1);
-                }
-                include_list[include_count++] = argv[optind++];
-                continue;
-            }
-            if (opt == 'i' || !strcmp(longopt, "interactive")) {
-                interactive++;
-                continue;
-            }
-            if (opt == 'm' || !strcmp(longopt, "module")) {
-                module = 1;
-                continue;
-            }
-            if (opt == 'C' || !strcmp(longopt, "script")) {
-                module = 0;
-                continue;
-            }
-            if (opt == 'd' || !strcmp(longopt, "dump")) {
-                dump_memory++;
-                continue;
-            }
-            if (opt == 'D' || !strcmp(longopt, "dump-flags")) {
-                dump_flags = optarg ? strtol(optarg, NULL, 16) : 0;
-                break;
-            }
-            if (opt == 'T' || !strcmp(longopt, "trace")) {
-                trace_memory++;
-                continue;
-            }
-            if (!strcmp(longopt, "std")) {
-                load_std = 1;
-                continue;
-            }
-            if (opt == 'q' || !strcmp(longopt, "quit")) {
-                empty_run++;
-                continue;
-            }
-            if (!strcmp(longopt, "memory-limit")) {
-                if (!optarg) {
-                    if (optind >= argc) {
-                        fprintf(stderr, "expecting memory limit");
-                        exit(1);
-                    }
-                    optarg = argv[optind++];
-                }
-                memory_limit = parse_limit(optarg);
-                break;
-            }
-            if (!strcmp(longopt, "stack-size")) {
-                if (!optarg) {
-                    if (optind >= argc) {
-                        fprintf(stderr, "expecting stack size");
-                        exit(1);
-                    }
-                    optarg = argv[optind++];
-                }
-                stack_size = parse_limit(optarg);
-                break;
-            }
-            if (opt == 'c' || !strcmp(longopt, "compile")) {
-                if (!optarg) {
-                    if (optind >= argc) {
-                        fprintf(stderr, "qjs: missing file for -c\n");
-                        exit(1);
-                    }
-                    optarg = argv[optind++];
-                }
-                compile_file = optarg;
-                break;
-            }
-            if (opt == 'o' || !strcmp(longopt, "out")) {
-                if (!optarg) {
-                    if (optind >= argc) {
-                        fprintf(stderr, "qjs: missing file for -o\n");
-                        exit(1);
-                    }
-                    optarg = argv[optind++];
-                }
-                out = optarg;
-                break;
-            }
-            if (!strcmp(longopt, "exe")) {
-                if (!optarg) {
-                    if (optind >= argc) {
-                        fprintf(stderr, "qjs: missing file for --exe\n");
-                        exit(1);
-                    }
-                    optarg = argv[optind++];
-                }
-                exe = optarg;
-                break;
-            }
-            if (opt) {
-                fprintf(stderr, "qjs: unknown option '-%c'\n", opt);
-            } else {
-                fprintf(stderr, "qjs: unknown option '--%s'\n", longopt);
-            }
-            help();
-        }
+    r = qjs_config_parse_args(&cfg, argc, argv, &optind);
+    if (r == QJS_PARSE_HELP) {
+        help();
+    } else if (r == QJS_PARSE_ERROR) {
+        exit(1);
     }
 
-    if (compile_file && !out)
+    if (cfg.compile_file && !cfg.out)
         help();
 
 start:
 
-    if (trace_memory) {
+    if (cfg.trace_memory) {
         js_trace_malloc_init(&trace_data);
         rt = JS_NewRuntime2(&trace_mf, &trace_data);
     } else {
@@ -606,31 +678,26 @@ start:
         fprintf(stderr, "qjs: cannot allocate JS runtime\n");
         exit(2);
     }
-    if (memory_limit >= 0)
-        JS_SetMemoryLimit(rt, (size_t)memory_limit);
-    if (stack_size >= 0)
-        JS_SetMaxStackSize(rt, (size_t)stack_size);
-    if (dump_flags != 0)
-        JS_SetDumpFlags(rt, dump_flags);
-    js_std_set_worker_new_context_func(JS_NewCustomContext);
-    js_std_init_handlers(rt);
-    ctx = JS_NewCustomContext(rt);
+    if (cfg.memory_limit >= 0)
+        JS_SetMemoryLimit(rt, (size_t)cfg.memory_limit);
+    if (cfg.stack_size >= 0)
+        JS_SetMaxStackSize(rt, (size_t)cfg.stack_size);
+    if (cfg.dump_flags != 0)
+        JS_SetDumpFlags(rt, cfg.dump_flags);
+
+    qjs_setup_runtime(rt);
+
+    ctx = qjs_new_context(rt);
     if (!ctx) {
         fprintf(stderr, "qjs: cannot allocate JS context\n");
         exit(2);
     }
 
-    /* loader for ES6 modules */
-    JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, js_module_check_attributes, NULL);
-
-    /* exit on unhandled promise rejections */
-    JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker, NULL);
-
-    if (!empty_run) {
+    if (!cfg.empty_run) {
         js_std_add_helpers(ctx, argc - optind, argv + optind);
 
         /* make 'std' and 'os' visible to non module code */
-        if (load_std) {
+        if (cfg.load_std) {
             const char *str =
                 "import * as bjson from 'qjs:bjson';\n"
                 "import * as std from 'qjs:std';\n"
@@ -638,11 +705,11 @@ start:
                 "globalThis.bjson = bjson;\n"
                 "globalThis.std = std;\n"
                 "globalThis.os = os;\n";
-            eval_buf(ctx, str, strlen(str), "<input>", JS_EVAL_TYPE_MODULE);
+            qjs_eval_buf(ctx, str, strlen(str), "<input>", JS_EVAL_TYPE_MODULE);
         }
 
-        for(i = 0; i < include_count; i++) {
-            if (eval_file(ctx, include_list[i], 0))
+        for (i = 0; i < cfg.include_count; i++) {
+            if (qjs_eval_file(ctx, cfg.include_list[i], 0))
                 goto fail;
         }
 
@@ -656,7 +723,7 @@ start:
                 goto fail;
             ret = JS_Call(ctx, func, JS_UNDEFINED, 0, NULL);
             JS_FreeValue(ctx, func);
-        } else if (compile_file) {
+        } else if (cfg.compile_file) {
             JSValue ns = load_standalone_module(ctx);
             if (JS_IsException(ns))
                 goto fail;
@@ -665,32 +732,32 @@ start:
             if (JS_IsException(func))
                 goto fail;
             JSValue args[3];
-            args[0] = JS_NewString(ctx, compile_file);
-            args[1] = JS_NewString(ctx, out);
-            args[2] = exe != NULL ? JS_NewString(ctx, exe) : JS_UNDEFINED;
+            args[0] = JS_NewString(ctx, cfg.compile_file);
+            args[1] = JS_NewString(ctx, cfg.out);
+            args[2] = cfg.exe != NULL ? JS_NewString(ctx, cfg.exe) : JS_UNDEFINED;
             ret = JS_Call(ctx, func, JS_UNDEFINED, 3, (JSValueConst *)args);
             JS_FreeValue(ctx, func);
             JS_FreeValue(ctx, args[0]);
             JS_FreeValue(ctx, args[1]);
             JS_FreeValue(ctx, args[2]);
-        } else if (expr) {
-            int flags = module ? JS_EVAL_TYPE_MODULE : 0;
-            if (eval_buf(ctx, expr, strlen(expr), "<cmdline>", flags))
+        } else if (cfg.expr) {
+            int flags = cfg.module == 1 ? JS_EVAL_TYPE_MODULE : 0;
+            if (qjs_eval_buf(ctx, cfg.expr, strlen(cfg.expr), "<cmdline>", flags))
                 goto fail;
         } else if (optind >= argc) {
             /* interactive mode */
-            interactive = 1;
+            cfg.interactive = 1;
         } else {
             const char *filename;
             filename = argv[optind];
-            if (eval_file(ctx, filename, module))
+            if (qjs_eval_file(ctx, filename, cfg.module))
                 goto fail;
         }
-        if (interactive) {
+        if (cfg.interactive) {
             JS_SetHostPromiseRejectionTracker(rt, NULL, NULL);
             js_std_eval_binary(ctx, qjsc_repl, qjsc_repl_size, 0);
         }
-        if (standalone || compile_file) {
+        if (standalone || cfg.compile_file) {
             if (JS_IsException(ret)) {
                 r = 1;
             } else {
@@ -706,7 +773,7 @@ start:
         }
     }
 
-    if (dump_memory) {
+    if (cfg.dump_memory) {
         JSMemoryUsage stats;
         JS_ComputeMemoryUsage(rt, &stats);
         JS_DumpMemoryUsage(stdout, &stats, rt);
@@ -715,7 +782,7 @@ start:
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 
-    if (empty_run && dump_memory) {
+    if (cfg.empty_run && cfg.dump_memory) {
         clock_t t[5];
         double best[5] = {0};
         int i, j;
@@ -746,3 +813,4 @@ start:
     JS_FreeRuntime(rt);
     return 1;
 }
+#endif /* QJS_NO_MAIN */
