@@ -11,6 +11,7 @@ const libunicode_c = loadFile("libunicode.c")
 const libunicode_h = loadFile("libunicode.h")
 const libunicode_table_h = loadFile("libunicode-table.h")
 const list_h = loadFile("list.h")
+const msvc_pragmas_h = loadFile("msvc-pragmas.h")
 const quickjs_atom_h = loadFile("quickjs-atom.h")
 const quickjs_c = loadFile("quickjs.c")
 const quickjs_c_atomics_h = loadFile("quickjs-c-atomics.h")
@@ -25,6 +26,7 @@ const gen_builtin_iterator_zip_keyed_h = loadFile("builtin-iterator-zip-keyed.h"
 let source = "#if defined(QJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU_SOURCE)\n"
            + "#define _GNU_SOURCE\n"
            + "#endif\n"
+           + msvc_pragmas_h
            + quickjs_c_atomics_h
            + cutils_h
            + dtoa_h
@@ -42,6 +44,7 @@ let source = "#if defined(QJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU
            + quickjs_libc_h
            + quickjs_libc_c
            + "#endif // QJS_BUILD_LIBC\n"
+source = source.replace(/#include "msvc-pragmas.h"/g, "")
 source = source.replace(/#include "quickjs-atom.h"/g, quickjs_atom_h)
 source = source.replace(/#include "quickjs-opcode.h"/g, quickjs_opcode_h)
 source = source.replace(/#include "libregexp-opcode.h"/g, libregexp_opcode_h)
