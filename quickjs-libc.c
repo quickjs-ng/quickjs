@@ -2830,7 +2830,10 @@ static int js_os_poll_internal(JSContext *ctx, int timeout_ms, int flags)
                 .tv_sec = min_delay / 1000,
                 .tv_nsec = (min_delay % 1000) * 1000000L
             };
-            nanosleep(&ts_sleep, NULL);
+            uint64_t mask = os_pending_signals;
+            while (nanosleep(&ts_sleep, &ts_sleep)
+                && errno == EINTR
+                && mask == os_pending_signals);
         }
         return 0;
     }
