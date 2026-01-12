@@ -3930,7 +3930,7 @@ static no_inline int string_buffer_realloc(StringBuffer *s, int new_len, int c)
     return 0;
 }
 
-static no_inline int string_buffer_putc_slow(StringBuffer *s, uint32_t c)
+static no_inline int string_buffer_putc16_slow(StringBuffer *s, uint32_t c)
 {
     if (unlikely(s->len >= s->size)) {
         if (string_buffer_realloc(s, s->len + 1, c))
@@ -3975,19 +3975,41 @@ static int string_buffer_putc16(StringBuffer *s, uint32_t c)
             return 0;
         }
     }
-    return string_buffer_putc_slow(s, c);
+    return string_buffer_putc16_slow(s, c);
 }
 
 /* 0 <= c <= 0x10ffff */
-static int string_buffer_putc(StringBuffer *s, uint32_t c)
+static no_inline int string_buffer_putc_slow(StringBuffer *s, uint32_t c)
 {
-    if (unlikely(c >= 0x10000)) {
+    if (c >= 0x10000) {
         /* surrogate pair */
         if (string_buffer_putc16(s, get_hi_surrogate(c)))
             return -1;
         c = get_lo_surrogate(c);
     }
     return string_buffer_putc16(s, c);
+}
+
+/* 0 <= c <= 0x10ffff */
+static inline int string_buffer_putc(StringBuffer *s, uint32_t c)
+{
+    if (likely(s->len < s->size)) {
+        if (s->is_wide_char) {
+            if (c < 0x10000) {
+                str16(s->str)[s->len++] = c;
+                return 0;
+            } else if (s->len + 1 < s->size) {
+                /* surrogate pair */
+                str16(s->str)[s->len++] = get_hi_surrogate(c);
+                str16(s->str)[s->len++] = get_lo_surrogate(c);
+                return 0;
+            }
+        } else if (c < 0x100) {
+            str8(s->str)[s->len++] = c;
+            return 0;
+        }
+    }
+    return string_buffer_putc_slow(s, c);
 }
 
 static int string_getc(JSString *p, int *pidx)
