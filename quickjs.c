@@ -18497,8 +18497,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     int64_t r;
                     r = (int64_t)JS_VALUE_GET_INT(op1) + JS_VALUE_GET_INT(op2);
                     if (unlikely((int)r != r))
-                        goto add_slow;
-                    sp[-2] = js_int32(r);
+                        sp[-2] = __JS_NewFloat64((double)r);
+                    else
+                        sp[-2] = js_int32(r);
                     sp--;
                 } else if (JS_VALUE_IS_BOTH_FLOAT(op1, op2)) {
                     JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
@@ -18507,7 +18508,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     JS_X87_FPCW_RESTORE(fpcw);
                     sp--;
                 } else {
-                add_slow:
                     sf->cur_pc = pc;
                     if (js_add_slow(ctx, sp))
                         goto exception;
@@ -18528,8 +18528,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     r = (int64_t)JS_VALUE_GET_INT(*pv) +
                         JS_VALUE_GET_INT(sp[-1]);
                     if (unlikely((int)r != r))
-                        goto add_loc_slow;
-                    *pv = js_int32(r);
+                        *pv = __JS_NewFloat64((double)r);
+                    else
+                        *pv = js_int32(r);
                     sp--;
                 } else if (JS_VALUE_GET_TAG(*pv) == JS_TAG_STRING) {
                     JSValue op1;
@@ -18545,7 +18546,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     set_value(ctx, pv, op1);
                 } else {
                     JSValue ops[2];
-                add_loc_slow:
                     /* In case of exception, js_add_slow frees ops[0]
                        and ops[1], so we must duplicate *pv */
                     sf->cur_pc = pc;
@@ -18567,8 +18567,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     int64_t r;
                     r = (int64_t)JS_VALUE_GET_INT(op1) - JS_VALUE_GET_INT(op2);
                     if (unlikely((int)r != r))
-                        goto binary_arith_slow;
-                    sp[-2] = js_int32(r);
+                        sp[-2] = __JS_NewFloat64((double)r);
+                    else
+                        sp[-2] = js_int32(r);
                     sp--;
                 } else if (JS_VALUE_IS_BOTH_FLOAT(op1, op2)) {
                     JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
