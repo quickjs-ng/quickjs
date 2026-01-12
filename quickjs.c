@@ -16764,12 +16764,43 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             BREAK;
         CASE(OP_get_length):
             {
-                JSValue val;
+                JSValue val, obj;
+                JSAtom atom;
+                JSObject *p;
+                JSProperty *pr;
+                JSShapeProperty *prs;
 
-                sf->cur_pc = pc;
-                val = JS_GetProperty(ctx, sp[-1], JS_ATOM_length);
-                if (unlikely(JS_IsException(val)))
-                    goto exception;
+                atom = JS_ATOM_length;
+
+                obj = sp[-1];
+                if (likely(JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT)) {
+                    p = JS_VALUE_GET_OBJ(obj);
+                    for(;;) {
+                        prs = find_own_property(&pr, p, atom);
+                        if (prs) {
+                            /* found */
+                            if (unlikely(prs->flags & JS_PROP_TMASK))
+                                goto get_length_slow_path;
+                            val = js_dup(pr->u.value);
+                            break;
+                        }
+                        if (unlikely(p->is_exotic)) {
+                            obj = JS_MKPTR(JS_TAG_OBJECT, p);
+                            goto get_length_slow_path;
+                        }
+                        p = p->shape->proto;
+                        if (!p) {
+                            val = JS_UNDEFINED;
+                            break;
+                        }
+                    }
+                } else {
+                get_length_slow_path:
+                    sf->cur_pc = pc;
+                    val = JS_GetPropertyInternal(ctx, obj, atom, sp[-1], false);
+                    if (unlikely(JS_IsException(val)))
+                        goto exception;
+                }
                 JS_FreeValue(ctx, sp[-1]);
                 sp[-1] = val;
             }
