@@ -181,13 +181,6 @@ qjs_lib = library(
   qjs_srcs,
   qjs_libc ? qjs_libc_srcs : [],
 
-  # export public headers
-  generator(
-    find_program('cp', 'xcopy'),
-    output: ['@PLAINNAME@'],
-    arguments: ['@INPUT@', '@OUTPUT@'],
-  ).process(qjs_hdrs),
-
   dependencies: qjs_sys_deps,
   link_with: cutils_lib,
   c_args: qjs_c_args,
@@ -214,10 +207,23 @@ qjs_dep = declare_dependency(
   compile_args: qjs_dep_args,
   link_with: qjs_lib,
   dependencies: qjs_sys_deps,
-  include_directories: qjs_lib.private_dir_include(),
+  include_directories: include_directories('.'),
   variables: qjs_export_variables,
 )
 
+if host_system != 'windows'
+  qjs_module_dep = declare_dependency(
+    compile_args: [qjs_dep_args, '-DQUICKJS_NG_MODULE_BUILD'],
+    include_directories: include_directories('.'),
+  )
+else
+  qjs_module_dep = declare_dependency(
+    compile_args: [qjs_dep_args, '-DQUICKJS_NG_MODULE_BUILD'],
+    include_directories: include_directories('.'),
+    # Windows can't resolve symbols at runtime thus we explicitly link to qjs.
+    dependencies: qjs_dep,
+  )
+endif
 
 if qjs_libc
   qjs_libc_dep = declare_dependency(
@@ -643,6 +649,14 @@ alias_target('codegen',
 )
 
 if examples.allowed()
+  if host_system == 'windows' and get_option('default_library') != 'shared'
+    warning('Binary modules used with static qjs on Windows.')
+    warning(
+      'There might be runtime errors when the modules are used due to',
+      'two copies of qjs in memory.'
+    )
+    warning('Please use "-Ddefault_library=shared" if possible.')
+  endif
   executable(
     'hello',
     'gen/hello.c',
@@ -663,7 +677,6 @@ if examples.allowed()
 
   executable(
     'test_fib',
-    'examples/fib.c',
     'gen/test_fib.c',
 
     c_args: qjs_c_args,

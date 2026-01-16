@@ -111,6 +111,28 @@ extern "C" {
 # define JS_LIBC_EXTERN JS_EXTERN
 #endif
 
+/*
+ * `JS_MODULE_EXTERN` -- helper macro that must be used to mark `js_init_module`
+ * and other public functions of the binary modules. See examples/ for examples
+ * of the usage.
+ *
+ * Windows note: -DQUICKJS_NG_MODULE_BUILD must be set when building a binary
+ * module to properly set __declspec.
+ */
+#ifdef QUICKJS_NG_PLAT_WIN32
+# ifdef QUICKJS_NG_MODULE_BUILD
+#  define JS_MODULE_EXTERN __declspec(dllexport)
+# else
+#  define JS_MODULE_EXTERN __declspec(dllimport)
+# endif
+#else
+# ifdef QUICKJS_NG_CC_GNULIKE
+#  define JS_MODULE_EXTERN __attribute__((visibility("default")))
+# else
+#  define JS_MODULE_EXTERN /* nothing */
+# endif
+#endif /* QUICKJS_NG_PLAT_WIN32 */
+
 /* Borrowed from Folly */
 #ifndef JS_PRINTF_FORMAT
 #ifdef _MSC_VER

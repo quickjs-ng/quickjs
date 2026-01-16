@@ -304,6 +304,23 @@ if(QJS_LIB_TYPE STREQUAL "SHARED_LIBRARY")
     )
 endif()
 
+# An interface library for modules.
+add_library(qjs_module_lib INTERFACE)
+target_include_directories(qjs_module_lib INTERFACE
+    $<TARGET_PROPERTY:qjs,INTERFACE_INCLUDE_DIRECTORIES>
+)
+target_compile_definitions(qjs_module_lib INTERFACE
+    QUICKJS_NG_MODULE_BUILD
+    $<TARGET_PROPERTY:qjs,INTERFACE_COMPILE_DEFINITIONS>
+)
+if(WIN32)
+    # Since Windows cannot resolve symbols at load time, we need to
+    # explicitly link it to qjs.
+    target_link_libraries(qjs_module_lib INTERFACE
+        qjs
+    )
+endif()
+
 if(NOT QJS_BUILD_LIBC)
     add_library(qjs-libc STATIC quickjs-libc.c)
     target_compile_definitions(qjs-libc PRIVATE ${qjs_defines})
@@ -442,6 +459,15 @@ target_link_libraries(function_source PRIVATE qjs)
 #
 
 if(QJS_BUILD_EXAMPLES)
+    if(WIN32 AND NOT (QJS_LIB_TYPE STREQUAL "SHARED_LIBRARY"))
+        message(AUTHOR_WARNING
+            "Binary modules used with static qjs on Windows. There might be\n"
+            "runtime errors when the module is used due to two copies of qjs\n"
+            "in memory.\n"
+            "Please use \"-DBUILD_SHARED_LIBS=true\" if possible."
+        )
+    endif()
+
     add_executable(hello
         gen/hello.c
     )
@@ -461,35 +487,30 @@ if(QJS_BUILD_EXAMPLES)
     add_library(fib MODULE examples/fib.c)
     set_target_properties(fib PROPERTIES
         PREFIX ""
-        C_VISIBILITY_PRESET default
     )
-    target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
-    if(WIN32)
-        target_link_libraries(fib PRIVATE qjs)
-    elseif(APPLE)
+    target_link_libraries(fib PRIVATE qjs_module_lib)
+    if(APPLE)
         target_link_options(fib PRIVATE -undefined dynamic_lookup)
     endif()
 
     add_library(point MODULE examples/point.c)
     set_target_properties(point PROPERTIES
         PREFIX ""
-        C_VISIBILITY_PRESET default
     )
-    target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
-    if(WIN32)
-        target_link_libraries(point PRIVATE qjs)
-    elseif(APPLE)
+    target_link_libraries(point PRIVATE qjs_module_lib)
+    if(APPLE)
         target_link_options(point PRIVATE -undefined dynamic_lookup)
     endif()
 
     add_executable(test_fib
-        examples/fib.c
         gen/test_fib.c
     )
     add_qjs_libc_if_needed(test_fib)
     target_include_directories(test_fib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(test_fib PRIVATE ${qjs_defines})
     target_link_libraries(test_fib PRIVATE qjs)
+    # Loads fib.so which depends on symbols from libqjs.
+    set_target_properties(test_fib PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
 
 # Install target
