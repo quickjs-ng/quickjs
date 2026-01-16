@@ -168,6 +168,8 @@ if not qjs_parser
   qjs_c_args += ['-DQJS_DISABLE_PARSER']
 endif
 
+qjs_module_args = ['-DQUICKJS_NG_MODULE_BUILD']
+
 cutils_lib = static_library(
   'cutils',
   'cutils.c',
@@ -180,13 +182,6 @@ qjs_lib = library(
   'qjs',
   qjs_srcs,
   qjs_libc ? qjs_libc_srcs : [],
-
-  # export public headers
-  generator(
-    find_program('cp', 'xcopy'),
-    output: ['@PLAINNAME@'],
-    arguments: ['@INPUT@', '@OUTPUT@'],
-  ).process(qjs_hdrs),
 
   dependencies: qjs_sys_deps,
   link_with: cutils_lib,
@@ -213,7 +208,7 @@ qjs_dep = declare_dependency(
   compile_args: qjs_dep_args,
   link_with: qjs_lib,
   dependencies: qjs_sys_deps,
-  include_directories: qjs_lib.private_dir_include(),
+  include_directories: include_directories('.'),
   variables: qjs_export_variables,
 )
 
@@ -660,7 +655,7 @@ if examples.allowed()
     'examples/fib.c',
     'gen/test_fib.c',
 
-    c_args: qjs_c_args,
+    c_args: [qjs_c_args, qjs_module_args],
     dependencies: [qjs_dep, qjs_libc_dep],
     export_dynamic: true,
   )

@@ -294,6 +294,11 @@ target_include_directories(qjs PUBLIC
 )
 target_link_libraries(qjs PUBLIC ${qjs_libs})
 target_link_libraries(qjs PRIVATE $<BUILD_INTERFACE:cutils>)
+if(QJS_BUILD_EXAMPLES)
+    # We shouldn't really support building examples with static qjs..
+    # Anyways, this is required for fib.so and point.so to link properly.
+    set_target_properties(qjs PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # Pass a compiler definition so that Windows gets its declspec's right.
 get_target_property(QJS_LIB_TYPE qjs TYPE)
@@ -462,10 +467,9 @@ if(QJS_BUILD_EXAMPLES)
         PREFIX ""
         C_VISIBILITY_PRESET default
     )
-    target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
-    if(WIN32)
-        target_link_libraries(fib PRIVATE qjs)
-    elseif(APPLE)
+    target_link_libraries(fib PRIVATE qjs)
+    target_compile_definitions(fib PRIVATE QUICKJS_NG_MODULE_BUILD)
+    if(APPLE)
         target_link_options(fib PRIVATE -undefined dynamic_lookup)
     endif()
 
@@ -474,10 +478,9 @@ if(QJS_BUILD_EXAMPLES)
         PREFIX ""
         C_VISIBILITY_PRESET default
     )
-    target_compile_definitions(point PRIVATE JS_SHARED_LIBRARY)
-    if(WIN32)
-        target_link_libraries(point PRIVATE qjs)
-    elseif(APPLE)
+    target_link_libraries(point PRIVATE qjs)
+    target_compile_definitions(point PRIVATE QUICKJS_NG_MODULE_BUILD)
+    if(APPLE)
         target_link_options(point PRIVATE -undefined dynamic_lookup)
     endif()
 
@@ -487,7 +490,7 @@ if(QJS_BUILD_EXAMPLES)
     )
     add_qjs_libc_if_needed(test_fib)
     target_include_directories(test_fib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_compile_definitions(test_fib PRIVATE ${qjs_defines})
+    target_compile_definitions(test_fib PRIVATE ${qjs_defines} QUICKJS_NG_MODULE_BUILD)
     target_link_libraries(test_fib PRIVATE qjs)
 endif()
 
