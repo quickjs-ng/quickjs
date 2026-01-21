@@ -131,11 +131,18 @@ jobs:
           cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
           make -C build qjs_exe
           mv build/qjs build/qjs-wasi.wasm
+      - name: build wasi reactor
+        run: |
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_WASI_REACTOR=ON
+          make -C build qjs_wasi
+          mv build/qjs.wasm build/qjs-wasi-reactor.wasm
       - name: upload
         uses: actions/upload-artifact@v6
         with:
           name: qjs-wasi
-          path: build/qjs-wasi.wasm
+          path: |
+            build/qjs-wasi.wasm
+            build/qjs-wasi-reactor.wasm
 
   upload-to-release:
     needs: [linux, macos, windows, wasi, check_meson_version]
