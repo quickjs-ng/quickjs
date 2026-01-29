@@ -10573,8 +10573,8 @@ static int JS_DefineGlobalFunction(JSContext *ctx, JSAtom prop,
     return 0;
 }
 
-static inline JSValue JS_GetGlobalVar(JSContext *ctx, JSAtom prop,
-                                      bool throw_ref_error)
+static JSValue JS_GetGlobalVar(JSContext *ctx, JSAtom prop,
+                               bool throw_ref_error)
 {
     JSObject *p;
     JSShapeProperty *prs;
