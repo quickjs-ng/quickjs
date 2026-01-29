@@ -465,7 +465,7 @@ struct JSContext {
     struct list_head link;
 
     uint16_t binary_object_count;
-    int binary_object_size;
+    uint32_t binary_object_size : 31;
 
     /* true if the array prototype is "normal":
        - no small index properties which are get/set or non writable
@@ -473,7 +473,7 @@ struct JSContext {
        - Object.prototype has no small index properties which are get/set or non writable
        - the prototype of Object.prototype is null (always true as it is immutable)
     */
-    uint8_t std_array_prototype;
+    uint8_t std_array_prototype : 1;
 
     JSShape *array_shape;   /* initial shape for Array objects */
     JSShape *arguments_shape;  /* shape for arguments objects */
