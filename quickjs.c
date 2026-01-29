@@ -9355,8 +9355,8 @@ static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
 
 /* Preconditions: 'p' must be of class JS_CLASS_ARRAY, p->fast_array =
    true and p->extensible = true */
-static inline int add_fast_array_element(JSContext *ctx, JSObject *p,
-                                         JSValue val, int flags)
+static int add_fast_array_element(JSContext *ctx, JSObject *p,
+                                  JSValue val, int flags)
 {
     uint32_t new_len, array_len;
     /* extend the array by one */
