@@ -385,6 +385,65 @@ function test_string()
            /*JS_STRING_KIND_SLICE*/1);
 }
 
+function rope_concat(n, dir)
+{
+    var i, s;
+    s = "";
+    if (dir > 0) {
+        for(i = 0; i < n; i++)
+            s += String.fromCharCode(i & 0xffff);
+    } else {
+        for(i = n - 1; i >= 0; i--)
+            s = String.fromCharCode(i & 0xffff) + s;
+    }
+
+    for(i = 0; i < n; i++) {
+        /* test before the assert to go faster */
+        if (s.charCodeAt(i) != (i & 0xffff)) {
+            assert(s.charCodeAt(i), i & 0xffff);
+        }
+    }
+}
+
+function test_rope()
+{
+    var i, s, s2;
+
+    /* test forward and backward concatenation */
+    rope_concat(100000, 1);
+    rope_concat(100000, -1);
+
+    /* test rope comparison */
+    s = "";
+    s2 = "";
+    for (i = 0; i < 10000; i++) {
+        s += "abc";
+        s2 += "abc";
+    }
+    assert(s === s2, true);
+    assert(s < s2, false);
+    assert(s > s2, false);
+
+    /* test rope indexing */
+    s = "";
+    for (i = 0; i < 10000; i++)
+        s += "x";
+    assert(s.length, 10000);
+    assert(s[0], "x");
+    assert(s[5000], "x");
+    assert(s[9999], "x");
+
+    /* test rope with string methods */
+    s = "";
+    for (i = 0; i < 1000; i++)
+        s += "test";
+    assert(s.indexOf("test"), 0);
+    assert(s.lastIndexOf("test"), 3996);
+    assert(s.includes("test"), true);
+    assert(s.slice(0, 8), "testtest");
+    assert(s.substring(0, 8), "testtest");
+}
+
 function test_math()
 {
     var a;
@@ -1207,6 +1266,7 @@ test_function();
 test_enum();
 test_array();
 test_string();
+test_rope();
 test_math();
 test_number();
 test_eval();

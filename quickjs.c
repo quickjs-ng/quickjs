@@ -220,13 +220,24 @@ typedef enum JSErrorEnum {
 // more profitable to ref slice than to copy
 #define JS_STRING_SLICE_LEN_MAX 1024 // in bytes
 
+/* strings <= this length are not concatenated using ropes. if too
+   small, the rope memory overhead becomes high. */
+#define JS_STRING_ROPE_SHORT_LEN  512
+/* specific threshold for initial rope use */
+#define JS_STRING_ROPE_SHORT2_LEN 8192
+/* rope depth at which we rebalance */
+#define JS_STRING_ROPE_MAX_DEPTH 60
+
 #define __exception __attribute__((warn_unused_result))
 
 typedef struct JSShape JSShape;
 typedef struct JSString JSString;
 typedef struct JSString JSAtomStruct;
+typedef struct JSStringRope JSStringRope;
 
+#define JS_VALUE_GET_OBJ(v) ((JSObject *)JS_VALUE_GET_PTR(v))
 #define JS_VALUE_GET_STRING(v) ((JSString *)JS_VALUE_GET_PTR(v))
+#define JS_VALUE_GET_STRING_ROPE(v) ((JSStringRope *)JS_VALUE_GET_PTR(v))
 
 typedef enum {
     JS_GC_PHASE_NONE,
@@ -616,6 +627,15 @@ typedef struct JSStringSlice {
     JSString *parent;
     uint32_t start; // in bytes, not characters
 } JSStringSlice;
+
+struct JSStringRope {
+    JSRefCountHeader header; /* must come first, 32-bit */
+    uint32_t len;
+    uint8_t is_wide_char; /* 0 = 8 bits, 1 = 16 bits characters */
+    uint8_t depth;        /* max depth of the rope tree */
+    JSValue left;
+    JSValue right;        /* might be the empty string */
+};
 
 static inline void *strv(JSString *p)
 {
@@ -2790,6 +2810,17 @@ static uint32_t hash_string(JSString *str, uint32_t h)
     return h;
 }
 
+static uint32_t hash_string_rope(JSValueConst val, uint32_t h)
+{
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
+        return hash_string(JS_VALUE_GET_STRING(val), h);
+    } else {
+        JSStringRope *r = JS_VALUE_GET_STRING_ROPE(val);
+        h = hash_string_rope(r->left, h);
+        return hash_string_rope(r->right, h);
+    }
+}
+
 static __maybe_unused void JS_DumpString(JSRuntime *rt, JSString *p)
 {
     int i, c, sep;
@@ -4146,12 +4177,21 @@ static int string_buffer_concat_value(StringBuffer *s, JSValueConst v)
     JSString *p;
     JSValue v1;
     int res;
+    int tag;
 
     if (s->error_status) {
         /* prevent exception overload */
         return -1;
     }
-    if (unlikely(JS_VALUE_GET_TAG(v) != JS_TAG_STRING)) {
+    tag = JS_VALUE_GET_TAG(v);
+    if (tag == JS_TAG_STRING_ROPE) {
+        /* recursively concatenate rope children */
+        JSStringRope *r = JS_VALUE_GET_STRING_ROPE(v);
+        if (string_buffer_concat_value(s, r->left))
+            return -1;
+        return string_buffer_concat_value(s, r->right);
+    }
+    if (unlikely(tag != JS_TAG_STRING)) {
         v1 = JS_ToString(s->ctx, v);
         if (JS_IsException(v1))
             return string_buffer_set_error(s);
@@ -4168,13 +4208,21 @@ static int string_buffer_concat_value_free(StringBuffer *s, JSValue v)
 {
     JSString *p;
     int res;
+    int tag;
 
     if (s->error_status) {
         /* prevent exception overload */
         JS_FreeValue(s->ctx, v);
         return -1;
     }
-    if (unlikely(JS_VALUE_GET_TAG(v) != JS_TAG_STRING)) {
+    tag = JS_VALUE_GET_TAG(v);
+    if (tag == JS_TAG_STRING_ROPE) {
+        /* concatenate rope (don't free since concat_value doesn't free) */
+        res = string_buffer_concat_value(s, v);
+        JS_FreeValue(s->ctx, v);
+        return res;
+    }
+    if (unlikely(tag != JS_TAG_STRING)) {
         v = JS_ToStringFree(s->ctx, v);
         if (JS_IsException(v))
             return string_buffer_set_error(s);
@@ -4566,6 +4614,352 @@ static int js_string_compare(JSString *p1, JSString *p2)
     return res;
 }
 
+/* Rope string support functions */
+
+static inline bool tag_is_string(int tag)
+{
+    return tag == JS_TAG_STRING || tag == JS_TAG_STRING_ROPE;
+}
+
+static uint32_t string_rope_get_len(JSValueConst val)
+{
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING)
+        return JS_VALUE_GET_STRING(val)->len;
+    else
+        return JS_VALUE_GET_STRING_ROPE(val)->len;
+}
+
+static int string_rope_get(JSValueConst val, uint32_t idx)
+{
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
+        return string_get(JS_VALUE_GET_STRING(val), idx);
+    } else {
+        JSStringRope *r = JS_VALUE_GET_STRING_ROPE(val);
+        uint32_t len;
+        if (JS_VALUE_GET_TAG(r->left) == JS_TAG_STRING)
+            len = JS_VALUE_GET_STRING(r->left)->len;
+        else
+            len = JS_VALUE_GET_STRING_ROPE(r->left)->len;
+        if (idx < len)
+            return string_rope_get(r->left, idx);
+        else
+            return string_rope_get(r->right, idx - len);
+    }
+}
+
+typedef struct {
+    JSValueConst stack[JS_STRING_ROPE_MAX_DEPTH];
+    int stack_len;
+} JSStringRopeIter;
+
+static void string_rope_iter_init(JSStringRopeIter *s, JSValueConst val)
+{
+    s->stack_len = 0;
+    s->stack[s->stack_len++] = val;
+}
+
+/* iterate thru a rope and return the strings in order */
+static JSString *string_rope_iter_next(JSStringRopeIter *s)
+{
+    JSValueConst val;
+    JSStringRope *r;
+
+    if (s->stack_len == 0)
+        return NULL;
+    val = s->stack[--s->stack_len];
+    for(;;) {
+        if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING)
+            return JS_VALUE_GET_STRING(val);
+        r = JS_VALUE_GET_STRING_ROPE(val);
+        assert(s->stack_len < JS_STRING_ROPE_MAX_DEPTH);
+        s->stack[s->stack_len++] = r->right;
+        val = r->left;
+    }
+}
+
+/* compare two string values with position offsets */
+static int js_string_memcmp_pos(JSString *p1, uint32_t pos1,
+                                JSString *p2, uint32_t pos2, uint32_t len)
+{
+    int res;
+
+    if (likely(!p1->is_wide_char)) {
+        if (likely(!p2->is_wide_char))
+            res = memcmp(str8(p1) + pos1, str8(p2) + pos2, len);
+        else
+            res = -memcmp16_8(str16(p2) + pos2, str8(p1) + pos1, len);
+    } else {
+        if (!p2->is_wide_char)
+            res = memcmp16_8(str16(p1) + pos1, str8(p2) + pos2, len);
+        else
+            res = memcmp16(str16(p1) + pos1, str16(p2) + pos2, len);
+    }
+    return res;
+}
+
+static int js_string_rope_compare(JSValueConst op1,
+                                  JSValueConst op2, bool eq_only)
+{
+    uint32_t len1, len2, len, pos1, pos2, l;
+    int res;
+    JSStringRopeIter it1, it2;
+    JSString *p1, *p2;
+
+    len1 = string_rope_get_len(op1);
+    len2 = string_rope_get_len(op2);
+    /* no need to go further for equality test if different length */
+    if (eq_only && len1 != len2)
+        return 1;
+    len = min_uint32(len1, len2);
+    string_rope_iter_init(&it1, op1);
+    string_rope_iter_init(&it2, op2);
+    p1 = string_rope_iter_next(&it1);
+    p2 = string_rope_iter_next(&it2);
+    pos1 = 0;
+    pos2 = 0;
+    while (len != 0) {
+        l = min_uint32(p1->len - pos1, p2->len - pos2);
+        l = min_uint32(l, len);
+        res = js_string_memcmp_pos(p1, pos1, p2, pos2, l);
+        if (res != 0)
+            return res;
+        len -= l;
+        pos1 += l;
+        if (pos1 >= p1->len) {
+            p1 = string_rope_iter_next(&it1);
+            pos1 = 0;
+        }
+        pos2 += l;
+        if (pos2 >= p2->len) {
+            p2 = string_rope_iter_next(&it2);
+            pos2 = 0;
+        }
+    }
+
+    if (len1 == len2)
+        res = 0;
+    else if (len1 < len2)
+        res = -1;
+    else
+        res = 1;
+    return res;
+}
+
+/* forward declaration */
+static int string_buffer_concat_value(StringBuffer *s, JSValueConst v);
+static JSValue js_rebalance_string_rope(JSContext *ctx, JSValueConst rope);
+
+/* op1 and op2 must be strings or string ropes */
+static JSValue js_new_string_rope(JSContext *ctx, JSValue op1, JSValue op2)
+{
+    uint32_t len;
+    int is_wide_char, depth;
+    JSStringRope *r;
+    JSValue res;
+
+    if (JS_VALUE_GET_TAG(op1) == JS_TAG_STRING) {
+        JSString *p1 = JS_VALUE_GET_STRING(op1);
+        len = p1->len;
+        is_wide_char = p1->is_wide_char;
+        depth = 0;
+    } else {
+        JSStringRope *r1 = JS_VALUE_GET_STRING_ROPE(op1);
+        len = r1->len;
+        is_wide_char = r1->is_wide_char;
+        depth = r1->depth;
+    }
+
+    if (JS_VALUE_GET_TAG(op2) == JS_TAG_STRING) {
+        JSString *p2 = JS_VALUE_GET_STRING(op2);
+        len += p2->len;
+        is_wide_char |= p2->is_wide_char;
+    } else {
+        JSStringRope *r2 = JS_VALUE_GET_STRING_ROPE(op2);
+        len += r2->len;
+        is_wide_char |= r2->is_wide_char;
+        depth = max_int(depth, r2->depth);
+    }
+    if (len > JS_STRING_LEN_MAX) {
+        JS_ThrowInternalError(ctx, "string too long");
+        goto fail;
+    }
+    r = js_malloc(ctx, sizeof(*r));
+    if (!r)
+        goto fail;
+    r->header.ref_count = 1;
+    r->len = len;
+    r->is_wide_char = is_wide_char;
+    r->depth = depth + 1;
+    r->left = op1;
+    r->right = op2;
+    res = JS_MKPTR(JS_TAG_STRING_ROPE, r);
+    if (r->depth > JS_STRING_ROPE_MAX_DEPTH) {
+        JSValue res2;
+#ifdef DUMP_ROPE_REBALANCE
+        printf("rebalance: initial depth=%d\n", r->depth);
+#endif
+        res2 = js_rebalance_string_rope(ctx, res);
+#ifdef DUMP_ROPE_REBALANCE
+        if (JS_VALUE_GET_TAG(res2) == JS_TAG_STRING_ROPE)
+            printf("rebalance: final depth=%d\n", JS_VALUE_GET_STRING_ROPE(res2)->depth);
+#endif
+        JS_FreeValue(ctx, res);
+        return res2;
+    } else {
+        return res;
+    }
+ fail:
+    JS_FreeValue(ctx, op1);
+    JS_FreeValue(ctx, op2);
+    return JS_EXCEPTION;
+}
+
+#define ROPE_N_BUCKETS 44
+
+/* Fibonacci numbers starting from F_2 */
+static const uint32_t rope_bucket_len[ROPE_N_BUCKETS] = {
+          1,          2,          3,          5,
+          8,         13,         21,         34,
+         55,         89,        144,        233,
+        377,        610,        987,       1597,
+       2584,       4181,       6765,      10946,
+      17711,      28657,      46368,      75025,
+     121393,     196418,     317811,     514229,
+     832040,    1346269,    2178309,    3524578,
+    5702887,    9227465,   14930352,   24157817,
+   39088169,   63245986,  102334155,  165580141,
+  267914296,  433494437,  701408733, 1134903170, /* > JS_STRING_LEN_MAX */
+};
+
+static int js_rebalance_string_rope_rec(JSContext *ctx, JSValue *buckets,
+                                        JSValueConst val)
+{
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
+        JSString *p = JS_VALUE_GET_STRING(val);
+        uint32_t len, i;
+        JSValue a, b;
+
+        len = p->len;
+        if (len == 0)
+            return 0; /* nothing to do */
+        /* find the bucket i so that rope_bucket_len[i] <= len <
+           rope_bucket_len[i + 1] and concatenate the ropes in the
+           buckets before */
+        a = JS_NULL;
+        i = 0;
+        while (len >= rope_bucket_len[i + 1]) {
+            b = buckets[i];
+            if (!JS_IsNull(b)) {
+                buckets[i] = JS_NULL;
+                if (JS_IsNull(a)) {
+                    a = b;
+                } else {
+                    a = js_new_string_rope(ctx, b, a);
+                    if (JS_IsException(a))
+                        return -1;
+                }
+            }
+            i++;
+        }
+        if (!JS_IsNull(a)) {
+            a = js_new_string_rope(ctx, a, js_dup(val));
+            if (JS_IsException(a))
+                return -1;
+        } else {
+            a = js_dup(val);
+        }
+        while (!JS_IsNull(buckets[i])) {
+            a = js_new_string_rope(ctx, buckets[i], a);
+            buckets[i] = JS_NULL;
+            if (JS_IsException(a))
+                return -1;
+            i++;
+        }
+        buckets[i] = a;
+    } else {
+        JSStringRope *r = JS_VALUE_GET_STRING_ROPE(val);
+        if (js_rebalance_string_rope_rec(ctx, buckets, r->left))
+            return -1;
+        if (js_rebalance_string_rope_rec(ctx, buckets, r->right))
+            return -1;
+    }
+    return 0;
+}
+
+/* Return a new rope which is balanced. Algorithm from "Ropes: an
+   Alternative to Strings", Hans-J. Boehm, Russ Atkinson and Michael
+   Plass. */
+static JSValue js_rebalance_string_rope(JSContext *ctx, JSValueConst rope)
+{
+    JSValue buckets[ROPE_N_BUCKETS], a, b;
+    int i;
+
+    for(i = 0; i < ROPE_N_BUCKETS; i++)
+        buckets[i] = JS_NULL;
+    if (js_rebalance_string_rope_rec(ctx, buckets, rope))
+        goto fail;
+    a = JS_NULL;
+    for(i = 0; i < ROPE_N_BUCKETS; i++) {
+        b = buckets[i];
+        if (!JS_IsNull(b)) {
+            buckets[i] = JS_NULL;
+            if (JS_IsNull(a)) {
+                a = b;
+            } else {
+                a = js_new_string_rope(ctx, b, a);
+                if (JS_IsException(a))
+                    goto fail;
+            }
+        }
+    }
+    /* fail safe */
+    if (JS_IsNull(a))
+        return JS_AtomToString(ctx, JS_ATOM_empty_string);
+    else
+        return a;
+ fail:
+    for(i = 0; i < ROPE_N_BUCKETS; i++) {
+        JS_FreeValue(ctx, buckets[i]);
+    }
+    return JS_EXCEPTION;
+}
+
+/* 'rope' must be a rope. return a string and modify the rope so that
+   it won't need to be linearized again. */
+static JSValue js_linearize_string_rope(JSContext *ctx, JSValueConst rope)
+{
+    StringBuffer b_s, *b = &b_s;
+    JSStringRope *r;
+    JSValue ret;
+
+    r = JS_VALUE_GET_STRING_ROPE(rope);
+
+    /* check whether it is already linearized */
+    if (JS_VALUE_GET_TAG(r->right) == JS_TAG_STRING &&
+        JS_VALUE_GET_STRING(r->right)->len == 0) {
+        ret = js_dup(r->left);
+        return ret;
+    }
+    if (string_buffer_init2(ctx, b, r->len, r->is_wide_char))
+        goto fail;
+    if (string_buffer_concat_value(b, rope))
+        goto fail;
+    ret = string_buffer_end(b);
+    if (r->header.ref_count > 1) {
+        /* update the rope so that it won't need to be linearized again */
+        JS_FreeValue(ctx, r->left);
+        JS_FreeValue(ctx, r->right);
+        r->left = js_dup(ret);
+        r->right = JS_AtomToString(ctx, JS_ATOM_empty_string);
+    }
+    return ret;
+ fail:
+    return JS_EXCEPTION;
+}
+
+/* flat string concatenation - used by rope when concatenating short strings */
+static JSValue JS_ConcatString2(JSContext *ctx, JSValue op1, JSValue op2);
+
 static void copy_str16(uint16_t *dst, JSString *p, int offset, int len)
 {
     if (p->is_wide_char) {
@@ -4603,27 +4997,12 @@ static JSValue JS_ConcatString1(JSContext *ctx, JSString *p1, JSString *p2)
     return JS_MKPTR(JS_TAG_STRING, p);
 }
 
-/* op1 and op2 are converted to strings. For convience, op1 or op2 =
-   JS_EXCEPTION are accepted and return JS_EXCEPTION.  */
-static JSValue JS_ConcatString(JSContext *ctx, JSValue op1, JSValue op2)
+/* flat string concatenation - op1 and op2 must be JS_TAG_STRING */
+static JSValue JS_ConcatString2(JSContext *ctx, JSValue op1, JSValue op2)
 {
     JSValue ret;
     JSString *p1, *p2;
 
-    if (unlikely(JS_VALUE_GET_TAG(op1) != JS_TAG_STRING)) {
-        op1 = JS_ToStringFree(ctx, op1);
-        if (JS_IsException(op1)) {
-            JS_FreeValue(ctx, op2);
-            return JS_EXCEPTION;
-        }
-    }
-    if (unlikely(JS_VALUE_GET_TAG(op2) != JS_TAG_STRING)) {
-        op2 = JS_ToStringFree(ctx, op2);
-        if (JS_IsException(op2)) {
-            JS_FreeValue(ctx, op1);
-            return JS_EXCEPTION;
-        }
-    }
     p1 = JS_VALUE_GET_STRING(op1);
     p2 = JS_VALUE_GET_STRING(op2);
 
@@ -4650,6 +5029,83 @@ static JSValue JS_ConcatString(JSContext *ctx, JSValue op1, JSValue op2)
     JS_FreeValue(ctx, op1);
     JS_FreeValue(ctx, op2);
     return ret;
+}
+
+/* op1 and op2 are converted to strings. For convenience, op1 or op2 =
+   JS_EXCEPTION are accepted and return JS_EXCEPTION.  */
+static JSValue JS_ConcatString(JSContext *ctx, JSValue op1, JSValue op2)
+{
+    JSString *p1, *p2;
+
+    if (unlikely(!tag_is_string(JS_VALUE_GET_TAG(op1)))) {
+        op1 = JS_ToStringFree(ctx, op1);
+        if (JS_IsException(op1)) {
+            JS_FreeValue(ctx, op2);
+            return JS_EXCEPTION;
+        }
+    }
+    if (unlikely(!tag_is_string(JS_VALUE_GET_TAG(op2)))) {
+        op2 = JS_ToStringFree(ctx, op2);
+        if (JS_IsException(op2)) {
+            JS_FreeValue(ctx, op1);
+            return JS_EXCEPTION;
+        }
+    }
+
+    /* normal concatenation for short strings */
+    if (JS_VALUE_GET_TAG(op2) == JS_TAG_STRING) {
+        p2 = JS_VALUE_GET_STRING(op2);
+        if (p2->len == 0) {
+            JS_FreeValue(ctx, op2);
+            return op1;
+        }
+        if (p2->len <= JS_STRING_ROPE_SHORT_LEN) {
+            if (JS_VALUE_GET_TAG(op1) == JS_TAG_STRING) {
+                p1 = JS_VALUE_GET_STRING(op1);
+                if (p1->len <= JS_STRING_ROPE_SHORT2_LEN) {
+                    return JS_ConcatString2(ctx, op1, op2);
+                } else {
+                    return js_new_string_rope(ctx, op1, op2);
+                }
+            } else {
+                JSStringRope *r1;
+                r1 = JS_VALUE_GET_STRING_ROPE(op1);
+                if (JS_VALUE_GET_TAG(r1->right) == JS_TAG_STRING &&
+                    JS_VALUE_GET_STRING(r1->right)->len <= JS_STRING_ROPE_SHORT_LEN) {
+                    JSValue val, ret;
+                    val = JS_ConcatString2(ctx, js_dup(r1->right), op2);
+                    if (JS_IsException(val)) {
+                        JS_FreeValue(ctx, op1);
+                        return JS_EXCEPTION;
+                    }
+                    ret = js_new_string_rope(ctx, js_dup(r1->left), val);
+                    JS_FreeValue(ctx, op1);
+                    return ret;
+                }
+            }
+        }
+    } else if (JS_VALUE_GET_TAG(op1) == JS_TAG_STRING) {
+        JSStringRope *r2;
+        p1 = JS_VALUE_GET_STRING(op1);
+        if (p1->len == 0) {
+            JS_FreeValue(ctx, op1);
+            return op2;
+        }
+        r2 = JS_VALUE_GET_STRING_ROPE(op2);
+        if (JS_VALUE_GET_TAG(r2->left) == JS_TAG_STRING &&
+            JS_VALUE_GET_STRING(r2->left)->len <= JS_STRING_ROPE_SHORT_LEN) {
+            JSValue val, ret;
+            val = JS_ConcatString2(ctx, op1, js_dup(r2->left));
+            if (JS_IsException(val)) {
+                JS_FreeValue(ctx, op2);
+                return JS_EXCEPTION;
+            }
+            ret = js_new_string_rope(ctx, val, js_dup(r2->right));
+            JS_FreeValue(ctx, op2);
+            return ret;
+        }
+    }
+    return js_new_string_rope(ctx, op1, op2);
 }
 
 /* Shape support */
@@ -5308,7 +5764,8 @@ static int JS_SetObjectData(JSContext *ctx, JSValueConst obj, JSValue val)
         case JS_CLASS_DATE:
         case JS_CLASS_BIG_INT:
             JS_FreeValue(ctx, p->u.object_data);
-            p->u.object_data = val;
+            p->u.object_data = val; /* for JS_CLASS_STRING, 'val' must
+                                       be JS_TAG_STRING (and not a rope) */
             return 0;
         }
     }
@@ -6144,6 +6601,14 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
     switch(tag) {
     case JS_TAG_STRING:
         js_free_string0(rt, JS_VALUE_GET_STRING(v));
+        break;
+    case JS_TAG_STRING_ROPE:
+        {
+            JSStringRope *p = JS_VALUE_GET_STRING_ROPE(v);
+            JS_FreeValueRT(rt, p->left);
+            JS_FreeValueRT(rt, p->right);
+            js_free_rt(rt, p);
+        }
         break;
     case JS_TAG_OBJECT:
     case JS_TAG_FUNCTION_BYTECODE:
@@ -7729,6 +8194,7 @@ static JSValueConst JS_GetPrototypePrimitive(JSContext *ctx, JSValueConst val)
         ret = ctx->class_proto[JS_CLASS_BOOLEAN];
         break;
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
         ret = ctx->class_proto[JS_CLASS_STRING];
         break;
     case JS_TAG_SYMBOL:
@@ -8087,6 +8553,21 @@ static JSValue JS_GetPropertyInternal(JSContext *ctx, JSValueConst obj,
                     }
                 } else if (prop == JS_ATOM_length) {
                     return js_int32(p1->len);
+                }
+            }
+            break;
+        case JS_TAG_STRING_ROPE:
+            {
+                JSStringRope *r = JS_VALUE_GET_STRING_ROPE(obj);
+                if (__JS_AtomIsTaggedInt(prop)) {
+                    uint32_t idx, ch;
+                    idx = __JS_AtomToUInt32(prop);
+                    if (idx < r->len) {
+                        ch = string_rope_get(obj, idx);
+                        return js_new_string_char(ctx, ch);
+                    }
+                } else if (prop == JS_ATOM_length) {
+                    return js_int32(r->len);
                 }
             }
             break;
@@ -11055,6 +11536,12 @@ static int JS_ToBoolFree(JSContext *ctx, JSValue val)
             JS_FreeValue(ctx, val);
             return ret;
         }
+    case JS_TAG_STRING_ROPE:
+        {
+            bool ret = JS_VALUE_GET_STRING_ROPE(val)->len != 0;
+            JS_FreeValue(ctx, val);
+            return ret;
+        }
     case JS_TAG_SHORT_BIG_INT:
         return JS_VALUE_GET_SHORT_BIG_INT(val) != 0;
     case JS_TAG_BIG_INT:
@@ -12768,6 +13255,7 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
             return JS_EXCEPTION;
         goto redo;
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
         {
             const char *str;
             const char *p;
@@ -13389,6 +13877,8 @@ static JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val,
     switch(tag) {
     case JS_TAG_STRING:
         return js_dup(val);
+    case JS_TAG_STRING_ROPE:
+        return js_linearize_string_rope(ctx, val);
     case JS_TAG_INT:
         len = i32toa(buf, JS_VALUE_GET_INT(val));
         return js_new_string8_len(ctx, buf, len);
@@ -13746,6 +14236,12 @@ static __maybe_unused void JS_DumpValue(JSRuntime *rt, JSValueConst val)
             JS_DumpString(rt, p);
         }
         break;
+    case JS_TAG_STRING_ROPE:
+        {
+            JSStringRope *r = JS_VALUE_GET_STRING_ROPE(val);
+            printf("[rope len=%d depth=%d]", r->len, r->depth);
+        }
+        break;
     case JS_TAG_FUNCTION_BYTECODE:
         {
             JSFunctionBytecode *b = JS_VALUE_GET_PTR(val);
@@ -13906,6 +14402,7 @@ static JSValue JS_ToBigIntFree(JSContext *ctx, JSValue val)
         val = __JS_NewShortBigInt(ctx, JS_VALUE_GET_INT(val));
         break;
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
         val = JS_StringToBigIntErr(ctx, val);
         if (JS_IsException(val))
             return val;
@@ -14395,7 +14892,7 @@ static no_inline __exception int js_add_slow(JSContext *ctx, JSValue *sp)
         tag2 = JS_VALUE_GET_NORM_TAG(op2);
     }
 
-    if (tag1 == JS_TAG_STRING || tag2 == JS_TAG_STRING) {
+    if (tag_is_string(tag1) || tag_is_string(tag2)) {
         sp[-2] = JS_ConcatString(ctx, op1, op2);
         if (JS_IsException(sp[-2]))
             goto exception;
@@ -14740,11 +15237,13 @@ static no_inline int js_relational_slow(JSContext *ctx, JSValue *sp,
     tag1 = JS_VALUE_GET_NORM_TAG(op1);
     tag2 = JS_VALUE_GET_NORM_TAG(op2);
 
-    if (tag1 == JS_TAG_STRING && tag2 == JS_TAG_STRING) {
-        JSString *p1, *p2;
-        p1 = JS_VALUE_GET_STRING(op1);
-        p2 = JS_VALUE_GET_STRING(op2);
-        res = js_string_compare(p1, p2);
+    if (tag_is_string(tag1) && tag_is_string(tag2)) {
+        if (tag1 == JS_TAG_STRING && tag2 == JS_TAG_STRING) {
+            res = js_string_compare(JS_VALUE_GET_STRING(op1),
+                                    JS_VALUE_GET_STRING(op2));
+        } else {
+            res = js_string_rope_compare(op1, op2, false);
+        }
         switch(op) {
         case OP_lt:
             res = (res < 0);
@@ -14896,18 +15395,18 @@ static no_inline __exception int js_eq_slow(JSContext *ctx, JSValue *sp,
     } else if ((tag1 == JS_TAG_NULL && tag2 == JS_TAG_UNDEFINED) ||
                (tag2 == JS_TAG_NULL && tag1 == JS_TAG_UNDEFINED)) {
         res = true;
-    } else if ((tag1 == JS_TAG_STRING && tag_is_number(tag2)) ||
-               (tag2 == JS_TAG_STRING && tag_is_number(tag1))) {
+    } else if ((tag_is_string(tag1) && tag_is_number(tag2)) ||
+               (tag_is_string(tag2) && tag_is_number(tag1))) {
 
         if (tag1 == JS_TAG_BIG_INT || tag1 == JS_TAG_SHORT_BIG_INT ||
             tag2 == JS_TAG_BIG_INT || tag2 == JS_TAG_SHORT_BIG_INT) {
-            if (tag1 == JS_TAG_STRING) {
+            if (tag_is_string(tag1)) {
                 op1 = JS_StringToBigInt(ctx, op1);
                 if (JS_VALUE_GET_TAG(op1) != JS_TAG_BIG_INT &&
                     JS_VALUE_GET_TAG(op1) != JS_TAG_SHORT_BIG_INT)
                     goto invalid_bigint_string;
             }
-            if (tag2 == JS_TAG_STRING) {
+            if (tag_is_string(tag2)) {
                 op2 = JS_StringToBigInt(ctx, op2);
                 if (JS_VALUE_GET_TAG(op2) != JS_TAG_BIG_INT &&
                     JS_VALUE_GET_TAG(op2) != JS_TAG_SHORT_BIG_INT ) {
@@ -14938,9 +15437,9 @@ static no_inline __exception int js_eq_slow(JSContext *ctx, JSValue *sp,
         op2 = js_int32(JS_VALUE_GET_INT(op2));
         goto redo;
     } else if ((tag1 == JS_TAG_OBJECT &&
-                (tag_is_number(tag2) || tag2 == JS_TAG_STRING || tag2 == JS_TAG_SYMBOL)) ||
+                (tag_is_number(tag2) || tag_is_string(tag2) || tag2 == JS_TAG_SYMBOL)) ||
                (tag2 == JS_TAG_OBJECT &&
-                (tag_is_number(tag1) || tag1 == JS_TAG_STRING || tag1 == JS_TAG_SYMBOL))) {
+                (tag_is_number(tag1) || tag_is_string(tag1) || tag1 == JS_TAG_SYMBOL))) {
         op1 = JS_ToPrimitiveFree(ctx, op1, HINT_NONE);
         if (JS_IsException(op1)) {
             JS_FreeValue(ctx, op2);
@@ -15036,14 +15535,15 @@ static bool js_strict_eq2(JSContext *ctx, JSValue op1, JSValue op2,
         res = (tag1 == tag2);
         break;
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
         {
-            JSString *p1, *p2;
-            if (tag1 != tag2) {
+            if (!tag_is_string(tag2)) {
                 res = false;
+            } else if (tag1 == JS_TAG_STRING && tag2 == JS_TAG_STRING) {
+                res = js_string_eq(JS_VALUE_GET_STRING(op1),
+                                   JS_VALUE_GET_STRING(op2));
             } else {
-                p1 = JS_VALUE_GET_STRING(op1);
-                p2 = JS_VALUE_GET_STRING(op2);
-                res = js_string_eq(p1, p2);
+                res = (js_string_rope_compare(op1, op2, true) == 0);
             }
         }
         break;
@@ -15278,6 +15778,7 @@ static __exception int js_operator_typeof(JSContext *ctx, JSValue op1)
         atom = JS_ATOM_boolean;
         break;
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
         atom = JS_ATOM_string;
         break;
     case JS_TAG_OBJECT:
@@ -36782,6 +37283,16 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValueConst obj)
             JS_WriteString(s, p);
         }
         break;
+    case JS_TAG_STRING_ROPE:
+        {
+            JSValue str;
+            str = JS_ToString(s->ctx, obj);
+            if (JS_IsException(str))
+                goto fail;
+            JS_WriteObjectRec(s, str);
+            JS_FreeValue(s->ctx, str);
+        }
+        break;
     case JS_TAG_FUNCTION_BYTECODE:
         if (!s->allow_bytecode)
             goto invalid_tag;
@@ -38637,11 +39148,21 @@ JSValue JS_ToObject(JSContext *ctx, JSValueConst val)
         obj = JS_NewObjectClass(ctx, JS_CLASS_NUMBER);
         goto set_value;
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
         /* XXX: should call the string constructor */
         {
-            JSString *p1 = JS_VALUE_GET_STRING(val);
+            JSValue str;
+            str = JS_ToString(ctx, val); /* ensure that we never store a rope */
+            if (JS_IsException(str))
+                return JS_EXCEPTION;
             obj = JS_NewObjectClass(ctx, JS_CLASS_STRING);
-            JS_DefinePropertyValue(ctx, obj, JS_ATOM_length, js_int32(p1->len), 0);
+            if (!JS_IsException(obj)) {
+                JS_DefinePropertyValue(ctx, obj, JS_ATOM_length,
+                                       JS_NewInt32(ctx, JS_VALUE_GET_STRING(str)->len), 0);
+                JS_SetObjectData(ctx, obj, JS_DupValue(ctx, str));
+            }
+            JS_FreeValue(ctx, str);
+            return obj;
         }
         goto set_value;
     case JS_TAG_BOOL:
@@ -44104,7 +44625,7 @@ static JSValue js_string_constructor(JSContext *ctx, JSValueConst new_target,
 
 static JSValue js_thisStringValue(JSContext *ctx, JSValueConst this_val)
 {
-    if (JS_VALUE_GET_TAG(this_val) == JS_TAG_STRING)
+    if (tag_is_string(JS_VALUE_GET_TAG(this_val)))
         return js_dup(this_val);
 
     if (JS_VALUE_GET_TAG(this_val) == JS_TAG_OBJECT) {
@@ -48216,6 +48737,7 @@ static JSValue js_json_check(JSContext *ctx, JSONStringifyContext *jsc,
         if (JS_IsFunction(ctx, val))
             break;
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
     case JS_TAG_INT:
     case JS_TAG_FLOAT64:
     case JS_TAG_BOOL:
@@ -48389,6 +48911,7 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
  concat_primitive:
     switch (JS_VALUE_GET_NORM_TAG(val)) {
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
         val = JS_ToQuotedStringFree(ctx, val);
         if (JS_IsException(val))
             goto exception;
@@ -49999,6 +50522,9 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         break;
     case JS_TAG_STRING:
         h = hash_string(JS_VALUE_GET_STRING(key), 0);
+        break;
+    case JS_TAG_STRING_ROPE:
+        h = hash_string_rope(key, 0);
         break;
     case JS_TAG_OBJECT:
     case JS_TAG_SYMBOL:
@@ -54347,6 +54873,7 @@ static JSValue JS_ToBigIntCtorFree(JSContext *ctx, JSValue val)
         }
         break;
     case JS_TAG_STRING:
+    case JS_TAG_STRING_ROPE:
         val = JS_StringToBigIntErr(ctx, val);
         break;
     case JS_TAG_OBJECT:
