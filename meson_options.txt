@@ -4,3 +4,4 @@ option('libc', type: 'boolean', value: false, description: 'build qjs standard l
 option('cli_mimalloc', type: 'feature', value: 'disabled', description: 'build qjs cli with mimalloc')
 option('docdir', type: 'string', description: 'documentation directory')
 option('parser', type: 'boolean', value: true, description: 'Enable JS source code parser')
+option('libonly', type: 'boolean', value: false, description: 'Build qjs library only')
