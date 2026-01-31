@@ -730,7 +730,8 @@ static inline bool JS_IsUninitialized(JSValueConst v)
 
 static inline bool JS_IsString(JSValueConst v)
 {
-    return JS_VALUE_GET_TAG(v) == JS_TAG_STRING;
+    int tag = JS_VALUE_GET_TAG(v);
+    return tag == JS_TAG_STRING || tag == JS_TAG_STRING_ROPE;
 }
 
 static inline bool JS_IsSymbol(JSValueConst v)
