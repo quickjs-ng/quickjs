@@ -648,11 +648,14 @@ jobs:
           - name: clang+sanitize
             args: >-
               "-Db_sanitize=address,undefined"
+              "-Db_lundef=false"
             extra_envs:
               CC: clang
               CXX: clang++
           - name: clang+msan
-            args: -Db_sanitize=memory
+            args: >-
+              "-Db_sanitize=memory"
+              "-Db_lundef=false"
             extra_envs:
               CC: clang
               CXX: clang++
@@ -662,6 +665,7 @@ jobs:
           - name: clang-cl+sanitize
             args: >-
               "-Db_sanitize=address,undefined"
+              "-Db_lundef=false"
             extra_envs:
               CC: clang-cl
               CXX: clang-cl
