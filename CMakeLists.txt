@@ -434,9 +434,10 @@ if(QJS_BUILD_EXAMPLES)
     target_compile_definitions(hello_module PRIVATE ${qjs_defines})
     target_link_libraries(hello_module qjs)
 
-    add_library(fib MODULE examples/fib.c)
+    add_library(fib SHARED examples/fib.c)
     set_target_properties(fib PROPERTIES
         PREFIX ""
+        SUFFIX ".qjs"
         C_VISIBILITY_PRESET default
     )
     target_compile_definitions(fib PRIVATE JS_SHARED_LIBRARY)
@@ -446,8 +447,9 @@ if(QJS_BUILD_EXAMPLES)
         target_link_options(fib PRIVATE -undefined dynamic_lookup)
     endif()
 
-    add_library(point MODULE examples/point.c)
+    add_library(point SHARED examples/point.c)
     set_target_properties(point PROPERTIES
+        OUTPUT_NAME "point.qjs"
         PREFIX ""
         C_VISIBILITY_PRESET default
     )
