@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "../msvc-pragmas.h"
 #include "../quickjs.h"
 
 #define countof(x) (sizeof(x) / sizeof((x)[0]))

@@ -23,6 +23,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include "msvc-pragmas.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
