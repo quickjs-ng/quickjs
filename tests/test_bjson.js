@@ -268,7 +268,7 @@ function bjson_test_bytecode()
     var buf, o, r, e, i;
 
     o = std.evalScript(";(function f(o){ return o.i })", {compile_only: true});
-    buf = bjson.write(o, /*JS_WRITE_OBJ_BYTECODE*/(1 << 0));
+    buf = bjson.write(o, bjson.WRITE_OBJ_BYTECODE);
     try {
         bjson.read(buf, 0, buf.byteLength);
     } catch (_e) {
@@ -276,7 +276,7 @@ function bjson_test_bytecode()
     }
     assert(String(e), "SyntaxError: no bytecode allowed");
 
-    o = bjson.read(buf, 0, buf.byteLength, /*JS_READ_OBJ_BYTECODE*/(1 << 0));
+    o = bjson.read(buf, 0, buf.byteLength, bjson.READ_OBJ_BYTECODE);
     assert(String(o), "[function bytecode]");
     o = std.evalScript(o, {eval_function: true});
     for (i = 0; i < 42; i++) o({i}); // exercise o.i IC
@@ -285,15 +285,16 @@ function bjson_test_bytecode()
 function bjson_test_fuzz()
 {
     var corpus = [
-        "FxAAAAAABGA=",
-        "F+bm5oIt",
-        "FwARABMGBgYGBgYGBgYGBv////8QABEALxH/vy8R/78=",
-        "FwAIfwAK/////3//////////////////////////////3/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAD5+fn5+fn5+fn5+fkAAAAAAAYAqw==",
+        ["FxAAAAAABGA="],
+        ["F+bm5oIt"],
+        ["FwARABMGBgYGBgYGBgYGBv////8QABEALxH/vy8R/78="],
+        ["FwAIfwAK/////3//////////////////////////////3/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAD5+fn5+fn5+fn5+fkAAAAAAAYAqw=="],
+        ["FwAOAAAAFAA=", bjson.READ_OBJ_REFERENCE],
     ];
-  for (var input of corpus) {
+    for (var [input, flags] of corpus) {
         var buf = base64decode(input);
         try {
-            bjson.read(buf, 0, buf.byteLength);
+            bjson.read(buf, 0, buf.byteLength, flags);
         } catch (e) {
             if (/invalid version/.test(e.message)) throw e; // corpus needs update
         }
