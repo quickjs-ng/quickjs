@@ -36,7 +36,6 @@ extern "C" {
 #endif
 
 #if defined(_MSC_VER)
-#include <winsock2.h>
 #include <malloc.h>
 #define alloca _alloca
 #define ssize_t ptrdiff_t
@@ -48,6 +47,7 @@ extern "C" {
 #elif defined(__FreeBSD__)
 #include <malloc_np.h>
 #elif defined(_WIN32)
+#include <winsock2.h>
 #include <windows.h>
 #endif
 #if !defined(_WIN32) && !defined(EMSCRIPTEN) && !defined(__wasi__) && !defined(__DJGPP)
