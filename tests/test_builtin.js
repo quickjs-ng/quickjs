@@ -686,6 +686,28 @@ function test_typed_array()
     Object.defineProperty(ArrayBuffer, Symbol.species, desc); // restore
     assert(ex instanceof TypeError);
     assert("ArrayBuffer is detached", ex.message);
+
+    var buffer = new ArrayBuffer(2);
+    var ta = new Uint16Array(buffer);
+    var desc = Object.getOwnPropertyDescriptor(ta, "0");
+    ta[0] = 42;
+    assert(ta[0], 42);
+    Object.defineProperty(ta, "0", {value: 1337});
+    assert(ta[0], 1337);
+    assert(desc.writable, true);
+    assert(desc.enumerable, true);
+    assert(desc.configurable, true);
+
+    var buffer = new ArrayBuffer(2).sliceToImmutable();
+    var ta = new Uint16Array(buffer);
+    var desc = Object.getOwnPropertyDescriptor(ta, "0");
+    ta[0] = 42;
+    assert(ta[0], 0);
+    Object.defineProperty(ta, "0", {value: 1337});
+    assert(ta[0], 0);
+    assert(desc.writable, false);
+    assert(desc.enumerable, true);
+    assert(desc.configurable, false);
 }
 
 function test_json()
