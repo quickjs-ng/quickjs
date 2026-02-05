@@ -56256,14 +56256,14 @@ static JSValue js_typed_array_set_internal(JSContext *ctx,
     p = get_typed_array(ctx, dst);
     if (!p)
         goto fail;
-    if (JS_ToInt64Sat(ctx, &offset, off))
-        goto fail;
-    if (offset < 0)
-        goto range_error;
     if (typed_array_is_immutable(p)) {
         JS_ThrowTypeErrorImmutableArrayBuffer(ctx);
         goto fail;
     }
+    if (JS_ToInt64Sat(ctx, &offset, off))
+        goto fail;
+    if (offset < 0)
+        goto range_error;
     if (typed_array_is_oob(p)) {
     detached:
         JS_ThrowTypeErrorArrayBufferOOB(ctx);
