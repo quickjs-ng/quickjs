@@ -37502,6 +37502,10 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
         goto fail;
     if (JS_WriteObjectAtoms(s))
         goto fail;
+    if (dbuf_error(&s->dbuf)) {
+        JS_ThrowOutOfMemory(ctx);
+        goto fail;
+    }
     js_object_list_end(ctx, &s->object_list);
     js_free(ctx, s->atom_to_idx);
     js_free(ctx, s->idx_to_atom);
