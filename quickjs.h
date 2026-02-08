@@ -459,6 +459,9 @@ JS_EXTERN void JS_MarkValue(JSRuntime *rt, JSValueConst val,
                             JS_MarkFunc *mark_func);
 JS_EXTERN void JS_RunGC(JSRuntime *rt);
 JS_EXTERN bool JS_IsLiveObject(JSRuntime *rt, JSValueConst obj);
+JS_EXTERN bool JS_IsJITCompiled(JSContext *ctx, JSValueConst val);
+JS_EXTERN void JS_GetJITStats(JSRuntime *rt, uint32_t *compiled,
+                               uint32_t *failed, uint32_t *calls);
 
 JS_EXTERN JSContext *JS_NewContext(JSRuntime *rt);
 JS_EXTERN void JS_FreeContext(JSContext *s);

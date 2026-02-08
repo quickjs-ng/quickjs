@@ -4494,6 +4494,31 @@ done:
     return JS_UNDEFINED;
 }
 
+static JSValue js_jit_compiled(JSContext *ctx, JSValueConst this_val,
+                               int argc, JSValueConst *argv)
+{
+    (void)this_val;
+    if (argc < 1)
+        return JS_FALSE;
+    return JS_NewBool(ctx, JS_IsJITCompiled(ctx, argv[0]));
+}
+
+static JSValue js_jit_stats(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv)
+{
+    uint32_t compiled, failed, calls;
+    JSValue obj;
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    JS_GetJITStats(JS_GetRuntime(ctx), &compiled, &failed, &calls);
+    obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "compiled", JS_NewUint32(ctx, compiled));
+    JS_SetPropertyStr(ctx, obj, "failed", JS_NewUint32(ctx, failed));
+    JS_SetPropertyStr(ctx, obj, "calls", JS_NewUint32(ctx, calls));
+    return obj;
+}
+
 void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
 {
     JSValue global_obj, console, args;
@@ -4518,6 +4543,15 @@ void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
 
     JS_SetPropertyStr(ctx, global_obj, "print",
                       JS_NewCFunction(ctx, js_print, "print", 1));
+
+    {
+        JSValue jit_obj = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, jit_obj, "compiled",
+                          JS_NewCFunction(ctx, js_jit_compiled, "compiled", 1));
+        JS_SetPropertyStr(ctx, jit_obj, "stats",
+                          JS_NewCFunction(ctx, js_jit_stats, "stats", 0));
+        JS_SetPropertyStr(ctx, global_obj, "__jit", jit_obj);
+    }
 
     JS_FreeValue(ctx, global_obj);
 }
