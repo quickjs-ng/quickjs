@@ -49,23 +49,6 @@ extern "C" {
 #endif /* defined(__GNUC__) || defined(__clang__) */
 
 /*
- * `js_force_inline` -- helper macro forcing the inlining of a function.
- */
-#ifdef QUICKJS_NG_PLAT_WIN32
-# ifdef QUICKJS_NG_CC_GNULIKE
-#  define js_force_inline inline __attribute__((always_inline))
-# else
-#  define js_force_inline __forceinline
-# endif
-#else
-# ifdef QUICKJS_NG_CC_GNULIKE
-#  define js_force_inline inline __attribute__((always_inline))
-# else
-#  define js_force_inline inline
-# endif
-#endif /* QUICKJS_NG_PLAT_WIN32 */
-
-/*
  * `JS_EXTERN` -- helper macro that must be used to mark the external
  * interfaces of libqjs.
  *
@@ -730,31 +713,31 @@ JS_EXTERN JSAtom JS_GetClassName(JSRuntime *rt, JSClassID class_id);
 
 /* value handling */
 
-static js_force_inline JSValue JS_NewBool(JSContext *ctx, bool val)
+static inline JSValue JS_NewBool(JSContext *ctx, bool val)
 {
     (void)&ctx;
     return JS_MKVAL(JS_TAG_BOOL, (val != 0));
 }
 
-static js_force_inline JSValue JS_NewInt32(JSContext *ctx, int32_t val)
+static inline JSValue JS_NewInt32(JSContext *ctx, int32_t val)
 {
     (void)&ctx;
     return JS_MKVAL(JS_TAG_INT, val);
 }
 
-static js_force_inline JSValue JS_NewFloat64(JSContext *ctx, double val)
+static inline JSValue JS_NewFloat64(JSContext *ctx, double val)
 {
     (void)&ctx;
     return __JS_NewFloat64(val);
 }
 
-static js_force_inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
+static inline JSValue JS_NewCatchOffset(JSContext *ctx, int32_t val)
 {
     (void)&ctx;
     return JS_MKVAL(JS_TAG_CATCH_OFFSET, val);
 }
 
-static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
+static inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
 {
     JSValue v;
     if (val >= INT32_MIN && val <= INT32_MAX) {
@@ -765,7 +748,7 @@ static js_force_inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
     return v;
 }
 
-static js_force_inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
+static inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
 {
     JSValue v;
     if (val <= INT32_MAX) {
@@ -1414,8 +1397,6 @@ JS_EXTERN const char* JS_GetVersion(void);
 
 /* Integration point for quickjs-libc.c, not for public use. */
 JS_EXTERN uintptr_t js_std_cmd(int cmd, ...);
-
-#undef js_force_inline
 
 #ifdef __cplusplus
 } /* extern "C" { */
