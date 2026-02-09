@@ -232,7 +232,7 @@ if qjs_libc
     include_directories: include_directories('.'),
     dependencies: qjs_dep,
   )
-else
+elif not lib_only
   qjs_libc_lib = static_library(
     'quickjs-libc',
     qjs_libc_srcs,
