@@ -42,7 +42,7 @@
 #include <time.h>
 #include <math.h>
 
-#include "cutils.h"
+#include "cutils.c"
 #include "list.h"
 #include "quickjs.h"
 #include "libregexp.h"

@@ -31,7 +31,7 @@
 #include <ctype.h>
 #include <time.h>
 
-#include "cutils.h"
+#include "cutils.c"
 
 /* define it to be able to test unicode.c */
 //#define USE_TEST

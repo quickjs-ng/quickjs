@@ -48,7 +48,7 @@
 #pragma GCC visibility push(default)
 #endif
 
-void js__pstrcpy(char *buf, int buf_size, const char *str)
+static inline void js__pstrcpy(char *buf, int buf_size, const char *str)
 {
     int c;
     char *q = buf;
@@ -66,7 +66,7 @@ void js__pstrcpy(char *buf, int buf_size, const char *str)
 }
 
 /* strcat and truncate. */
-char *js__pstrcat(char *buf, int buf_size, const char *s)
+static inline char *js__pstrcat(char *buf, int buf_size, const char *s)
 {
     int len;
     len = strlen(buf);
@@ -75,7 +75,7 @@ char *js__pstrcat(char *buf, int buf_size, const char *s)
     return buf;
 }
 
-int js__strstart(const char *str, const char *val, const char **ptr)
+static inline int js__strstart(const char *str, const char *val, const char **ptr)
 {
     const char *p, *q;
     p = str;
@@ -91,7 +91,7 @@ int js__strstart(const char *str, const char *val, const char **ptr)
     return 1;
 }
 
-int js__has_suffix(const char *str, const char *suffix)
+static inline int js__has_suffix(const char *str, const char *suffix)
 {
     size_t len = strlen(str);
     size_t slen = strlen(suffix);
@@ -109,7 +109,7 @@ static void *dbuf_default_realloc(void *opaque, void *ptr, size_t size)
     return realloc(ptr, size);
 }
 
-void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func)
+static inline void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func)
 {
     memset(s, 0, sizeof(*s));
     if (!realloc_func)
@@ -118,13 +118,13 @@ void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func)
     s->realloc_func = realloc_func;
 }
 
-void dbuf_init(DynBuf *s)
+static inline void dbuf_init(DynBuf *s)
 {
     dbuf_init2(s, NULL, NULL);
 }
 
 /* Try to allocate 'len' more bytes. return < 0 if error */
-int dbuf_claim(DynBuf *s, size_t len)
+static inline int dbuf_claim(DynBuf *s, size_t len)
 {
     size_t new_size, size, new_allocated_size;
     uint8_t *new_buf;
@@ -150,7 +150,7 @@ int dbuf_claim(DynBuf *s, size_t len)
     return 0;
 }
 
-int dbuf_put(DynBuf *s, const void *data, size_t len)
+static inline int dbuf_put(DynBuf *s, const void *data, size_t len)
 {
     if (unlikely((s->size + len) > s->allocated_size)) {
         if (dbuf_claim(s, len))
@@ -163,7 +163,7 @@ int dbuf_put(DynBuf *s, const void *data, size_t len)
     return 0;
 }
 
-int dbuf_put_self(DynBuf *s, size_t offset, size_t len)
+static inline int dbuf_put_self(DynBuf *s, size_t offset, size_t len)
 {
     if (unlikely((s->size + len) > s->allocated_size)) {
         if (dbuf_claim(s, len))
@@ -176,32 +176,32 @@ int dbuf_put_self(DynBuf *s, size_t offset, size_t len)
     return 0;
 }
 
-int __dbuf_putc(DynBuf *s, uint8_t c)
+static inline int __dbuf_putc(DynBuf *s, uint8_t c)
 {
     return dbuf_put(s, &c, 1);
 }
 
-int __dbuf_put_u16(DynBuf *s, uint16_t val)
+static inline int __dbuf_put_u16(DynBuf *s, uint16_t val)
 {
     return dbuf_put(s, (uint8_t *)&val, 2);
 }
 
-int __dbuf_put_u32(DynBuf *s, uint32_t val)
+static inline int __dbuf_put_u32(DynBuf *s, uint32_t val)
 {
     return dbuf_put(s, (uint8_t *)&val, 4);
 }
 
-int __dbuf_put_u64(DynBuf *s, uint64_t val)
+static inline int __dbuf_put_u64(DynBuf *s, uint64_t val)
 {
     return dbuf_put(s, (uint8_t *)&val, 8);
 }
 
-int dbuf_putstr(DynBuf *s, const char *str)
+static inline int dbuf_putstr(DynBuf *s, const char *str)
 {
     return dbuf_put(s, (const uint8_t *)str, strlen(str));
 }
 
-int JS_PRINTF_FORMAT_ATTR(2, 3) dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const char *fmt, ...)
+static inline int JS_PRINTF_FORMAT_ATTR(2, 3) dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const char *fmt, ...)
 {
     va_list ap;
     char buf[128];
@@ -225,7 +225,7 @@ int JS_PRINTF_FORMAT_ATTR(2, 3) dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const ch
     return 0;
 }
 
-void dbuf_free(DynBuf *s)
+static inline void dbuf_free(DynBuf *s)
 {
     /* we test s->buf as a fail safe to avoid crashing if dbuf_free()
        is called twice */
@@ -245,7 +245,7 @@ void dbuf_free(DynBuf *s)
    Returns the number of bytes. If a codepoint is beyond 0x10FFFF the
    return value is 3 as the codepoint would be encoded as 0xFFFD.
  */
-size_t utf8_encode_len(uint32_t c)
+static inline size_t utf8_encode_len(uint32_t c)
 {
     if (c < 0x80)
         return 1;
@@ -266,7 +266,7 @@ size_t utf8_encode_len(uint32_t c)
    No null byte is stored after the encoded bytes.
    Return value is in range 1..4
  */
-size_t utf8_encode(uint8_t buf[minimum_length(UTF8_CHAR_LEN_MAX)], uint32_t c)
+static inline size_t utf8_encode(uint8_t buf[minimum_length(UTF8_CHAR_LEN_MAX)], uint32_t c)
 {
     if (c < 0x80) {
         buf[0] = c;
@@ -310,7 +310,7 @@ size_t utf8_encode(uint8_t buf[minimum_length(UTF8_CHAR_LEN_MAX)], uint32_t c)
    If `p[0]` is '\0', the return value is `0` and the byte is consumed.
    cf: https://encoding.spec.whatwg.org/#utf-8-encoder
  */
-uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp)
+static inline uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp)
 {
     uint32_t c;
     uint8_t lower, upper;
@@ -378,7 +378,7 @@ uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp)
     return 0xFFFD;
 }
 
-uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp) {
+static inline uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp) {
     switch (max_len) {
     case 0:
         *pp = p;
@@ -414,7 +414,7 @@ uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp) {
    - `UTF8_HAS_NON_BMP1`: bit for non-BMP1 code points, needs UTF-16 surrogate pairs
    - `UTF8_HAS_ERRORS`: bit for encoding errors
  */
-int utf8_scan(const char *buf, size_t buf_len, size_t *plen)
+static inline int utf8_scan(const char *buf, size_t buf_len, size_t *plen)
 {
     const uint8_t *p, *p_end, *p_next;
     size_t i, len;
@@ -462,7 +462,7 @@ int utf8_scan(const char *buf, size_t buf_len, size_t *plen)
    `dest_len` is the length of the destination array. A null
    terminator is stored at the end of the array unless `dest_len` is `0`.
  */
-size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len)
+static inline size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len)
 {
     const uint8_t *p, *p_end;
     size_t i;
@@ -490,7 +490,7 @@ size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t 
    `dest_len` is the length of the destination array. No null terminator is
    stored at the end of the array.
  */
-size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len)
+static inline size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len)
 {
     const uint8_t *p, *p_end;
     size_t i;
@@ -523,7 +523,7 @@ size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_
    `dest_len` is the length in bytes of the destination array. A null
    terminator is stored at the end of the array unless `dest_len` is `0`.
  */
-size_t utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len)
+static inline size_t utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len)
 {
     size_t i, j;
     uint32_t c;
@@ -560,7 +560,7 @@ overflow:
    `dest_len` is the length in bytes of the destination array. A null
    terminator is stored at the end of the array unless `dest_len` is `0`.
  */
-size_t utf8_encode_buf16(char *dest, size_t dest_len, const uint16_t *src, size_t src_len)
+static inline size_t utf8_encode_buf16(char *dest, size_t dest_len, const uint16_t *src, size_t src_len)
 {
     size_t i, j;
     uint32_t c;
@@ -782,7 +782,7 @@ static inline void *med3(void *a, void *b, void *c, cmp_f cmp, void *opaque)
 }
 
 /* pointer based version with local stack and insertion sort threshhold */
-void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
+static inline void rqsort(void *base, size_t nmemb, size_t size, cmp_f cmp, void *opaque)
 {
     struct { uint8_t *base; size_t count; int depth; } stack[50], *sp = stack;
     uint8_t *ptr, *pi, *pj, *plt, *pgt, *top, *m;
@@ -924,7 +924,7 @@ static int gettimeofday_msvc(struct timeval *tp)
   return 0;
 }
 
-uint64_t js__hrtime_ns(void) {
+static inline uint64_t js__hrtime_ns(void) {
     LARGE_INTEGER counter, frequency;
     double scaled_freq;
     double result;
@@ -946,7 +946,7 @@ uint64_t js__hrtime_ns(void) {
   return (uint64_t) result;
 }
 #else
-uint64_t js__hrtime_ns(void) {
+static inline uint64_t js__hrtime_ns(void) {
 #ifdef __DJGPP
   struct timeval tv;
   if (gettimeofday(&tv, NULL))
@@ -963,7 +963,7 @@ uint64_t js__hrtime_ns(void) {
 }
 #endif
 
-int64_t js__gettimeofday_us(void) {
+static inline int64_t js__gettimeofday_us(void) {
     struct timeval tv;
 #ifdef _WIN32
     gettimeofday_msvc(&tv);
@@ -974,7 +974,7 @@ int64_t js__gettimeofday_us(void) {
 }
 
 #if defined(_WIN32)
-int js_exepath(char *buffer, size_t *size_ptr) {
+static inline int js_exepath(char *buffer, size_t *size_ptr) {
     int utf8_len, utf16_buffer_len, utf16_len;
     WCHAR* utf16_buffer;
 
@@ -1021,7 +1021,7 @@ error:
     return -1;
 }
 #elif defined(__APPLE__)
-int js_exepath(char *buffer, size_t *size) {
+static inline int js_exepath(char *buffer, size_t *size) {
     /* realpath(exepath) may be > PATH_MAX so double it to be on the safe side. */
     char abspath[PATH_MAX * 2 + 1];
     char exepath[PATH_MAX + 1];
@@ -1052,7 +1052,7 @@ int js_exepath(char *buffer, size_t *size) {
     return 0;
 }
 #elif defined(__linux__) || defined(__GNU__)
-int js_exepath(char *buffer, size_t *size) {
+static inline int js_exepath(char *buffer, size_t *size) {
     ssize_t n;
 
     if (buffer == NULL || size == NULL || *size == 0)
@@ -1071,7 +1071,7 @@ int js_exepath(char *buffer, size_t *size) {
     return 0;
 }
 #else
-int js_exepath(char* buffer, size_t* size_ptr) {
+static inline int js_exepath(char* buffer, size_t* size_ptr) {
     return -1;
 }
 #endif
@@ -1094,50 +1094,50 @@ static int WINAPI js__once_inner(INIT_ONCE *once, void *param, void **context) {
     return 1;
 }
 
-void js_once(js_once_t *guard, js__once_cb callback) {
+static inline void js_once(js_once_t *guard, js__once_cb callback) {
     js__once_data_t data = { .callback = callback };
     InitOnceExecuteOnce(guard, js__once_inner, (void*) &data, NULL);
 }
 
-void js_mutex_init(js_mutex_t *mutex) {
+static inline void js_mutex_init(js_mutex_t *mutex) {
     InitializeCriticalSection(mutex);
 }
 
-void js_mutex_destroy(js_mutex_t *mutex) {
+static inline void js_mutex_destroy(js_mutex_t *mutex) {
     DeleteCriticalSection(mutex);
 }
 
-void js_mutex_lock(js_mutex_t *mutex) {
+static inline void js_mutex_lock(js_mutex_t *mutex) {
     EnterCriticalSection(mutex);
 }
 
-void js_mutex_unlock(js_mutex_t *mutex) {
+static inline void js_mutex_unlock(js_mutex_t *mutex) {
     LeaveCriticalSection(mutex);
 }
 
-void js_cond_init(js_cond_t *cond) {
+static inline void js_cond_init(js_cond_t *cond) {
     InitializeConditionVariable(cond);
 }
 
-void js_cond_destroy(js_cond_t *cond) {
+static inline void js_cond_destroy(js_cond_t *cond) {
   /* nothing to do */
   (void) cond;
 }
 
-void js_cond_signal(js_cond_t *cond) {
+static inline void js_cond_signal(js_cond_t *cond) {
     WakeConditionVariable(cond);
 }
 
-void js_cond_broadcast(js_cond_t *cond) {
+static inline void js_cond_broadcast(js_cond_t *cond) {
     WakeAllConditionVariable(cond);
 }
 
-void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex) {
+static inline void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex) {
     if (!SleepConditionVariableCS(cond, mutex, INFINITE))
         abort();
 }
 
-int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
+static inline int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     if (SleepConditionVariableCS(cond, mutex, (DWORD)(timeout / 1e6)))
         return 0;
     if (GetLastError() != ERROR_TIMEOUT)
@@ -1145,7 +1145,7 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     return -1;
 }
 
-int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+static inline int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
                      int flags)
 {
     HANDLE h, cp;
@@ -1168,7 +1168,7 @@ int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
     return -1;
 }
 
-int js_thread_join(js_thread_t thrd)
+static inline int js_thread_join(js_thread_t thrd)
 {
     if (WaitForSingleObject(thrd, INFINITE))
         return -1;
@@ -1178,32 +1178,32 @@ int js_thread_join(js_thread_t thrd)
 
 #else /* !defined(_WIN32) */
 
-void js_once(js_once_t *guard, void (*callback)(void)) {
+static inline void js_once(js_once_t *guard, void (*callback)(void)) {
     if (pthread_once(guard, callback))
         abort();
 }
 
-void js_mutex_init(js_mutex_t *mutex) {
+static inline void js_mutex_init(js_mutex_t *mutex) {
     if (pthread_mutex_init(mutex, NULL))
         abort();
 }
 
-void js_mutex_destroy(js_mutex_t *mutex) {
+static inline void js_mutex_destroy(js_mutex_t *mutex) {
     if (pthread_mutex_destroy(mutex))
         abort();
 }
 
-void js_mutex_lock(js_mutex_t *mutex) {
+static inline void js_mutex_lock(js_mutex_t *mutex) {
     if (pthread_mutex_lock(mutex))
         abort();
 }
 
-void js_mutex_unlock(js_mutex_t *mutex) {
+static inline void js_mutex_unlock(js_mutex_t *mutex) {
     if (pthread_mutex_unlock(mutex))
         abort();
 }
 
-void js_cond_init(js_cond_t *cond) {
+static inline void js_cond_init(js_cond_t *cond) {
 #if defined(__APPLE__) && defined(__MACH__)
     if (pthread_cond_init(cond, NULL))
         abort();
@@ -1224,7 +1224,7 @@ void js_cond_init(js_cond_t *cond) {
 #endif
 }
 
-void js_cond_destroy(js_cond_t *cond) {
+static inline void js_cond_destroy(js_cond_t *cond) {
 #if defined(__APPLE__) && defined(__MACH__)
     /* It has been reported that destroying condition variables that have been
      * signalled but not waited on can sometimes result in application crashes.
@@ -1258,17 +1258,17 @@ void js_cond_destroy(js_cond_t *cond) {
         abort();
 }
 
-void js_cond_signal(js_cond_t *cond) {
+static inline void js_cond_signal(js_cond_t *cond) {
     if (pthread_cond_signal(cond))
         abort();
 }
 
-void js_cond_broadcast(js_cond_t *cond) {
+static inline void js_cond_broadcast(js_cond_t *cond) {
     if (pthread_cond_broadcast(cond))
         abort();
 }
 
-void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex) {
+static inline void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex) {
 #if defined(__APPLE__) && defined(__MACH__)
     int r;
 
@@ -1288,7 +1288,7 @@ void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex) {
 #endif
 }
 
-int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
+static inline int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     int r;
     struct timespec ts;
 
@@ -1316,7 +1316,7 @@ int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout) {
     return -1;
 }
 
-int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+static inline int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
                      int flags)
 {
     union {
@@ -1344,7 +1344,7 @@ fail:
     return ret;
 }
 
-int js_thread_join(js_thread_t thrd)
+static inline int js_thread_join(js_thread_t thrd)
 {
     if (pthread_join(thrd, NULL))
         return -1;

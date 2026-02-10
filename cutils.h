@@ -123,10 +123,10 @@ extern "C" {
 # define JS__PATH_MAX 8192
 #endif
 
-void js__pstrcpy(char *buf, int buf_size, const char *str);
-char *js__pstrcat(char *buf, int buf_size, const char *s);
-int js__strstart(const char *str, const char *val, const char **ptr);
-int js__has_suffix(const char *str, const char *suffix);
+static inline void js__pstrcpy(char *buf, int buf_size, const char *str);
+static inline char *js__pstrcat(char *buf, int buf_size, const char *s);
+static inline int js__strstart(const char *str, const char *val, const char **ptr);
+static inline int js__has_suffix(const char *str, const char *suffix);
 
 static inline uint8_t is_be(void) {
     union {
@@ -435,16 +435,16 @@ typedef struct DynBuf {
     void *opaque; /* for realloc_func */
 } DynBuf;
 
-void dbuf_init(DynBuf *s);
-void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func);
-int dbuf_claim(DynBuf *s, size_t len);
-int dbuf_put(DynBuf *s, const void *data, size_t len);
-int dbuf_put_self(DynBuf *s, size_t offset, size_t len);
-int __dbuf_putc(DynBuf *s, uint8_t c);
-int __dbuf_put_u16(DynBuf *s, uint16_t val);
-int __dbuf_put_u32(DynBuf *s, uint32_t val);
-int __dbuf_put_u64(DynBuf *s, uint64_t val);
-int dbuf_putstr(DynBuf *s, const char *str);
+static inline void dbuf_init(DynBuf *s);
+static inline void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func);
+static inline int dbuf_claim(DynBuf *s, size_t len);
+static inline int dbuf_put(DynBuf *s, const void *data, size_t len);
+static inline int dbuf_put_self(DynBuf *s, size_t offset, size_t len);
+static inline int __dbuf_putc(DynBuf *s, uint8_t c);
+static inline int __dbuf_put_u16(DynBuf *s, uint16_t val);
+static inline int __dbuf_put_u32(DynBuf *s, uint32_t val);
+static inline int __dbuf_put_u64(DynBuf *s, uint64_t val);
+static inline int dbuf_putstr(DynBuf *s, const char *str);
 static inline int dbuf_putc(DynBuf *s, uint8_t val)
 {
     if (unlikely((s->allocated_size - s->size) < 1))
@@ -476,8 +476,8 @@ static inline int dbuf_put_u64(DynBuf *s, uint64_t val)
     s->size += 8;
     return 0;
 }
-int JS_PRINTF_FORMAT_ATTR(2, 3) dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const char *fmt, ...);
-void dbuf_free(DynBuf *s);
+static inline int JS_PRINTF_FORMAT_ATTR(2, 3) dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const char *fmt, ...);
+static inline void dbuf_free(DynBuf *s);
 static inline bool dbuf_error(DynBuf *s) {
     return s->error;
 }
@@ -497,15 +497,15 @@ enum {
     UTF8_HAS_NON_BMP1 = 4,  // has non-BMP1 code points, needs UTF-16 surrogate pairs
     UTF8_HAS_ERRORS   = 8,  // has encoding errors
 };
-int utf8_scan(const char *buf, size_t len, size_t *plen);
-size_t utf8_encode_len(uint32_t c);
-size_t utf8_encode(uint8_t buf[minimum_length(UTF8_CHAR_LEN_MAX)], uint32_t c);
-uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp);
-uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp);
-size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len);
-size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len);
-size_t utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len);
-size_t utf8_encode_buf16(char *dest, size_t dest_len, const uint16_t *src, size_t src_len);
+static inline int utf8_scan(const char *buf, size_t len, size_t *plen);
+static inline size_t utf8_encode_len(uint32_t c);
+static inline size_t utf8_encode(uint8_t buf[minimum_length(UTF8_CHAR_LEN_MAX)], uint32_t c);
+static inline uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp);
+static inline uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp);
+static inline size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len);
+static inline size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len);
+static inline size_t utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len);
+static inline size_t utf8_encode_buf16(char *dest, size_t dest_len, const uint16_t *src, size_t src_len);
 
 static inline bool is_surrogate(uint32_t c)
 {
@@ -557,7 +557,7 @@ static inline uint8_t to_upper_ascii(uint8_t c) {
     return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
 }
 
-void rqsort(void *base, size_t nmemb, size_t size,
+static inline void rqsort(void *base, size_t nmemb, size_t size,
             int (*cmp)(const void *, const void *, void *),
             void *arg);
 
@@ -581,8 +581,8 @@ static inline double uint64_as_float64(uint64_t u64)
     return u.d;
 }
 
-int64_t js__gettimeofday_us(void);
-uint64_t js__hrtime_ns(void);
+static inline int64_t js__gettimeofday_us(void);
+static inline uint64_t js__hrtime_ns(void);
 
 static inline size_t js__malloc_usable_size(const void *ptr)
 {
@@ -597,7 +597,7 @@ static inline size_t js__malloc_usable_size(const void *ptr)
 #endif
 }
 
-int js_exepath(char* buffer, size_t* size);
+static inline int js_exepath(char* buffer, size_t* size);
 
 /* Cross-platform threading APIs. */
 
@@ -623,28 +623,28 @@ typedef pthread_cond_t js_cond_t;
 typedef pthread_t js_thread_t;
 #endif
 
-void js_once(js_once_t *guard, void (*callback)(void));
+static inline void js_once(js_once_t *guard, void (*callback)(void));
 
-void js_mutex_init(js_mutex_t *mutex);
-void js_mutex_destroy(js_mutex_t *mutex);
-void js_mutex_lock(js_mutex_t *mutex);
-void js_mutex_unlock(js_mutex_t *mutex);
+static inline void js_mutex_init(js_mutex_t *mutex);
+static inline void js_mutex_destroy(js_mutex_t *mutex);
+static inline void js_mutex_lock(js_mutex_t *mutex);
+static inline void js_mutex_unlock(js_mutex_t *mutex);
 
-void js_cond_init(js_cond_t *cond);
-void js_cond_destroy(js_cond_t *cond);
-void js_cond_signal(js_cond_t *cond);
-void js_cond_broadcast(js_cond_t *cond);
-void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex);
-int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout);
+static inline void js_cond_init(js_cond_t *cond);
+static inline void js_cond_destroy(js_cond_t *cond);
+static inline void js_cond_signal(js_cond_t *cond);
+static inline void js_cond_broadcast(js_cond_t *cond);
+static inline void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex);
+static inline int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t timeout);
 
 enum {
     JS_THREAD_CREATE_DETACHED = 1,
 };
 
 // creates threads with 2 MB stacks (glibc default)
-int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
+static inline int js_thread_create(js_thread_t *thrd, void (*start)(void *), void *arg,
                      int flags);
-int js_thread_join(js_thread_t thrd);
+static inline int js_thread_join(js_thread_t thrd);
 
 #endif /* !defined(EMSCRIPTEN) && !defined(__wasi__) */
 

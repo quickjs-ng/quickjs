@@ -41,7 +41,7 @@
 #include <sys/stat.h>
 #endif
 
-#include "cutils.h"
+#include "cutils.c"
 #include "list.h"
 #include "quickjs.h"
 #include "quickjs-c-atomics.h"

@@ -27,7 +27,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "cutils.h"
+#include "cutils.c"
 #include "libunicode.h"
 #include "libunicode-table.h"
 

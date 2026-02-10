@@ -32,7 +32,7 @@
 #include <math.h>
 // #include <setjmp.h>
 
-#include "cutils.h"
+#include "cutils.c"
 #include "dtoa.h"
 
 /* 

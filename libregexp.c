@@ -28,7 +28,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "cutils.h"
+#include "cutils.c"
 #include "libregexp.h"
 
 #if defined(__sun)
