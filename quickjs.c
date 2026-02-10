@@ -2211,6 +2211,8 @@ static inline void js_free_string(JSRuntime *rt, JSString *str)
 
 static inline void js_free_string0(JSRuntime *rt, JSString *str)
 {
+    JSStringSlice *slice;
+
     if (str->atom_type) {
         JS_FreeAtomStruct(rt, str);
     } else {
@@ -2219,7 +2221,7 @@ static inline void js_free_string0(JSRuntime *rt, JSString *str)
 #endif
         switch (str->kind) {
         case JS_STRING_KIND_SLICE:
-            JSStringSlice *slice = (void *)&str[1];
+            slice = (void *)&str[1];
             js_free_string(rt, slice->parent); // safe, recurses only 1 level
             break;
         case JS_STRING_KIND_INDIRECT:
