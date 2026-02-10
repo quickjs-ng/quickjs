@@ -10,6 +10,34 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_C_STANDARD 11)
 
+macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
+    option(${OPTION_NAME} ${OPTION_TEXT} ${OPTION_DEFAULT})
+    if(DEFINED ENV{${OPTION_NAME}})
+        # Allow setting the option through an environment variable.
+        set(${OPTION_NAME} $ENV{${OPTION_NAME}})
+    endif()
+    if(${OPTION_NAME})
+        add_definitions(-D${OPTION_NAME})
+    endif()
+    message(STATUS "  ${OPTION_NAME}: ${${OPTION_NAME}}")
+endmacro()
+
+# note: QJS_ENABLE_TSAN is currently incompatible with the other sanitizers but we
+# don't explicitly check for that because who knows what the future will bring?
+# QJS_ENABLE_MSAN only works with clang at the time of writing; also not checked
+# for the same reason
+xoption(BUILD_SHARED_LIBS "Build a shared library" OFF)
+xoption(QJS_BUILD_WERROR "Build with -Werror" OFF)
+xoption(QJS_BUILD_EXAMPLES "Build examples" OFF)
+xoption(QJS_BUILD_CLI_STATIC "Build a static qjs executable" OFF)
+xoption(QJS_BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
+xoption(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
+xoption(QJS_DISABLE_PARSER "Disable JS source code parser" OFF)
+xoption(QJS_ENABLE_ASAN "Enable AddressSanitizer (ASan)" OFF)
+xoption(QJS_ENABLE_MSAN "Enable MemorySanitizer (MSan)" OFF)
+xoption(QJS_ENABLE_TSAN "Enable ThreadSanitizer (TSan)" OFF)
+xoption(QJS_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
+
 # Used to properly define JS_LIBC_EXTERN.
 add_compile_definitions(QUICKJS_NG_BUILD)
 
@@ -59,7 +87,9 @@ endmacro()
 
 xcheck_add_c_compiler_flag(-Wall)
 if(NOT MSVC AND NOT IOS AND NOT TVOS AND NOT WATCHOS)
-    xcheck_add_c_compiler_flag(-Werror)
+    if(QJS_BUILD_WERROR)
+        xcheck_add_c_compiler_flag(-Werror)
+    endif()
     xcheck_add_c_compiler_flag(-Wextra)
 endif()
 xcheck_add_c_compiler_flag(-Wformat=2)
@@ -141,36 +171,9 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
     xcheck_add_c_compiler_flag(-fno-omit-frame-pointer)
 endif()
 
-macro(xoption OPTION_NAME OPTION_TEXT OPTION_DEFAULT)
-    option(${OPTION_NAME} ${OPTION_TEXT} ${OPTION_DEFAULT})
-    if(DEFINED ENV{${OPTION_NAME}})
-        # Allow setting the option through an environment variable.
-        set(${OPTION_NAME} $ENV{${OPTION_NAME}})
-    endif()
-    if(${OPTION_NAME})
-        add_definitions(-D${OPTION_NAME})
-    endif()
-    message(STATUS "  ${OPTION_NAME}: ${${OPTION_NAME}}")
-endmacro()
-
-xoption(BUILD_SHARED_LIBS "Build a shared library" OFF)
 if(BUILD_SHARED_LIBS)
     message(STATUS "Building a shared library")
 endif()
-
-# note: QJS_ENABLE_TSAN is currently incompatible with the other sanitizers but we
-# don't explicitly check for that because who knows what the future will bring?
-# QJS_ENABLE_MSAN only works with clang at the time of writing; also not checked
-# for the same reason
-xoption(QJS_BUILD_EXAMPLES "Build examples" OFF)
-xoption(QJS_BUILD_CLI_STATIC "Build a static qjs executable" OFF)
-xoption(QJS_BUILD_CLI_WITH_MIMALLOC "Build the qjs executable with mimalloc" OFF)
-xoption(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC "Build the qjs executable with mimalloc (statically linked)" OFF)
-xoption(QJS_DISABLE_PARSER "Disable JS source code parser" OFF)
-xoption(QJS_ENABLE_ASAN "Enable AddressSanitizer (ASan)" OFF)
-xoption(QJS_ENABLE_MSAN "Enable MemorySanitizer (MSan)" OFF)
-xoption(QJS_ENABLE_TSAN "Enable ThreadSanitizer (TSan)" OFF)
-xoption(QJS_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 
 if(QJS_ENABLE_ASAN)
 message(STATUS "Building with ASan")
