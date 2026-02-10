@@ -3,3 +3,9 @@
 	url = https://github.com/tc39/test262
 	shallow = true
 	update = none
+[submodule "sljit"]
+	path = sljit
+	url = https://github.com/zherczeg/sljit
+[submodule "quickjit"]
+	path = quickjit
+	url = https://github.com/bnoordhuis/quickjit
