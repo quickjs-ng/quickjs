@@ -324,7 +324,7 @@ if(WIN32)
 endif()
 
 if(NOT QJS_BUILD_LIBC)
-    add_library(qjs-libc STATIC quickjs-libc.c)
+    add_library(qjs-libc STATIC quickjs-libc.c $<TARGET_OBJECTS:cutils>)
     target_compile_definitions(qjs-libc PRIVATE ${qjs_defines})
     target_link_libraries(qjs-libc PRIVATE ${qjs_libs} qjs)
 endif()
@@ -353,6 +353,7 @@ endif()
 
 add_executable(qjsc
     qjsc.c
+    $<TARGET_OBJECTS:cutils>
 )
 add_qjs_libc_if_needed(qjsc)
 add_static_if_needed(qjsc)
@@ -445,9 +446,9 @@ target_link_libraries(api-test PRIVATE qjs)
 add_executable(unicode_gen EXCLUDE_FROM_ALL
     libunicode.c
     unicode_gen.c
+    $<TARGET_OBJECTS:cutils>
 )
 target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
-target_link_libraries(unicode_gen PRIVATE cutils)
 
 add_executable(function_source
     gen/function_source.c
