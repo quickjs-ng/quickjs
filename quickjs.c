@@ -1800,7 +1800,7 @@ static void *js_dbuf_realloc(void *ctx, void *ptr, size_t size)
 
 static inline void js_dbuf_init(JSContext *ctx, DynBuf *s)
 {
-    dbuf_init2(s, ctx, js_dbuf_realloc);
+    js__dbuf_init2(s, ctx, js_dbuf_realloc);
 }
 
 static inline int is_digit(int c) {
@@ -3391,9 +3391,9 @@ static const char *JS_AtomGetStrRT(JSRuntime *rt, char *buf, int buf_size,
             JSString *str = p;
             if (str->is_wide_char) {
                 /* encode surrogates correctly */
-                utf8_encode_buf16(buf, buf_size, str16(str), str->len);
+                js__utf8_encode_buf16(buf, buf_size, str16(str), str->len);
             } else {
-                utf8_encode_buf8(buf, buf_size, str8(str), str->len);
+                js__utf8_encode_buf8(buf, buf_size, str8(str), str->len);
             }
         }
     }
@@ -4293,7 +4293,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
         return js_empty_string(ctx->rt);
     }
     /* Compute string kind and length: 7-bit, 8-bit, 16-bit, 16-bit UTF-16 */
-    kind = utf8_scan(buf, buf_len, &len);
+    kind = js__utf8_scan(buf, buf_len, &len);
     if (len > JS_STRING_LEN_MAX)
         return JS_ThrowRangeError(ctx, "invalid string length");
 
@@ -4310,7 +4310,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
         str = js_alloc_string(ctx, len, 0);
         if (!str)
             return JS_EXCEPTION;
-        utf8_decode_buf8(str8(str), len + 1, buf, buf_len);
+        js__utf8_decode_buf8(str8(str), len + 1, buf, buf_len);
         break;
     default:
         // This causes a potential problem in JS_ThrowError if message is invalid
@@ -4319,7 +4319,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
         str = js_alloc_string(ctx, len, 1);
         if (!str)
             return JS_EXCEPTION;
-        utf8_decode_buf16(str16(str), len, buf, buf_len);
+        js__utf8_decode_buf16(str16(str), len, buf, buf_len);
         break;
     }
     return JS_MKPTR(JS_TAG_STRING, str);
@@ -4485,7 +4485,7 @@ const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValueConst val1,
                         /* c = 0xfffd; */ /* error */
                     }
                 }
-                q += utf8_encode(q, c);
+                q += js__utf8_encode(q, c);
             }
         }
     }
@@ -7677,9 +7677,9 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
             goto done;
         if (filename) {
             i++;
-            dbuf_printf(&dbuf, "    at %s", filename);
+            js__dbuf_printf(&dbuf, "    at %s", filename);
             if (line_num != -1)
-                dbuf_printf(&dbuf, ":%d:%d", line_num, col_num);
+                js__dbuf_printf(&dbuf, ":%d:%d", line_num, col_num);
             dbuf_putc(&dbuf, '\n');
         }
     }
@@ -7724,7 +7724,7 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                 str1 = "<anonymous>";
             else
                 str1 = func_name_str;
-            dbuf_printf(&dbuf, "    at %s", str1);
+            js__dbuf_printf(&dbuf, "    at %s", str1);
             JS_FreeCString(ctx, func_name_str);
 
             if (b && sf->cur_pc) {
@@ -7735,18 +7735,18 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                 pc = sf->cur_pc - b->byte_code_buf - 1;
                 line_num1 = find_line_num(ctx, b, pc, &col_num1);
                 atom_str = b->filename ? JS_AtomToCString(ctx, b->filename) : NULL;
-                dbuf_printf(&dbuf, " (%s", atom_str ? atom_str : "<null>");
+                js__dbuf_printf(&dbuf, " (%s", atom_str ? atom_str : "<null>");
                 JS_FreeCString(ctx, atom_str);
                 if (line_num1 != -1)
-                    dbuf_printf(&dbuf, ":%d:%d", line_num1, col_num1);
+                    js__dbuf_printf(&dbuf, ":%d:%d", line_num1, col_num1);
                 dbuf_putc(&dbuf, ')');
             } else if (b) {
                 // FIXME(bnoordhuis) Missing `sf->cur_pc = pc` in bytecode
                 // handler in JS_CallInternal. Almost never user observable
                 // except with intercepting JS proxies that throw exceptions.
-                dbuf_printf(&dbuf, " (missing)");
+                js__dbuf_printf(&dbuf, " (missing)");
             } else {
-                dbuf_printf(&dbuf, " (native)");
+                js__dbuf_printf(&dbuf, " (native)");
             }
             dbuf_putc(&dbuf, '\n');
         }
@@ -7796,7 +7796,7 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
             stack = JS_NULL;
         else
             stack = JS_NewStringLen(ctx, (char *)dbuf.buf, dbuf.size);
-        dbuf_free(&dbuf);
+        js__dbuf_free(&dbuf);
     }
 
     if (JS_IsUndefined(ctx->error_back_trace))
@@ -9102,7 +9102,7 @@ static int __exception JS_GetOwnPropertyNamesInternal(JSContext *ctx,
     assert(sym_index == atom_count);
 
     if (num_keys_count != 0 && !num_sorted) {
-        rqsort(tab_atom, num_keys_count, sizeof(tab_atom[0]), num_keys_cmp,
+        js__rqsort(tab_atom, num_keys_count, sizeof(tab_atom[0]), num_keys_cmp,
                ctx);
     }
     *ptab = tab_atom;
@@ -11624,7 +11624,7 @@ static int skip_spaces(const char *pc)
             if (!((c >= 0x09 && c <= 0x0d) || (c == 0x20)))
                 break;
         } else {
-            c = utf8_decode(p - 1, &p_next);
+            c = js__utf8_decode(p - 1, &p_next);
             /* no need to test for invalid UTF-8, 0xFFFD is not a space */
             if (!lre_is_space(c))
                 break;
@@ -21626,7 +21626,7 @@ static __exception int js_parse_template_part(JSParseState *s,
             s->eol = &p[-1];
             s->mark = p;
         } else if (c >= 0x80) {
-            c = utf8_decode(p - 1, &p_next);
+            c = js__utf8_decode(p - 1, &p_next);
             if (p_next == p) {
                 js_parse_error(s, "invalid UTF-8 sequence");
                 goto fail;
@@ -21735,7 +21735,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                     }
                     goto fail;
                 } else if (c >= 0x80) {
-                    c = utf8_decode(p, &p_next);
+                    c = js__utf8_decode(p, &p_next);
                     if (p_next == p + 1) {
                         goto invalid_utf8;
                     }
@@ -21761,7 +21761,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 break;
             }
         } else if (c >= 0x80) {
-            c = utf8_decode(p - 1, &p_next);
+            c = js__utf8_decode(p - 1, &p_next);
             if (p_next == p)
                 goto invalid_utf8;
             p = p_next;
@@ -21837,7 +21837,7 @@ static __exception int js_parse_regexp(JSParseState *s)
             else if (c == '\0' && p >= s->buf_end)
                 goto eof_error;
             else if (c >= 0x80) {
-                c = utf8_decode(p - 1, &p_next);
+                c = js__utf8_decode(p - 1, &p_next);
                 if (p_next == p) {
                     goto invalid_utf8;
                 }
@@ -21846,7 +21846,7 @@ static __exception int js_parse_regexp(JSParseState *s)
                     goto eol_error;
             }
         } else if (c >= 0x80) {
-            c = utf8_decode(p - 1, &p_next);
+            c = js__utf8_decode(p - 1, &p_next);
             if (p_next == p) {
             invalid_utf8:
                 js_parse_error(s, "invalid UTF-8 sequence");
@@ -21866,7 +21866,7 @@ static __exception int js_parse_regexp(JSParseState *s)
 
     /* flags */
     for(;;) {
-        c = utf8_decode(p, &p_next);
+        c = js__utf8_decode(p, &p_next);
         /* no need to test for invalid UTF-8, 0xFFFD is not ident_next */
         if (!lre_js_is_ident_next(c))
             break;
@@ -21986,7 +21986,7 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
         if (c < 0x80) {
             buf[ident_pos++] = c;
         } else {
-            ident_pos += utf8_encode((uint8_t*)buf + ident_pos, c);
+            ident_pos += js__utf8_encode((uint8_t*)buf + ident_pos, c);
         }
         c = *p;
         p_next = p + 1;
@@ -21994,7 +21994,7 @@ static JSAtom parse_ident(JSParseState *s, const uint8_t **pp,
             c = lre_parse_escape(&p_next, true);
             *pident_has_escape = true;
         } else if (c >= 0x80) {
-            c = utf8_decode(p, &p_next);
+            c = js__utf8_decode(p, &p_next);
             /* no need to test for invalid UTF-8, 0xFFFD is not ident_next */
         }
         if (!lre_js_is_ident_next(c))
@@ -22097,7 +22097,7 @@ static __exception int next_token(JSParseState *s)
                     s->got_lf = true; /* considered as LF for ASI */
                     p++;
                 } else if (*p >= 0x80) {
-                    c = utf8_decode(p, &p);
+                    c = js__utf8_decode(p, &p);
                     /* ignore invalid UTF-8 in comments */
                     if (c == CP_LS || c == CP_PS) {
                         s->got_lf = true; /* considered as LF for ASI */
@@ -22118,7 +22118,7 @@ static __exception int next_token(JSParseState *s)
                 if (*p == '\r' || *p == '\n')
                     break;
                 if (*p >= 0x80) {
-                    c = utf8_decode(p, &p);
+                    c = js__utf8_decode(p, &p);
                     /* ignore invalid UTF-8 in comments */
                     /* LS or PS are considered as line terminator */
                     if (c == CP_LS || c == CP_PS) {
@@ -22191,7 +22191,7 @@ static __exception int next_token(JSParseState *s)
             if (c == '\\' && *p_next == 'u') {
                 c = lre_parse_escape(&p_next, true);
             } else if (c >= 0x80) {
-                c = utf8_decode(p, &p_next);
+                c = js__utf8_decode(p, &p_next);
                 if (p_next == p + 1)
                     goto invalid_utf8;
             }
@@ -22244,7 +22244,7 @@ static __exception int next_token(JSParseState *s)
                 goto fail;
             /* reject `10instanceof Number` */
             if (JS_VALUE_IS_NAN(ret) ||
-                lre_js_is_ident_next(utf8_decode(p, &p1))) {
+                lre_js_is_ident_next(js__utf8_decode(p, &p1))) {
                 JS_FreeValue(s->ctx, ret);
                 js_parse_error(s, "invalid number literal");
                 goto fail;
@@ -22437,7 +22437,7 @@ static __exception int next_token(JSParseState *s)
         break;
     default:
         if (c >= 0x80) {  /* non-ASCII code-point */
-            c = utf8_decode(p, &p_next);
+            c = js__utf8_decode(p, &p_next);
             if (p_next == p + 1)
                 goto invalid_utf8;
             p = p_next;
@@ -22565,7 +22565,7 @@ static int json_parse_string(JSParseState *s, const uint8_t **pp)
             }
         } else
         if (c >= 0x80) {
-            c = utf8_decode(p - 1, &p_next);
+            c = js__utf8_decode(p - 1, &p_next);
             if (p_next == p) {
                 json_parse_error(s, p - 1, "Bad UTF-8 sequence");
                 goto fail;
@@ -22769,7 +22769,7 @@ static __exception int json_next_token(JSParseState *s)
         break;
     default:
         if (c >= 0x80) {
-            c = utf8_decode(p, &p_next);
+            c = js__utf8_decode(p, &p_next);
             if (p_next == p + 1) {
                 js_parse_error(s, "Unexpected token '\\x%02x' in JSON", *p);
             } else {
@@ -22897,7 +22897,7 @@ static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end)
             if (*p == '\n' || *p == '\r') {
                 break;
             } else if (*p >= 0x80) {
-                c = utf8_decode(p, &p);
+                c = js__utf8_decode(p, &p);
                 /* purposely ignore UTF-8 encoding errors in this comment line */
                 if (c == CP_LS || c == CP_PS)
                     break;
@@ -22972,7 +22972,7 @@ static void emit_op(JSParseState *s, uint8_t val)
 static void emit_atom(JSParseState *s, JSAtom name)
 {
     DynBuf *bc = &s->cur_func->byte_code;
-    if (dbuf_claim(bc, 4))
+    if (js__dbuf_claim(bc, 4))
         return; /* not enough memory : don't duplicate the atom */
     put_u32(bc->buf + bc->size, JS_DupAtom(s->ctx, name));
     bc->size += 4;
@@ -27965,8 +27965,8 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
         int chunk_size = pos_expr - pos_next;
         int offset = bc->size - pos_next;
         int i;
-        dbuf_claim(bc, chunk_size);
-        dbuf_put(bc, bc->buf + pos_next, chunk_size);
+        js__dbuf_claim(bc, chunk_size);
+        js__dbuf_put(bc, bc->buf + pos_next, chunk_size);
         memset(bc->buf + pos_next, OP_nop, chunk_size);
         /* `next` part ends with a goto */
         s->cur_func->last_opcode_pos = bc->size - 5;
@@ -28364,8 +28364,8 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 int chunk_size = pos_body - pos_cont;
                 int offset = bc->size - pos_cont;
                 int i;
-                dbuf_claim(bc, chunk_size);
-                dbuf_put(bc, bc->buf + pos_cont, chunk_size);
+                js__dbuf_claim(bc, chunk_size);
+                js__dbuf_put(bc, bc->buf + pos_cont, chunk_size);
                 memset(bc->buf + pos_cont, OP_nop, chunk_size);
                 /* increment part ends with a goto */
                 s->cur_func->last_opcode_pos = bc->size - 5;
@@ -29578,7 +29578,7 @@ static JSValue js_build_module_ns(JSContext *ctx, JSModuleDef *m)
     }
 
     /* sort the exported names */
-    rqsort(s->exported_names, s->exported_names_count,
+    js__rqsort(s->exported_names, s->exported_names_count,
            sizeof(s->exported_names[0]), exported_names_cmp, ctx);
 
     for(i = 0; i < s->exported_names_count; i++) {
@@ -30482,7 +30482,7 @@ static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValueConst 
     }
 
     /* sort by increasing async_evaluation timestamp */
-    rqsort(exec_list->tab, exec_list->count, sizeof(exec_list->tab[0]),
+    js__rqsort(exec_list->tab, exec_list->count, sizeof(exec_list->tab[0]),
            exec_module_list_cmp, NULL);
 
     for(i = 0; i < exec_list->count; i++) {
@@ -31370,7 +31370,7 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
 
     free_bytecode_atoms(ctx->rt, fd->byte_code.buf, fd->byte_code.size,
                         fd->use_short_opcodes);
-    dbuf_free(&fd->byte_code);
+    js__dbuf_free(&fd->byte_code);
     js_free(ctx, fd->jump_slots);
     js_free(ctx, fd->label_slots);
     js_free(ctx, fd->source_loc_slots);
@@ -31407,7 +31407,7 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
         js_free(ctx, fd->scopes);
 
     JS_FreeAtom(ctx, fd->filename);
-    dbuf_free(&fd->pc2line);
+    js__dbuf_free(&fd->pc2line);
 
     js_free(ctx, fd->source);
 
@@ -33580,7 +33580,7 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
                 /* remove dead code */
                 int line = -1;
                 int col = -1;
-                dbuf_put(&bc_out, bc_buf + pos, len);
+                js__dbuf_put(&bc_out, bc_buf + pos, len);
                 pos = skip_dead_code(s, bc_buf, bc_len, pos + len,
                                      &line, &col);
                 pos_next = pos;
@@ -33734,13 +33734,13 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
 
         default:
         no_change:
-            dbuf_put(&bc_out, bc_buf + pos, len);
+            js__dbuf_put(&bc_out, bc_buf + pos, len);
             break;
         }
     }
 
     /* set the new byte code */
-    dbuf_free(&s->byte_code);
+    js__dbuf_free(&s->byte_code);
     s->byte_code = bc_out;
     if (dbuf_error(&s->byte_code)) {
         JS_ThrowOutOfMemory(ctx);
@@ -33754,9 +33754,9 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
         op = bc_buf[pos];
         len = opcode_info[op].size;
         pos_next = pos + len;
-        dbuf_put(&bc_out, bc_buf + pos, len);
+        js__dbuf_put(&bc_out, bc_buf + pos, len);
     }
-    dbuf_free(&s->byte_code);
+    js__dbuf_free(&s->byte_code);
     s->byte_code = bc_out;
     return -1;
 }
@@ -34793,7 +34793,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
         default:
         no_change:
             add_pc2line_info(s, bc_out.size, line_num, col_num);
-            dbuf_put(&bc_out, bc_buf + pos, len);
+            js__dbuf_put(&bc_out, bc_buf + pos, len);
             break;
         }
     }
@@ -34887,7 +34887,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
     js_free(ctx, s->source_loc_slots);
     s->source_loc_slots = NULL;
     /* set the new byte code */
-    dbuf_free(&s->byte_code);
+    js__dbuf_free(&s->byte_code);
     s->byte_code = bc_out;
     s->use_short_opcodes = true;
     if (dbuf_error(&s->byte_code)) {
@@ -34897,7 +34897,7 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
     return 0;
  fail:
     /* XXX: not safe */
-    dbuf_free(&bc_out);
+    js__dbuf_free(&bc_out);
     return -1;
 }
 
@@ -36736,7 +36736,7 @@ static void bc_put_u64(BCWriterState *s, uint64_t v)
 {
     if (is_be())
         v = bswap64(v);
-    dbuf_put(&s->dbuf, (uint8_t *)&v, sizeof(v));
+    js__dbuf_put(&s->dbuf, (uint8_t *)&v, sizeof(v));
 }
 
 static void bc_put_leb128(BCWriterState *s, uint32_t v)
@@ -36908,7 +36908,7 @@ static int JS_WriteFunctionBytecode(BCWriterState *s,
     if (is_be())
         bc_byte_swap(bc_buf, bc_len);
 
-    dbuf_put(&s->dbuf, bc_buf, bc_len);
+    js__dbuf_put(&s->dbuf, bc_buf, bc_len);
 
     js_free(s->ctx, bc_buf);
     return 0;
@@ -36925,7 +36925,7 @@ static void JS_WriteString(BCWriterState *s, JSString *p)
         for(i = 0; i < p->len; i++)
             bc_put_u16(s, str16(p)[i]);
     } else {
-        dbuf_put(&s->dbuf, str8(p), p->len);
+        js__dbuf_put(&s->dbuf, str8(p), p->len);
     }
 }
 
@@ -37058,10 +37058,10 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValueConst obj)
         bc_put_leb128(s, b->line_num);
         bc_put_leb128(s, b->col_num);
         bc_put_leb128(s, b->pc2line_len);
-        dbuf_put(&s->dbuf, b->pc2line_buf, b->pc2line_len);
+        js__dbuf_put(&s->dbuf, b->pc2line_buf, b->pc2line_len);
         if (s->allow_source && b->source) {
             bc_put_leb128(s, b->source_len);
-            dbuf_put(&s->dbuf, b->source, b->source_len);
+            js__dbuf_put(&s->dbuf, b->source, b->source_len);
         } else {
             bc_put_leb128(s, 0);
         }
@@ -37226,7 +37226,7 @@ static int JS_WriteArrayBuffer(BCWriterState *s, JSValueConst obj)
     bc_put_u8(s, BC_TAG_ARRAY_BUFFER);
     bc_put_leb128(s, abuf->byte_length);
     bc_put_leb128(s, abuf->max_byte_length);
-    dbuf_put(&s->dbuf, abuf->data, abuf->byte_length);
+    js__dbuf_put(&s->dbuf, abuf->data, abuf->byte_length);
     return 0;
 }
 
@@ -37464,16 +37464,16 @@ static int JS_WriteObjectAtoms(BCWriterState *s)
     /* XXX: could just append dbuf1 data, but it uses more memory if
        dbuf1 is larger than dbuf */
     atoms_size = s->dbuf.size;
-    if (dbuf_claim(&dbuf1, atoms_size))
+    if (js__dbuf_claim(&dbuf1, atoms_size))
         goto fail;
     memmove(dbuf1.buf + atoms_size, dbuf1.buf, dbuf1.size);
     memcpy(dbuf1.buf, s->dbuf.buf, atoms_size);
     dbuf1.size += atoms_size;
-    dbuf_free(&s->dbuf);
+    js__dbuf_free(&s->dbuf);
     s->dbuf = dbuf1;
     return 0;
  fail:
-    dbuf_free(&dbuf1);
+    js__dbuf_free(&dbuf1);
     return -1;
 }
 
@@ -37516,7 +37516,7 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
     js_object_list_end(ctx, &s->object_list);
     js_free(ctx, s->atom_to_idx);
     js_free(ctx, s->idx_to_atom);
-    dbuf_free(&s->dbuf);
+    js__dbuf_free(&s->dbuf);
     *psize = 0;
     if (psab_tab) {
         psab_tab->tab = NULL;
@@ -42851,7 +42851,7 @@ static JSValue js_array_sort(JSContext *ctx, JSValueConst this_val,
         array[pos].pos = i;
         pos++;
     }
-    rqsort(array, pos, sizeof(*array), js_array_cmp_generic, &asc);
+    js__rqsort(array, pos, sizeof(*array), js_array_cmp_generic, &asc);
     if (asc.exception)
         goto exception;
 
@@ -57651,7 +57651,7 @@ static JSValue js_typed_array_sort(JSContext *ctx, JSValueConst this_val,
             for(i = 0; i < len; i++)
                 array_idx[i] = i;
             tsc.elt_size = elt_size;
-            rqsort(array_idx, len, sizeof(array_idx[0]),
+            js__rqsort(array_idx, len, sizeof(array_idx[0]),
                    js_TA_cmp_generic, &tsc);
             if (tsc.exception)
                 goto fail;
@@ -57704,7 +57704,7 @@ static JSValue js_typed_array_sort(JSContext *ctx, JSValueConst this_val,
         done:
             js_free(ctx, array_idx);
         } else {
-            rqsort(p->u.array.u.ptr, len, elt_size, cmpfun, &tsc);
+            js__rqsort(p->u.array.u.ptr, len, elt_size, cmpfun, &tsc);
             if (tsc.exception)
                 return JS_EXCEPTION;
         }

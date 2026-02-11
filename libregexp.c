@@ -120,7 +120,7 @@ static inline int lre_is_digit(int c) {
 /* insert 'len' bytes at position 'pos'. Return < 0 if error. */
 static int dbuf_insert(DynBuf *s, int pos, int len)
 {
-    if (dbuf_claim(s, len))
+    if (js__dbuf_claim(s, len))
         return -1;
     memmove(s->buf + pos + len, s->buf + pos, s->size - pos);
     s->size += len;
@@ -764,7 +764,7 @@ static int get_class_atom(REParseState *s, CharRange *cr,
     normal_char:
         p++;
         if (c >= 0x80) {
-            c = utf8_decode(p - 1, &p_next);
+            c = js__utf8_decode(p - 1, &p_next);
             if (p_next == p)
                 return re_parse_error(s, "invalid UTF-8 sequence");
             p = p_next;
@@ -1053,12 +1053,12 @@ static int re_parse_group_name(char *buf, int buf_size, const uint8_t **pp)
         } else if (c == '>') {
             break;
         } else if (c >= 0x80) {
-            c = utf8_decode(p - 1, &p_next);
+            c = js__utf8_decode(p - 1, &p_next);
             if (p_next == p)
                 return -1;
             p = p_next;
             if (is_hi_surrogate(c)) {
-                d = utf8_decode(p, &p_next);
+                d = js__utf8_decode(p, &p_next);
                 if (is_lo_surrogate(d)) {
                     c = from_surrogate(c, d);
                     p = p_next;
@@ -1077,7 +1077,7 @@ static int re_parse_group_name(char *buf, int buf_size, const uint8_t **pp)
         if (c < 0x80) {
             *q++ = c;
         } else {
-            q += utf8_encode((uint8_t*)q, c);
+            q += js__utf8_encode((uint8_t*)q, c);
         }
     }
     if (q == buf)
@@ -1291,7 +1291,7 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                     return re_parse_error(s, "duplicate group name");
                 }
                 /* group name with a trailing zero */
-                dbuf_put(&s->group_names, (uint8_t *)s->u.tmp_buf,
+                js__dbuf_put(&s->group_names, (uint8_t *)s->u.tmp_buf,
                          strlen(s->u.tmp_buf) + 1);
                 s->has_named_captures = 1;
                 goto parse_capture;
@@ -1641,7 +1641,7 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                         if (add_zero_advance_check)
                             re_emit_op(s, REOP_push_char_pos);
                         /* copy the atom */
-                        dbuf_put_self(&s->byte_code, last_atom_start, len);
+                        js__dbuf_put_self(&s->byte_code, last_atom_start, len);
                         if (add_zero_advance_check)
                             re_emit_op(s, REOP_check_advance);
                         re_emit_goto(s, REOP_goto, pos);
@@ -1653,7 +1653,7 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                         if (add_zero_advance_check)
                             re_emit_op(s, REOP_push_char_pos);
                         /* copy the atom */
-                        dbuf_put_self(&s->byte_code, last_atom_start, len);
+                        js__dbuf_put_self(&s->byte_code, last_atom_start, len);
                         if (add_zero_advance_check)
                             re_emit_op(s, REOP_check_advance);
                         re_emit_goto(s, REOP_loop, pos);
@@ -1698,7 +1698,7 @@ static int re_parse_alternative(REParseState *s, bool is_backward_dir)
                speed is not really critical here) */
             end = s->byte_code.size;
             term_size = end - term_start;
-            if (dbuf_claim(&s->byte_code, term_size))
+            if (js__dbuf_claim(&s->byte_code, term_size))
                 return -1;
             memmove(s->byte_code.buf + start + term_size,
                     s->byte_code.buf + start,
@@ -1817,8 +1817,8 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
     s->total_capture_count = -1;
     s->has_named_captures = -1;
 
-    dbuf_init2(&s->byte_code, opaque, lre_realloc);
-    dbuf_init2(&s->group_names, opaque, lre_realloc);
+    js__dbuf_init2(&s->byte_code, opaque, lre_realloc);
+    js__dbuf_init2(&s->group_names, opaque, lre_realloc);
 
     dbuf_put_u16(&s->byte_code, re_flags); /* first element is the flags */
     dbuf_putc(&s->byte_code, 0); /* second element is the number of captures */
@@ -1838,8 +1838,8 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
 
     if (re_parse_disjunction(s, false)) {
     error:
-        dbuf_free(&s->byte_code);
-        dbuf_free(&s->group_names);
+        js__dbuf_free(&s->byte_code);
+        js__dbuf_free(&s->group_names);
         js__pstrcpy(error_msg, error_msg_size, s->u.error_msg);
         *plen = 0;
         return NULL;
@@ -1872,11 +1872,11 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
 
     /* add the named groups if needed */
     if (s->group_names.size > (s->capture_count - 1)) {
-        dbuf_put(&s->byte_code, s->group_names.buf, s->group_names.size);
+        js__dbuf_put(&s->byte_code, s->group_names.buf, s->group_names.size);
         put_u16(s->byte_code.buf + RE_HEADER_FLAGS,
                 LRE_FLAG_NAMED_GROUPS | lre_get_flags(s->byte_code.buf));
     }
-    dbuf_free(&s->group_names);
+    js__dbuf_free(&s->group_names);
 
 #ifdef DUMP_REOP
     lre_dump_bytecode(s->byte_code.buf, s->byte_code.size);

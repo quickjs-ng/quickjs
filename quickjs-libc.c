@@ -209,7 +209,7 @@ static void *js_std_dbuf_realloc(void *opaque, void *ptr, size_t size)
 
 static void js_std_dbuf_init(JSContext *ctx, DynBuf *s)
 {
-    dbuf_init2(s, JS_GetRuntime(ctx), js_std_dbuf_realloc);
+    js__dbuf_init2(s, JS_GetRuntime(ctx), js_std_dbuf_realloc);
 }
 
 static bool my_isdigit(int c)
@@ -262,7 +262,7 @@ static JSValue js_printf_internal(JSContext *ctx,
         while (fmt < fmt_end) {
             for (p = fmt; fmt < fmt_end && *fmt != '%'; fmt++)
                 continue;
-            dbuf_put(&dbuf, p, fmt - p);
+            js__dbuf_put(&dbuf, p, fmt - p);
             if (fmt >= fmt_end)
                 break;
             q = fmtbuf;
@@ -338,7 +338,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                     string_arg = JS_ToCString(ctx, argv[i++]);
                     if (!string_arg)
                         goto fail;
-                    int32_arg = utf8_decode((const uint8_t *)string_arg, &p);
+                    int32_arg = js__utf8_decode((const uint8_t *)string_arg, &p);
                     JS_FreeCString(ctx, string_arg);
                 } else {
                     if (JS_ToInt32(ctx, &int32_arg, argv[i++]))
@@ -348,8 +348,8 @@ static JSValue js_printf_internal(JSContext *ctx,
                 if ((unsigned)int32_arg > 0x10FFFF)
                     int32_arg = 0xFFFD;
                 /* ignore conversion flags, width and precision */
-                len = utf8_encode(cbuf, int32_arg);
-                dbuf_put(&dbuf, cbuf, len);
+                len = js__utf8_encode(cbuf, int32_arg);
+                js__dbuf_put(&dbuf, cbuf, len);
                 break;
 
             case 'd':
@@ -379,10 +379,10 @@ static JSValue js_printf_internal(JSContext *ctx,
                     q[1] = q[-1];
                     q[-1] = q[0] = 'l';
                     q[2] = '\0';
-                    dbuf_printf(&dbuf, fmtbuf, (long long)int64_arg);
+                    js__dbuf_printf(&dbuf, fmtbuf, (long long)int64_arg);
 #endif
                 } else {
-                    dbuf_printf(&dbuf, fmtbuf, (int)int64_arg);
+                    js__dbuf_printf(&dbuf, fmtbuf, (int)int64_arg);
                 }
                 break;
 
@@ -393,7 +393,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                 string_arg = JS_ToCString(ctx, argv[i++]);
                 if (!string_arg)
                     goto fail;
-                dbuf_printf(&dbuf, fmtbuf, string_arg);
+                js__dbuf_printf(&dbuf, fmtbuf, string_arg);
                 JS_FreeCString(ctx, string_arg);
                 break;
 
@@ -409,7 +409,7 @@ static JSValue js_printf_internal(JSContext *ctx,
                     goto missing;
                 if (JS_ToFloat64(ctx, &double_arg, argv[i++]))
                     goto fail;
-                dbuf_printf(&dbuf, fmtbuf, double_arg);
+                js__dbuf_printf(&dbuf, fmtbuf, double_arg);
                 break;
 
             case '%':
@@ -438,12 +438,12 @@ static JSValue js_printf_internal(JSContext *ctx,
             res = JS_NewStringLen(ctx, (char *)dbuf.buf, dbuf.size);
         }
     }
-    dbuf_free(&dbuf);
+    js__dbuf_free(&dbuf);
     return res;
 
 fail:
     JS_FreeCString(ctx, fmt_str);
-    dbuf_free(&dbuf);
+    js__dbuf_free(&dbuf);
     return JS_EXCEPTION;
 }
 #ifdef __GNUC__
@@ -1549,7 +1549,7 @@ static JSValue js_std_file_getline(JSContext *ctx, JSValueConst this_val,
         if (c == EOF) {
             if (dbuf.size == 0) {
                 /* EOF */
-                dbuf_free(&dbuf);
+                js__dbuf_free(&dbuf);
                 return JS_NULL;
             } else {
                 break;
@@ -1558,12 +1558,12 @@ static JSValue js_std_file_getline(JSContext *ctx, JSValueConst this_val,
         if (c == '\n')
             break;
         if (dbuf_putc(&dbuf, c)) {
-            dbuf_free(&dbuf);
+            js__dbuf_free(&dbuf);
             return JS_ThrowOutOfMemory(ctx);
         }
     }
     obj = JS_NewStringLen(ctx, (const char *)dbuf.buf, dbuf.size);
-    dbuf_free(&dbuf);
+    js__dbuf_free(&dbuf);
     return obj;
 }
 
@@ -1600,7 +1600,7 @@ static JSValue js_std_file_readAs(JSContext *ctx, JSValueConst this_val,
         if (c == EOF)
             break;
         if (dbuf_putc(&dbuf, c)) {
-            dbuf_free(&dbuf);
+            js__dbuf_free(&dbuf);
             return JS_EXCEPTION;
         }
         max_size--;
@@ -1610,7 +1610,7 @@ static JSValue js_std_file_readAs(JSContext *ctx, JSValueConst this_val,
     } else {
         obj = JS_NewArrayBufferCopy(ctx, dbuf.buf, dbuf.size);
     }
-    dbuf_free(&dbuf);
+    js__dbuf_free(&dbuf);
     return obj;
 }
 
@@ -1712,13 +1712,13 @@ static JSValue js_std_urlGet(JSContext *ctx, JSValueConst this_val,
     }
 
     js_std_dbuf_init(ctx, &cmd_buf);
-    dbuf_printf(&cmd_buf, "%s '", URL_GET_PROGRAM);
+    js__dbuf_printf(&cmd_buf, "%s '", URL_GET_PROGRAM);
     for(i = 0; url[i] != '\0'; i++) {
         unsigned char c = url[i];
         switch (c) {
         case '\'':
             /* shell single quoted string does not support \' */
-            dbuf_putstr(&cmd_buf, "'\\''");
+            js__dbuf_putstr(&cmd_buf, "'\\''");
             break;
         case '[': case ']': case '{': case '}': case '\\':
             /* prevent interpretation by curl as range or set specification */
@@ -1730,15 +1730,15 @@ static JSValue js_std_urlGet(JSContext *ctx, JSValueConst this_val,
         }
     }
     JS_FreeCString(ctx, url);
-    dbuf_putstr(&cmd_buf, "'");
+    js__dbuf_putstr(&cmd_buf, "'");
     dbuf_putc(&cmd_buf, '\0');
     if (dbuf_error(&cmd_buf)) {
-        dbuf_free(&cmd_buf);
+        js__dbuf_free(&cmd_buf);
         return JS_EXCEPTION;
     }
     //    printf("%s\n", (char *)cmd_buf.buf);
     f = popen((char *)cmd_buf.buf, "r");
-    dbuf_free(&cmd_buf);
+    js__dbuf_free(&cmd_buf);
     if (!f) {
         return JS_ThrowTypeError(ctx, "could not start curl");
     }
@@ -1779,7 +1779,7 @@ static JSValue js_std_urlGet(JSContext *ctx, JSValueConst this_val,
         len = fread(buf, 1, URL_GET_BUF_SIZE, f);
         if (len == 0)
             break;
-        dbuf_put(data_buf, (uint8_t *)buf, len);
+        js__dbuf_put(data_buf, (uint8_t *)buf, len);
     }
     if (dbuf_error(data_buf))
         goto fail;
@@ -1796,7 +1796,7 @@ static JSValue js_std_urlGet(JSContext *ctx, JSValueConst this_val,
     buf = NULL;
     pclose(f);
     f = NULL;
-    dbuf_free(data_buf);
+    js__dbuf_free(data_buf);
     data_buf = NULL;
 
     if (full_flag) {
@@ -1818,16 +1818,16 @@ static JSValue js_std_urlGet(JSContext *ctx, JSValueConst this_val,
     } else {
         ret_obj = response;
     }
-    dbuf_free(header_buf);
+    js__dbuf_free(header_buf);
     return ret_obj;
  fail:
     if (f)
         pclose(f);
     js_free(ctx, buf);
     if (data_buf)
-        dbuf_free(data_buf);
+        js__dbuf_free(data_buf);
     if (header_buf)
-        dbuf_free(header_buf);
+        js__dbuf_free(header_buf);
     JS_FreeValue(ctx, response);
     return JS_EXCEPTION;
 }
@@ -4447,7 +4447,7 @@ static JSValue js_print(JSContext *ctx, JSValueConst this_val,
     DynBuf b;
     int i;
 
-    dbuf_init(&b);
+    js__dbuf_init(&b);
     for(i = 0; i < argc; i++) {
         v = argv[i];
         s = JS_ToCString(ctx, v);
@@ -4458,10 +4458,10 @@ static JSValue js_print(JSContext *ctx, JSValueConst this_val,
             JS_FreeValue(ctx, t);
         }
         if (s) {
-            dbuf_printf(&b, "%s%s", &" "[!i], s);
+            js__dbuf_printf(&b, "%s%s", &" "[!i], s);
             JS_FreeCString(ctx, s);
         } else {
-            dbuf_printf(&b, "%s<exception>", &" "[!i]);
+            js__dbuf_printf(&b, "%s<exception>", &" "[!i]);
             JS_FreeValue(ctx, JS_GetException(ctx));
         }
     }
@@ -4490,7 +4490,7 @@ fallback:
     fflush(stdout);
     goto done; // avoid unused label warning
 done:
-    dbuf_free(&b);
+    js__dbuf_free(&b);
     return JS_UNDEFINED;
 }
 

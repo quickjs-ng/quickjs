@@ -958,8 +958,8 @@ int unicode_normalize(uint32_t **pdst, const uint32_t *src, int src_len,
 
     is_compat = n_type >> 1;
 
-    dbuf_init2(dbuf, opaque, realloc_func);
-    if (dbuf_claim(dbuf, sizeof(int) * src_len))
+    js__dbuf_init2(dbuf, opaque, realloc_func);
+    if (js__dbuf_claim(dbuf, sizeof(int) * src_len))
         goto fail;
 
     /* common case: latin1 is unaffected by NFC */
@@ -1347,7 +1347,7 @@ static void cr_sort_and_remove_overlap(CharRange *cr)
     uint32_t start, end, start1, end1, i, j;
 
     /* the resulting ranges are not necessarily sorted and may overlap */
-    rqsort(cr->points, cr->len / 2, sizeof(cr->points[0]) * 2, point_cmp, NULL);
+    js__rqsort(cr->points, cr->len / 2, sizeof(cr->points[0]) * 2, point_cmp, NULL);
     j = 0;
     for(i = 0; i < cr->len; ) {
         start = cr->points[i];

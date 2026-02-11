@@ -1478,7 +1478,7 @@ void build_prop_table(FILE *f, int prop_index, bool add_index)
     int buf_len, block_end_pos, bit;
     char cname[128];
 
-    dbuf_init(dbuf1);
+    js__dbuf_init(dbuf1);
 
     for(i = 0; i <= CHARCODE_MAX;) {
         v = get_prop(i, prop_index);
@@ -1494,8 +1494,8 @@ void build_prop_table(FILE *f, int prop_index, bool add_index)
         i += n;
     }
 
-    dbuf_init(dbuf);
-    dbuf_init(dbuf2);
+    js__dbuf_init(dbuf);
+    js__dbuf_init(dbuf2);
     buf = (uint32_t *)dbuf1->buf;
     buf_len = dbuf1->size / sizeof(buf[0]);
 
@@ -1563,9 +1563,9 @@ void build_prop_table(FILE *f, int prop_index, bool add_index)
         dump_byte_table(f, cname, dbuf2->buf, dbuf2->size);
     }
 
-    dbuf_free(dbuf);
-    dbuf_free(dbuf1);
-    dbuf_free(dbuf2);
+    js__dbuf_free(dbuf);
+    js__dbuf_free(dbuf1);
+    js__dbuf_free(dbuf2);
 }
 
 void build_flags_tables(FILE *f)
@@ -1622,7 +1622,7 @@ void build_general_category_table(FILE *f)
                     unicode_gc_short_name);
 
 
-    dbuf_init(dbuf);
+    js__dbuf_init(dbuf);
     cw_count = 0;
     for(i = 0; i < 4; i++)
         cw_len_count[i] = 0;
@@ -1681,7 +1681,7 @@ void build_general_category_table(FILE *f)
 
     dump_byte_table(f, "unicode_gc_table", dbuf->buf, dbuf->size);
 
-    dbuf_free(dbuf);
+    js__dbuf_free(dbuf);
 }
 
 void build_script_table(FILE *f)
@@ -1701,7 +1701,7 @@ void build_script_table(FILE *f)
                     unicode_script_name + i, SCRIPT_COUNT - i,
                     unicode_script_short_name + i);
 
-    dbuf_init(dbuf);
+    js__dbuf_init(dbuf);
     cw_count = 0;
     for(i = 0; i < 4; i++)
         cw_len_count[i] = 0;
@@ -1751,7 +1751,7 @@ void build_script_table(FILE *f)
 
     dump_byte_table(f, "unicode_script_table", dbuf->buf, dbuf->size);
 
-    dbuf_free(dbuf);
+    js__dbuf_free(dbuf);
 }
 
 void build_script_ext_table(FILE *f)
@@ -1760,7 +1760,7 @@ void build_script_ext_table(FILE *f)
     DynBuf dbuf_s, *dbuf = &dbuf_s;
     int cw_count;
 
-    dbuf_init(dbuf);
+    js__dbuf_init(dbuf);
     cw_count = 0;
     for(i = 0; i <= CHARCODE_MAX;) {
         script_ext_len = unicode_db[i].script_ext_len;
@@ -1801,7 +1801,7 @@ void build_script_ext_table(FILE *f)
 
     dump_byte_table(f, "unicode_script_ext_table", dbuf->buf, dbuf->size);
 
-    dbuf_free(dbuf);
+    js__dbuf_free(dbuf);
 }
 
 /* the following properties are synthetized so no table is necessary */
@@ -1976,8 +1976,8 @@ void build_cc_table(FILE *f)
     int cw_len_tab[3], cw_start, block_end_pos;
     uint32_t v;
 
-    dbuf_init(dbuf);
-    dbuf_init(dbuf1);
+    js__dbuf_init(dbuf);
+    js__dbuf_init(dbuf1);
     cc_table_len = 0;
     for(i = 0; i < countof(cw_len_tab); i++)
         cw_len_tab[i] = 0;
@@ -2059,8 +2059,8 @@ void build_cc_table(FILE *f)
         printf(" %d", cw_len_tab[i]);
     printf(" ]\n");
 #endif
-    dbuf_free(dbuf);
-    dbuf_free(dbuf1);
+    js__dbuf_free(dbuf);
+    js__dbuf_free(dbuf1);
 }
 
 /* maximum length of decomposition: 18 chars (1), then 8 */

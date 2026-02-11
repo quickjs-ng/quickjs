@@ -435,27 +435,27 @@ typedef struct DynBuf {
     void *opaque; /* for realloc_func */
 } DynBuf;
 
-void dbuf_init(DynBuf *s);
-void dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func);
-int dbuf_claim(DynBuf *s, size_t len);
-int dbuf_put(DynBuf *s, const void *data, size_t len);
-int dbuf_put_self(DynBuf *s, size_t offset, size_t len);
-int __dbuf_putc(DynBuf *s, uint8_t c);
-int __dbuf_put_u16(DynBuf *s, uint16_t val);
-int __dbuf_put_u32(DynBuf *s, uint32_t val);
-int __dbuf_put_u64(DynBuf *s, uint64_t val);
-int dbuf_putstr(DynBuf *s, const char *str);
+void js__dbuf_init(DynBuf *s);
+void js__dbuf_init2(DynBuf *s, void *opaque, DynBufReallocFunc *realloc_func);
+int js__dbuf_claim(DynBuf *s, size_t len);
+int js__dbuf_put(DynBuf *s, const void *data, size_t len);
+int js__dbuf_put_self(DynBuf *s, size_t offset, size_t len);
+int js__dbuf_putc(DynBuf *s, uint8_t c);
+int js__dbuf_put_u16(DynBuf *s, uint16_t val);
+int js__dbuf_put_u32(DynBuf *s, uint32_t val);
+int js__dbuf_put_u64(DynBuf *s, uint64_t val);
+int js__dbuf_putstr(DynBuf *s, const char *str);
 static inline int dbuf_putc(DynBuf *s, uint8_t val)
 {
     if (unlikely((s->allocated_size - s->size) < 1))
-        return __dbuf_putc(s, val);
+        return js__dbuf_putc(s, val);
     s->buf[s->size++] = val;
     return 0;
 }
 static inline int dbuf_put_u16(DynBuf *s, uint16_t val)
 {
     if (unlikely((s->allocated_size - s->size) < 2))
-        return __dbuf_put_u16(s, val);
+        return js__dbuf_put_u16(s, val);
     put_u16(s->buf + s->size, val);
     s->size += 2;
     return 0;
@@ -463,7 +463,7 @@ static inline int dbuf_put_u16(DynBuf *s, uint16_t val)
 static inline int dbuf_put_u32(DynBuf *s, uint32_t val)
 {
     if (unlikely((s->allocated_size - s->size) < 4))
-        return __dbuf_put_u32(s, val);
+        return js__dbuf_put_u32(s, val);
     put_u32(s->buf + s->size, val);
     s->size += 4;
     return 0;
@@ -471,13 +471,13 @@ static inline int dbuf_put_u32(DynBuf *s, uint32_t val)
 static inline int dbuf_put_u64(DynBuf *s, uint64_t val)
 {
     if (unlikely((s->allocated_size - s->size) < 8))
-        return __dbuf_put_u64(s, val);
+        return js__dbuf_put_u64(s, val);
     put_u64(s->buf + s->size, val);
     s->size += 8;
     return 0;
 }
-int JS_PRINTF_FORMAT_ATTR(2, 3) dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const char *fmt, ...);
-void dbuf_free(DynBuf *s);
+int JS_PRINTF_FORMAT_ATTR(2, 3) js__dbuf_printf(DynBuf *s, JS_PRINTF_FORMAT const char *fmt, ...);
+void js__dbuf_free(DynBuf *s);
 static inline bool dbuf_error(DynBuf *s) {
     return s->error;
 }
@@ -497,15 +497,15 @@ enum {
     UTF8_HAS_NON_BMP1 = 4,  // has non-BMP1 code points, needs UTF-16 surrogate pairs
     UTF8_HAS_ERRORS   = 8,  // has encoding errors
 };
-int utf8_scan(const char *buf, size_t len, size_t *plen);
-size_t utf8_encode_len(uint32_t c);
-size_t utf8_encode(uint8_t buf[minimum_length(UTF8_CHAR_LEN_MAX)], uint32_t c);
-uint32_t utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp);
-uint32_t utf8_decode(const uint8_t *p, const uint8_t **pp);
-size_t utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len);
-size_t utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len);
-size_t utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len);
-size_t utf8_encode_buf16(char *dest, size_t dest_len, const uint16_t *src, size_t src_len);
+int js__utf8_scan(const char *buf, size_t len, size_t *plen);
+size_t js__utf8_encode_len(uint32_t c);
+size_t js__utf8_encode(uint8_t buf[minimum_length(UTF8_CHAR_LEN_MAX)], uint32_t c);
+uint32_t js__utf8_decode_len(const uint8_t *p, size_t max_len, const uint8_t **pp);
+uint32_t js__utf8_decode(const uint8_t *p, const uint8_t **pp);
+size_t js__utf8_decode_buf8(uint8_t *dest, size_t dest_len, const char *src, size_t src_len);
+size_t js__utf8_decode_buf16(uint16_t *dest, size_t dest_len, const char *src, size_t src_len);
+size_t js__utf8_encode_buf8(char *dest, size_t dest_len, const uint8_t *src, size_t src_len);
+size_t js__utf8_encode_buf16(char *dest, size_t dest_len, const uint16_t *src, size_t src_len);
 
 static inline bool is_surrogate(uint32_t c)
 {
@@ -557,7 +557,7 @@ static inline uint8_t to_upper_ascii(uint8_t c) {
     return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
 }
 
-void rqsort(void *base, size_t nmemb, size_t size,
+void js__rqsort(void *base, size_t nmemb, size_t size,
             int (*cmp)(const void *, const void *, void *),
             void *arg);
 
