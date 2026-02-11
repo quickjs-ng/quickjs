@@ -681,10 +681,6 @@ static inline int js_thread_join(js_thread_t thrd);
 #undef NANOSEC
 #define NANOSEC ((uint64_t) 1e9)
 
-#ifdef __GNUC__
-#pragma GCC visibility push(default)
-#endif
-
 static inline void js__pstrcpy(char *buf, int buf_size, const char *str)
 {
     int c;
@@ -1990,10 +1986,6 @@ static inline int js_thread_join(js_thread_t thrd)
 
 #endif /* !defined(_WIN32) */
 #endif /* JS_HAVE_THREADS */
-
-#ifdef __GNUC__
-#pragma GCC visibility pop
-#endif
 
 #ifdef __cplusplus
 } /* extern "C" { */
