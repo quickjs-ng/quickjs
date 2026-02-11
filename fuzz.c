@@ -1,7 +1,7 @@
 // clang -g -O1 -fsanitize=fuzzer -o fuzz fuzz.c
 #include "quickjs.h"
 #include "quickjs.c"
-#include "cutils.c"
+#include "cutils.h"
 #include "libregexp.c"
 #include "libunicode.c"
 #include <stdlib.h>

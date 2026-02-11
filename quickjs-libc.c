@@ -85,7 +85,7 @@ extern char **environ;
 
 #endif /* _WIN32 */
 
-#include "cutils.c"
+#include "cutils.h"
 #include "list.h"
 #include "quickjs-libc.h"
 

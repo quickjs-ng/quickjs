@@ -32,7 +32,7 @@
 #include <fcntl.h>
 #include <time.h>
 
-#include "cutils.c"
+#include "cutils.h"
 #include "quickjs.h"
 #include "quickjs-libc.h"
 

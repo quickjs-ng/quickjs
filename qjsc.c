@@ -31,7 +31,7 @@
 #include <assert.h>
 #include <errno.h>
 
-#include "cutils.c"
+#include "cutils.h"
 #include "quickjs-libc.h"
 
 typedef enum {

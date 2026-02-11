@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
-#include "cutils.c"
+#include "cutils.h"
 
 static JSValue eval(JSContext *ctx, const char *code)
 {
