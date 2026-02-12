@@ -1,6 +1,5 @@
 import {loadFile, writeFile} from "qjs:std"
 
-const cutils_c = loadFile("cutils.c")
 const cutils_h = loadFile("cutils.h")
 const dtoa_c = loadFile("dtoa.c")
 const dtoa_h = loadFile("dtoa.h")
@@ -34,7 +33,6 @@ let source = "#if defined(QJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU
            + libunicode_table_h
            + quickjs_h
            + quickjs_c
-           + cutils_c
            + dtoa_c
            + libregexp_c
            + libunicode_c
