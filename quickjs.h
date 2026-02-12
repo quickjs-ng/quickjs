@@ -1059,6 +1059,7 @@ JS_EXTERN JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
                                     bool is_shared);
 JS_EXTERN JSValue JS_NewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len);
 JS_EXTERN void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj);
+JS_EXTERN void JS_FreezeArrayBuffer(JSContext *ctx, JSValueConst obj, bool immutable);
 JS_EXTERN uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize, JSValueConst obj);
 JS_EXTERN bool JS_IsArrayBuffer(JSValueConst obj);
 JS_EXTERN uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj);

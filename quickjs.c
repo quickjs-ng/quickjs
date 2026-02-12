@@ -55763,6 +55763,13 @@ void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj)
     }
 }
 
+void JS_FreezeArrayBuffer(JSContext *ctx, JSValueConst obj, bool immutable)
+{
+    JSArrayBuffer *abuf = JS_GetOpaque(obj, JS_CLASS_ARRAY_BUFFER);
+    if (abuf)
+        abuf->immutable = immutable;
+}
+
 /* get an ArrayBuffer or SharedArrayBuffer */
 static JSArrayBuffer *js_get_array_buffer(JSContext *ctx, JSValueConst obj)
 {

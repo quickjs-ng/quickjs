@@ -858,6 +858,56 @@ static void slice_string_tocstring(void)
     JS_FreeRuntime(rt);
 }
 
+static void immutable_array_buffer(void)
+{
+    JSValue obj, ret;
+    bool immutable;
+    char buf[96];
+    int i, v;
+
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    for (i = 0; i < 2; i++) {
+        immutable = (i == 0);
+        JS_FreezeArrayBuffer(ctx, JS_NULL, immutable);
+        assert(!JS_HasException(ctx));
+        JS_FreezeArrayBuffer(ctx, JS_UNDEFINED, immutable);
+        assert(!JS_HasException(ctx));
+        obj = JS_NewObject(ctx);
+        JS_FreezeArrayBuffer(ctx, obj, immutable);
+        assert(!JS_HasException(ctx));
+        JS_FreeValue(ctx, obj);
+    }
+    obj = eval(ctx, "globalThis.ab = new ArrayBuffer(1)");
+    assert(!JS_IsException(obj));
+    assert(JS_IsArrayBuffer(obj));
+    for (i = 1; i <= 3; i++) {
+        immutable = (i == 2);
+        if (i > 1)
+            JS_FreezeArrayBuffer(ctx, obj, immutable);
+        ret = eval(ctx, "globalThis.ab.immutable");
+        assert(!JS_IsException(ret));
+        assert(JS_IsBool(ret));
+        assert(immutable == JS_ToBool(ctx, ret));
+        JS_FreeValue(ctx, ret);
+        snprintf(buf, sizeof(buf),
+                 "var ta = new Uint8Array(ab); ta[0] = %d; ta[0]", i);
+        ret = eval(ctx, buf);
+        assert(!JS_IsException(ret));
+        assert(JS_IsNumber(ret));
+        assert(0 == JS_ToInt32(ctx, &v, ret));
+        JS_FreeValue(ctx, ret);
+        if (immutable) {
+            assert(v != i);
+        } else {
+            assert(v == i);
+        }
+    }
+    JS_FreeValue(ctx, obj);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -875,5 +925,6 @@ int main(void)
     new_errors();
     global_object_prototype();
     slice_string_tocstring();
+    immutable_array_buffer();
     return 0;
 }
