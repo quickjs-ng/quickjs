@@ -1152,6 +1152,11 @@ typedef struct JSModuleDef JSModuleDef;
 typedef char *JSModuleNormalizeFunc(JSContext *ctx,
                                     const char *module_base_name,
                                     const char *module_name, void *opaque);
+typedef char *JSModuleNormalizeFunc2(JSContext *ctx,
+                                     const char *module_base_name,
+                                     const char *module_name,
+                                     JSValueConst attributes,
+                                     void *opaque);
 typedef JSModuleDef *JSModuleLoaderFunc(JSContext *ctx,
                                         const char *module_name, void *opaque);
 
@@ -1176,6 +1181,10 @@ JS_EXTERN void JS_SetModuleLoaderFunc2(JSRuntime *rt,
                                        JSModuleLoaderFunc2 *module_loader,
                                        JSModuleCheckSupportedImportAttributes *module_check_attrs,
                                        void *opaque);
+
+/* Set an attributes-aware module normalizer. Call after JS_SetModuleLoaderFunc2. */
+JS_EXTERN void JS_SetModuleNormalizeFunc2(JSRuntime *rt,
+                                          JSModuleNormalizeFunc2 *module_normalize);
 
 /* return the import.meta object of a module */
 JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
