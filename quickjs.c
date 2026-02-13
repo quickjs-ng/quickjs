@@ -321,7 +321,11 @@ struct JSRuntime {
 
     struct list_head job_list; /* list of JSJobEntry.link */
 
-    JSModuleNormalizeFunc *module_normalize_func;
+    bool module_normalize_has_attr;
+    union {
+        JSModuleNormalizeFunc *module_normalize_func;
+        JSModuleNormalizeFunc2 *module_normalize_func2;
+    } normalize_u;
     bool module_loader_has_attr;
     union {
         JSModuleLoaderFunc *module_loader_func;
@@ -29049,7 +29053,8 @@ void JS_SetModuleLoaderFunc(JSRuntime *rt,
                             JSModuleNormalizeFunc *module_normalize,
                             JSModuleLoaderFunc *module_loader, void *opaque)
 {
-    rt->module_normalize_func = module_normalize;
+    rt->module_normalize_has_attr = false;
+    rt->normalize_u.module_normalize_func = module_normalize;
     rt->module_loader_has_attr = false;
     rt->u.module_loader_func = module_loader;
     rt->module_check_attrs = NULL;
@@ -29062,11 +29067,19 @@ void JS_SetModuleLoaderFunc2(JSRuntime *rt,
                              JSModuleCheckSupportedImportAttributes *module_check_attrs,
                              void *opaque)
 {
-    rt->module_normalize_func = module_normalize;
+    rt->module_normalize_has_attr = false;
+    rt->normalize_u.module_normalize_func = module_normalize;
     rt->module_loader_has_attr = true;
     rt->u.module_loader_func2 = module_loader;
     rt->module_check_attrs = module_check_attrs;
     rt->module_loader_opaque = opaque;
+}
+
+void JS_SetModuleNormalizeFunc2(JSRuntime *rt,
+                                JSModuleNormalizeFunc2 *module_normalize)
+{
+    rt->module_normalize_has_attr = true;
+    rt->normalize_u.module_normalize_func2 = module_normalize;
 }
 
 int JS_SetModulePrivateValue(JSContext *ctx, JSModuleDef *m, JSValue val)
@@ -29166,11 +29179,15 @@ static JSModuleDef *js_host_resolve_imported_module(JSContext *ctx,
     char *cname;
     JSAtom module_name;
 
-    if (!rt->module_normalize_func) {
+    if (!rt->normalize_u.module_normalize_func && !rt->normalize_u.module_normalize_func2) {
         cname = js_default_module_normalize_name(ctx, base_cname, cname1);
+    } else if (rt->module_normalize_has_attr) {
+        cname = rt->normalize_u.module_normalize_func2(ctx, base_cname, cname1,
+                                                       attributes,
+                                                       rt->module_loader_opaque);
     } else {
-        cname = rt->module_normalize_func(ctx, base_cname, cname1,
-                                          rt->module_loader_opaque);
+        cname = rt->normalize_u.module_normalize_func(ctx, base_cname, cname1,
+                                                      rt->module_loader_opaque);
     }
     if (!cname)
         return NULL;
