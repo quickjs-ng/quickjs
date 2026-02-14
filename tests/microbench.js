@@ -830,6 +830,37 @@ function string_slice3(n)
     return n * 1000;
 }
 
+function string_concat(n, r)
+{
+    var i, f, xs;
+    // generate a function on the fly; splatting the arguments with
+    // "x".concat(...xs) spends too much time inside the splat itself
+    xs = "x".repeat(r).split("").map(_ => "'x'");
+    f = new Function("", `'x'.concat(${ xs.join(",") })`);
+    for (i = 0; i < n; i++)
+        f();
+    return n;
+}
+
+function string_concat0(n) {
+    return string_concat(n, 0);
+}
+
+function string_concat1(n)
+{
+    return string_concat(n, 1);
+}
+
+function string_concat2(n)
+{
+    return string_concat(n, 32);
+}
+
+function string_concat3(n)
+{
+    return string_concat(n, 256);
+}
+
 /* sort bench */
 
 function sort_bench(text) {
@@ -1147,6 +1178,10 @@ function main(argc, argv, g)
         string_build2,
         //string_build3,
         //string_build4,
+        string_concat0,
+        string_concat1,
+        string_concat2,
+        string_concat3,
         string_slice1,
         string_slice2,
         string_slice3,
