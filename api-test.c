@@ -868,28 +868,25 @@ static void immutable_array_buffer(void)
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx = JS_NewContext(rt);
     for (i = 0; i < 2; i++) {
-        immutable = (i == 0);
-        JS_FreezeArrayBuffer(ctx, JS_NULL, immutable);
-        assert(!JS_HasException(ctx));
-        JS_FreezeArrayBuffer(ctx, JS_UNDEFINED, immutable);
-        assert(!JS_HasException(ctx));
         obj = JS_NewObject(ctx);
-        JS_FreezeArrayBuffer(ctx, obj, immutable);
-        assert(!JS_HasException(ctx));
+        immutable = (i == 0);
+        assert(-1 == JS_IsImmutableArrayBuffer(JS_NULL));
+        assert(-1 == JS_IsImmutableArrayBuffer(JS_UNDEFINED));
+        assert(-1 == JS_IsImmutableArrayBuffer(obj));
+        assert(-1 == JS_SetImmutableArrayBuffer(JS_NULL, immutable));
+        assert(-1 == JS_SetImmutableArrayBuffer(JS_UNDEFINED, immutable));
+        assert(-1 == JS_SetImmutableArrayBuffer(obj, immutable));
         JS_FreeValue(ctx, obj);
     }
     obj = eval(ctx, "globalThis.ab = new ArrayBuffer(1)");
     assert(!JS_IsException(obj));
     assert(JS_IsArrayBuffer(obj));
+    assert(!JS_IsImmutableArrayBuffer(obj));
     for (i = 1; i <= 3; i++) {
         immutable = (i == 2);
         if (i > 1)
-            JS_FreezeArrayBuffer(ctx, obj, immutable);
-        ret = eval(ctx, "globalThis.ab.immutable");
-        assert(!JS_IsException(ret));
-        assert(JS_IsBool(ret));
-        assert(immutable == JS_ToBool(ctx, ret));
-        JS_FreeValue(ctx, ret);
+            JS_SetImmutableArrayBuffer(obj, immutable);
+        assert(immutable == JS_IsImmutableArrayBuffer(obj));
         snprintf(buf, sizeof(buf),
                  "var ta = new Uint8Array(ab); ta[0] = %d; ta[0]", i);
         ret = eval(ctx, buf);
