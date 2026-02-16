@@ -42,3 +42,11 @@ JavaScript regular expressions for Lua.
 ## [Edbrowse](https://edbrowse.org)
 
 A combination editor, web-browser, and mail client that is 100% text based.
+
+## [go-quickjs-wasi-reactor](https://github.com/aperturerobotics/go-quickjs-wasi-reactor)
+
+Go module that embeds QuickJS-NG compiled to WebAssembly using the WASI reactor model. Provides re-entrant execution via exported C API functions, a high-level Go API with wazero, non-blocking event loop control, and a command-line REPL.
+
+## [js-quickjs-wasi-reactor](https://github.com/aperturerobotics/js-quickjs-wasi-reactor)
+
+JavaScript/TypeScript harness for running QuickJS-NG in WASI reactor mode. Includes a browser-compatible WASI shim, virtual filesystem, custom I/O handlers, and non-blocking event loop integration for browser and Node.js/Bun environments.
