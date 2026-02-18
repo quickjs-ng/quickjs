@@ -59299,10 +59299,11 @@ static const JSClassShortDef js_weakref_class_def[] = {
 
 typedef struct JSFinRecEntry {
     struct list_head link;
-    JSValueConst obj;
     JSValueConst target;
     JSValue held_val;
     JSValue token;
+    JSValue cb;
+    JSContext *ctx;
 } JSFinRecEntry;
 
 typedef struct JSFinalizationRegistryData {
@@ -59327,6 +59328,15 @@ static void delete_finrec_weakref(JSRuntime *rt, JSFinRecEntry *fre)
     js_free_rt(rt, wr);
 }
 
+static void js_finrec_free(JSRuntime *rt, JSFinRecEntry *fre)
+{
+    JS_FreeValueRT(rt, fre->held_val);
+    JS_FreeValueRT(rt, fre->token);
+    JS_FreeValueRT(rt, fre->cb);
+    JS_FreeContext(fre->ctx);
+    js_free_rt(rt, fre);
+}
+
 static void js_finrec_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSFinalizationRegistryData *frd = JS_GetOpaque(val, JS_CLASS_FINALIZATION_REGISTRY);
@@ -59342,9 +59352,7 @@ static void js_finrec_finalizer(JSRuntime *rt, JSValueConst val)
         list_for_each_safe(el, el1, &frd->entries) {
             JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
             list_del(&fre->link);
-            JS_FreeValueRT(rt, fre->held_val);
-            JS_FreeValueRT(rt, fre->token);
-            js_free_rt(rt, fre);
+            js_finrec_free(rt, fre);
         }
         JS_FreeValueRT(rt, frd->cb);
         js_free_rt(rt, frd);
@@ -59362,6 +59370,8 @@ static void js_finrec_mark(JSRuntime *rt, JSValueConst val,
             JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
             JS_MarkValue(rt, fre->held_val, mark_func);
             JS_MarkValue(rt, fre->token, mark_func);
+            JS_MarkValue(rt, fre->cb, mark_func);
+            mark_func(rt, &fre->ctx->header);
         }
     }
 }
@@ -59418,7 +59428,8 @@ static JSValue js_finrec_register(JSContext *ctx, JSValueConst this_val,
         js_free(ctx, fre);
         return JS_EXCEPTION;
     }
-    fre->obj = this_val;
+    fre->cb = js_dup(frd->cb);
+    fre->ctx = JS_DupContext(frd->ctx);
     fre->target = target;
     fre->held_val = js_dup(held_val);
     fre->token = js_dup(token);
@@ -59447,9 +59458,7 @@ static JSValue js_finrec_unregister(JSContext *ctx, JSValueConst this_val, int a
         if (js_same_value(ctx, fre->token, token)) {
             list_del(&fre->link);
             delete_finrec_weakref(ctx->rt, fre);
-            JS_FreeValue(ctx, fre->held_val);
-            JS_FreeValue(ctx, fre->token);
-            js_free(ctx, fre);
+            js_finrec_free(ctx->rt, fre);
             removed = true;
         }
     }
@@ -59550,20 +59559,16 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             break;
         case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY: {
             fre = wr->u.fin_rec_entry;
-            JSFinalizationRegistryData *frd = JS_GetOpaque(fre->obj, JS_CLASS_FINALIZATION_REGISTRY);
-            assert(frd != NULL);
             /**
              * During the GC sweep phase the held object might be collected first.
              */
             if (!rt->in_free && (!JS_IsObject(fre->held_val) || JS_IsLiveObject(rt, fre->held_val))) {
                 JSValueConst args[2];
-                args[0] = frd->cb;
+                args[0] = fre->cb;
                 args[1] = fre->held_val;
-                JS_EnqueueJob(frd->ctx, js_finrec_job, 2, args);
+                JS_EnqueueJob(fre->ctx, js_finrec_job, 2, args);
             }
-            JS_FreeValueRT(rt, fre->held_val);
-            JS_FreeValueRT(rt, fre->token);
-            js_free_rt(rt, fre);
+            js_finrec_free(rt, fre);
             break;
         }
         default:
