@@ -841,7 +841,9 @@ static int re_parse_char_class(REParseState *s, const uint8_t **pp)
         const char *s = verboten;
         int n = 1;
         do {
-            if (!memcmp(s, p, n))
+            // not memcmp because some implementations compare word instead
+            // of byte at a time and will happily read past end of input
+            if (!strncmp(s, (const char *)p, n))
                 if (p[n] == ']')
                     goto invalid_class_range;
             s += n;
