@@ -56,7 +56,6 @@ Supported flags:
 
 - `READ_OBJ_BYTECODE`: allow de-serializing functions and modules
 - `READ_OBJ_REFERENCE`: allow de-serializing object references
-- `READ_OBJ_SAB`: allow de-serializing SharedArrayBuffer instances
 
 ## `qjs:os` module
 
