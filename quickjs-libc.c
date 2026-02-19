@@ -4853,6 +4853,7 @@ static JSValue js_bjson_read(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (JS_ToInt32(ctx, &flags, argv[3]))
         return JS_EXCEPTION;
+    flags &= ~JS_READ_OBJ_SAB;
     buf = JS_GetArrayBuffer(ctx, &size, argv[0]);
     if (!buf)
         return JS_EXCEPTION;
@@ -4872,6 +4873,7 @@ static JSValue js_bjson_write(JSContext *ctx, JSValueConst this_val,
 
     if (JS_ToInt32(ctx, &flags, argv[1]))
         return JS_EXCEPTION;
+    flags &= ~JS_WRITE_OBJ_SAB;
     buf = JS_WriteObject(ctx, &len, argv[0], flags);
     if (!buf)
         return JS_EXCEPTION;
@@ -4887,10 +4889,8 @@ static const JSCFunctionListEntry js_bjson_funcs[] = {
 #define DEF(x) JS_PROP_INT32_DEF(#x, JS_##x, JS_PROP_CONFIGURABLE)
     DEF(READ_OBJ_BYTECODE),
     DEF(READ_OBJ_REFERENCE),
-    DEF(READ_OBJ_SAB),
     DEF(WRITE_OBJ_BYTECODE),
     DEF(WRITE_OBJ_REFERENCE),
-    DEF(WRITE_OBJ_SAB),
     DEF(WRITE_OBJ_STRIP_DEBUG),
     DEF(WRITE_OBJ_STRIP_SOURCE),
 #undef DEF
