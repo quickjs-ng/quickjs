@@ -162,6 +162,8 @@ file mode `0o700`.
 
 Return `[path, err]` where `path` is a string and `err` is 0 or `-errno`.
 
+Not available on Windows and WASI.
+
 ### `mkstemp(pattern = "tmpXXXXXX")`
 
 Create a temporary file and open it. `XXXXXX` must be at the end of the
@@ -174,6 +176,8 @@ or `-errno`, i.e., the error code if less than zero.
 Unlike `std.tmpfile()`, the file is not automatically deleted on close.
 
 See also `std.fdopen()`.
+
+Not available on Windows and WASI.
 
 ### `stat(path)` / `lstat(path)`
 
