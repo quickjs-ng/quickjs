@@ -213,6 +213,19 @@ function test_os()
     assert(fd < 0);
 
     assert(os.remove(fdir) === 0);
+
+    [fdir, err] = os.mkdtemp();
+    assert(err, 0);
+    assert(fdir.startsWith("tmp"));
+    assert(fdir.length, 9);
+
+    [fpath, fd] = os.mkstemp(`${fdir}/XXXXXX`);
+    assert(fdir.startsWith(`${fdir}`));
+    assert(fd >= 0);
+    os.close(fd);
+
+    assert(os.remove(fpath), 0);
+    assert(os.remove(fdir), 0);
 }
 
 function test_os_exec()
