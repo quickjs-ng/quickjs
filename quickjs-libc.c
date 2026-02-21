@@ -3087,6 +3087,7 @@ done:
 #endif
 }
 
+#if !defined(_WIN32) && !defined(__wasi__)
 #define PAT "XXXXXX"
 #define PSZ (sizeof(PAT)-1)
 static JSValue js_os_mkdstemp(JSContext *ctx, JSValueConst this_val,
@@ -3131,6 +3132,7 @@ static JSValue js_os_mkdstemp(JSContext *ctx, JSValueConst this_val,
 }
 #undef PSZ
 #undef PAT
+#endif // !defined(_WIN32) && !defined(__wasi__)
 
 #if !defined(_WIN32)
 static int64_t timespec_to_ms(const struct timespec *tv)
@@ -4395,8 +4397,10 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("chdir", 0, js_os_chdir ),
     JS_CFUNC_DEF("mkdir", 1, js_os_mkdir ),
     JS_CFUNC_DEF("readdir", 1, js_os_readdir ),
+#if !defined(_WIN32) && !defined(__wasi__)
     JS_CFUNC_MAGIC_DEF("mkdtemp", 0, js_os_mkdstemp, 'd' ),
     JS_CFUNC_MAGIC_DEF("mkstemp", 0, js_os_mkdstemp, 's' ),
+#endif
     /* st_mode constants */
     OS_FLAG(S_IFMT),
     OS_FLAG(S_IFIFO),
