@@ -1153,19 +1153,27 @@ static bool is_stdio(FILE *f)
     return f == stdin || f == stdout || f == stderr;
 }
 
+static void safe_close(FILE *f, bool is_popen)
+{
+    if (!f)
+        return;
+    if (is_stdio(f))
+        return;
+    if (is_popen) {
+#if !defined(__wasi__)
+        pclose(f);
+#endif
+    } else {
+        fclose(f);
+    }
+}
+
 static void js_std_file_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSThreadState *ts = js_get_thread_state(rt);
     JSSTDFile *s = JS_GetOpaque(val, ts->std_file_class_id);
     if (s) {
-        if (s->f && !is_stdio(s->f)) {
-#if !defined(__wasi__)
-            if (s->is_popen)
-                pclose(s->f);
-            else
-#endif
-                fclose(s->f);
-        }
+        safe_close(s->f, s->is_popen);
         js_free_rt(rt, s);
     }
 }
@@ -1194,16 +1202,18 @@ static JSValue js_new_std_file(JSContext *ctx, FILE *f, bool is_popen)
     JSValue obj;
     obj = JS_NewObjectClass(ctx, ts->std_file_class_id);
     if (JS_IsException(obj))
-        return obj;
+        goto exception;
     s = js_mallocz(ctx, sizeof(*s));
-    if (!s) {
-        JS_FreeValue(ctx, obj);
-        return JS_EXCEPTION;
-    }
+    if (!s)
+        goto exception;
     s->is_popen = is_popen;
     s->f = f;
     JS_SetOpaque(obj, s);
     return obj;
+exception:
+    safe_close(f, is_popen);
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
 }
 
 static void js_set_error_object(JSContext *ctx, JSValueConst obj, int err)
