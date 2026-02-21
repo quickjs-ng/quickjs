@@ -3093,6 +3093,53 @@ done:
 #endif
 }
 
+#if !defined(_WIN32) && !defined(__wasi__)
+#define PAT "XXXXXX"
+#define PSZ (sizeof(PAT)-1)
+static JSValue js_os_mkdstemp(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv, int magic)
+{
+    char pat_s[32] = "tmp"PAT, *pat = pat_s;
+    const char *s;
+    size_t k, n;
+    JSValue val;
+    int err;
+
+    if (argc > 0) {
+        s = JS_ToCStringLen(ctx, &n, argv[0]);
+        if (!s)
+            return JS_EXCEPTION;
+        k = n;
+        if (n < PSZ || memcmp(&s[n-PSZ], PAT, PSZ))
+            k += PSZ;
+        if (k >= sizeof(pat_s))
+            pat = js_malloc(ctx, k+1);
+        if (pat) {
+            memcpy(pat, s, n);
+            if (n < k)
+                memcpy(&pat[n], PAT, PSZ);
+            pat[k] = '\0';
+        }
+        JS_FreeCString(ctx, s);
+        if (!pat)
+            return JS_EXCEPTION;
+    }
+    if (magic == 'd') {
+        err = 0;
+        if (!mkdtemp(pat))
+            err = -errno;
+    } else {
+        err = js_get_errno(mkstemp(pat));
+    }
+    val = JS_NewString(ctx, pat);
+    if (pat != pat_s)
+        js_free(ctx, pat);
+    return make_obj_error(ctx, val, err);
+}
+#undef PSZ
+#undef PAT
+#endif // !defined(_WIN32) && !defined(__wasi__)
+
 #if !defined(_WIN32)
 static int64_t timespec_to_ms(const struct timespec *tv)
 {
@@ -4356,6 +4403,10 @@ static const JSCFunctionListEntry js_os_funcs[] = {
     JS_CFUNC_DEF("chdir", 0, js_os_chdir ),
     JS_CFUNC_DEF("mkdir", 1, js_os_mkdir ),
     JS_CFUNC_DEF("readdir", 1, js_os_readdir ),
+#if !defined(_WIN32) && !defined(__wasi__)
+    JS_CFUNC_MAGIC_DEF("mkdtemp", 0, js_os_mkdstemp, 'd' ),
+    JS_CFUNC_MAGIC_DEF("mkstemp", 0, js_os_mkdstemp, 's' ),
+#endif
     /* st_mode constants */
     OS_FLAG(S_IFMT),
     OS_FLAG(S_IFIFO),

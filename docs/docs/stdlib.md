@@ -154,6 +154,31 @@ Change the current directory. Return 0 if OK or `-errno`.
 
 Create a directory at `path`. Return 0 if OK or `-errno`.
 
+### `mkdtemp(pattern = "tmpXXXXXX")`
+
+Create a temporary directory. `XXXXXX` must be at the end of the pattern
+string and is replaced with a random name. The directory is created with
+file mode `0o700`.
+
+Return `[path, err]` where `path` is a string and `err` is 0 or `-errno`.
+
+Not available on Windows and WASI.
+
+### `mkstemp(pattern = "tmpXXXXXX")`
+
+Create a temporary file and open it. `XXXXXX` must be at the end of the
+pattern string and is replaced with a random name. The file is created with
+file mode `0o600` and opened in read/write mode.
+
+Return `[path, fd]` where `path` is a string and `fd` is the file descriptor
+or `-errno`, i.e., the error code if less than zero.
+
+Unlike `std.tmpfile()`, the file is not automatically deleted on close.
+
+See also `std.fdopen()`.
+
+Not available on Windows and WASI.
+
 ### `stat(path)` / `lstat(path)`
 
 Return `[obj, err]` where `obj` is an object containing the
