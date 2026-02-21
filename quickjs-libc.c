@@ -2941,17 +2941,13 @@ static JSValue make_obj_error(JSContext *ctx,
                               JSValue obj,
                               int err)
 {
-    JSValue arr;
+    JSValue vals[2];
+
     if (JS_IsException(obj))
         return obj;
-    arr = JS_NewArray(ctx);
-    if (JS_IsException(arr))
-        return JS_EXCEPTION;
-    JS_DefinePropertyValueUint32(ctx, arr, 0, obj,
-                                 JS_PROP_C_W_E);
-    JS_DefinePropertyValueUint32(ctx, arr, 1, JS_NewInt32(ctx, err),
-                                 JS_PROP_C_W_E);
-    return arr;
+    vals[0] = obj;
+    vals[1] = JS_NewInt32(ctx, err);
+    return JS_NewArrayFrom(ctx, countof(vals), vals);
 }
 
 static JSValue make_string_error(JSContext *ctx,
