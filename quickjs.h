@@ -541,7 +541,9 @@ JS_EXTERN JSRuntime *JS_GetRuntime(JSContext *ctx);
 JS_EXTERN void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj);
 JS_EXTERN JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
 JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
-
+JS_EXTERN void JS_SetContextMemoryLimit(JSContext *ctx, size_t limit);
+JS_EXTERN void JS_ResetContextMemory(JSContext *ctx);
+JS_EXTERN size_t JS_GetContextMemoryUsage(JSContext *ctx); /* optional helper */
 /* the following functions are used to select the intrinsic object to
    save memory */
 JS_EXTERN JSContext *JS_NewContextRaw(JSRuntime *rt);

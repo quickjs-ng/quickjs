@@ -535,6 +535,8 @@ struct JSContext {
                              const char *input, size_t input_len,
                              const char *filename, int line, int flags, int scope_idx);
     void *user_opaque;
+    size_t mem_limit;      /* 0 = unlimited */
+    size_t mem_used;       /* tracked allocations */
 };
 
 typedef union JSFloat64Union {
@@ -1687,71 +1689,183 @@ void *js_mallocz_rt(JSRuntime *rt, size_t size)
 /* Throw out of memory in case of error */
 void *js_calloc(JSContext *ctx, size_t count, size_t size)
 {
-    void *ptr;
-    ptr = js_calloc_rt(ctx->rt, count, size);
+    size_t req_size;
+    if (unlikely(__builtin_mul_overflow(count, size, &req_size))) {
+        JS_ThrowOutOfMemory(ctx);
+        return NULL; // overflow
+    }
+
+    // upfront check against budget
+    if (unlikely(ctx->mem_limit && req_size > (ctx->mem_limit - ctx->mem_used))) {
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
+    void *ptr = js_calloc_rt(ctx->rt, count, size);
     if (unlikely(!ptr)) {
         JS_ThrowOutOfMemory(ctx);
         return NULL;
     }
+
+    size_t actual = js_malloc_usable_size_rt(ctx->rt, ptr);
+
+    if (unlikely(ctx->mem_limit && ctx->mem_used + actual > ctx->mem_limit)) {
+        js_free_rt(ctx->rt, ptr);
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
+    ctx->mem_used += actual;
     return ptr;
 }
+
 
 /* Throw out of memory in case of error */
 void *js_malloc(JSContext *ctx, size_t size)
 {
-    void *ptr;
-    ptr = js_malloc_rt(ctx->rt, size);
+    if (unlikely(ctx->mem_limit && size > (ctx->mem_limit - ctx->mem_used))) {
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
+    void *ptr = js_malloc_rt(ctx->rt, size);
     if (unlikely(!ptr)) {
         JS_ThrowOutOfMemory(ctx);
         return NULL;
     }
+
+    size_t actual = js_malloc_usable_size_rt(ctx->rt, ptr);
+
+    if (unlikely(ctx->mem_limit && ctx->mem_used + actual > ctx->mem_limit)) {
+        js_free_rt(ctx->rt, ptr);
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
+    ctx->mem_used += actual;
     return ptr;
 }
+
 
 /* Throw out of memory in case of error */
 void *js_mallocz(JSContext *ctx, size_t size)
 {
-    void *ptr;
-    ptr = js_mallocz_rt(ctx->rt, size);
+    // upfront check
+    if (unlikely(ctx->mem_limit && size > (ctx->mem_limit - ctx->mem_used))) {
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
+    void *ptr = js_mallocz_rt(ctx->rt, size);
     if (unlikely(!ptr)) {
         JS_ThrowOutOfMemory(ctx);
         return NULL;
     }
+
+    size_t actual = js_malloc_usable_size_rt(ctx->rt, ptr);
+
+    if (unlikely(ctx->mem_limit && ctx->mem_used + actual > ctx->mem_limit)) {
+        js_free_rt(ctx->rt, ptr);
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
+    ctx->mem_used += actual;
     return ptr;
 }
 
+
 void js_free(JSContext *ctx, void *ptr)
 {
+    if (unlikely(!ptr))
+        return;
+    size_t actual = js_malloc_usable_size(ctx, ptr);
+    ctx->mem_used -= actual;
     js_free_rt(ctx->rt, ptr);
 }
 
 /* Throw out of memory in case of error */
 void *js_realloc(JSContext *ctx, void *ptr, size_t size)
 {
-    void *ret;
-    ret = js_realloc_rt(ctx->rt, ptr, size);
+    size_t old_size = 0;
+    if (ptr)
+        old_size = js_malloc_usable_size_rt(ctx->rt, ptr);
+
+    if (unlikely(ctx->mem_limit && size > 0 &&
+                 size > (ctx->mem_limit - (ctx->mem_used - old_size)))) {
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
+    void *ret = js_realloc_rt(ctx->rt, ptr, size);
     if (unlikely(!ret && size != 0)) {
         JS_ThrowOutOfMemory(ctx);
         return NULL;
     }
+
+    if (likely(ret)) {
+        size_t new_size = js_malloc_usable_size_rt(ctx->rt, ret);
+        ctx->mem_used += new_size - old_size;
+
+        if (unlikely(ctx->mem_limit && ctx->mem_used > ctx->mem_limit)) {
+            js_free_rt(ctx->rt, ret);
+            JS_ThrowOutOfMemory(ctx);
+            return NULL;
+        }
+    } else {
+        ctx->mem_used -= old_size; // realloc(...,0) frees memory
+    }
+
     return ret;
 }
+
+
 
 /* store extra allocated size in *pslack if successful */
 void *js_realloc2(JSContext *ctx, void *ptr, size_t size, size_t *pslack)
 {
-    void *ret;
-    ret = js_realloc_rt(ctx->rt, ptr, size);
+    size_t old_size = 0;
+    if (ptr)
+        old_size = js_malloc_usable_size_rt(ctx->rt, ptr);
+
+    // upfront check
+    if (unlikely(ctx->mem_limit && size > 0)) {
+        size_t remaining = ctx->mem_limit - (ctx->mem_used - old_size);
+        if (unlikely(size > remaining)) {
+            JS_ThrowOutOfMemory(ctx);
+            return NULL;
+        }
+    }
+
+    void *ret = js_realloc_rt(ctx->rt, ptr, size);
     if (unlikely(!ret && size != 0)) {
         JS_ThrowOutOfMemory(ctx);
         return NULL;
     }
-    if (pslack) {
+
+    if (likely(ret)) {
         size_t new_size = js_malloc_usable_size_rt(ctx->rt, ret);
-        *pslack = (new_size > size) ? new_size - size : 0;
+        ctx->mem_used += new_size - old_size;
+
+        if (unlikely(ctx->mem_limit && ctx->mem_used > ctx->mem_limit)) {
+            js_free_rt(ctx->rt, ret);
+            JS_ThrowOutOfMemory(ctx);
+            return NULL;
+        }
+
+        if (pslack)
+            *pslack = (new_size > size) ? new_size - size : 0;
+    } else {
+        // realloc with size=0 frees memory
+        ctx->mem_used -= old_size;
+        if (pslack)
+            *pslack = 0;
     }
+
     return ret;
 }
+
+
 
 size_t js_malloc_usable_size(JSContext *ctx, const void *ptr)
 {
@@ -2196,11 +2310,31 @@ static JSString *js_alloc_string_rt(JSRuntime *rt, int max_len, int is_wide_char
 static JSString *js_alloc_string(JSContext *ctx, int max_len, int is_wide_char)
 {
     JSString *p;
+
+    // upfront budget check: string object header + chars
+    size_t approx_size = sizeof(JSString) +
+                         (size_t)max_len * (is_wide_char ? 2 : 1);
+
+    if (unlikely(ctx->mem_limit && approx_size > (ctx->mem_limit - ctx->mem_used))) {
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
     p = js_alloc_string_rt(ctx->rt, max_len, is_wide_char);
     if (unlikely(!p)) {
         JS_ThrowOutOfMemory(ctx);
         return NULL;
     }
+
+    size_t actual = js_malloc_usable_size_rt(ctx->rt, p);
+
+    if (unlikely(ctx->mem_limit && ctx->mem_used + actual > ctx->mem_limit)) {
+        js_free_rt(ctx->rt, p);
+        JS_ThrowOutOfMemory(ctx);
+        return NULL;
+    }
+
+    ctx->mem_used += actual;
     return p;
 }
 
@@ -2468,6 +2602,8 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->error_back_trace = JS_UNDEFINED;
     ctx->error_prepare_stack = JS_UNDEFINED;
     ctx->error_stack_trace_limit = js_int32(10);
+    ctx->mem_limit = 0;
+    ctx->mem_used = 0;
     init_list_head(&ctx->loaded_modules);
 
     JS_AddIntrinsicBasicObjects(ctx);
@@ -2535,6 +2671,21 @@ JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id)
 JSValue JS_GetFunctionProto(JSContext *ctx)
 {
     return js_dup(ctx->function_proto);
+}
+
+void JS_SetContextMemoryLimit(JSContext *ctx, size_t limit)
+{
+    ctx->mem_limit = limit;
+}
+
+void JS_ResetContextMemory(JSContext *ctx)
+{
+    ctx->mem_used = 0;
+}
+
+size_t JS_GetContextMemoryUsage(JSContext *ctx)
+{
+    return ctx->mem_used;
 }
 
 typedef enum JSFreeModuleEnum {
