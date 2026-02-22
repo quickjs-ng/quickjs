@@ -1580,6 +1580,17 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
 
     if (local) {
         ret = js_std_loop(ctx);
+        if (!ret) {
+            JSValue obj = JS_GetGlobalObject(ctx);
+            JSValue fun = JS_GetPropertyStr(ctx, obj, "exit");
+            JS_FreeValue(ctx, obj);
+            if (!JS_IsUndefined(fun)) {
+                JSValue val = JS_Call(ctx, fun, JS_UNDEFINED, 0, NULL);
+                ret = JS_IsException(val);
+                JS_FreeValue(ctx, val);
+            }
+            JS_FreeValue(ctx, fun);
+        }
         if (ret)
             js_std_dump_error(ctx);
     }
