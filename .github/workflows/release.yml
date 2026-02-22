@@ -54,7 +54,7 @@ jobs:
           path: build/*-linux-${{matrix.arch}}
 
   macos:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
       - name: build
