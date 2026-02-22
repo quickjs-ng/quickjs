@@ -1519,25 +1519,41 @@ static JSValue js_std_file_read_write(JSContext *ctx, JSValueConst this_val,
                                       int argc, JSValueConst *argv, int magic)
 {
     FILE *f = js_std_file_get(ctx, this_val);
+    bool is_write = (magic != 0);
     uint64_t pos, len;
     size_t size, ret;
+    const char *str;
     uint8_t *buf;
 
     if (!f)
         return JS_EXCEPTION;
-    if (JS_ToIndex(ctx, &pos, argv[1]))
+    pos = 0;
+    if (argc > 1 && JS_ToIndex(ctx, &pos, argv[1]))
         return JS_EXCEPTION;
-    if (JS_ToIndex(ctx, &len, argv[2]))
+    len = 0;
+    if (argc > 2 && JS_ToIndex(ctx, &len, argv[2]))
         return JS_EXCEPTION;
-    buf = JS_GetArrayBuffer(ctx, &size, argv[0]);
+    if (is_write && JS_IsString(argv[0])) {
+        str = JS_ToCStringLen(ctx, &size, argv[0]);
+        buf = (void *)str;
+    } else {
+        str = NULL;
+        buf = JS_GetArrayBuffer(ctx, &size, argv[0]);
+    }
     if (!buf)
         return JS_EXCEPTION;
+    if (pos > size)
+        pos = size;
+    if (argc < 3)
+        len = size - pos;
     if (pos + len > size)
-        return JS_ThrowRangeError(ctx, "read/write array buffer overflow");
-    if (magic)
+        len = size - pos;
+    if (is_write) {
         ret = fwrite(buf + pos, 1, len, f);
-    else
+    } else {
         ret = fread(buf + pos, 1, len, f);
+    }
+    JS_FreeCString(ctx, str);
     return JS_NewInt64(ctx, ret);
 }
 
@@ -1909,8 +1925,8 @@ static const JSCFunctionListEntry js_std_file_proto_funcs[] = {
     JS_CFUNC_DEF("fileno", 0, js_std_file_fileno ),
     JS_CFUNC_DEF("error", 0, js_std_file_error ),
     JS_CFUNC_DEF("clearerr", 0, js_std_file_clearerr ),
-    JS_CFUNC_MAGIC_DEF("read", 3, js_std_file_read_write, 0 ),
-    JS_CFUNC_MAGIC_DEF("write", 3, js_std_file_read_write, 1 ),
+    JS_CFUNC_MAGIC_DEF("read", 1, js_std_file_read_write, 0 ),
+    JS_CFUNC_MAGIC_DEF("write", 1, js_std_file_read_write, 1 ),
     JS_CFUNC_DEF("getline", 0, js_std_file_getline ),
     JS_CFUNC_MAGIC_DEF("readAsArrayBuffer", 0, js_std_file_readAs, 0 ),
     JS_CFUNC_MAGIC_DEF("readAsString", 0, js_std_file_readAs, 1 ),

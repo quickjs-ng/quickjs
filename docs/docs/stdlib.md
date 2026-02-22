@@ -566,15 +566,15 @@ Return true if there was an error.
 
 Clear the error indication.
 
-#### `read(buffer, position, length)`
+#### `read(buffer, position = 0, length = buffer.length)`
 
 Read `length` bytes from the file to the ArrayBuffer `buffer` at byte
-position `position` (wrapper to the libc `fread`).
+position `position`. Wrapper to the libc function `fread`.
 
-#### `write(buffer, position, length)`
+#### `write(buffer, position = 0, length = buffer.length)`
 
-Write `length` bytes to the file from the ArrayBuffer `buffer` at byte
-position `position` (wrapper to the libc `fwrite`).
+Write `length` bytes to the file from the ArrayBuffer or string `buffer`
+at byte position `position`. Wrapper to the libc function `fwrite`.
 
 #### `getline()`
 
