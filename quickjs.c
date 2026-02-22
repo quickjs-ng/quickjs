@@ -10101,6 +10101,21 @@ retry:
             pr = add_property(ctx, p, prop, JS_PROP_C_W_E);
             if (!pr)
                 goto fail;
+
+            // try give function name in every possible way
+            if (JS_IsFunction(ctx, val)) {
+                JSObject *vf = JS_VALUE_GET_OBJ(val);
+                if (vf->class_id == JS_CLASS_BYTECODE_FUNCTION) {
+                   const char *name = get_func_name(ctx, val);
+                   if(name && *name == '\0') {
+                    JSValue js_value = JS_AtomToValue(ctx, prop);
+                    JS_DefinePropertyValue(ctx, val, JS_ATOM_name, js_value, JS_PROP_CONFIGURABLE);
+
+                    JS_FreeCString(ctx, name);
+                   }
+               }
+            }
+
             pr->u.value = val;
             return true;
         }
