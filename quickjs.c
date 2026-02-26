@@ -59559,9 +59559,24 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
         case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY: {
             fre = wr->u.fin_rec_entry;
             /**
-             * During the GC sweep phase the held object might be collected first.
+             * During the GC sweep phase the held object might be
+             * collected first (free_mark set). Also skip if the
+             * callback or held value are part of a cycle being
+             * collected (header.mark is set for objects on
+             * tmp_obj_list during gc_free_cycles).
              */
-            if (!rt->in_free && (!JS_IsObject(fre->held_val) || JS_IsLiveObject(rt, fre->held_val))) {
+            bool enqueue = !rt->in_free;
+            if (enqueue && JS_IsObject(fre->held_val)) {
+                JSObject *p = JS_VALUE_GET_OBJ(fre->held_val);
+                if (p->free_mark || p->header.mark)
+                    enqueue = false;
+            }
+            if (enqueue && JS_IsObject(fre->cb)) {
+                JSObject *p = JS_VALUE_GET_OBJ(fre->cb);
+                if (p->free_mark || p->header.mark)
+                    enqueue = false;
+            }
+            if (enqueue) {
                 JSValueConst args[2];
                 args[0] = fre->cb;
                 args[1] = fre->held_val;
