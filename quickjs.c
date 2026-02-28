@@ -17992,6 +17992,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 sp[-2] = js_regexp_constructor_internal(ctx, JS_UNDEFINED,
                                                         sp[-2], sp[-1]);
                 sp--;
+                if (JS_IsException(sp[-1]))
+                    goto exception;
             }
             BREAK;
 
@@ -47018,27 +47020,36 @@ static JSValue js_regexp_constructor_internal(JSContext *ctx, JSValueConst ctor,
     JSValue obj;
     JSObject *p;
     JSRegExp *re;
+    JSProperty prop;
 
     /* sanity check */
     if (JS_VALUE_GET_TAG(bc) != JS_TAG_STRING ||
         JS_VALUE_GET_TAG(pattern) != JS_TAG_STRING) {
         JS_ThrowTypeError(ctx, "string expected");
-    fail:
-        JS_FreeValue(ctx, bc);
-        JS_FreeValue(ctx, pattern);
-        return JS_EXCEPTION;
-    }
-
-    obj = js_create_from_ctor(ctx, ctor, JS_CLASS_REGEXP);
-    if (JS_IsException(obj))
         goto fail;
+    }
+    prop.u.value = js_int32(0); // lastIndex
+    if (ctx->regexp_shape && JS_IsUndefined(ctor)) {
+        obj = JS_NewObjectFromShape(ctx, js_dup_shape(ctx->regexp_shape),
+                                    JS_CLASS_REGEXP, &prop);
+        if (JS_IsException(obj))
+            goto fail;
+    } else {
+        obj = js_create_from_ctor(ctx, ctor, JS_CLASS_REGEXP);
+        if (JS_IsException(obj))
+            goto fail;
+        JS_DefinePropertyValue(ctx, obj, JS_ATOM_lastIndex, prop.u.value,
+                               JS_PROP_WRITABLE);
+    }
     p = JS_VALUE_GET_OBJ(obj);
     re = &p->u.regexp;
     re->pattern = JS_VALUE_GET_STRING(pattern);
     re->bytecode = JS_VALUE_GET_STRING(bc);
-    JS_DefinePropertyValue(ctx, obj, JS_ATOM_lastIndex, js_int32(0),
-                           JS_PROP_WRITABLE);
     return obj;
+fail:
+    JS_FreeValue(ctx, bc);
+    JS_FreeValue(ctx, pattern);
+    return JS_EXCEPTION;
 }
 
 static JSRegExp *js_get_regexp(JSContext *ctx, JSValueConst obj,
@@ -48502,18 +48513,23 @@ void JS_AddIntrinsicRegExpCompiler(JSContext *ctx)
 
 void JS_AddIntrinsicRegExp(JSContext *ctx)
 {
-    JSValue obj;
+    JSValue regexp_proto, obj;
+    JSShape **psh;
 
     JS_AddIntrinsicRegExpCompiler(ctx);
-
-    ctx->class_proto[JS_CLASS_REGEXP] = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_REGEXP], js_regexp_proto_funcs,
+    regexp_proto = ctx->class_proto[JS_CLASS_REGEXP] = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, regexp_proto, js_regexp_proto_funcs,
                                countof(js_regexp_proto_funcs));
     obj = JS_NewGlobalCConstructor(ctx, "RegExp", js_regexp_constructor, 2,
-                                   ctx->class_proto[JS_CLASS_REGEXP]);
+                                   regexp_proto);
     ctx->regexp_ctor = js_dup(obj);
     JS_SetPropertyFunctionList(ctx, obj, js_regexp_funcs, countof(js_regexp_funcs));
-
+    psh = &ctx->regexp_shape;
+    *psh = js_new_shape2(ctx, get_proto_obj(regexp_proto), JS_PROP_INITIAL_HASH_SIZE, 1);
+    if (*psh && add_shape_property(ctx, psh, NULL, JS_ATOM_lastIndex, JS_PROP_WRITABLE)) {
+        js_free_shape(ctx->rt, *psh);
+        *psh = NULL;
+    }
     ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR] =
         JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
     JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR],
