@@ -549,7 +549,7 @@ JS_EXTERN void JS_AddIntrinsicBaseObjects(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicDate(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicEval(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicRegExpCompiler(JSContext *ctx);
-JS_EXTERN void JS_AddIntrinsicRegExp(JSContext *ctx);
+JS_EXTERN int JS_AddIntrinsicRegExp(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicJSON(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicProxy(JSContext *ctx);
 JS_EXTERN void JS_AddIntrinsicMapSet(JSContext *ctx);
