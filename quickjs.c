@@ -43335,7 +43335,7 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
                                          int argc, JSValueConst *argv)
 {
     JSIteratorConcatData *it;
-    JSValue ret;
+    JSValue ret, *pval;
 
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_CONCAT);
     if (!it)
@@ -43351,8 +43351,11 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
         ret = JS_CallFree(ctx, ret, it->iter, 0, NULL);
         it->running = false;
     }
-    while (it->index < it->count)
-        JS_FreeValue(ctx, it->values[it->index++]);
+    while (it->index < it->count) {
+        pval = &it->values[it->index++];
+        JS_FreeValue(ctx, *pval);
+        *pval = JS_UNDEFINED;
+    }
     JS_FreeValue(ctx, it->iter);
     JS_FreeValue(ctx, it->next);
     it->iter = JS_UNDEFINED;
