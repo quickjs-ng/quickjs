@@ -5150,11 +5150,6 @@ static inline void *get_alloc_from_shape(JSShape *sh)
     return prop_hash_end(sh) - ((intptr_t)sh->prop_hash_mask + 1);
 }
 
-static inline JSShapeProperty *get_shape_prop(JSShape *sh)
-{
-    return sh->prop;
-}
-
 static int init_shape_hash(JSRuntime *rt)
 {
     rt->shape_hash_bits = 6;   /* 64 shapes */
@@ -5302,7 +5297,7 @@ static JSShape *js_clone_shape(JSContext *ctx, JSShape *sh1)
     if (sh->proto) {
         js_dup(JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     }
-    for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count; i++, pr++) {
+    for(i = 0, pr = sh->prop; i < sh->prop_count; i++, pr++) {
         JS_DupAtom(ctx, pr->atom);
     }
     return sh;
@@ -5325,7 +5320,7 @@ static void js_free_shape0(JSRuntime *rt, JSShape *sh)
     if (sh->proto != NULL) {
         JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     }
-    pr = get_shape_prop(sh);
+    pr = sh->prop;
     for(i = 0; i < sh->prop_count; i++) {
         JS_FreeAtomRT(rt, pr->atom);
         pr++;
@@ -5513,7 +5508,7 @@ static int add_shape_property(JSContext *ctx, JSShape **psh,
     }
     /* Initialize the new shape property.
        The object property at p->prop[sh->prop_count] is uninitialized */
-    prop = get_shape_prop(sh);
+    prop = sh->prop;
     pr = &prop[sh->prop_count++];
     pr->atom = JS_DupAtom(ctx, atom);
     pr->flags = prop_flags;
@@ -5652,7 +5647,7 @@ static JSValue JS_NewObjectFromShape(JSContext *ctx, JSShape *sh, JSClassID clas
         js_free(ctx, p);
     fail:
         if (props) {
-            JSShapeProperty *prs = get_shape_prop(sh);
+            JSShapeProperty *prs = sh->prop;
             for(i = 0; i < sh->prop_count; i++) {
                 free_property(ctx->rt, &props[i], prs->flags);
                 prs++;
@@ -6318,7 +6313,7 @@ static inline JSShapeProperty *find_own_property1(JSObject *p, JSAtom atom)
     sh = p->shape;
     h = (uintptr_t)atom & sh->prop_hash_mask;
     h = prop_hash_end(sh)[-h - 1];
-    prop = get_shape_prop(sh);
+    prop = sh->prop;
     while (h) {
         pr = &prop[h - 1];
         if (likely(pr->atom == atom)) {
@@ -6339,7 +6334,7 @@ static inline JSShapeProperty *find_own_property(JSProperty **ppr,
     sh = p->shape;
     h = (uintptr_t)atom & sh->prop_hash_mask;
     h = prop_hash_end(sh)[-h - 1];
-    prop = get_shape_prop(sh);
+    prop = sh->prop;
     while (h) {
         pr = &prop[h - 1];
         if (likely(pr->atom == atom)) {
@@ -6528,7 +6523,7 @@ static void free_object(JSRuntime *rt, JSObject *p)
                          freeing cycles */
     /* free all the fields */
     sh = p->shape;
-    pr = get_shape_prop(sh);
+    pr = sh->prop;
     for(i = 0; i < sh->prop_count; i++) {
         free_property(rt, &p->prop[i], pr->flags);
         pr++;
@@ -6735,7 +6730,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
             sh = p->shape;
             mark_func(rt, &sh->header);
             /* mark all the fields */
-            prs = get_shape_prop(sh);
+            prs = sh->prop;
             for(i = 0; i < sh->prop_count; i++) {
                 JSProperty *pr = &p->prop[i];
                 if (prs->atom != JS_ATOM_NULL) {
@@ -7119,7 +7114,7 @@ void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s)
             s->memory_used_count++;
             s->prop_size += sh->prop_size * sizeof(*p->prop);
             s->prop_count += sh->prop_count;
-            prs = get_shape_prop(sh);
+            prs = sh->prop;
             for(i = 0; i < sh->prop_count; i++) {
                 JSProperty *pr = &p->prop[i];
                 if (prs->atom != JS_ATOM_NULL && !(prs->flags & JS_PROP_TMASK)) {
@@ -8963,7 +8958,7 @@ static int __exception JS_GetOwnPropertyNamesInternal(JSContext *ctx,
     exotic_count = 0;
     tab_exotic = NULL;
     sh = p->shape;
-    for(i = 0, prs = get_shape_prop(sh); i < sh->prop_count; i++, prs++) {
+    for(i = 0, prs = sh->prop; i < sh->prop_count; i++, prs++) {
         atom = prs->atom;
         if (atom != JS_ATOM_NULL) {
             is_enumerable = ((prs->flags & JS_PROP_ENUMERABLE) != 0);
@@ -9052,7 +9047,7 @@ static int __exception JS_GetOwnPropertyNamesInternal(JSContext *ctx,
 
     num_sorted = true;
     sh = p->shape;
-    for(i = 0, prs = get_shape_prop(sh); i < sh->prop_count; i++, prs++) {
+    for(i = 0, prs = sh->prop; i < sh->prop_count; i++, prs++) {
         atom = prs->atom;
         if (atom != JS_ATOM_NULL) {
             is_enumerable = ((prs->flags & JS_PROP_ENUMERABLE) != 0);
@@ -9644,7 +9639,7 @@ static int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
     sh = p->shape;
     h1 = atom & sh->prop_hash_mask;
     h = prop_hash_end(sh)[-h1 - 1];
-    prop = get_shape_prop(sh);
+    prop = sh->prop;
     lpr = NULL;
     lpr_idx = 0;   /* prevent warning */
     while (h != 0) {
@@ -9655,13 +9650,13 @@ static int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
                 return false;
             /* realloc the shape if needed */
             if (lpr)
-                lpr_idx = lpr - get_shape_prop(sh);
+                lpr_idx = lpr - sh->prop;
             if (js_shape_prepare_update(ctx, p, &pr))
                 return -1;
             sh = p->shape;
             /* remove property */
             if (lpr) {
-                lpr = get_shape_prop(sh) + lpr_idx;
+                lpr = &sh->prop[lpr_idx];
                 lpr->hash_next = pr->hash_next;
             } else {
                 prop_hash_end(sh)[-h1 - 1] = pr->hash_next;
@@ -9803,7 +9798,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
                    passes in case one of the property is not
                    configurable */
                 cur_len = len;
-                for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count;
+                for(i = 0, pr = sh->prop; i < sh->prop_count;
                     i++, pr++) {
                     if (pr->atom != JS_ATOM_NULL &&
                         JS_AtomIsArrayIndex(ctx, &idx, pr->atom)) {
@@ -9814,7 +9809,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
                     }
                 }
 
-                for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count;
+                for(i = 0, pr = sh->prop; i < sh->prop_count;
                     i++, pr++) {
                     if (pr->atom != JS_ATOM_NULL &&
                         JS_AtomIsArrayIndex(ctx, &idx, pr->atom)) {
@@ -9823,7 +9818,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
                             delete_property(ctx, p, pr->atom);
                             /* WARNING: the shape may have been modified */
                             sh = p->shape;
-                            pr = get_shape_prop(sh) + i;
+                            pr = &sh->prop[i];
                         }
                     }
                 }
@@ -9870,7 +9865,7 @@ static int add_fast_array_element(JSContext *ctx, JSObject *p,
     if (likely(JS_VALUE_GET_TAG(p->prop[0].u.value) == JS_TAG_INT)) {
         array_len = JS_VALUE_GET_INT(p->prop[0].u.value);
         if (new_len > array_len) {
-            if (unlikely(!(get_shape_prop(p->shape)->flags & JS_PROP_WRITABLE))) {
+            if (unlikely(!(p->shape->prop->flags & JS_PROP_WRITABLE))) {
                 JS_FreeValue(ctx, val);
                 return JS_ThrowTypeErrorReadOnly(ctx, flags, JS_ATOM_length);
             }
@@ -10413,7 +10408,7 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                 plen = &p->prop[0];
                 JS_ToUint32(ctx, &len, plen->u.value);
                 if ((idx + 1) > len) {
-                    pslen = get_shape_prop(p->shape);
+                    pslen = p->shape->prop;
                     if (unlikely(!(pslen->flags & JS_PROP_WRITABLE)))
                         return JS_ThrowTypeErrorReadOnly(ctx, flags, JS_ATOM_length);
                     /* XXX: should update the length after defining
@@ -10523,7 +10518,7 @@ static int js_shape_prepare_update(JSContext *ctx, JSObject *p,
     if (sh->is_hashed) {
         if (sh->header.ref_count != 1) {
             if (pprs)
-                idx = *pprs - get_shape_prop(sh);
+                idx = *pprs - sh->prop;
             /* clone the shape (the resulting one is no longer hashed) */
             sh = js_clone_shape(ctx, sh);
             if (!sh)
@@ -10531,7 +10526,7 @@ static int js_shape_prepare_update(JSContext *ctx, JSObject *p,
             js_free_shape(ctx->rt, p->shape);
             p->shape = sh;
             if (pprs)
-                *pprs = get_shape_prop(sh) + idx;
+                *pprs = &sh->prop[idx];
         } else {
             js_shape_hash_unlink(ctx->rt, sh);
             sh->is_hashed = false;
@@ -10721,7 +10716,7 @@ int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
                        property is read-only. */
                     if ((flags & (JS_PROP_HAS_WRITABLE | JS_PROP_WRITABLE)) ==
                         JS_PROP_HAS_WRITABLE) {
-                        prs = get_shape_prop(p->shape);
+                        prs = p->shape->prop;
                         if (js_update_property_flags(ctx, p, &prs,
                                                      prs->flags & ~JS_PROP_WRITABLE))
                             return -1;
@@ -14138,7 +14133,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
 
     if (sh) {
         printf("{ ");
-        for(i = 0, prs = get_shape_prop(sh); i < sh->prop_count; i++, prs++) {
+        for(i = 0, prs = sh->prop; i < sh->prop_count; i++, prs++) {
             if (prs->atom != JS_ATOM_NULL) {
                 pr = &p->prop[i];
                 if (!is_first)
@@ -16117,7 +16112,7 @@ static JSValue build_for_in_iterator(JSContext *ctx, JSValue obj)
         JSShapeProperty *prs;
         /* check that there are no enumerable normal fields */
         sh = p->shape;
-        for(i = 0, prs = get_shape_prop(sh); i < sh->prop_count; i++, prs++) {
+        for(i = 0, prs = sh->prop; i < sh->prop_count; i++, prs++) {
             if (prs->flags & JS_PROP_ENUMERABLE)
                 goto normal_case;
         }
@@ -16209,7 +16204,7 @@ static __exception int js_for_in_next(JSContext *ctx, JSValue *sp)
             JSShapeProperty *prs;
             if (it->idx >= sh->prop_count)
                 goto done;
-            prs = get_shape_prop(sh) + it->idx;
+            prs = &sh->prop[it->idx];
             prop = prs->atom;
             it->idx++;
             if (prop == JS_ATOM_NULL || !(prs->flags & JS_PROP_ENUMERABLE))
@@ -37209,7 +37204,7 @@ static int JS_WriteObjectTag(BCWriterState *s, JSValueConst obj)
     for(pass = 0; pass < 2; pass++) {
         if (pass == 1)
             bc_put_leb128(s, prop_count);
-        for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count; i++, pr++) {
+        for(i = 0, pr = sh->prop; i < sh->prop_count; i++, pr++) {
             atom = pr->atom;
             if (atom != JS_ATOM_NULL && (pr->flags & JS_PROP_ENUMERABLE)) {
                 if (pr->flags & JS_PROP_TMASK) {
@@ -42236,7 +42231,7 @@ static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                    ctx->std_array_prototype)) {
             uint32_t array_len, new_len;
             if (likely(JS_VALUE_GET_TAG(p->prop[0].u.value) == JS_TAG_INT &&
-                       (get_shape_prop(p->shape)->flags & JS_PROP_WRITABLE))) {
+                       (p->shape->prop->flags & JS_PROP_WRITABLE))) {
                 array_len = JS_VALUE_GET_INT(p->prop[0].u.value);
                 new_len = array_len + argc;
                 if (likely(new_len >= array_len)) { /* no overflow */
