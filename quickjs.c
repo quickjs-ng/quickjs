@@ -1634,8 +1634,13 @@ void js_free_rt(JSRuntime *rt, void *ptr)
         return;
 
     s = &rt->malloc_state;
+    size_t free_size = rt->mf.js_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    if (unlikely(free_size > s->malloc_size)) {
+        printf("js_free_rt: malloc_size underflow: freeing %zu but only %zu tracked\n", free_size, s->malloc_size);
+        abort();
+    }
     s->malloc_count--;
-    s->malloc_size -= rt->mf.js_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    s->malloc_size -= free_size;
     rt->mf.js_free(s->opaque, ptr);
 }
 
