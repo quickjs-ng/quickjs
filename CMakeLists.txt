@@ -435,6 +435,13 @@ add_executable(api-test
 target_compile_definitions(api-test PRIVATE ${qjs_defines})
 target_link_libraries(api-test PRIVATE qjs)
 
+add_executable(lre-test
+    lre-test.c
+    libregexp.c
+    libunicode.c
+)
+target_compile_definitions(lre-test PRIVATE ${qjs_defines})
+
 # Unicode generator
 #
 

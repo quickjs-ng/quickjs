@@ -47536,10 +47536,18 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                     goto fail;
             }
         } else {
-            if (rc == LRE_RET_TIMEOUT) {
+            switch(rc) {
+            case LRE_RET_TIMEOUT:
                 JS_ThrowInterrupted(ctx);
-            } else {
+                break;
+            case LRE_RET_MEMORY_ERROR:
                 JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+                break;
+            case LRE_RET_BYTECODE_ERROR:
+                JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
+                break;
+            default:
+                abort();
             }
             goto fail;
         }
@@ -47726,10 +47734,18 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValueConst this_val, JSValue ar
                         goto fail;
                 }
             } else {
-                if (ret == LRE_RET_TIMEOUT) {
+                switch(ret) {
+                case LRE_RET_TIMEOUT:
                     JS_ThrowInterrupted(ctx);
-                } else {
+                    break;
+                case LRE_RET_MEMORY_ERROR:
                     JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+                    break;
+                case LRE_RET_BYTECODE_ERROR:
+                    JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
+                    break;
+                default:
+                    abort();
                 }
                 goto fail;
             }

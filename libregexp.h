@@ -43,8 +43,9 @@ extern "C" {
 #define LRE_FLAG_NAMED_GROUPS (1 << 7) /* named groups are present in the regexp */
 #define LRE_FLAG_UNICODE_SETS (1 << 8)
 
-#define LRE_RET_MEMORY_ERROR (-1)
-#define LRE_RET_TIMEOUT      (-2)
+#define LRE_RET_MEMORY_ERROR   (-1)
+#define LRE_RET_TIMEOUT        (-2)
+#define LRE_RET_BYTECODE_ERROR (-3)
 
 uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
                      const char *buf, size_t buf_len, int re_flags,

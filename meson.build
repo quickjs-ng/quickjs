@@ -521,6 +521,20 @@ if tests.allowed()
     ),
   )
 
+  # LRE test
+  test(
+    'lre',
+    executable(
+      'lre-test',
+      'lre-test.c',
+      'libregexp.c',
+      'libunicode.c',
+
+      c_args: qjs_c_args,
+      build_by_default: false,
+    ),
+  )
+
   # Function.toString() test
   test(
     'function_source',

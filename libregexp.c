@@ -2250,7 +2250,8 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
         case REOP_save_start:
         case REOP_save_end:
             val = *pc++;
-            assert(val < s->capture_count);
+            if (val >= s->capture_count)
+                return LRE_RET_BYTECODE_ERROR;
             capture[2 * val + opcode - REOP_save_start] = (uint8_t *)cptr;
             break;
         case REOP_save_reset:
@@ -2259,7 +2260,8 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                 val = pc[0];
                 val2 = pc[1];
                 pc += 2;
-                assert(val2 < s->capture_count);
+                if (val2 >= s->capture_count)
+                    return LRE_RET_BYTECODE_ERROR;
                 while (val <= val2) {
                     capture[2 * val] = NULL;
                     capture[2 * val + 1] = NULL;
