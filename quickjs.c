@@ -34323,9 +34323,14 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
         case OP_return_async:
         case OP_throw:
         case OP_throw_error:
+            /* record pc2line BEFORE skipping dead code, so the return/throw
+               opcode keeps the correct source location instead of being
+               polluted by OP_source_loc entries found in the dead code. */
+            add_pc2line_info(s, bc_out.size, line_num, col_num);
+            dbuf_put(&bc_out, bc_buf + pos, len);
             pos_next = skip_dead_code(s, bc_buf, bc_len, pos_next,
                                       &line_num, &col_num);
-            goto no_change;
+            break;
 
         case OP_goto:
             label = get_u32(bc_buf + pos + 1);
