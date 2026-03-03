@@ -2554,14 +2554,14 @@ const char *lre_get_groupnames(const uint8_t *bc_buf)
     return (const char *)(bc_buf + RE_HEADER_LEN + re_bytecode_len);
 }
 
-void lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped)
+int lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped)
 {
     uint8_t *p, *pe;
     uint32_t n, r, nw;
 
     p = buf;
     if (len < RE_HEADER_LEN)
-        abort();
+        return -1;
 
     // format is:
     //  <header>
@@ -2576,12 +2576,14 @@ void lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped)
     if (is_byte_swapped)
         n = bswap32(n);
     if (n > len - RE_HEADER_LEN)
-        abort();
+        return -1;
 
     p = &buf[RE_HEADER_LEN];
     pe = &p[n];
 
     while (p < pe) {
+        if (*p >= REOP_COUNT)
+            return -1;
         n = reopcode_info[*p].size;
         switch (n) {
         case 1:
@@ -2622,10 +2624,11 @@ void lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped)
             inplace_bswap32(&p[13]);
             break;
         default:
-            abort();
+            return -1;
         }
         p = &p[n];
     }
+    return 0;
 }
 
 #ifdef TEST
