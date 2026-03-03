@@ -48,7 +48,7 @@ jobs:
         run: |
           file build/*-linux-${{matrix.arch}}
       - name: upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qjs-linux-${{matrix.arch}}
           path: build/*-linux-${{matrix.arch}}
@@ -70,13 +70,13 @@ jobs:
         run: |
           lipo -info build/qjs-darwin build/qjsc-darwin
       - name: upload amalgamation
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: quickjs-amalgam.zip
           path: build/quickjs-amalgam.zip
           compression-level: 0 # already compressed
       - name: upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qjs-darwin
           path: build/*-darwin
@@ -113,7 +113,7 @@ jobs:
           file build/qjs-windows-${{matrix.arch}}.exe
           ldd build/qjs-windows-${{matrix.arch}}.exe build/qjsc-windows-${{matrix.arch}}.exe
       - name: upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qjs-windows-${{matrix.arch}}
           path: build/*-windows-${{matrix.arch}}.exe
@@ -137,7 +137,7 @@ jobs:
           make -C build qjs_wasi
           mv build/qjs.wasm build/qjs-wasi-reactor.wasm
       - name: upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qjs-wasi
           path: |
@@ -149,7 +149,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: get assets
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: build
           merge-multiple: true

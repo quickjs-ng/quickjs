@@ -1637,8 +1637,13 @@ void js_free_rt(JSRuntime *rt, void *ptr)
         return;
 
     s = &rt->malloc_state;
+    size_t free_size = rt->mf.js_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    if (unlikely(free_size > s->malloc_size)) {
+        printf("js_free_rt: malloc_size underflow: freeing %zu but only %zu tracked\n", free_size, s->malloc_size);
+        abort();
+    }
     s->malloc_count--;
-    s->malloc_size -= rt->mf.js_malloc_usable_size(ptr) + MALLOC_OVERHEAD;
+    s->malloc_size -= free_size;
     rt->mf.js_free(s->opaque, ptr);
 }
 
@@ -2488,7 +2493,8 @@ JSContext *JS_NewContext(JSRuntime *rt)
     JS_AddIntrinsicBaseObjects(ctx);
     JS_AddIntrinsicDate(ctx);
     JS_AddIntrinsicEval(ctx);
-    JS_AddIntrinsicRegExp(ctx);
+    if (JS_AddIntrinsicRegExp(ctx))
+        goto fail;
     JS_AddIntrinsicJSON(ctx);
     JS_AddIntrinsicProxy(ctx);
     JS_AddIntrinsicMapSet(ctx);
@@ -2501,6 +2507,9 @@ JSContext *JS_NewContext(JSRuntime *rt)
     JS_AddPerformance(ctx);
 
     return ctx;
+fail:
+    JS_FreeContext(ctx);
+    return NULL;
 }
 
 void *JS_GetContextOpaque(JSContext *ctx)
@@ -5252,11 +5261,6 @@ static inline void *get_alloc_from_shape(JSShape *sh)
     return prop_hash_end(sh) - ((intptr_t)sh->prop_hash_mask + 1);
 }
 
-static inline JSShapeProperty *get_shape_prop(JSShape *sh)
-{
-    return sh->prop;
-}
-
 static int init_shape_hash(JSRuntime *rt)
 {
     rt->shape_hash_bits = 6;   /* 64 shapes */
@@ -5380,6 +5384,40 @@ static JSShape *js_new_shape(JSContext *ctx, JSObject *proto)
                          JS_PROP_INITIAL_SIZE);
 }
 
+static JSObject *object_or_null(JSValueConst val)
+{
+    if (JS_TAG_OBJECT == JS_VALUE_GET_TAG(val))
+        return JS_VALUE_GET_OBJ(val);
+    return NULL;
+}
+
+static int add_shape_property(JSContext *ctx, JSShape **psh,
+                              JSObject *p, JSAtom atom, int prop_flags);
+
+static JSShape *js_new_shape_with2(JSContext *ctx, JSObject *proto,
+                                   int prop_count, const JSShapeProperty props[]) {
+    JSShape *sh;
+    int i;
+
+    sh = js_new_shape2(ctx, proto, JS_PROP_INITIAL_HASH_SIZE, prop_count);
+    if (sh)
+        for (i = 0; i < prop_count; i++)
+            if (add_shape_property(ctx, &sh, NULL, props[i].atom, props[i].flags))
+                goto fail;
+    return sh;
+fail:
+    js_free_shape(ctx->rt, sh);
+    return NULL;
+}
+
+static int js_new_shape_with(JSContext *ctx, JSShape **psh, JSValueConst proto,
+                              int prop_count, const JSShapeProperty props[]) {
+    *psh = js_new_shape_with2(ctx, object_or_null(proto), prop_count, props);
+    if (*psh)
+        return 0;
+    return -1;
+}
+
 /* The shape is cloned. The new shape is not inserted in the shape
    hash table */
 static JSShape *js_clone_shape(JSContext *ctx, JSShape *sh1)
@@ -5404,7 +5442,7 @@ static JSShape *js_clone_shape(JSContext *ctx, JSShape *sh1)
     if (sh->proto) {
         js_dup(JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     }
-    for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count; i++, pr++) {
+    for(i = 0, pr = sh->prop; i < sh->prop_count; i++, pr++) {
         JS_DupAtom(ctx, pr->atom);
     }
     return sh;
@@ -5427,7 +5465,7 @@ static void js_free_shape0(JSRuntime *rt, JSShape *sh)
     if (sh->proto != NULL) {
         JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, sh->proto));
     }
-    pr = get_shape_prop(sh);
+    pr = sh->prop;
     for(i = 0; i < sh->prop_count; i++) {
         JS_FreeAtomRT(rt, pr->atom);
         pr++;
@@ -5615,7 +5653,7 @@ static int add_shape_property(JSContext *ctx, JSShape **psh,
     }
     /* Initialize the new shape property.
        The object property at p->prop[sh->prop_count] is uninitialized */
-    prop = get_shape_prop(sh);
+    prop = sh->prop;
     pr = &prop[sh->prop_count++];
     pr->atom = JS_DupAtom(ctx, atom);
     pr->flags = prop_flags;
@@ -5754,7 +5792,7 @@ static JSValue JS_NewObjectFromShape(JSContext *ctx, JSShape *sh, JSClassID clas
         js_free(ctx, p);
     fail:
         if (props) {
-            JSShapeProperty *prs = get_shape_prop(sh);
+            JSShapeProperty *prs = sh->prop;
             for(i = 0; i < sh->prop_count; i++) {
                 free_property(ctx->rt, &props[i], prs->flags);
                 prs++;
@@ -5844,14 +5882,6 @@ static JSValue JS_NewObjectFromShape(JSContext *ctx, JSShape *sh, JSClassID clas
     return JS_MKPTR(JS_TAG_OBJECT, p);
 }
 
-static JSObject *get_proto_obj(JSValueConst proto_val)
-{
-    if (JS_VALUE_GET_TAG(proto_val) != JS_TAG_OBJECT)
-        return NULL;
-    else
-        return JS_VALUE_GET_OBJ(proto_val);
-}
-
 /* WARNING: proto must be an object or JS_NULL */
 JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto_val,
                                JSClassID class_id)
@@ -5859,7 +5889,7 @@ JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto_val,
     JSShape *sh;
     JSObject *proto;
 
-    proto = get_proto_obj(proto_val);
+    proto = object_or_null(proto_val);
     sh = find_hashed_shape_proto(ctx->rt, proto);
     if (likely(sh)) {
         sh = js_dup_shape(sh);
@@ -6420,7 +6450,7 @@ static inline JSShapeProperty *find_own_property1(JSObject *p, JSAtom atom)
     sh = p->shape;
     h = (uintptr_t)atom & sh->prop_hash_mask;
     h = prop_hash_end(sh)[-h - 1];
-    prop = get_shape_prop(sh);
+    prop = sh->prop;
     while (h) {
         pr = &prop[h - 1];
         if (likely(pr->atom == atom)) {
@@ -6441,7 +6471,7 @@ static inline JSShapeProperty *find_own_property(JSProperty **ppr,
     sh = p->shape;
     h = (uintptr_t)atom & sh->prop_hash_mask;
     h = prop_hash_end(sh)[-h - 1];
-    prop = get_shape_prop(sh);
+    prop = sh->prop;
     while (h) {
         pr = &prop[h - 1];
         if (likely(pr->atom == atom)) {
@@ -6630,7 +6660,7 @@ static void free_object(JSRuntime *rt, JSObject *p)
                          freeing cycles */
     /* free all the fields */
     sh = p->shape;
-    pr = get_shape_prop(sh);
+    pr = sh->prop;
     for(i = 0; i < sh->prop_count; i++) {
         free_property(rt, &p->prop[i], pr->flags);
         pr++;
@@ -6837,7 +6867,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
             sh = p->shape;
             mark_func(rt, &sh->header);
             /* mark all the fields */
-            prs = get_shape_prop(sh);
+            prs = sh->prop;
             for(i = 0; i < sh->prop_count; i++) {
                 JSProperty *pr = &p->prop[i];
                 if (prs->atom != JS_ATOM_NULL) {
@@ -7221,7 +7251,7 @@ void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s)
             s->memory_used_count++;
             s->prop_size += sh->prop_size * sizeof(*p->prop);
             s->prop_count += sh->prop_count;
-            prs = get_shape_prop(sh);
+            prs = sh->prop;
             for(i = 0; i < sh->prop_count; i++) {
                 JSProperty *pr = &p->prop[i];
                 if (prs->atom != JS_ATOM_NULL && !(prs->flags & JS_PROP_TMASK)) {
@@ -9065,7 +9095,7 @@ static int __exception JS_GetOwnPropertyNamesInternal(JSContext *ctx,
     exotic_count = 0;
     tab_exotic = NULL;
     sh = p->shape;
-    for(i = 0, prs = get_shape_prop(sh); i < sh->prop_count; i++, prs++) {
+    for(i = 0, prs = sh->prop; i < sh->prop_count; i++, prs++) {
         atom = prs->atom;
         if (atom != JS_ATOM_NULL) {
             is_enumerable = ((prs->flags & JS_PROP_ENUMERABLE) != 0);
@@ -9154,7 +9184,7 @@ static int __exception JS_GetOwnPropertyNamesInternal(JSContext *ctx,
 
     num_sorted = true;
     sh = p->shape;
-    for(i = 0, prs = get_shape_prop(sh); i < sh->prop_count; i++, prs++) {
+    for(i = 0, prs = sh->prop; i < sh->prop_count; i++, prs++) {
         atom = prs->atom;
         if (atom != JS_ATOM_NULL) {
             is_enumerable = ((prs->flags & JS_PROP_ENUMERABLE) != 0);
@@ -9746,7 +9776,7 @@ static int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
     sh = p->shape;
     h1 = atom & sh->prop_hash_mask;
     h = prop_hash_end(sh)[-h1 - 1];
-    prop = get_shape_prop(sh);
+    prop = sh->prop;
     lpr = NULL;
     lpr_idx = 0;   /* prevent warning */
     while (h != 0) {
@@ -9757,13 +9787,13 @@ static int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
                 return false;
             /* realloc the shape if needed */
             if (lpr)
-                lpr_idx = lpr - get_shape_prop(sh);
+                lpr_idx = lpr - sh->prop;
             if (js_shape_prepare_update(ctx, p, &pr))
                 return -1;
             sh = p->shape;
             /* remove property */
             if (lpr) {
-                lpr = get_shape_prop(sh) + lpr_idx;
+                lpr = &sh->prop[lpr_idx];
                 lpr->hash_next = pr->hash_next;
             } else {
                 prop_hash_end(sh)[-h1 - 1] = pr->hash_next;
@@ -9905,7 +9935,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
                    passes in case one of the property is not
                    configurable */
                 cur_len = len;
-                for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count;
+                for(i = 0, pr = sh->prop; i < sh->prop_count;
                     i++, pr++) {
                     if (pr->atom != JS_ATOM_NULL &&
                         JS_AtomIsArrayIndex(ctx, &idx, pr->atom)) {
@@ -9916,7 +9946,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
                     }
                 }
 
-                for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count;
+                for(i = 0, pr = sh->prop; i < sh->prop_count;
                     i++, pr++) {
                     if (pr->atom != JS_ATOM_NULL &&
                         JS_AtomIsArrayIndex(ctx, &idx, pr->atom)) {
@@ -9925,7 +9955,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
                             delete_property(ctx, p, pr->atom);
                             /* WARNING: the shape may have been modified */
                             sh = p->shape;
-                            pr = get_shape_prop(sh) + i;
+                            pr = &sh->prop[i];
                         }
                     }
                 }
@@ -9972,7 +10002,7 @@ static int add_fast_array_element(JSContext *ctx, JSObject *p,
     if (likely(JS_VALUE_GET_TAG(p->prop[0].u.value) == JS_TAG_INT)) {
         array_len = JS_VALUE_GET_INT(p->prop[0].u.value);
         if (new_len > array_len) {
-            if (unlikely(!(get_shape_prop(p->shape)->flags & JS_PROP_WRITABLE))) {
+            if (unlikely(!(p->shape->prop->flags & JS_PROP_WRITABLE))) {
                 JS_FreeValue(ctx, val);
                 return JS_ThrowTypeErrorReadOnly(ctx, flags, JS_ATOM_length);
             }
@@ -10515,7 +10545,7 @@ static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                 plen = &p->prop[0];
                 JS_ToUint32(ctx, &len, plen->u.value);
                 if ((idx + 1) > len) {
-                    pslen = get_shape_prop(p->shape);
+                    pslen = p->shape->prop;
                     if (unlikely(!(pslen->flags & JS_PROP_WRITABLE)))
                         return JS_ThrowTypeErrorReadOnly(ctx, flags, JS_ATOM_length);
                     /* XXX: should update the length after defining
@@ -10625,7 +10655,7 @@ static int js_shape_prepare_update(JSContext *ctx, JSObject *p,
     if (sh->is_hashed) {
         if (sh->header.ref_count != 1) {
             if (pprs)
-                idx = *pprs - get_shape_prop(sh);
+                idx = *pprs - sh->prop;
             /* clone the shape (the resulting one is no longer hashed) */
             sh = js_clone_shape(ctx, sh);
             if (!sh)
@@ -10633,7 +10663,7 @@ static int js_shape_prepare_update(JSContext *ctx, JSObject *p,
             js_free_shape(ctx->rt, p->shape);
             p->shape = sh;
             if (pprs)
-                *pprs = get_shape_prop(sh) + idx;
+                *pprs = &sh->prop[idx];
         } else {
             js_shape_hash_unlink(ctx->rt, sh);
             sh->is_hashed = false;
@@ -10823,7 +10853,7 @@ int JS_DefineProperty(JSContext *ctx, JSValueConst this_obj,
                        property is read-only. */
                     if ((flags & (JS_PROP_HAS_WRITABLE | JS_PROP_WRITABLE)) ==
                         JS_PROP_HAS_WRITABLE) {
-                        prs = get_shape_prop(p->shape);
+                        prs = p->shape->prop;
                         if (js_update_property_flags(ctx, p, &prs,
                                                      prs->flags & ~JS_PROP_WRITABLE))
                             return -1;
@@ -14240,7 +14270,7 @@ static __maybe_unused void JS_DumpObject(JSRuntime *rt, JSObject *p)
 
     if (sh) {
         printf("{ ");
-        for(i = 0, prs = get_shape_prop(sh); i < sh->prop_count; i++, prs++) {
+        for(i = 0, prs = sh->prop; i < sh->prop_count; i++, prs++) {
             if (prs->atom != JS_ATOM_NULL) {
                 pr = &p->prop[i];
                 if (!is_first)
@@ -16219,7 +16249,7 @@ static JSValue build_for_in_iterator(JSContext *ctx, JSValue obj)
         JSShapeProperty *prs;
         /* check that there are no enumerable normal fields */
         sh = p->shape;
-        for(i = 0, prs = get_shape_prop(sh); i < sh->prop_count; i++, prs++) {
+        for(i = 0, prs = sh->prop; i < sh->prop_count; i++, prs++) {
             if (prs->flags & JS_PROP_ENUMERABLE)
                 goto normal_case;
         }
@@ -16311,7 +16341,7 @@ static __exception int js_for_in_next(JSContext *ctx, JSValue *sp)
             JSShapeProperty *prs;
             if (it->idx >= sh->prop_count)
                 goto done;
-            prs = get_shape_prop(sh) + it->idx;
+            prs = &sh->prop[it->idx];
             prop = prs->atom;
             it->idx++;
             if (prop == JS_ATOM_NULL || !(prs->flags & JS_PROP_ENUMERABLE))
@@ -18123,6 +18153,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 sp[-2] = js_regexp_constructor_internal(ctx, JS_UNDEFINED,
                                                         sp[-2], sp[-1]);
                 sp--;
+                if (JS_IsException(sp[-1]))
+                    goto exception;
             }
             BREAK;
 
@@ -37353,7 +37385,7 @@ static int JS_WriteObjectTag(BCWriterState *s, JSValueConst obj)
     for(pass = 0; pass < 2; pass++) {
         if (pass == 1)
             bc_put_leb128(s, prop_count);
-        for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count; i++, pr++) {
+        for(i = 0, pr = sh->prop; i < sh->prop_count; i++, pr++) {
             atom = pr->atom;
             if (atom != JS_ATOM_NULL && (pr->flags & JS_PROP_ENUMERABLE)) {
                 if (pr->flags & JS_PROP_TMASK) {
@@ -42380,7 +42412,7 @@ static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                    ctx->std_array_prototype)) {
             uint32_t array_len, new_len;
             if (likely(JS_VALUE_GET_TAG(p->prop[0].u.value) == JS_TAG_INT &&
-                       (get_shape_prop(p->shape)->flags & JS_PROP_WRITABLE))) {
+                       (p->shape->prop->flags & JS_PROP_WRITABLE))) {
                 array_len = JS_VALUE_GET_INT(p->prop[0].u.value);
                 new_len = array_len + argc;
                 if (likely(new_len >= array_len)) { /* no overflow */
@@ -43479,7 +43511,7 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
                                          int argc, JSValueConst *argv)
 {
     JSIteratorConcatData *it;
-    JSValue ret;
+    JSValue ret, *pval;
 
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_CONCAT);
     if (!it)
@@ -43495,8 +43527,11 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
         ret = JS_CallFree(ctx, ret, it->iter, 0, NULL);
         it->running = false;
     }
-    while (it->index < it->count)
-        JS_FreeValue(ctx, it->values[it->index++]);
+    while (it->index < it->count) {
+        pval = &it->values[it->index++];
+        JS_FreeValue(ctx, *pval);
+        *pval = JS_UNDEFINED;
+    }
     JS_FreeValue(ctx, it->iter);
     JS_FreeValue(ctx, it->next);
     it->iter = JS_UNDEFINED;
@@ -45081,12 +45116,48 @@ static JSValue js_string_codePointAt(JSContext *ctx, JSValueConst this_val,
 static JSValue js_string_concat(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
+    int i, is_wide_char;
+    JSString *p, *q;
+    int64_t len;
+    uint32_t n;
     JSValue r;
-    int i;
+    char *d;
 
-    /* XXX: Use more efficient method */
-    /* XXX: This method is OK if r has a single refcount */
-    /* XXX: should use string_buffer? */
+    if (JS_TAG_STRING != JS_VALUE_GET_TAG(this_val))
+        goto slow_path;
+    p = JS_VALUE_GET_STRING(this_val);
+    len = p->len;
+    is_wide_char = p->is_wide_char;
+    for (i = 0; i < argc; i++) {
+        if (JS_TAG_STRING != JS_VALUE_GET_TAG(argv[i]))
+            goto slow_path;
+        p = JS_VALUE_GET_STRING(argv[i]);
+        if (p->is_wide_char ^ is_wide_char)
+            goto slow_path;
+        len += p->len;
+    }
+    if (len > INT_MAX>>is_wide_char)
+        return JS_ThrowOutOfMemory(ctx);
+    p = JS_VALUE_GET_STRING(this_val);
+    if (p->len == len)
+        return js_dup(this_val);
+    q = js_alloc_string(ctx, len, is_wide_char);
+    if (!q)
+        return JS_EXCEPTION;
+    d = strv(q);
+    n = p->len << is_wide_char;
+    memcpy(d, strv(p), n);
+    d += n;
+    for (i = 0; i < argc; i++) {
+        p = JS_VALUE_GET_STRING(argv[i]);
+        n = p->len << is_wide_char;
+        memcpy(d, strv(p), n);
+        d += n;
+    }
+    if (!is_wide_char)
+        *d = '\0';
+    return JS_MKPTR(JS_TAG_STRING, q);
+slow_path:
     r = JS_ToStringCheckObject(ctx, this_val);
     for (i = 0; i < argc; i++) {
         if (JS_IsException(r))
@@ -47128,27 +47199,36 @@ static JSValue js_regexp_constructor_internal(JSContext *ctx, JSValueConst ctor,
     JSValue obj;
     JSObject *p;
     JSRegExp *re;
+    JSProperty prop;
 
     /* sanity check */
     if (JS_VALUE_GET_TAG(bc) != JS_TAG_STRING ||
         JS_VALUE_GET_TAG(pattern) != JS_TAG_STRING) {
         JS_ThrowTypeError(ctx, "string expected");
-    fail:
-        JS_FreeValue(ctx, bc);
-        JS_FreeValue(ctx, pattern);
-        return JS_EXCEPTION;
-    }
-
-    obj = js_create_from_ctor(ctx, ctor, JS_CLASS_REGEXP);
-    if (JS_IsException(obj))
         goto fail;
+    }
+    prop.u.value = js_int32(0); // lastIndex
+    if (ctx->regexp_shape && JS_IsUndefined(ctor)) {
+        obj = JS_NewObjectFromShape(ctx, js_dup_shape(ctx->regexp_shape),
+                                    JS_CLASS_REGEXP, &prop);
+        if (JS_IsException(obj))
+            goto fail;
+    } else {
+        obj = js_create_from_ctor(ctx, ctor, JS_CLASS_REGEXP);
+        if (JS_IsException(obj))
+            goto fail;
+        JS_DefinePropertyValue(ctx, obj, JS_ATOM_lastIndex, prop.u.value,
+                               JS_PROP_WRITABLE);
+    }
     p = JS_VALUE_GET_OBJ(obj);
     re = &p->u.regexp;
     re->pattern = JS_VALUE_GET_STRING(pattern);
     re->bytecode = JS_VALUE_GET_STRING(bc);
-    JS_DefinePropertyValue(ctx, obj, JS_ATOM_lastIndex, js_int32(0),
-                           JS_PROP_WRITABLE);
     return obj;
+fail:
+    JS_FreeValue(ctx, bc);
+    JS_FreeValue(ctx, pattern);
+    return JS_EXCEPTION;
 }
 
 static JSRegExp *js_get_regexp(JSContext *ctx, JSValueConst obj,
@@ -47540,15 +47620,16 @@ static JSValue js_regexp_escape(JSContext *ctx, JSValueConst this_val,
 static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
+    int rc, capture_count, shift, index, i, re_flags, prop_flags;
     JSRegExp *re = js_get_regexp(ctx, this_val, true);
     JSString *str;
     JSValue t, ret, str_val, obj, val, groups;
     JSValue indices, indices_groups;
     uint8_t *re_bytecode;
     uint8_t **capture, *str_buf;
-    int rc, capture_count, shift, i, re_flags;
     int64_t last_index;
     const char *group_name_ptr;
+    JSProperty props[4]; // length, index, input, groups, in that order
 
     if (!re)
         return JS_EXCEPTION;
@@ -47605,16 +47686,11 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
             goto fail;
         }
     } else {
-        int prop_flags;
         if (re_flags & (LRE_FLAG_GLOBAL | LRE_FLAG_STICKY)) {
             if (JS_SetProperty(ctx, this_val, JS_ATOM_lastIndex,
                                js_int32((capture[1] - str_buf) >> shift)) < 0)
                 goto fail;
         }
-        obj = JS_NewArray(ctx);
-        if (JS_IsException(obj))
-            goto fail;
-        prop_flags = JS_PROP_C_W_E | JS_PROP_THROW;
         group_name_ptr = lre_get_groupnames(re_bytecode);
         if (group_name_ptr) {
             groups = JS_NewObjectProto(ctx, JS_NULL);
@@ -47631,7 +47707,17 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                     goto fail;
             }
         }
-
+        index = (capture[0] - str_buf) >> shift;
+        props[0].u.value = js_int32(capture_count); // length
+        props[1].u.value = js_int32(index);         // index
+        props[2].u.value = str_val;                 // input
+        props[3].u.value = js_dup(groups);          // groups
+        str_val = JS_UNDEFINED;
+        obj = JS_NewObjectFromShape(ctx, js_dup_shape(ctx->regexp_result_shape),
+                                    JS_CLASS_ARRAY, props);
+        if (JS_IsException(obj))
+            goto fail;
+        prop_flags = JS_PROP_C_W_E | JS_PROP_THROW;
         for(i = 0; i < capture_count; i++) {
             const char *name = NULL;
             uint8_t **match = &capture[2 * i];
@@ -47700,20 +47786,6 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
             if (JS_DefinePropertyValueUint32(ctx, obj, i, val, prop_flags) < 0)
                 goto fail;
         }
-
-        t = groups, groups = JS_UNDEFINED;
-        if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_groups,
-                                   t, prop_flags) < 0) {
-            goto fail;
-        }
-
-        t = js_int32((capture[0] - str_buf) >> shift);
-        if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_index, t, prop_flags) < 0)
-            goto fail;
-
-        t = str_val, str_val = JS_UNDEFINED;
-        if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_input, t, prop_flags) < 0)
-            goto fail;
 
         if (!JS_IsUndefined(indices)) {
             t = indices_groups, indices_groups = JS_UNDEFINED;
@@ -48610,25 +48682,55 @@ void JS_AddIntrinsicRegExpCompiler(JSContext *ctx)
     ctx->compile_regexp = js_compile_regexp;
 }
 
-void JS_AddIntrinsicRegExp(JSContext *ctx)
+int JS_AddIntrinsicRegExp(JSContext *ctx)
 {
-    JSValue obj;
+    JSValue proto, obj;
 
-    JS_AddIntrinsicRegExpCompiler(ctx);
-
-    ctx->class_proto[JS_CLASS_REGEXP] = JS_NewObject(ctx);
-    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_REGEXP], js_regexp_proto_funcs,
-                               countof(js_regexp_proto_funcs));
+    proto = ctx->class_proto[JS_CLASS_REGEXP] = JS_NewObject(ctx);
+    if (JS_IsException(proto))
+        return -1;
+    if (JS_SetPropertyFunctionList(ctx, proto, js_regexp_proto_funcs,
+                                   countof(js_regexp_proto_funcs))) {
+        return -1;
+    }
     obj = JS_NewGlobalCConstructor(ctx, "RegExp", js_regexp_constructor, 2,
-                                   ctx->class_proto[JS_CLASS_REGEXP]);
+                                   proto);
+    if (JS_IsException(obj))
+        return -1;
     ctx->regexp_ctor = js_dup(obj);
-    JS_SetPropertyFunctionList(ctx, obj, js_regexp_funcs, countof(js_regexp_funcs));
-
-    ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR] =
+    if (JS_SetPropertyFunctionList(ctx, obj, js_regexp_funcs,
+                                   countof(js_regexp_funcs))) {
+        return -1;
+    }
+    static const JSShapeProperty regexp_props[] = {
+        {.atom=JS_ATOM_lastIndex, .flags=JS_PROP_WRITABLE},
+    };
+    static const JSShapeProperty regexp_result_props[] = {
+        {.atom=JS_ATOM_length, .flags=JS_PROP_WRITABLE|JS_PROP_LENGTH},
+        {.atom=JS_ATOM_index,  .flags=JS_PROP_C_W_E},
+        {.atom=JS_ATOM_input,  .flags=JS_PROP_C_W_E},
+        {.atom=JS_ATOM_groups, .flags=JS_PROP_C_W_E},
+    };
+    if (js_new_shape_with(ctx, &ctx->regexp_shape, proto,
+                          countof(regexp_props), regexp_props)) {
+        return -1;
+    }
+    if (js_new_shape_with(ctx, &ctx->regexp_result_shape,
+                          ctx->class_proto[JS_CLASS_ARRAY],
+                          countof(regexp_result_props), regexp_result_props)) {
+        return -1;
+    }
+    proto = ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR] =
         JS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ITERATOR]);
-    JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR],
-                               js_regexp_string_iterator_proto_funcs,
-                               countof(js_regexp_string_iterator_proto_funcs));
+    if (JS_IsException(proto))
+        return -1;
+    if (JS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR],
+                                   js_regexp_string_iterator_proto_funcs,
+                                   countof(js_regexp_string_iterator_proto_funcs))) {
+        return -1;
+    }
+    JS_AddIntrinsicRegExpCompiler(ctx);
+    return 0;
 }
 
 /* JSON */
@@ -55278,41 +55380,36 @@ static void JS_AddIntrinsicBasicObjects(JSContext *ctx)
     ctx->class_proto[JS_CLASS_ARRAY] =
         JS_NewObjectProtoClass(ctx, ctx->class_proto[JS_CLASS_OBJECT],
                                JS_CLASS_ARRAY);
-
-    ctx->array_shape = js_new_shape2(ctx, get_proto_obj(ctx->class_proto[JS_CLASS_ARRAY]),
-                                     JS_PROP_INITIAL_HASH_SIZE, 1);
-    add_shape_property(ctx, &ctx->array_shape, NULL,
-                       JS_ATOM_length, JS_PROP_WRITABLE | JS_PROP_LENGTH);
-
     ctx->std_array_prototype = true;
 
-    ctx->arguments_shape = js_new_shape2(ctx, get_proto_obj(ctx->class_proto[JS_CLASS_OBJECT]),
-                                         JS_PROP_INITIAL_HASH_SIZE, 3);
-    if (!ctx->arguments_shape)
+    static const JSShapeProperty array_props[] = {
+        {.atom=JS_ATOM_length,          .flags=JS_PROP_WRITABLE|JS_PROP_LENGTH},
+    };
+    static const JSShapeProperty arguments_props[] = {
+        {.atom=JS_ATOM_length,          .flags=JS_PROP_WRITABLE|JS_PROP_CONFIGURABLE},
+        {.atom=JS_ATOM_Symbol_iterator, .flags=JS_PROP_WRITABLE|JS_PROP_CONFIGURABLE},
+        {.atom=JS_ATOM_callee,          .flags=JS_PROP_GETSET},
+    };
+    static const JSShapeProperty mapped_arguments_props[] = {
+        {.atom=JS_ATOM_length,          .flags=JS_PROP_WRITABLE|JS_PROP_CONFIGURABLE},
+        {.atom=JS_ATOM_Symbol_iterator, .flags=JS_PROP_WRITABLE|JS_PROP_CONFIGURABLE},
+        {.atom=JS_ATOM_callee,          .flags=JS_PROP_WRITABLE|JS_PROP_CONFIGURABLE},
+    };
+    if (js_new_shape_with(ctx, &ctx->array_shape,
+                          ctx->class_proto[JS_CLASS_ARRAY],
+                          countof(array_props), array_props)) {
         return;
-    if (add_shape_property(ctx, &ctx->arguments_shape, NULL,
-                           JS_ATOM_length, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE))
+    }
+    if (js_new_shape_with(ctx, &ctx->arguments_shape,
+                          ctx->class_proto[JS_CLASS_OBJECT],
+                          countof(arguments_props), arguments_props)) {
         return;
-    if (add_shape_property(ctx, &ctx->arguments_shape, NULL,
-                           JS_ATOM_Symbol_iterator, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE))
+    }
+    if (js_new_shape_with(ctx, &ctx->mapped_arguments_shape,
+                          ctx->class_proto[JS_CLASS_OBJECT],
+                          countof(mapped_arguments_props), mapped_arguments_props)) {
         return;
-    if (add_shape_property(ctx, &ctx->arguments_shape, NULL,
-                           JS_ATOM_callee, JS_PROP_GETSET))
-        return;
-
-    ctx->mapped_arguments_shape = js_new_shape2(ctx, get_proto_obj(ctx->class_proto[JS_CLASS_OBJECT]),
-                                         JS_PROP_INITIAL_HASH_SIZE, 3);
-    if (!ctx->mapped_arguments_shape)
-        return;
-    if (add_shape_property(ctx, &ctx->mapped_arguments_shape, NULL,
-                           JS_ATOM_length, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE))
-        return;
-    if (add_shape_property(ctx, &ctx->mapped_arguments_shape, NULL,
-                           JS_ATOM_Symbol_iterator, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE))
-        return;
-    if (add_shape_property(ctx, &ctx->mapped_arguments_shape, NULL,
-                           JS_ATOM_callee, JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE))
-        return;
+    }
 
     /* XXX: could test it on first context creation to ensure that no
        new atoms are created in JS_AddIntrinsicBasicObjects(). It is
@@ -59705,9 +59802,24 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
         case JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY: {
             fre = wr->u.fin_rec_entry;
             /**
-             * During the GC sweep phase the held object might be collected first.
+             * During the GC sweep phase the held object might be
+             * collected first (free_mark set). Also skip if the
+             * callback or held value are part of a cycle being
+             * collected (header.mark is set for objects on
+             * tmp_obj_list during gc_free_cycles).
              */
-            if (!rt->in_free && (!JS_IsObject(fre->held_val) || JS_IsLiveObject(rt, fre->held_val))) {
+            bool enqueue = !rt->in_free;
+            if (enqueue && JS_IsObject(fre->held_val)) {
+                JSObject *p = JS_VALUE_GET_OBJ(fre->held_val);
+                if (p->free_mark || p->header.mark)
+                    enqueue = false;
+            }
+            if (enqueue && JS_IsObject(fre->cb)) {
+                JSObject *p = JS_VALUE_GET_OBJ(fre->cb);
+                if (p->free_mark || p->header.mark)
+                    enqueue = false;
+            }
+            if (enqueue) {
                 JSValueConst args[2];
                 args[0] = fre->cb;
                 args[1] = fre->held_val;
