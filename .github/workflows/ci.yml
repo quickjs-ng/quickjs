@@ -169,6 +169,10 @@ jobs:
         run: |
           ./build/api-test
 
+      - name: test lre
+        run: |
+          ./build/lre-test
+
   windows-msvc:
     runs-on: ${{ matrix.config.os }}
     strategy:
@@ -205,6 +209,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.config.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.config.buildType}}\lre-test.exe
       - name: Set up Visual Studio shell
         uses: egor-tensin/vs-shell@v2
         with:
@@ -245,6 +252,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.buildType}}\lre-test.exe
 
   windows-ninja:
     runs-on: windows-latest
@@ -277,6 +287,9 @@ jobs:
       - name: test api
         run: |
           build\api-test.exe
+      - name: test lre
+        run: |
+          build\lre-test.exe
 
   windows-sdk:
     runs-on: windows-latest
@@ -310,6 +323,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.buildType}}\lre-test.exe
 
   windows-mingw:
     runs-on: windows-latest
@@ -364,6 +380,9 @@ jobs:
     - name: test api
       run: |
         ./build/api-test
+    - name: test lre
+      run: |
+        ./build/lre-test
   windows-mingw-shared:
     runs-on: windows-latest
     defaults:
@@ -456,6 +475,10 @@ jobs:
       - name: test api
         run: |
           ./build/api-test
+
+      - name: test lre
+        run: |
+          ./build/lre-test
 
   openbsd:
     runs-on: ubuntu-latest
