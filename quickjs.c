@@ -37314,13 +37314,20 @@ static int JS_WriteRegExp(BCWriterState *s, JSRegExp regexp)
 
     JS_WriteString(s, regexp.pattern);
 
-    if (is_be())
-        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/false);
+    if (is_be()) {
+        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/false)) {
+        fail:
+            JS_ThrowInternalError(s->ctx, "regex byte swap failed");
+            return -1;
+        }
+    }
 
     JS_WriteString(s, bc);
 
-    if (is_be())
-        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true);
+    if (is_be()) {
+        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true))
+            goto fail;
+    }
 
     return 0;
 }
@@ -38577,8 +38584,13 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         return JS_ThrowInternalError(ctx, "bad regexp bytecode");
     }
 
-    if (is_be())
-        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true);
+    if (is_be()) {
+        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true)) {
+            js_free_string(ctx->rt, pattern);
+            js_free_string(ctx->rt, bc);
+            return JS_ThrowInternalError(ctx, "bad regexp bytecode");
+        }
+    }
 
     return js_regexp_constructor_internal(ctx, JS_UNDEFINED,
                                           JS_MKPTR(JS_TAG_STRING, pattern),
