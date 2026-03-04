@@ -17368,14 +17368,12 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         call_func = rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
-            // printf("DEBUG: not_a_function reached, rt->last_var_atom=%d\n", (int)rt->last_var_atom);
-            fflush(stdout);
             if (rt->last_var_atom != JS_ATOM_NULL) {
                 JSAtom atom = rt->last_var_atom;
                 rt->last_var_atom = JS_ATOM_NULL;  /* clear for next call */
                 return JS_ThrowTypeErrorNotAFunctionAtom(caller_ctx, atom);
             }
-            return JS_ThrowTypeError(ctx, "[ATOM_NULL_DEBUG] not a function");
+            return JS_ThrowTypeError(caller_ctx, "not a function");
         }
         return call_func(caller_ctx, func_obj, this_obj, argc,
                          argv, flags);
@@ -17792,8 +17790,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         CASE(OP_call):
         CASE(OP_tail_call):
             {
-                // printf("DEBUG: OP_call, rt->last_var_atom=%d\n", (int)rt->last_var_atom);
-                fflush(stdout);
                 call_argc = get_u16(pc);
                 pc += 2;
                 goto has_call_argc;
@@ -18084,8 +18080,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 pc += 4;
                 sf->cur_pc = pc;
                 rt->last_var_atom = atom;  /* store atom for error messages */
-                // printf("DEBUG: OP_get_var%s atom=%d\n", opcode == OP_get_var ? "" : "_undef", (int)atom);
-                // fflush(stdout);
 
                 val = JS_GetGlobalVar(ctx, atom, opcode - OP_get_var_undef);
                 if (unlikely(JS_IsException(val)))
@@ -18152,7 +18146,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 idx = get_u16(pc);
                 pc += 2;
                 rt->last_var_atom = b->vardefs[idx].var_name;  /* store atom for error messages */
-                // printf("DEBUG: OP_get_loc idx=%d, atom=%d\n", idx, (int)rt->last_var_atom);
                 sp[0] = js_dup(var_buf[idx]);
                 sp++;
             }
@@ -18240,14 +18233,11 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         CASE(OP_set_arg3): set_value(ctx, &arg_buf[3], js_dup(sp[-1])); BREAK;
         CASE(OP_get_var_ref0): 
             {
-                /* printf("DEBUG: OP_get_var_ref0 called, b=%p, closure_var=%p, closure_var_count=%d\n", b, b ? b->closure_var : NULL, b ? (int)b->closure_var_count : 0); */
                 *sp++ = js_dup(*var_refs[0]->pvalue);
                 if (b && b->vardefs && 0 < b->arg_count + b->var_count) {
                     rt->last_var_atom = b->vardefs[0].var_name;
-                    /* printf("DEBUG: OP_get_var_ref0 atom=%d\n", (int)rt->last_var_atom); */
                 } else if (b && b->closure_var && 0 < b->closure_var_count) {
                     rt->last_var_atom = b->closure_var[0].var_name;
-                    /* printf("DEBUG: OP_get_var_ref0 closure atom=%d\n", (int)rt->last_var_atom); */
                 }
             }
             BREAK;
@@ -18257,7 +18247,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 *sp++ = js_dup(*var_refs[1]->pvalue);
                 if (b && b->vardefs && 1 < b->arg_count + b->var_count) {
                     rt->last_var_atom = b->vardefs[1].var_name;
-                    /* printf("DEBUG: OP_get_var_ref1 atom=%d\n", (int)rt->last_var_atom); */
                 }
             }
             BREAK;
@@ -18267,7 +18256,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 *sp++ = js_dup(*var_refs[2]->pvalue);
                 if (b && b->vardefs && 2 < b->arg_count + b->var_count) {
                     rt->last_var_atom = b->vardefs[2].var_name;
-                    /* printf("DEBUG: OP_get_var_ref2 atom=%d\n", (int)rt->last_var_atom); */
                 }
             }
             BREAK;
@@ -18294,8 +18282,6 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSValue val;
                 idx = get_u16(pc);
                 pc += 2;
-                // printf("DEBUG: OP_get_var_ref idx=%d\n", idx);
-
                 val = *var_refs[idx]->pvalue;
                 sp[0] = js_dup(val);
                 sp++;
@@ -18303,13 +18289,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 /* store atom for error messages */
                 if (b && b->vardefs && idx < b->arg_count + b->var_count) {
                     rt->last_var_atom = b->vardefs[idx].var_name;
-                    // printf("DEBUG: OP_get_var_ref idx=%d atom=%d\n", idx, (int)rt->last_var_atom);
                 } else if (b && b->closure_var && idx >= b->arg_count + b->var_count) {
                     int closure_idx = idx - (b->arg_count + b->var_count);
                     if (closure_idx < b->closure_var_count) {
                         rt->last_var_atom = b->closure_var[closure_idx].var_name;
-                        // printf("DEBUG: OP_get_var_ref idx=%d closure atom=%d\n", idx, (int)rt->last_var_atom);
-
                     }
                 }
             }
@@ -39029,7 +39012,7 @@ static int check_function(JSContext *ctx, JSValueConst obj)
     if (ctx->rt->last_var_atom != JS_ATOM_NULL) {
         JSAtom atom = ctx->rt->last_var_atom;
         ctx->rt->last_var_atom = JS_ATOM_NULL;  /* clear for next call */
-        
+
         JS_ThrowTypeErrorNotAFunctionAtom(ctx, atom);
     } else {
         JS_ThrowTypeErrorNotAFunction(ctx);
