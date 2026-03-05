@@ -18079,7 +18079,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 atom = get_u32(pc);
                 pc += 4;
                 sf->cur_pc = pc;
-                rt->last_var_atom = atom;  /* store atom for error messages */
+                /* only store atom if it looks valid */
+                if (atom != JS_ATOM_NULL && atom < JS_ATOM_END) {
+                    rt->last_var_atom = atom;  /* store atom for error messages */
+                }
 
                 val = JS_GetGlobalVar(ctx, atom, opcode - OP_get_var_undef);
                 if (unlikely(JS_IsException(val)))
@@ -18145,7 +18148,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 int idx;
                 idx = get_u16(pc);
                 pc += 2;
-                rt->last_var_atom = b->vardefs[idx].var_name;  /* store atom for error messages */
+                /* only store atom if it looks valid */
+                if (b && b->vardefs && idx < b->arg_count + b->var_count) {
+                    JSAtom atom = b->vardefs[idx].var_name;
+                    if (atom != JS_ATOM_NULL && atom < JS_ATOM_END) {
+                        rt->last_var_atom = atom;
+                    }
+                }
                 sp[0] = js_dup(var_buf[idx]);
                 sp++;
             }
@@ -18194,7 +18203,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             }
             BREAK;
 
-        CASE(OP_get_loc8): rt->last_var_atom = b->vardefs[*pc].var_name; BREAK;
+        CASE(OP_get_loc8): if (b && b->vardefs) { JSAtom a = b->vardefs[*pc].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } BREAK;
         CASE(OP_put_loc8): set_value(ctx, &var_buf[*pc++], *--sp); BREAK;
         CASE(OP_set_loc8): set_value(ctx, &var_buf[*pc++], js_dup(sp[-1])); BREAK;
 
@@ -18203,14 +18212,14 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         // making them ideal candidates for opcode fusion.
         CASE(OP_get_loc0_loc1):
             *sp++ = js_dup(var_buf[0]);
-            rt->last_var_atom = b->vardefs[1].var_name;
+            if (b && b->vardefs) { JSAtom a = b->vardefs[1].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; }
             *sp++ = js_dup(var_buf[1]);
             BREAK;
 
-        CASE(OP_get_loc0): rt->last_var_atom = b->vardefs[0].var_name; *sp++ = js_dup(var_buf[0]); BREAK;
-        CASE(OP_get_loc1): rt->last_var_atom = b->vardefs[1].var_name; *sp++ = js_dup(var_buf[1]); BREAK;
-        CASE(OP_get_loc2): rt->last_var_atom = b->vardefs[2].var_name; *sp++ = js_dup(var_buf[2]); BREAK;
-        CASE(OP_get_loc3): rt->last_var_atom = b->vardefs[3].var_name; *sp++ = js_dup(var_buf[3]); BREAK;
+        CASE(OP_get_loc0): if (b && b->vardefs) { JSAtom a = b->vardefs[0].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[0]); BREAK;
+        CASE(OP_get_loc1): if (b && b->vardefs) { JSAtom a = b->vardefs[1].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[1]); BREAK;
+        CASE(OP_get_loc2): if (b && b->vardefs) { JSAtom a = b->vardefs[2].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[2]); BREAK;
+        CASE(OP_get_loc3): if (b && b->vardefs) { JSAtom a = b->vardefs[3].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[3]); BREAK;
         CASE(OP_put_loc0): set_value(ctx, &var_buf[0], *--sp); BREAK;
         CASE(OP_put_loc1): set_value(ctx, &var_buf[1], *--sp); BREAK;
         CASE(OP_put_loc2): set_value(ctx, &var_buf[2], *--sp); BREAK;
@@ -18235,9 +18244,11 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             {
                 *sp++ = js_dup(*var_refs[0]->pvalue);
                 if (b && b->vardefs && 0 < b->arg_count + b->var_count) {
-                    rt->last_var_atom = b->vardefs[0].var_name;
+                    JSAtom a = b->vardefs[0].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
                 } else if (b && b->closure_var && 0 < b->closure_var_count) {
-                    rt->last_var_atom = b->closure_var[0].var_name;
+                    JSAtom a = b->closure_var[0].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
                 }
             }
             BREAK;
@@ -18246,7 +18257,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             {
                 *sp++ = js_dup(*var_refs[1]->pvalue);
                 if (b && b->vardefs && 1 < b->arg_count + b->var_count) {
-                    rt->last_var_atom = b->vardefs[1].var_name;
+                    JSAtom a = b->vardefs[1].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
                 }
             }
             BREAK;
@@ -18255,7 +18267,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             {
                 *sp++ = js_dup(*var_refs[2]->pvalue);
                 if (b && b->vardefs && 2 < b->arg_count + b->var_count) {
-                    rt->last_var_atom = b->vardefs[2].var_name;
+                    JSAtom a = b->vardefs[2].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
                 }
             }
             BREAK;
@@ -18263,7 +18276,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             {
                 *sp++ = js_dup(*var_refs[3]->pvalue);
                 if (b && b->vardefs && 3 < b->arg_count + b->var_count) {
-                    rt->last_var_atom = b->vardefs[3].var_name;
+                    JSAtom a = b->vardefs[3].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
                 }
             }
             BREAK;
@@ -18286,13 +18300,15 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 sp[0] = js_dup(val);
                 sp++;
                 
-                /* store atom for error messages */
+                /* store atom for error messages - with validity checks */
                 if (b && b->vardefs && idx < b->arg_count + b->var_count) {
-                    rt->last_var_atom = b->vardefs[idx].var_name;
+                    JSAtom a = b->vardefs[idx].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
                 } else if (b && b->closure_var && idx >= b->arg_count + b->var_count) {
                     int closure_idx = idx - (b->arg_count + b->var_count);
                     if (closure_idx < b->closure_var_count) {
-                        rt->last_var_atom = b->closure_var[closure_idx].var_name;
+                        JSAtom a = b->closure_var[closure_idx].var_name;
+                        if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
                     }
                 }
             }
