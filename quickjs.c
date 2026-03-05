@@ -8069,7 +8069,7 @@ static JSValue JS_ThrowTypeErrorNotAFunctionAtom(JSContext *ctx, JSAtom atom)
     }
     char buf[ATOM_GET_STR_BUF_SIZE];
     JS_AtomGetStr(ctx, buf, sizeof(buf), atom);
-    return JS_ThrowTypeError(ctx, "[SUCCESS] %s is not a function", buf);
+    return JS_ThrowTypeError(ctx, "%s is not a function", buf);
 }
 
 static JSValue JS_ThrowTypeErrorNotAnObject(JSContext *ctx)
@@ -17308,6 +17308,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     JSValue *local_buf, *stack_buf, *var_buf, *arg_buf, *sp, ret_val, *pval;
     JSVarRef **var_refs;
     size_t alloca_size;
+    JSAtom saved_last_var_atom;  /* save and restore last_var_atom to avoid use-after-free */
 
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_STEP
 #define DUMP_BYTECODE_OR_DONT(pc) \
@@ -17333,6 +17334,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 #define DEFAULT         case_default
 #define BREAK           SWITCH(pc)
 #endif
+
+    /* Save last_var_atom to avoid use-after-free bugs */
+    saved_last_var_atom = rt->last_var_atom;
 
     if (js_poll_interrupts(caller_ctx))
         return JS_EXCEPTION;
@@ -20016,6 +20020,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         }
     }
  exception:
+    /* Restore last_var_atom before handling exception */
+    rt->last_var_atom = saved_last_var_atom;
     if (needs_backtrace(rt->current_exception)
     || JS_IsUndefined(ctx->error_back_trace)) {
         sf->cur_pc = pc;
@@ -20064,6 +20070,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         }
     }
     rt->current_stack_frame = sf->prev_frame;
+    /* Restore last_var_atom on normal return */
+    rt->last_var_atom = saved_last_var_atom;
     return ret_val;
 }
 
