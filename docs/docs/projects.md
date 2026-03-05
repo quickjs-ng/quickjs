@@ -50,3 +50,11 @@ Go module that embeds QuickJS-NG compiled to WebAssembly using the WASI reactor 
 ## [js-quickjs-wasi-reactor](https://github.com/aperturerobotics/js-quickjs-wasi-reactor)
 
 JavaScript/TypeScript harness for running QuickJS-NG in WASI reactor mode. Includes a browser-compatible WASI shim, virtual filesystem, custom I/O handlers, and non-blocking event loop integration for browser and Node.js/Bun environments.
+
+## [quickjs-ng](https://github.com/genotrance/quickjs-ng)
+
+Python bindings for quickjs-ng.
+
+## [Px](https://github.com/genotrance/px)
+
+Proxy server using quickjs-ng for PAC file processing.
