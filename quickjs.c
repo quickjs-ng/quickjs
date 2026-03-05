@@ -378,6 +378,7 @@ struct JSRuntime {
     bool in_free;
 
     struct JSStackFrame *current_stack_frame;
+    struct JSJobEntry *current_job; /* borrowed while executing the job */
 
     JSInterruptHandler *interrupt_handler;
     void *interrupt_opaque;
@@ -1213,6 +1214,9 @@ typedef struct JSCallSiteData {
     JSValue func_name;
     bool native;
     bool constructor;
+    bool is_async;
+    bool is_promise_all;
+    int promise_index;
     int line_num;
     int col_num;
 } JSCallSiteData;
@@ -2526,7 +2530,7 @@ JSContext *JS_GetPendingJobContext(JSRuntime *rt)
 int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx)
 {
     JSContext *ctx;
-    JSJobEntry *e;
+    JSJobEntry *e, *prev_job;
     JSValue res;
     int i, ret;
 
@@ -2539,7 +2543,10 @@ int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx)
     e = list_entry(rt->job_list.next, JSJobEntry, link);
     list_del(&e->link);
     ctx = e->ctx;
+    prev_job = rt->current_job;
+    rt->current_job = e;
     res = e->job_func(e->ctx, e->argc, vc(e->argv));
+    rt->current_job = prev_job;
     for(i = 0; i < e->argc; i++)
         JS_FreeValue(ctx, e->argv[i]);
     if (JS_IsException(res))
@@ -8185,6 +8192,10 @@ static bool can_store_error_stack(JSValueConst obj)
 #define JS_BACKTRACE_FLAG_SINGLE_LEVEL     (1 << 1)
 #define JS_BACKTRACE_FLAG_FILTER_FUNC      (1 << 2)
 
+static JSStackFrame *js_async_stack_frame(JSContext *ctx, JSStackFrame *sf,
+                                          JSJobEntry *job, JSCallSiteData *csd,
+                                          DynBuf *dbuf, uint32_t *count, int limit);
+
 /* if filename != NULL, an additional level is added with the filename
    and line number information (used for parse error). */
 static void build_backtrace(JSContext *ctx, JSValueConst error_val,
@@ -8192,6 +8203,9 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                             int line_num, int col_num, int backtrace_flags)
 {
     JSStackFrame *sf, *sf_start;
+    JSStackFrame *async_sf = NULL;
+    JSJobEntry *job = ctx->rt->current_job;
+    bool is_async = false;
     JSValue stack, prepare, saved_exception, error_obj;
     DynBuf dbuf;
     const char *func_name_str;
@@ -8275,10 +8289,10 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
         }
     }
 
-    for (sf = sf_start; sf != NULL && i < stack_trace_limit; sf = sf->prev_frame) {
+    for (sf = sf_start; sf != NULL && i < stack_trace_limit;) {
         if (backtrace_flags & JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL) {
             backtrace_flags &= ~JS_BACKTRACE_FLAG_SKIP_FIRST_LEVEL;
-            continue;
+            goto next;
         }
 
         p = JS_VALUE_GET_OBJ(sf->cur_func);
@@ -8292,6 +8306,7 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
 
         if (has_prepare) {
             js_new_callsite_data(ctx, &csd[i], sf);
+            csd[i].is_async = is_async;
         } else {
             /* func_name_str is UTF-8 encoded if needed */
             func_name_str = get_func_name(ctx, sf->cur_func);
@@ -8299,7 +8314,7 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                 str1 = "<anonymous>";
             else
                 str1 = func_name_str;
-            dbuf_printf(&dbuf, "    at %s", str1);
+            dbuf_printf(&dbuf, "    at %s%s", is_async ? "async " : "", str1);
             JS_FreeCString(ctx, func_name_str);
 
             if (b && sf->cur_pc) {
@@ -8330,6 +8345,21 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
         /* stop backtrace if JS_EVAL_FLAG_BACKTRACE_BARRIER was used */
         if (backtrace_barrier)
             break;
+    next:
+        if (!is_async) {
+            /* Start with the outermost coroutine already on the native stack. */
+            if (js_class_has_bytecode(JS_VALUE_GET_OBJ(sf->cur_func)->class_id) &&
+                sf->cur_gc_obj)
+                async_sf = sf;
+            sf = sf->prev_frame;
+            if (sf)
+                continue;
+            sf = async_sf;
+            is_async = true;
+        }
+        sf = js_async_stack_frame(ctx, sf, job, has_prepare ? csd : NULL,
+                                  has_prepare ? NULL : &dbuf, &i, stack_trace_limit);
+        job = NULL;
     }
  done:
     if (has_prepare) {
@@ -55531,6 +55561,119 @@ typedef struct JSPromiseReactionData {
     JSValue handler;
 } JSPromiseReactionData;
 
+static JSValue promise_reaction_job(JSContext *ctx, int argc, JSValueConst *argv);
+static JSValue js_promise_all_resolve_element(JSContext *ctx, JSValueConst this_val,
+                                              int argc, JSValueConst *argv,
+                                              int magic, JSValueConst *func_data);
+
+/* Return a borrowed promise without invoking user-defined resolving functions. */
+static JSValue js_resolving_function_promise(JSValueConst func)
+{
+    JSPromiseFunctionData *fd = JS_GetOpaque(func, JS_CLASS_PROMISE_RESOLVE_FUNCTION);
+    if (!fd)
+        fd = JS_GetOpaque(func, JS_CLASS_PROMISE_REJECT_FUNCTION);
+    return fd ? fd->promise : JS_UNDEFINED;
+}
+
+/* Follow existing promise links without retaining frames or running JS. */
+static JSStackFrame *js_async_stack_frame(JSContext *ctx, JSStackFrame *sf,
+                                          JSJobEntry *job, JSCallSiteData *csd,
+                                          DynBuf *dbuf, uint32_t *count, int limit)
+{
+    JSAsyncFunctionData *af;
+    JSAsyncGeneratorData *ag;
+    JSPromiseData *pd;
+    JSPromiseReactionData *rd;
+    JSCFunctionDataRecord *cd;
+    JSObject *p;
+    JSValue promise = JS_UNDEFINED;
+    struct list_head *head;
+    int depth;
+
+    /* A .then() callback or thenable may have no running async function. */
+    if (job) {
+        if (job->job_func == promise_reaction_job)
+            promise = js_resolving_function_promise(job->argv[0]);
+        else if (job->job_func == js_promise_resolve_thenable_job)
+            promise = job->argv[0];
+        if (!JS_IsUndefined(promise))
+            goto follow;
+    }
+    if (!sf || !sf->cur_gc_obj)
+        return NULL;
+    if (JS_GC_TYPE(sf->cur_gc_obj) == JS_GC_OBJ_TYPE_ASYNC_FUNCTION) {
+        af = (JSAsyncFunctionData *)sf->cur_gc_obj;
+        promise = js_resolving_function_promise(af->resolving_funcs[0]);
+    } else {
+        p = (JSObject *)sf->cur_gc_obj;
+        if (p->class_id != JS_CLASS_ASYNC_GENERATOR)
+            return NULL;
+        ag = p->u.async_generator_data;
+        if (list_empty(&ag->queue))
+            return NULL;
+        promise = list_entry(ag->queue.next, JSAsyncGeneratorRequest, link)->promise;
+    }
+ follow:
+    /* Bound traversal through forwarding links, which can form cycles. */
+    for (depth = 0; depth < 1024 && *count < limit; depth++) {
+        pd = JS_GetOpaque(promise, JS_CLASS_PROMISE);
+        if (!pd || pd->promise_state != JS_PROMISE_PENDING)
+            return NULL;
+        head = &pd->promise_reactions[0];
+        /* A shared promise has no unambiguous async caller. */
+        if (list_empty(head) || head->next->next != head)
+            return NULL;
+        rd = list_entry(head->next, JSPromiseReactionData, link);
+        af = JS_GetOpaque(rd->handler, JS_CLASS_ASYNC_FUNCTION_RESOLVE);
+        if (af && af->is_active && af->func_state.frame.cur_sp)
+            return &af->func_state.frame;
+        cd = JS_GetOpaque(rd->handler, JS_CLASS_C_FUNCTION_DATA);
+        if (cd && cd->func == js_async_generator_resolve_function) {
+            ag = JS_GetOpaque(cd->data[0], JS_CLASS_ASYNC_GENERATOR);
+            if (ag && ag->state == JS_ASYNC_GENERATOR_STATE_EXECUTING &&
+                ag->func_state.frame.cur_sp)
+                return &ag->func_state.frame;
+        }
+        /* any stores its element handler on the rejection reaction. */
+        if ((!cd || cd->func != js_promise_all_resolve_element) &&
+            !list_empty(&pd->promise_reactions[1])) {
+            JSPromiseReactionData *reject = list_entry(pd->promise_reactions[1].next,
+                                                       JSPromiseReactionData, link);
+            cd = JS_GetOpaque(reject->handler, JS_CLASS_C_FUNCTION_DATA);
+        }
+        if (cd && cd->func == js_promise_all_resolve_element) {
+            static const char * const names[] = { "all", "allSettled", "any" };
+            int kind = cd->magic & 3;
+            int index = JS_VALUE_GET_INT(cd->data[1]);
+            if (csd) {
+                csd[*count] = (JSCallSiteData) {
+                    .filename = JS_NULL,
+                    .func = JS_UNDEFINED,
+                    .func_name = JS_NewString(ctx, names[kind]),
+                    .is_async = true,
+                    .is_promise_all = kind == 0,
+                    .promise_index = index,
+                    .line_num = -1,
+                    .col_num = -1,
+                };
+                if (JS_IsException(csd[*count].func_name))
+                    csd[*count].func_name = JS_NULL;
+            } else {
+                dbuf_printf(dbuf, "    at async Promise.%s (index %d)\n",
+                            names[kind], index);
+            }
+            (*count)++;
+            promise = js_resolving_function_promise(cd->data[3]);
+        } else {
+            /* Promise adoption and any/race use the resolving function directly. */
+            promise = js_resolving_function_promise(rd->handler);
+            if (JS_IsUndefined(promise))
+                promise = js_resolving_function_promise(rd->resolving_funcs[0]);
+        }
+    }
+    return NULL;
+}
+
 JSPromiseStateEnum JS_PromiseState(JSContext *ctx, JSValueConst promise)
 {
     JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
@@ -63534,6 +63677,9 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
     JSObject *p;
 
     csd->constructor = sf->is_constructor;
+    csd->is_async = false;
+    csd->is_promise_all = false;
+    csd->promise_index = -1;
     csd->func = js_dup(sf->cur_func);
     /* func_name_str is UTF-8 encoded if needed */
     func_name_str = get_func_name(ctx, sf->cur_func);
@@ -63574,6 +63720,9 @@ static void js_new_callsite_data2(JSContext *ctx, JSCallSiteData *csd, const cha
     csd->func_name = JS_NULL;
     csd->native = false;
     csd->constructor = false;
+    csd->is_async = false;
+    csd->is_promise_all = false;
+    csd->promise_index = -1;
     csd->line_num = line_num;
     csd->col_num = col_num;
     /* filename is UTF-8 encoded if needed (original argument to __JS_EvalInternal()) */
@@ -63609,6 +63758,22 @@ static JSValue js_callsite_isconstructor(JSContext *ctx, JSValueConst this_val, 
     return js_bool(csd->constructor);
 }
 
+static JSValue js_callsite_isasync(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    JSCallSiteData *csd = JS_GetOpaque2(ctx, this_val, JS_CLASS_CALL_SITE);
+    if (!csd)
+        return JS_EXCEPTION;
+    return js_bool(csd->is_async);
+}
+
+static JSValue js_callsite_ispromiseall(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    JSCallSiteData *csd = JS_GetOpaque2(ctx, this_val, JS_CLASS_CALL_SITE);
+    if (!csd)
+        return JS_EXCEPTION;
+    return js_bool(csd->is_promise_all);
+}
+
 static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv, int magic)
 {
     JSCallSiteData *csd = JS_GetOpaque2(ctx, this_val, JS_CLASS_CALL_SITE);
@@ -63624,6 +63789,9 @@ static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int 
 static const JSCFunctionListEntry js_callsite_proto_funcs[] = {
     JS_CFUNC_DEF("isNative", 0, js_callsite_isnative),
     JS_CFUNC_DEF("isConstructor", 0, js_callsite_isconstructor),
+    JS_CFUNC_DEF("isAsync", 0, js_callsite_isasync),
+    JS_CFUNC_DEF("isPromiseAll", 0, js_callsite_ispromiseall),
+    JS_CFUNC_MAGIC_DEF("getPromiseIndex", 0, js_callsite_getnumber, offsetof(JSCallSiteData, promise_index)),
     JS_CFUNC_MAGIC_DEF("getFileName", 0, js_callsite_getfield, offsetof(JSCallSiteData, filename)),
     JS_CFUNC_MAGIC_DEF("getFunction", 0, js_callsite_getfield, offsetof(JSCallSiteData, func)),
     JS_CFUNC_MAGIC_DEF("getFunctionName", 0, js_callsite_getfield, offsetof(JSCallSiteData, func_name)),
