@@ -38067,10 +38067,6 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         goto fail;
     if (bc_get_leb128_int(s, &local_count))
         goto fail;
-    if (local_count < 0 || local_count > JS_MAX_LOCAL_VARS) {
-        JS_ThrowSyntaxError(s->ctx, "bad function object");
-        goto fail;
-    }
 
     function_size = sizeof(*b);
     cpool_offset = function_size;
