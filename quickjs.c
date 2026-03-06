@@ -52561,33 +52561,33 @@ static void js_promise_mark(JSRuntime *rt, JSValueConst val,
     JS_MarkValue(rt, s->promise_result, mark_func);
 }
 
-static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
-                                      int argc, JSValueConst *argv)
+/* Create a new promise object with resolving functions. Returns the promise
+   and sets resolving_funcs[0] (resolve) and resolving_funcs[1] (reject). */
+static JSValue js_promise_new(JSContext *ctx, JSValueConst new_target,
+                               JSValue *resolving_funcs)
 {
-    JSValueConst executor;
     JSValue obj;
     JSPromiseData *s;
     JSRuntime *rt;
-    JSValue args[2], ret;
-    int i;
 
-    executor = argv[0];
-    if (check_function(ctx, executor))
-        return JS_EXCEPTION;
     obj = js_create_from_ctor(ctx, new_target, JS_CLASS_PROMISE);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
     s = js_mallocz(ctx, sizeof(*s));
-    if (!s)
-        goto fail;
+    if (!s) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
     s->promise_state = JS_PROMISE_PENDING;
     s->is_handled = false;
-    for(i = 0; i < 2; i++)
-        init_list_head(&s->promise_reactions[i]);
+    init_list_head(&s->promise_reactions[0]);
+    init_list_head(&s->promise_reactions[1]);
     s->promise_result = JS_UNDEFINED;
     JS_SetOpaqueInternal(obj, s);
-    if (js_create_resolving_functions(ctx, args, obj))
-        goto fail;
+    if (js_create_resolving_functions(ctx, resolving_funcs, obj)) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
     rt = ctx->rt;
     if (rt->promise_hook) {
         JSValueConst parent_promise = JS_UNDEFINED;
@@ -52596,6 +52596,22 @@ static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
         rt->promise_hook(ctx, JS_PROMISE_HOOK_INIT, obj, parent_promise,
                          rt->promise_hook_opaque);
     }
+    return obj;
+}
+
+static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
+                                      int argc, JSValueConst *argv)
+{
+    JSValueConst executor;
+    JSValue obj;
+    JSValue args[2], ret;
+
+    executor = argv[0];
+    if (check_function(ctx, executor))
+        return JS_EXCEPTION;
+    obj = js_promise_new(ctx, new_target, args);
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
     ret = JS_Call(ctx, executor, JS_UNDEFINED, 2, vc(args));
     if (JS_IsException(ret)) {
         JSValue ret2, error;
@@ -52603,17 +52619,16 @@ static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
         ret2 = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
         if (JS_IsException(ret2))
-            goto fail1;
+            goto fail;
         JS_FreeValue(ctx, ret2);
     }
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, args[0]);
     JS_FreeValue(ctx, args[1]);
     return obj;
- fail1:
+ fail:
     JS_FreeValue(ctx, args[0]);
     JS_FreeValue(ctx, args[1]);
- fail:
     JS_FreeValue(ctx, obj);
     return JS_EXCEPTION;
 }
@@ -52651,14 +52666,12 @@ static JSValue js_new_promise_capability(JSContext *ctx,
     JSCFunctionDataRecord *s;
     int i;
 
+    if (JS_IsUndefined(ctor) || js_same_value(ctx, ctor, ctx->promise_ctor))
+        return js_promise_new(ctx, JS_UNDEFINED, resolving_funcs);
     executor = js_promise_executor_new(ctx);
     if (JS_IsException(executor))
         return JS_EXCEPTION;
-    if (JS_IsUndefined(ctor)) {
-        result_promise = js_promise_constructor(ctx, ctor, 1, vc(&executor));
-    } else {
-        result_promise = JS_CallConstructor(ctx, ctor, 1, vc(&executor));
-    }
+    result_promise = JS_CallConstructor(ctx, ctor, 1, vc(&executor));
     if (JS_IsException(result_promise))
         goto fail;
     s = JS_GetOpaque(executor, JS_CLASS_C_FUNCTION_DATA);
