@@ -54,3 +54,11 @@ JavaScript/TypeScript harness for running QuickJS-NG in WASI reactor mode. Inclu
 ## [quickjs.ml](https://github.com/ml-in-barcelona/quickjs.ml)
 
 OCaml bindings to quickjs-ng. Exposing both low-level C library access (libregexp, libunicode, js_dtoa, js_atod, and cutils) and a high-level API mirroring JavaScript built-ins like RegExp, String, and Number.
+
+## [Python quickjs-ng](https://github.com/genotrance/quickjs-ng)
+
+Python bindings for quickjs-ng based on https://github.com/PetterS/quickjs.
+
+## [Px](https://github.com/genotrance/px)
+
+Proxy server using quickjs-ng for PAC file processing.
