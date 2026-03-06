@@ -13,8 +13,8 @@ const JS_WRITE_OBJ_STRIP_SOURCE = 1 << 4;
  * Trailer for standalone binaries. When some code gets bundled with the qjs
  * executable we add a 12 byte trailer. The first 8 bytes are the magic
  * string that helps us understand this is a standalone binary, and the
- * remaining 4 are the offset (from the beginning of the binary) where the
- * bundled data is located.
+ * remaining 4 are the offset (before the trailer) where the bundled data
+ * is located.
  *
  * The offset is stored as a 32bit little-endian number.
  */
@@ -64,7 +64,7 @@ export function compileStandalone(inFile, outFile, targetExe) {
 
   const dw = new DataView(newBuffer, exeSize + bytecode.length + Trailer.MagicSize, Trailer.DataSize);
 
-  dw.setUint32(0, exeSize, true /* little-endian */);
+  dw.setUint32(0, bytecode.length, true /* little-endian */);
 
   // We use os.open() so we can set the permissions mask.
   const newFd = os.open(outFile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o755);
@@ -105,10 +105,10 @@ export function runStandalone() {
   }
 
   const dw = new DataView(trailer.buffer, Trailer.MagicSize, Trailer.DataSize);
-  const offset = dw.getUint32(0, true /* little-endian */);
-  const bytecode = new Uint8Array(offset - Trailer.Size);
+  const bytecodelen = dw.getUint32(0, true /* little-endian */);
+  const bytecode = new Uint8Array(bytecodelen);
 
-  r = exe.seek(offset, std.SEEK_SET);
+  r = exe.seek(-(bytecodelen + Trailer.Size), std.SEEK_END);
   if (r < 0) {
     exe.close();
     throw new Error(`seek error: ${-r}`);

@@ -57,6 +57,10 @@ Supported flags:
 - `READ_OBJ_BYTECODE`: allow de-serializing functions and modules
 - `READ_OBJ_REFERENCE`: allow de-serializing object references
 
+Security caveat: `bjson.read()` is resilient against malformed input (the wire
+format is checksummed) but is not designed to withstand adversarial attacks.
+Don't feed it untrusted input.
+
 ## `qjs:os` module
 
 The `os` module provides Operating System specific functions:

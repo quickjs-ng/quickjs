@@ -36714,7 +36714,7 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 23
+#define BC_VERSION 24
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -36928,6 +36928,28 @@ static void bc_byte_swap(uint8_t *bc_buf, int bc_len)
         }
         pos += len;
     }
+}
+
+static uint32_t bc_csum(const uint8_t *p, size_t n)
+{
+    uint32_t a, b, c, h;
+    size_t i;
+
+    h = 0;
+    for (i = 0; i+4 < n; i += 4)
+        h = shape_hash(h, get_u32_le(p+i));
+    a = b = c = 0;
+    switch (n-i) {
+    case 3:
+        c = (uint32_t)p[i+2];
+    case 2:
+        b = (uint32_t)p[i+1];
+    case 1:
+        a = (uint32_t)p[i+0];
+    case 0:
+        break;
+    }
+    return shape_hash(h, a | b<<8 | c<<16);
 }
 
 static int JS_WriteFunctionBytecode(BCWriterState *s,
@@ -37508,6 +37530,7 @@ static int JS_WriteObjectAtoms(BCWriterState *s)
     dbuf1 = s->dbuf;
     js_dbuf_init(s->ctx, &s->dbuf);
     bc_put_u8(s, BC_VERSION);
+    bc_put_u32(s, 0); // checksum, filled in after serialization
 
     bc_put_leb128(s, s->idx_to_atom_count);
     for(i = 0; i < s->idx_to_atom_count; i++) {
@@ -37548,6 +37571,8 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
                          int flags, JSSABTab *psab_tab)
 {
     BCWriterState ss, *s = &ss;
+    uint32_t h;
+    DynBuf *d;
 
     memset(s, 0, sizeof(*s));
     s->ctx = ctx;
@@ -37578,7 +37603,11 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
     } else {
         js_free(ctx, s->sab_tab);
     }
-    return s->dbuf.buf;
+    // don't include version and checksum fields in checksum
+    d = &s->dbuf;
+    h = bc_csum(&d->buf[5], d->size - 5);
+    put_u32_le(&d->buf[1], h);
+    return d->buf;
  fail:
     js_object_list_end(ctx, &s->object_list);
     js_free(ctx, s->atom_to_idx);
@@ -38033,10 +38062,6 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         goto fail;
     if (bc_get_leb128_int(s, &local_count))
         goto fail;
-    if (local_count < 0 || local_count > JS_MAX_LOCAL_VARS) {
-        JS_ThrowSyntaxError(s->ctx, "bad function object");
-        goto fail;
-    }
 
     function_size = sizeof(*b);
     cpool_offset = function_size;
@@ -38788,6 +38813,7 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
 {
     uint8_t v8, type;
     JSString *p;
+    uint32_t h;
     int i;
     JSAtom atom;
 
@@ -38796,6 +38822,14 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
     if (v8 != BC_VERSION) {
         JS_ThrowSyntaxError(s->ctx, "invalid version (%d expected=%d)",
                             v8, BC_VERSION);
+        return -1;
+    }
+    if (bc_get_u32(s, &h))
+        return -1;
+    // allow UINT32_MAX as an escape hatch, otherwise updating
+    // the test corpus in tests/test_bjson.js gets too tedious
+    if (h != UINT32_MAX && h != bc_csum(s->ptr, s->buf_end - s->ptr)) {
+        JS_ThrowSyntaxError(s->ctx, "checksum error");
         return -1;
     }
     if (bc_get_leb128(s, &s->idx_to_atom_count))
