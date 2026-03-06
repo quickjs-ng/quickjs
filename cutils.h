@@ -276,6 +276,17 @@ static inline uint32_t get_u32(const uint8_t *tab)
     return v;
 }
 
+static inline uint32_t get_u32_le(const uint8_t *tab)
+{
+    uint32_t a, b, c, d;
+
+    a = (uint32_t)tab[0];
+    b = (uint32_t)tab[1];
+    c = (uint32_t)tab[2];
+    d = (uint32_t)tab[3];
+    return a | b<<8 | c<<16 | d<<24;
+}
+
 static inline int32_t get_i32(const uint8_t *tab)
 {
     int32_t v;
@@ -286,6 +297,14 @@ static inline int32_t get_i32(const uint8_t *tab)
 static inline void put_u32(uint8_t *tab, uint32_t val)
 {
     memcpy(tab, &val, sizeof(val));
+}
+
+static inline void put_u32_le(uint8_t *tab, uint32_t val)
+{
+    tab[0] = val >> 0;
+    tab[1] = val >> 8;
+    tab[2] = val >> 16;
+    tab[3] = val >> 24;
 }
 
 static inline uint32_t get_u16(const uint8_t *tab)

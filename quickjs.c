@@ -36932,17 +36932,12 @@ static void bc_byte_swap(uint8_t *bc_buf, int bc_len)
 
 static uint32_t bc_csum(const uint8_t *p, size_t n)
 {
-    uint32_t a, b, c, d, h;
+    uint32_t a, b, c, h;
     size_t i;
 
     h = 0;
-    for (i = 0; i+4 < n; i += 4) {
-        a = (uint32_t)p[i+0];
-        b = (uint32_t)p[i+1];
-        c = (uint32_t)p[i+2];
-        d = (uint32_t)p[i+3];
-        h = shape_hash(h, a | b<<8 | c<<16 | d<<24);
-    }
+    for (i = 0; i+4 < n; i += 4)
+        h = shape_hash(h, get_u32_le(p+i));
     a = b = c = 0;
     switch (n-i) {
     case 3:
@@ -37611,7 +37606,7 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
     // don't include version and checksum fields in checksum
     d = &s->dbuf;
     h = bc_csum(&d->buf[5], d->size - 5);
-    memcpy(&d->buf[1], &h, sizeof(h));
+    put_u32_le(&d->buf[1], h);
     return d->buf;
  fail:
     js_object_list_end(ctx, &s->object_list);
