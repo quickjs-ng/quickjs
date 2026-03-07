@@ -37434,9 +37434,14 @@ static int JS_WriteRegExp(BCWriterState *s, JSRegExp regexp)
     assert(!bc->is_wide_char);
 
     JS_WriteString(s, regexp.pattern);
-
-    if (is_be())
-        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/false);
+    
+    if (is_be()) { 
+        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/false)) {
+        fail:
+            JS_ThrowInternalError(s->ctx, "regex byte swap failed");
+            return -1; 
+        }
+    }  
 
     JS_WriteString(s, bc);
 
@@ -38701,8 +38706,13 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         return JS_ThrowInternalError(ctx, "bad regexp bytecode");
     }
 
-    if (is_be())
-        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true);
+    if (is_be()) {
+        if (lre_byte_swap(str8(bc), bc->len, /* is_byte_swapped */true)) {
+            js_free_string(ctx->rt, pattern);
+            js_free_string(ctx->rt, bc);
+            return JS_ThrowInternalError(ctx, "bad regexp bytecode");
+        }
+    }
 
     return js_regexp_constructor_internal(ctx, JS_UNDEFINED,
                                           JS_MKPTR(JS_TAG_STRING, pattern),
@@ -47678,10 +47688,23 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                     goto fail;
             }
         } else {
-            if (rc == LRE_RET_TIMEOUT) {
-                JS_ThrowInterrupted(ctx);
-            } else {
-                JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+            // if (rc == LRE_RET_TIMEOUT) {
+            //     JS_ThrowInterrupted(ctx);
+            // } else {
+            //     JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+            // }
+            switch(rc) {
+                case LRE_RET_TIMEOUT:
+                    JS_ThrowInterrupted(ctx);
+                    break;
+                case LRE_RET_MEMORY_ERROR:
+                    JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+                    break;
+                case LRE_RET_BYTECODE_ERROR:
+                    JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
+                    break;
+                default:
+                    abort();
             }
             goto fail;
         }
@@ -47868,11 +47891,19 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValueConst this_val, JSValue ar
                         goto fail;
                 }
             } else {
-                if (ret == LRE_RET_TIMEOUT) {
-                    JS_ThrowInterrupted(ctx);
-                } else {
-                    JS_ThrowInternalError(ctx, "out of memory in regexp execution");
-                }
+                switch(ret) {
+                    case LRE_RET_TIMEOUT: 
+                        JS_ThrowInterrupted(ctx); 
+                        break;
+                    case LRE_RET_MEMORY_ERROR:
+                        JS_ThrowInternalError(ctx, "out of memory in regexp execution"); 
+                        break;
+                    case LRE_RET_BYTECODE_ERROR: 
+                        JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
+                        break;
+                    default: 
+                        abort(); 
+                } 
                 goto fail;
             }
             break;
