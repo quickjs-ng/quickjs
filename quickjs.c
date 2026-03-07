@@ -350,6 +350,7 @@ struct JSRuntime {
     void *user_opaque;
     void *libc_opaque;
     JSRuntimeFinalizerState *finalizers;
+    JSAtom last_var_atom;  /* stores the last accessed variable atom for better error messages */
 };
 
 struct JSClass {
@@ -535,6 +536,7 @@ struct JSContext {
                              const char *input, size_t input_len,
                              const char *filename, int line, int flags, int scope_idx);
     void *user_opaque;
+    JSAtom last_var_atom;  /* stores the last accessed variable atom for better error messages */
 };
 
 typedef union JSFloat64Union {
@@ -1989,6 +1991,7 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     JS_UpdateStackTop(rt);
 
     rt->current_exception = JS_UNINITIALIZED;
+    rt->last_var_atom = JS_ATOM_NULL;
 
     return rt;
  fail:
@@ -8056,6 +8059,17 @@ fini:
 static JSValue JS_ThrowTypeErrorNotAFunction(JSContext *ctx)
 {
     return JS_ThrowTypeError(ctx, "not a function");
+}
+
+static JSValue JS_ThrowTypeErrorNotAFunctionAtom(JSContext *ctx, JSAtom atom)
+{
+    if (atom == JS_ATOM_NULL) {
+        /* fallback if no atom provided */
+        return JS_ThrowTypeError(ctx, "not a function");
+    }
+    char buf[ATOM_GET_STR_BUF_SIZE];
+    JS_AtomGetStr(ctx, buf, sizeof(buf), atom);
+    return JS_ThrowTypeError(ctx, "%s is not a function", buf);
 }
 
 static JSValue JS_ThrowTypeErrorNotAnObject(JSContext *ctx)
@@ -17294,6 +17308,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     JSValue *local_buf, *stack_buf, *var_buf, *arg_buf, *sp, ret_val, *pval;
     JSVarRef **var_refs;
     size_t alloca_size;
+    JSAtom saved_last_var_atom;  /* save and restore last_var_atom to avoid use-after-free */
 
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_STEP
 #define DUMP_BYTECODE_OR_DONT(pc) \
@@ -17319,6 +17334,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 #define DEFAULT         case_default
 #define BREAK           SWITCH(pc)
 #endif
+
+    /* Save last_var_atom to avoid use-after-free bugs */
+    saved_last_var_atom = rt->last_var_atom;
 
     if (js_poll_interrupts(caller_ctx))
         return JS_EXCEPTION;
@@ -17354,7 +17372,12 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         call_func = rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
-            return JS_ThrowTypeErrorNotAFunction(caller_ctx);
+            if (rt->last_var_atom != JS_ATOM_NULL) {
+                JSAtom atom = rt->last_var_atom;
+                rt->last_var_atom = JS_ATOM_NULL;  /* clear for next call */
+                return JS_ThrowTypeErrorNotAFunctionAtom(caller_ctx, atom);
+            }
+            return JS_ThrowTypeError(caller_ctx, "not a function");
         }
         return call_func(caller_ctx, func_obj, this_obj, argc,
                          argv, flags);
@@ -18060,6 +18083,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 atom = get_u32(pc);
                 pc += 4;
                 sf->cur_pc = pc;
+                /* only store atom if it looks valid */
+                if (atom != JS_ATOM_NULL && atom < JS_ATOM_END) {
+                    rt->last_var_atom = atom;  /* store atom for error messages */
+                }
 
                 val = JS_GetGlobalVar(ctx, atom, opcode - OP_get_var_undef);
                 if (unlikely(JS_IsException(val)))
@@ -18125,6 +18152,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 int idx;
                 idx = get_u16(pc);
                 pc += 2;
+                /* only store atom if it looks valid */
+                if (b && b->vardefs && idx < b->arg_count + b->var_count) {
+                    JSAtom atom = b->vardefs[idx].var_name;
+                    if (atom != JS_ATOM_NULL && atom < JS_ATOM_END) {
+                        rt->last_var_atom = atom;
+                    }
+                }
                 sp[0] = js_dup(var_buf[idx]);
                 sp++;
             }
@@ -18173,7 +18207,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             }
             BREAK;
 
-        CASE(OP_get_loc8): *sp++ = js_dup(var_buf[*pc++]); BREAK;
+        CASE(OP_get_loc8): if (b && b->vardefs) { JSAtom a = b->vardefs[*pc].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } BREAK;
         CASE(OP_put_loc8): set_value(ctx, &var_buf[*pc++], *--sp); BREAK;
         CASE(OP_set_loc8): set_value(ctx, &var_buf[*pc++], js_dup(sp[-1])); BREAK;
 
@@ -18182,13 +18216,14 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         // making them ideal candidates for opcode fusion.
         CASE(OP_get_loc0_loc1):
             *sp++ = js_dup(var_buf[0]);
+            if (b && b->vardefs) { JSAtom a = b->vardefs[1].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; }
             *sp++ = js_dup(var_buf[1]);
             BREAK;
 
-        CASE(OP_get_loc0): *sp++ = js_dup(var_buf[0]); BREAK;
-        CASE(OP_get_loc1): *sp++ = js_dup(var_buf[1]); BREAK;
-        CASE(OP_get_loc2): *sp++ = js_dup(var_buf[2]); BREAK;
-        CASE(OP_get_loc3): *sp++ = js_dup(var_buf[3]); BREAK;
+        CASE(OP_get_loc0): if (b && b->vardefs) { JSAtom a = b->vardefs[0].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[0]); BREAK;
+        CASE(OP_get_loc1): if (b && b->vardefs) { JSAtom a = b->vardefs[1].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[1]); BREAK;
+        CASE(OP_get_loc2): if (b && b->vardefs) { JSAtom a = b->vardefs[2].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[2]); BREAK;
+        CASE(OP_get_loc3): if (b && b->vardefs) { JSAtom a = b->vardefs[3].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[3]); BREAK;
         CASE(OP_put_loc0): set_value(ctx, &var_buf[0], *--sp); BREAK;
         CASE(OP_put_loc1): set_value(ctx, &var_buf[1], *--sp); BREAK;
         CASE(OP_put_loc2): set_value(ctx, &var_buf[2], *--sp); BREAK;
@@ -18209,10 +18244,47 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         CASE(OP_set_arg1): set_value(ctx, &arg_buf[1], js_dup(sp[-1])); BREAK;
         CASE(OP_set_arg2): set_value(ctx, &arg_buf[2], js_dup(sp[-1])); BREAK;
         CASE(OP_set_arg3): set_value(ctx, &arg_buf[3], js_dup(sp[-1])); BREAK;
-        CASE(OP_get_var_ref0): *sp++ = js_dup(*var_refs[0]->pvalue); BREAK;
-        CASE(OP_get_var_ref1): *sp++ = js_dup(*var_refs[1]->pvalue); BREAK;
-        CASE(OP_get_var_ref2): *sp++ = js_dup(*var_refs[2]->pvalue); BREAK;
-        CASE(OP_get_var_ref3): *sp++ = js_dup(*var_refs[3]->pvalue); BREAK;
+        CASE(OP_get_var_ref0): 
+            {
+                *sp++ = js_dup(*var_refs[0]->pvalue);
+                if (b && b->vardefs && 0 < b->arg_count + b->var_count) {
+                    JSAtom a = b->vardefs[0].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
+                } else if (b && b->closure_var && 0 < b->closure_var_count) {
+                    JSAtom a = b->closure_var[0].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
+                }
+            }
+            BREAK;
+
+        CASE(OP_get_var_ref1): 
+            {
+                *sp++ = js_dup(*var_refs[1]->pvalue);
+                if (b && b->vardefs && 1 < b->arg_count + b->var_count) {
+                    JSAtom a = b->vardefs[1].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
+                }
+            }
+            BREAK;
+
+        CASE(OP_get_var_ref2): 
+            {
+                *sp++ = js_dup(*var_refs[2]->pvalue);
+                if (b && b->vardefs && 2 < b->arg_count + b->var_count) {
+                    JSAtom a = b->vardefs[2].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
+                }
+            }
+            BREAK;
+        CASE(OP_get_var_ref3): 
+            {
+                *sp++ = js_dup(*var_refs[3]->pvalue);
+                if (b && b->vardefs && 3 < b->arg_count + b->var_count) {
+                    JSAtom a = b->vardefs[3].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
+                }
+            }
+            BREAK;
         CASE(OP_put_var_ref0): set_value(ctx, var_refs[0]->pvalue, *--sp); BREAK;
         CASE(OP_put_var_ref1): set_value(ctx, var_refs[1]->pvalue, *--sp); BREAK;
         CASE(OP_put_var_ref2): set_value(ctx, var_refs[2]->pvalue, *--sp); BREAK;
@@ -18231,7 +18303,20 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 val = *var_refs[idx]->pvalue;
                 sp[0] = js_dup(val);
                 sp++;
+                
+                /* store atom for error messages - with validity checks */
+                if (b && b->vardefs && idx < b->arg_count + b->var_count) {
+                    JSAtom a = b->vardefs[idx].var_name;
+                    if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
+                } else if (b && b->closure_var && idx >= b->arg_count + b->var_count) {
+                    int closure_idx = idx - (b->arg_count + b->var_count);
+                    if (closure_idx < b->closure_var_count) {
+                        JSAtom a = b->closure_var[closure_idx].var_name;
+                        if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a;
+                    }
+                }
             }
+
             BREAK;
         CASE(OP_put_var_ref):
             {
@@ -19815,6 +19900,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     }
                     switch (opcode) {
                     case OP_with_get_var:
+                        rt->last_var_atom = atom;  /* store atom for error messages */
                         val = JS_GetProperty(ctx, obj, atom);
                         if (unlikely(JS_IsException(val)))
                             goto exception;
@@ -19934,6 +20020,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         }
     }
  exception:
+    /* Restore last_var_atom before handling exception */
+    rt->last_var_atom = saved_last_var_atom;
     if (needs_backtrace(rt->current_exception)
     || JS_IsUndefined(ctx->error_back_trace)) {
         sf->cur_pc = pc;
@@ -19982,6 +20070,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         }
     }
     rt->current_stack_frame = sf->prev_frame;
+    /* Restore last_var_atom on normal return */
+    rt->last_var_atom = saved_last_var_atom;
     return ret_val;
 }
 
@@ -20099,6 +20189,11 @@ static JSValue JS_CallConstructorInternal(JSContext *ctx,
         call_func = ctx->rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
+            if (ctx->rt->last_var_atom != JS_ATOM_NULL) {
+                JSAtom atom = ctx->rt->last_var_atom;
+                ctx->rt->last_var_atom = JS_ATOM_NULL;  /* clear for next call */
+                return JS_ThrowTypeErrorNotAFunctionAtom(ctx, atom);
+            }
             return JS_ThrowTypeErrorNotAFunction(ctx);
         }
         return call_func(ctx, func_obj, new_target, argc,
@@ -37335,21 +37430,19 @@ static int JS_WriteRegExp(BCWriterState *s, JSRegExp regexp)
     assert(!bc->is_wide_char);
 
     JS_WriteString(s, regexp.pattern);
-
-    if (is_be()) {
+    
+    if (is_be()) { 
         if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/false)) {
         fail:
             JS_ThrowInternalError(s->ctx, "regex byte swap failed");
-            return -1;
+            return -1; 
         }
-    }
+    }  
 
     JS_WriteString(s, bc);
 
-    if (is_be()) {
-        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true))
-            goto fail;
-    }
+    if (is_be())
+        lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true);
 
     return 0;
 }
@@ -38610,7 +38703,7 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
     }
 
     if (is_be()) {
-        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true)) {
+        if (lre_byte_swap(str8(bc), bc->len, /* is_byte_swapped */true)) {
             js_free_string(ctx->rt, pattern);
             js_free_string(ctx->rt, bc);
             return JS_ThrowInternalError(ctx, "bad regexp bytecode");
@@ -38945,7 +39038,16 @@ static int check_function(JSContext *ctx, JSValueConst obj)
 {
     if (likely(JS_IsFunction(ctx, obj)))
         return 0;
-    JS_ThrowTypeErrorNotAFunction(ctx);
+    
+    if (ctx->rt->last_var_atom != JS_ATOM_NULL) {
+        JSAtom atom = ctx->rt->last_var_atom;
+        ctx->rt->last_var_atom = JS_ATOM_NULL;  /* clear for next call */
+
+        JS_ThrowTypeErrorNotAFunctionAtom(ctx, atom);
+    } else {
+        JS_ThrowTypeErrorNotAFunction(ctx);
+    }
+
     return -1;
 }
 
@@ -47582,18 +47684,23 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                     goto fail;
             }
         } else {
+            // if (rc == LRE_RET_TIMEOUT) {
+            //     JS_ThrowInterrupted(ctx);
+            // } else {
+            //     JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+            // }
             switch(rc) {
-            case LRE_RET_TIMEOUT:
-                JS_ThrowInterrupted(ctx);
-                break;
-            case LRE_RET_MEMORY_ERROR:
-                JS_ThrowInternalError(ctx, "out of memory in regexp execution");
-                break;
-            case LRE_RET_BYTECODE_ERROR:
-                JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
-                break;
-            default:
-                abort();
+                case LRE_RET_TIMEOUT:
+                    JS_ThrowInterrupted(ctx);
+                    break;
+                case LRE_RET_MEMORY_ERROR:
+                    JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+                    break;
+                case LRE_RET_BYTECODE_ERROR:
+                    JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
+                    break;
+                default:
+                    abort();
             }
             goto fail;
         }
@@ -47781,18 +47888,18 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValueConst this_val, JSValue ar
                 }
             } else {
                 switch(ret) {
-                case LRE_RET_TIMEOUT:
-                    JS_ThrowInterrupted(ctx);
-                    break;
-                case LRE_RET_MEMORY_ERROR:
-                    JS_ThrowInternalError(ctx, "out of memory in regexp execution");
-                    break;
-                case LRE_RET_BYTECODE_ERROR:
-                    JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
-                    break;
-                default:
-                    abort();
-                }
+                    case LRE_RET_TIMEOUT: 
+                        JS_ThrowInterrupted(ctx); 
+                        break;
+                    case LRE_RET_MEMORY_ERROR:
+                        JS_ThrowInternalError(ctx, "out of memory in regexp execution"); 
+                        break;
+                    case LRE_RET_BYTECODE_ERROR: 
+                        JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
+                        break;
+                    default: 
+                        abort(); 
+                } 
                 goto fail;
             }
             break;
