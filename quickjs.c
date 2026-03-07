@@ -52231,6 +52231,11 @@ bool JS_IsPromise(JSValueConst val)
     return JS_VALUE_GET_OBJ(val)->class_id == JS_CLASS_PROMISE;
 }
 
+JSValue JS_NewSettledPromise(JSContext *ctx, bool is_reject, JSValueConst value)
+{
+    return js_promise_resolve(ctx, ctx->promise_ctor, 1, &value, is_reject);
+}
+
 static int js_create_resolving_functions(JSContext *ctx, JSValue *args,
                                          JSValueConst promise);
 
