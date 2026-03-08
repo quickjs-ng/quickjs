@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [aarch64, riscv64, x86, x86_64]
+        arch: [aarch64, armv7, riscv64, x86, x86_64]
     steps:
       - uses: actions/checkout@v6
       - uses: jirutka/setup-alpine@v1
