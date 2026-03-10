@@ -369,6 +369,13 @@ function test_class()
     assert(new P().set(), "456");
     assert(new P().async(), "789");
     assert(new P().static(), 42);
+
+    /* test that division after private field in parens is not parsed as regex */
+    class Q {
+        #x = 10;
+        f() { return (this.#x / 2); }
+    }
+    assert(new Q().f(), 5);
 };
 
 function test_template()
