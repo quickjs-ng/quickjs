@@ -24030,6 +24030,7 @@ static bool is_regexp_allowed(int tok)
     case TOK_FALSE:
     case TOK_TRUE:
     case TOK_THIS:
+    case TOK_PRIVATE_NAME:
     case ')':
     case ']':
     case '}': /* XXX: regexp may occur after */
