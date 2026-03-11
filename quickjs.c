@@ -18207,7 +18207,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             }
             BREAK;
 
-        CASE(OP_get_loc8): if (b && b->vardefs) { JSAtom a = b->vardefs[*pc].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } BREAK;
+        CASE(OP_get_loc8): if (b && b->vardefs) { JSAtom a = b->vardefs[*pc].var_name; if (a != JS_ATOM_NULL && a < JS_ATOM_END) rt->last_var_atom = a; } *sp++ = js_dup(var_buf[*pc++]); BREAK;
         CASE(OP_put_loc8): set_value(ctx, &var_buf[*pc++], *--sp); BREAK;
         CASE(OP_set_loc8): set_value(ctx, &var_buf[*pc++], js_dup(sp[-1])); BREAK;
 
