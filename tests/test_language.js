@@ -287,6 +287,13 @@ function test_arguments()
         assert(arguments[1], 3, "arguments");
     }
     f2(1, 3);
+
+    /* mapped arguments with GC must not crash (non-detached var_refs) */
+    function f3(a) {
+        arguments;
+        gc();
+    }
+    f3(0);
 }
 
 function test_class()

@@ -16019,7 +16019,7 @@ static void js_mapped_arguments_mark(JSRuntime *rt, JSValueConst val,
         int i;
         if (var_refs) {
             for(i = 0; i < p->u.array.count; i++) {
-                if (var_refs[i])
+                if (var_refs[i] && var_refs[i]->is_detached)
                     mark_func(rt, &var_refs[i]->header);
             }
         }
