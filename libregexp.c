@@ -2501,6 +2501,7 @@ int lre_exec(uint8_t **capture,
     REExecContext s_s, *s = &s_s;
     int re_flags, i, alloca_size, ret;
     StackInt *stack_buf;
+    const uint8_t *cptr;
 
     re_flags = lre_get_flags(bc_buf);
     s->multi_line = (re_flags & LRE_FLAG_MULTILINE) != 0;
@@ -2527,8 +2528,17 @@ int lre_exec(uint8_t **capture,
         capture[i] = NULL;
     alloca_size = s->stack_size_max * sizeof(stack_buf[0]);
     stack_buf = alloca(alloca_size);
+
+    cptr = cbuf + (cindex << cbuf_type);
+    if (0 < cindex && cindex < clen && s->cbuf_type == 2) {
+        const uint16_t *p = (const uint16_t *)cptr;
+        if (is_lo_surrogate(*p) && is_hi_surrogate(p[-1])) {
+            cptr = (const uint8_t *)(p - 1);
+        }
+    }
+
     ret = lre_exec_backtrack(s, capture, stack_buf, 0, bc_buf + RE_HEADER_LEN,
-                             cbuf + (cindex << cbuf_type), false);
+                             cptr, false);
     lre_realloc(s->opaque, s->state_stack, 0);
     return ret;
 }
