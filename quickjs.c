@@ -5175,7 +5175,7 @@ static int init_shape_hash(JSRuntime *rt)
 /* same magic hash multiplier as the Linux kernel */
 static uint32_t shape_hash(uint32_t h, uint32_t val)
 {
-    return (h + val) * 0x9e370001;
+    return hash32(h + val);
 }
 
 /* truncate the shape hash to 'hash_bits' bits */
@@ -23182,23 +23182,6 @@ static __exception int emit_push_const(JSParseState *s, JSValue val,
     return 0;
 }
 
-// perl hash; variation of k&r hash with a different magic multiplier
-// and a final shuffle to improve distribution of the low-order bits
-static uint32_t hash_bytes(uint32_t h, const void *b, size_t n)
-{
-    const char *p;
-
-    for (p = b; p < (char *)b + n; p++)
-        h = 33*h + *p;
-    h += h >> 5;
-    return h;
-}
-
-static uint32_t hash_atom(JSAtom atom)
-{
-    return hash_bytes(0, &atom, sizeof(atom));
-}
-
 // caveat emptor: the table size must be a power of two in order for
 // masking to work, and the load factor constant must be an odd number (5)
 //
@@ -23228,7 +23211,7 @@ static int update_var_htab(JSContext *ctx, JSFunctionDef *fd)
 insert:
     m = UINT32_MAX >> clz32(m);
     do {
-        i = hash_atom(fd->vars[k].var_name);
+        i = hash32(fd->vars[k].var_name);
         j = 1;
         for (;;) {
             p = &fd->vars_htab[i & m];
@@ -23246,7 +23229,7 @@ static int find_var_htab(JSFunctionDef *fd, JSAtom var_name)
 {
     uint32_t i, j, m, *p;
 
-    i = hash_atom(var_name);
+    i = hash32(var_name);
     j = 1;
     m = fd->var_count + fd->var_count/5;
     m = UINT32_MAX >> clz32(m);
@@ -36982,8 +36965,10 @@ static uint32_t bc_csum(const uint8_t *p, size_t n)
     size_t i;
 
     h = 0;
-    for (i = 0; i+4 < n; i += 4)
-        h = shape_hash(h, get_u32_le(p+i));
+    for (i = 0; i+4 < n; i += 4) {
+        h += get_u32_le(p+i);
+        h *= 0x9e370001;
+    }
     a = b = c = 0;
     switch (n-i) {
     case 3:
@@ -36995,7 +36980,9 @@ static uint32_t bc_csum(const uint8_t *p, size_t n)
     case 0:
         break;
     }
-    return shape_hash(h, a | b<<8 | c<<16);
+    h += a | b<<8 | c<<16;
+    h *= 0x9e370001;
+    return h;
 }
 
 static int JS_WriteFunctionBytecode(BCWriterState *s,
