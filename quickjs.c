@@ -17647,7 +17647,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 pc += 2;
                 i = min_int(first, argc);
                 n = argc - i;
-                *sp++ = js_create_array(ctx, n, &argv[i]);
+                *sp++ = js_create_array(ctx, n, n ? &argv[i] : NULL);
                 if (unlikely(JS_IsException(sp[-1])))
                     goto exception;
             }
