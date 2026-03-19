@@ -75,10 +75,13 @@ test262/test/language/expressions/assignment/target-member-computed-reference.js
 test262/test/language/expressions/assignment/target-member-computed-reference.js:22: strict mode: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/assignment/target-super-computed-reference.js:20: Test262Error: Expected a DummyError but got a Test262Error
 test262/test/language/expressions/assignment/target-super-computed-reference.js:20: strict mode: Test262Error: Expected a DummyError but got a Test262Error
+test262/test/language/expressions/dynamic-import/import-attributes/2nd-param-with-type-text.js:10: TypeError: $DONE() not called
+test262/test/language/expressions/dynamic-import/import-attributes/2nd-param-with-type-text.js:10: strict mode: TypeError: $DONE() not called
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/object/computed-property-name-topropertykey-before-value-evaluation.js:31: Test262Error: Expected SameValue(«"bad"», «"ok"») to be true
 test262/test/language/expressions/object/computed-property-name-topropertykey-before-value-evaluation.js:31: strict mode: Test262Error: Expected SameValue(«"bad"», «"ok"») to be true
+test262/test/language/import/import-attributes/text-self.js:10: SyntaxError: Could not find export 'default' in module 'test262/test/language/import/import-attributes/text-self.js'
 test262/test/language/module-code/ambiguous-export-bindings/import-and-export-propagates-binding.js:75: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/imp' is ambiguous
 test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguous-if-export-star-as-from-and-import-star-as-and-export.js:74: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/nam' is ambiguous
 test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguous-if-export-star-as-from.js:75: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/nam' is ambiguous

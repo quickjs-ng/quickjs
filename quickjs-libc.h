@@ -25,6 +25,7 @@
 #define QUICKJS_LIBC_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -33,6 +34,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef uint8_t *JSLoadFileFunc(JSContext *ctx, size_t *pbuf_len,
+                                const char *filename);
 
 JS_LIBC_EXTERN JSModuleDef *js_init_module_std(JSContext *ctx,
                                                const char *module_name);
@@ -55,9 +59,13 @@ JS_LIBC_EXTERN int js_module_set_import_meta(JSContext *ctx, JSValueConst func_v
 JS_LIBC_EXTERN JSModuleDef *js_module_loader(JSContext *ctx,
                                              const char *module_name, void *opaque,
                                              JSValueConst attributes);
+// like js_module_loader but does not load .so objects and the file reader
+// is pluggable; js_module_loader is implemented in terms of js_module_load
+JS_LIBC_EXTERN JSModuleDef *js_module_load(JSContext *ctx, const char *module_name,
+                                           void *opaque, JSValueConst attributes,
+                                           JSLoadFileFunc *load_file);
 JS_LIBC_EXTERN int js_module_check_attributes(JSContext *ctx, void *opaque,
                                               JSValueConst attributes);
-JS_LIBC_EXTERN int js_module_test_json(JSContext *ctx, JSValueConst attributes);
 JS_LIBC_EXTERN void js_std_eval_binary(JSContext *ctx, const uint8_t *buf,
                                        size_t buf_len, int flags);
 JS_LIBC_EXTERN void js_std_promise_rejection_tracker(JSContext *ctx,

@@ -970,24 +970,11 @@ static char *load_file(const char *filename, size_t *lenp)
     return buf;
 }
 
-static int json_module_init(JSContext *ctx, JSModuleDef *m)
-{
-    JSValue val;
-    val = JS_GetModulePrivateValue(ctx, m);
-    JS_SetModuleExport(ctx, m, "default", val);
-    return 0;
-}
-
 static JSModuleDef *js_module_loader_test(JSContext *ctx,
                                           const char *module_name, void *opaque,
                                           JSValueConst attributes)
 {
-    size_t buf_len;
-    uint8_t *buf;
-    JSModuleDef *m;
-    JSValue func_val;
     char *filename, *slash, path[1024];
-    int res;
 
     // interpret import("bar.js") from path/to/foo.js as
     // import("path/to/bar.js") but leave import("./bar.js") untouched
@@ -1000,46 +987,7 @@ static JSModuleDef *js_module_loader_test(JSContext *ctx,
             module_name = path;
         }
     }
-
-    /* check for JSON module */
-    res = js_module_test_json(ctx, attributes);
-    if (res < 0)
-        return NULL;
-
-    buf = js_load_file(ctx, &buf_len, module_name);
-    if (!buf) {
-        JS_ThrowReferenceError(ctx, "could not load module filename '%s'",
-                               module_name);
-        return NULL;
-    }
-
-    if (res > 0 || js__has_suffix(module_name, ".json")) {
-        /* compile as JSON */
-        JSValue val;
-        val = JS_ParseJSON(ctx, (char *)buf, buf_len, module_name);
-        js_free(ctx, buf);
-        if (JS_IsException(val))
-            return NULL;
-        m = JS_NewCModule(ctx, module_name, json_module_init);
-        if (!m) {
-            JS_FreeValue(ctx, val);
-            return NULL;
-        }
-        JS_AddModuleExport(ctx, m, "default");
-        JS_SetModulePrivateValue(ctx, m, val);
-        return m;
-    }
-
-    /* compile the module */
-    func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
-                       JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
-    js_free(ctx, buf);
-    if (JS_IsException(func_val))
-        return NULL;
-    /* the module is already referenced, so we must free it */
-    m = JS_VALUE_GET_PTR(func_val);
-    JS_FreeValue(ctx, func_val);
-    return m;
+    return js_module_load(ctx, module_name, opaque, attributes, js_load_file);
 }
 
 int is_line_sep(char c)
