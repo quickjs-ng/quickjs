@@ -45,29 +45,8 @@ static void oob_save_index(void)
     assert(ret < 0);
 }
 
-// https://github.com/quickjs-ng/quickjs/issues/1376
-static void invalid_opcode_byte_swap(void)
-{
-    // Bytecode with an opcode byte >= REOP_COUNT triggers an OOB read
-    // of the reopcode_info array in lre_byte_swap. Simulate the real
-    // big-endian deserialization path (is_byte_swapped=true) which is
-    // how JS_ReadRegExp calls it. The bytecode_len is stored as
-    // little-endian on disk, so it appears byte-swapped to a BE reader.
-    uint8_t bc[] = {
-        0x00, 0x00,              // RE_HEADER_FLAGS = 0
-        0x01,                    // RE_HEADER_CAPTURE_COUNT = 1
-        0x00,                    // RE_HEADER_STACK_SIZE = 0
-        0x00, 0x00, 0x00, 0x01, // RE_HEADER_BYTECODE_LEN = 1 (big-endian / byte-swapped)
-        0x1E,                    // opcode 30 >= REOP_COUNT (invalid)
-    };
-
-    int ret = lre_byte_swap(bc, sizeof(bc), /*is_byte_swapped*/true);
-    assert(ret < 0);
-}
-
 int main(void)
 {
     oob_save_index();
-    invalid_opcode_byte_swap();
     return 0;
 }

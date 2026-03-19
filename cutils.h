@@ -380,14 +380,6 @@ static inline uint64_t bswap64(uint64_t v)
 }
 #endif
 
-static inline void inplace_bswap16(uint8_t *tab) {
-    put_u16(tab, bswap16(get_u16(tab)));
-}
-
-static inline void inplace_bswap32(uint8_t *tab) {
-    put_u32(tab, bswap32(get_u32(tab)));
-}
-
 static inline double fromfp16(uint16_t v) {
     double d, s;
     int e;

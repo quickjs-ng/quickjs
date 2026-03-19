@@ -7402,8 +7402,8 @@ void JS_ComputeMemoryUsage(JSRuntime *rt, JSMemoryUsage *s)
 
 void JS_DumpMemoryUsage(FILE *fp, const JSMemoryUsage *s, JSRuntime *rt)
 {
-    fprintf(fp, "QuickJS-ng memory usage -- %s version, %d-bit, %s Endian, malloc limit: %"PRId64"\n\n",
-        JS_GetVersion(), (int)sizeof(void *) * 8, is_be() ? "Big" : "Little", s->malloc_limit);
+    fprintf(fp, "QuickJS-ng memory usage -- %s version, %d-bit, malloc limit: %"PRId64"\n\n",
+        JS_GetVersion(), (int)sizeof(void *) * 8, s->malloc_limit);
     if (rt) {
         static const struct {
             const char *name;
@@ -36811,22 +36811,16 @@ static void bc_put_u8(BCWriterState *s, uint8_t v)
 
 static void bc_put_u16(BCWriterState *s, uint16_t v)
 {
-    if (is_be())
-        v = bswap16(v);
     dbuf_put_u16(&s->dbuf, v);
 }
 
 static __maybe_unused void bc_put_u32(BCWriterState *s, uint32_t v)
 {
-    if (is_be())
-        v = bswap32(v);
     dbuf_put_u32(&s->dbuf, v);
 }
 
 static void bc_put_u64(BCWriterState *s, uint64_t v)
 {
-    if (is_be())
-        v = bswap64(v);
     dbuf_put(&s->dbuf, (uint8_t *)&v, sizeof(v));
 }
 
@@ -36901,66 +36895,6 @@ static int bc_put_atom(BCWriterState *s, JSAtom atom)
     return 0;
 }
 
-static void bc_byte_swap(uint8_t *bc_buf, int bc_len)
-{
-    int pos, len, op, fmt;
-
-    pos = 0;
-    while (pos < bc_len) {
-        op = bc_buf[pos];
-        len = short_opcode_info(op).size;
-        fmt = short_opcode_info(op).fmt;
-        switch(fmt) {
-        case OP_FMT_u16:
-        case OP_FMT_i16:
-        case OP_FMT_label16:
-        case OP_FMT_npop:
-        case OP_FMT_loc:
-        case OP_FMT_arg:
-        case OP_FMT_var_ref:
-            put_u16(bc_buf + pos + 1,
-                    bswap16(get_u16(bc_buf + pos + 1)));
-            break;
-        case OP_FMT_i32:
-        case OP_FMT_u32:
-        case OP_FMT_const:
-        case OP_FMT_label:
-        case OP_FMT_atom:
-        case OP_FMT_atom_u8:
-            put_u32(bc_buf + pos + 1,
-                    bswap32(get_u32(bc_buf + pos + 1)));
-            break;
-        case OP_FMT_atom_u16:
-        case OP_FMT_label_u16:
-            put_u32(bc_buf + pos + 1,
-                    bswap32(get_u32(bc_buf + pos + 1)));
-            put_u16(bc_buf + pos + 1 + 4,
-                    bswap16(get_u16(bc_buf + pos + 1 + 4)));
-            break;
-        case OP_FMT_atom_label_u8:
-        case OP_FMT_atom_label_u16:
-            put_u32(bc_buf + pos + 1,
-                    bswap32(get_u32(bc_buf + pos + 1)));
-            put_u32(bc_buf + pos + 1 + 4,
-                    bswap32(get_u32(bc_buf + pos + 1 + 4)));
-            if (fmt == OP_FMT_atom_label_u16) {
-                put_u16(bc_buf + pos + 1 + 4 + 4,
-                        bswap16(get_u16(bc_buf + pos + 1 + 4 + 4)));
-            }
-            break;
-        case OP_FMT_npop_u16:
-            put_u16(bc_buf + pos + 1,
-                    bswap16(get_u16(bc_buf + pos + 1)));
-            put_u16(bc_buf + pos + 1 + 2,
-                    bswap16(get_u16(bc_buf + pos + 1 + 2)));
-            break;
-        default:
-            break;
-        }
-        pos += len;
-    }
-}
-
 static uint32_t bc_csum(const uint8_t *p, size_t n)
 {
     uint32_t a, b, c, h;
@@ -37021,9 +36955,6 @@ static int JS_WriteFunctionBytecode(BCWriterState *s,
         }
         pos += len;
     }
-
-    if (is_be())
-        bc_byte_swap(bc_buf, bc_len);
 
     dbuf_put(&s->dbuf, bc_buf, bc_len);
 
@@ -37368,24 +37299,8 @@ static int JS_WriteRegExp(BCWriterState *s, JSRegExp regexp)
 {
     JSString *bc = regexp.bytecode;
     assert(!bc->is_wide_char);
-
     JS_WriteString(s, regexp.pattern);
-
-    if (is_be()) {
-        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/false)) {
-        fail:
-            JS_ThrowInternalError(s->ctx, "regex byte swap failed");
-            return -1;
-        }
-    }
-
     JS_WriteString(s, bc);
-
-    if (is_be()) {
-        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true))
-            goto fail;
-    }
-
     return 0;
 }
 
@@ -37752,8 +37667,6 @@ static int bc_get_u16(BCReaderState *s, uint16_t *pval)
         return bc_read_error_end(s);
     }
     v = get_u16(s->ptr);
-    if (is_be())
-        v = bswap16(v);
     *pval = v;
     s->ptr += 2;
     return 0;
@@ -37767,8 +37680,6 @@ static __maybe_unused int bc_get_u32(BCReaderState *s, uint32_t *pval)
         return bc_read_error_end(s);
     }
     v = get_u32(s->ptr);
-    if (is_be())
-        v = bswap32(v);
     *pval = v;
     s->ptr += 4;
     return 0;
@@ -37782,8 +37693,6 @@ static int bc_get_u64(BCReaderState *s, uint64_t *pval)
         return bc_read_error_end(s);
     }
     v = get_u64(s->ptr);
-    if (is_be())
-        v = bswap64(v);
     *pval = v;
     s->ptr += 8;
     return 0;
@@ -37900,15 +37809,8 @@ static JSString *JS_ReadString(BCReaderState *s)
     }
     memcpy(str8(p), s->ptr, size);
     s->ptr += size;
-    if (is_wide_char) {
-        if (is_be()) {
-            uint32_t i;
-            for (i = 0; i < len; i++)
-                str16(p)[i] = bswap16(str16(p)[i]);
-        }
-    } else {
+    if (!is_wide_char)
         str8(p)[size] = '\0'; /* add the trailing zero for 8 bit strings */
-    }
 #ifdef ENABLE_DUMPS // JS_DUMP_READ_OBJECT
     if (check_dump_flag(s->ctx->rt, JS_DUMP_READ_OBJECT)) {
         bc_read_trace(s, "%s", ""); // hex dump and indentation
@@ -37940,9 +37842,6 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
     if (bc_get_buf(s, bc_buf, bc_len))
         return -1;
     b->byte_code_buf = bc_buf;
-
-    if (is_be())
-        bc_byte_swap(bc_buf, bc_len);
 
     pos = 0;
     while (pos < bc_len) {
@@ -38645,14 +38544,6 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         js_free_string(ctx->rt, pattern);
         js_free_string(ctx->rt, bc);
         return JS_ThrowInternalError(ctx, "bad regexp bytecode");
-    }
-
-    if (is_be()) {
-        if (lre_byte_swap(str8(bc), bc->len, /*is_byte_swapped*/true)) {
-            js_free_string(ctx->rt, pattern);
-            js_free_string(ctx->rt, bc);
-            return JS_ThrowInternalError(ctx, "bad regexp bytecode");
-        }
     }
 
     return js_regexp_constructor_internal(ctx, JS_UNDEFINED,
