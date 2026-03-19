@@ -2596,14 +2596,14 @@ int lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped)
             case REOP_range32: // variable length
                 nw = get_u16(&p[1]);  // number of pairs of uint32_t
                 if (is_byte_swapped)
-                    n = bswap16(n);
+                    nw = bswap16(nw);
                 for (r = 3 + 8 * nw; n < r; n += 4)
                     inplace_bswap32(&p[n]);
                 goto doswap16;
             case REOP_range: // variable length
                 nw = get_u16(&p[1]);  // number of pairs of uint16_t
                 if (is_byte_swapped)
-                    n = bswap16(n);
+                    nw = bswap16(nw);
                 for (r = 3 + 4 * nw; n < r; n += 2)
                     inplace_bswap16(&p[n]);
                 goto doswap16;

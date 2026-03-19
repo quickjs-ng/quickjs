@@ -37158,11 +37158,66 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValueConst obj)
         bc_put_leb128(s, flags);
     }
 
+    /* On big-endian, convert regex bytecodes in the constant pool from
+       native (BE) to LE format before writing. Scan bytecodes for
+       OP_regexp to identify which constants are regex bytecodes.
+       The sequence is: OP_push_const/OP_push_const8 <bc_idx>, OP_regexp */
+    if (is_be()) {
+        int prev_idx2 = -1, pos2, len2, op2;
+        pos2 = 0;
+        while (pos2 < b->byte_code_len) {
+            op2 = b->byte_code_buf[pos2];
+            len2 = short_opcode_info(op2).size;
+            if (op2 == OP_regexp && prev_idx2 >= 0) {
+                JSValue val = b->cpool[prev_idx2];
+                if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
+                    JSString *p = JS_VALUE_GET_STRING(val);
+                    if (!p->is_wide_char) {
+                        lre_byte_swap(str8(p), p->len,
+                                      /*is_byte_swapped*/false);
+                    }
+                }
+            }
+            prev_idx2 = -1;
+            if (op2 == OP_push_const)
+                prev_idx2 = get_u32(b->byte_code_buf + pos2 + 1);
+            else if (op2 == OP_push_const8)
+                prev_idx2 = b->byte_code_buf[pos2 + 1];
+            pos2 += len2;
+        }
+    }
+
     // write constant pool before code so code can be disassembled
     // on the fly at read time
     for(i = 0; i < b->cpool_count; i++) {
         if (JS_WriteObjectRec(s, b->cpool[i]))
             goto fail;
+    }
+
+    /* Swap the regex bytecodes back to native format after writing */
+    if (is_be()) {
+        int prev_idx2 = -1, pos2, len2, op2;
+        pos2 = 0;
+        while (pos2 < b->byte_code_len) {
+            op2 = b->byte_code_buf[pos2];
+            len2 = short_opcode_info(op2).size;
+            if (op2 == OP_regexp && prev_idx2 >= 0) {
+                JSValue val = b->cpool[prev_idx2];
+                if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
+                    JSString *p = JS_VALUE_GET_STRING(val);
+                    if (!p->is_wide_char) {
+                        lre_byte_swap(str8(p), p->len,
+                                      /*is_byte_swapped*/true);
+                    }
+                }
+            }
+            prev_idx2 = -1;
+            if (op2 == OP_push_const)
+                prev_idx2 = get_u32(b->byte_code_buf + pos2 + 1);
+            else if (op2 == OP_push_const8)
+                prev_idx2 = b->byte_code_buf[pos2 + 1];
+            pos2 += len2;
+        }
     }
 
     if (JS_WriteFunctionBytecode(s, b))
@@ -37974,6 +38029,37 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
 #endif
         pos += len;
     }
+
+    /* On big-endian, byte-swap regex bytecodes stored as string constants.
+       When bytecode is compiled on a little-endian machine and loaded on
+       big-endian, regex bytecodes in the constant pool remain in LE format.
+       Scan for OP_regexp and byte-swap the regex bytecode constants.
+       The sequence is: OP_push_const/OP_push_const8 <bc_idx>, OP_regexp */
+    if (is_be()) {
+        int prev_idx = -1;
+        pos = 0;
+        while (pos < (int)bc_len) {
+            op = bc_buf[pos];
+            len = short_opcode_info(op).size;
+            if (op == OP_regexp && prev_idx >= 0) {
+                JSValue val = b->cpool[prev_idx];
+                if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
+                    JSString *p = JS_VALUE_GET_STRING(val);
+                    if (!p->is_wide_char) {
+                        lre_byte_swap(str8(p), p->len,
+                                      /*is_byte_swapped*/true);
+                    }
+                }
+            }
+            prev_idx = -1;
+            if (op == OP_push_const)
+                prev_idx = get_u32(bc_buf + pos + 1);
+            else if (op == OP_push_const8)
+                prev_idx = bc_buf[pos + 1];
+            pos += len;
+        }
+    }
+
     return 0;
 }
 

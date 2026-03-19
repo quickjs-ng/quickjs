@@ -65,9 +65,66 @@ static void invalid_opcode_byte_swap(void)
     assert(ret < 0);
 }
 
+// https://github.com/quickjs-ng/quickjs/issues/1122
+static void range_byte_swap(void)
+{
+    // Test that lre_byte_swap correctly handles REOP_range instructions.
+    // lre_byte_swap used to swap the wrong variable (n instead of nw),
+    // corrupting the bytecode walk and leaving subsequent instructions
+    // un-swapped.
+    //
+    // REOP_range = opcode 22 (0x16), size field = 3 (variable length)
+    // Layout: [opcode] [nw:u16] [low0:u16] [high0:u16] ...
+    //
+    // This bytecode represents /[ab]/ with 1 range pair: 0x0061-0x0063
+    // Multi-byte values are in native byte order (as produced by the
+    // regex compiler on this platform).
+    uint16_t flags = 0;
+    uint32_t bc_len = 8;
+    uint16_t nw = 1;
+    uint16_t low = 0x0061;
+    uint16_t high = 0x0063;
+
+    uint8_t bc[16];
+    memcpy(&bc[0], &flags, 2);       // RE_HEADER_FLAGS
+    bc[2] = 1;                        // RE_HEADER_CAPTURE_COUNT
+    bc[3] = 0;                        // RE_HEADER_STACK_SIZE
+    memcpy(&bc[4], &bc_len, 4);      // RE_HEADER_BYTECODE_LEN
+    bc[8] = 0x16;                     // REOP_range (22)
+    memcpy(&bc[9], &nw, 2);          // nw = 1
+    memcpy(&bc[11], &low, 2);        // low = 0x0061 'a'
+    memcpy(&bc[13], &high, 2);       // high = 0x0063 'c'
+    bc[15] = 0x0B;                    // REOP_match (11)
+
+    // Swap as if converting from native to non-native byte order
+    int ret = lre_byte_swap(bc, sizeof(bc), /*is_byte_swapped*/false);
+    assert(ret == 0);
+
+    // Swap back from non-native to native
+    ret = lre_byte_swap(bc, sizeof(bc), /*is_byte_swapped*/true);
+    assert(ret == 0);
+
+    // Verify round-trip: all values should be back in native format
+    uint16_t got_flags, got_nw, got_low, got_high;
+    uint32_t got_bc_len;
+    memcpy(&got_flags, &bc[0], 2);
+    memcpy(&got_bc_len, &bc[4], 4);
+    memcpy(&got_nw, &bc[9], 2);
+    memcpy(&got_low, &bc[11], 2);
+    memcpy(&got_high, &bc[13], 2);
+    assert(got_flags == 0);
+    assert(got_bc_len == 8);
+    assert(bc[8] == 0x16);          // REOP_range opcode unchanged
+    assert(got_nw == 1);
+    assert(got_low == 0x0061);
+    assert(got_high == 0x0063);
+    assert(bc[15] == 0x0B);         // REOP_match unchanged
+}
+
 int main(void)
 {
     oob_save_index();
     invalid_opcode_byte_swap();
+    range_byte_swap();
     return 0;
 }
