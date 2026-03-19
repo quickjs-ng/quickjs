@@ -66,7 +66,7 @@ jobs:
           - { os: macos-14, configType: Release }
           - { os: macos-14, configType: examples }
           - { os: macos-14, configType: shared }
-          - { os: macos-14, configType: asan+ubsan }
+          - { os: macos-14, configType: asan+ubsan, runTest262: true }
     steps:
       - uses: actions/checkout@v6
         with:
