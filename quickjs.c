@@ -1354,6 +1354,8 @@ static bool is_typed_array(JSClassID class_id);
 static bool typed_array_is_immutable(JSObject *p);
 static bool typed_array_is_oob(JSObject *p);
 static uint32_t typed_array_length(JSObject *p);
+static int typed_array_init(JSContext *ctx, JSValue obj, JSValue buffer,
+                            uint64_t offset, uint64_t len, bool track_rab);
 static JSValue JS_ThrowTypeErrorDetachedArrayBuffer(JSContext *ctx);
 static JSValue JS_ThrowTypeErrorImmutableArrayBuffer(JSContext *ctx);
 static JSValue JS_ThrowTypeErrorArrayBufferOOB(JSContext *ctx);
@@ -56737,39 +56739,79 @@ static JSValue js_typed_array_at(JSContext *ctx, JSValueConst this_val,
 static JSValue js_typed_array_with(JSContext *ctx, JSValueConst this_val,
                                    int argc, JSValueConst *argv)
 {
-    JSValue arr, val;
+    JSValue arr, val, buffer;
     JSObject *p;
+    JSTypedArray *ta;
+    JSArrayBuffer *src_abuf, *abuf;
     int64_t idx;
-    uint32_t len, oldlen, newlen;
+    uint32_t len, newlen, copy_len;
+    int size_log2;
 
     p = get_typed_array(ctx, this_val);
     if (!p)
         return JS_EXCEPTION;
 
-    oldlen = p->u.array.count;
+    len = p->u.array.count;
     if (JS_ToInt64Sat(ctx, &idx, argv[0]))
         return JS_EXCEPTION;
+    /* resolve negative index using original length (spec step 5-6) */
+    if (idx < 0)
+        idx = len + idx;
 
     val = JS_ToPrimitive(ctx, argv[1], HINT_NUMBER);
     if (JS_IsException(val))
         return JS_EXCEPTION;
 
+    /* re-validate after user code (spec step 9: IsValidIntegerIndex) */
+    if (typed_array_is_oob(p)) {
+        JS_FreeValue(ctx, val);
+        return JS_ThrowTypeErrorArrayBufferOOB(ctx);
+    }
     newlen = p->u.array.count;
-    if (idx < 0)
-        idx = newlen + idx;
     if (idx < 0 || idx >= newlen) {
         JS_FreeValue(ctx, val);
-        return JS_ThrowRangeError(ctx, "invalid array index");
+        return JS_ThrowRangeError(ctx, "invalid typed array index");
     }
 
-    len = min_uint32(oldlen, newlen);
-    arr = js_typed_array_constructor_ta(ctx, JS_UNDEFINED, this_val,
-                                        p->class_id, len);
+    copy_len = min_uint32(len, newlen);
+    size_log2 = typed_array_size_log2(p->class_id);
+
+    /* create new typed array with original length (zero-initialized) */
+    arr = js_create_from_ctor(ctx, JS_UNDEFINED, p->class_id);
     if (JS_IsException(arr)) {
         JS_FreeValue(ctx, val);
         return JS_EXCEPTION;
     }
-    if (idx < len && JS_SetPropertyInt64(ctx, arr, idx, val) < 0) {
+    buffer = js_array_buffer_constructor1(ctx, JS_UNDEFINED,
+                                          (uint64_t)len << size_log2,
+                                          NULL);
+    if (JS_IsException(buffer)) {
+        JS_FreeValue(ctx, val);
+        JS_FreeValue(ctx, arr);
+        return JS_EXCEPTION;
+    }
+    if (typed_array_is_oob(p)) {
+        JS_FreeValue(ctx, val);
+        JS_FreeValue(ctx, buffer);
+        JS_FreeValue(ctx, arr);
+        return JS_ThrowTypeErrorArrayBufferOOB(ctx);
+    }
+    abuf = JS_GetOpaque(buffer, JS_CLASS_ARRAY_BUFFER);
+    if (typed_array_init(ctx, arr, buffer, 0, len, /*track_rab*/false)) {
+        JS_FreeValue(ctx, val);
+        JS_FreeValue(ctx, arr);
+        return JS_EXCEPTION;
+    }
+
+    /* copy min(len, newlen) elements from source; rest stays zero */
+    if (copy_len > 0) {
+        ta = p->u.typed_array;
+        src_abuf = ta->buffer->u.array_buffer;
+        memcpy(abuf->data, src_abuf->data + ta->offset,
+               (size_t)copy_len << size_log2);
+    }
+
+    if (JS_SetPropertyInt64(ctx, arr, idx, val) < 0) {
         JS_FreeValue(ctx, arr);
         return JS_EXCEPTION;
     }
