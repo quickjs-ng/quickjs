@@ -30,7 +30,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len)
         exit(1);
     uint32_t csum = bc_csum(&buf[1], len-1);    // skip version field
     newbuf[0] = buf[0];                         // copy version field
-    put_u32_le(&newbuf[1], csum);               // insert checksum
+    put_u32(&newbuf[1], csum);                  // insert checksum
     memcpy(&newbuf[5], &buf[1], len-1);         // copy rest of payload
     JSValue val = JS_ReadObject(ctx, newbuf, newlen, /*flags*/0);
     free(newbuf);

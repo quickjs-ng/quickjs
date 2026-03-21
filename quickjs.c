@@ -36904,7 +36904,7 @@ static uint32_t bc_csum(const uint8_t *p, size_t n)
 
     h = 0;
     for (i = 0; i+4 < n; i += 4) {
-        h += get_u32_le(p+i);
+        h += get_u32(p+i);
         h *= 0x9e370001;
     }
     a = b = c = 0;
@@ -37561,7 +37561,7 @@ uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
     // don't include version and checksum fields in checksum
     d = &s->dbuf;
     h = bc_csum(&d->buf[5], d->size - 5);
-    put_u32_le(&d->buf[1], h);
+    put_u32(&d->buf[1], h);
     return d->buf;
  fail:
     js_object_list_end(ctx, &s->object_list);
