@@ -2135,6 +2135,14 @@ bool JS_IsJobPending(JSRuntime *rt)
     return !list_empty(&rt->job_list);
 }
 
+JSContext *JS_GetPendingJobContext(JSRuntime *rt)
+{
+    if (JS_IsJobPending(rt)) {
+        return list_entry(rt->job_list.next, JSJobEntry, link)->ctx;
+    }
+    return NULL;
+}
+
 /* return < 0 if exception, 0 if no job pending, 1 if a job was
    executed successfully. the context of the job is stored in '*pctx' */
 int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx)
