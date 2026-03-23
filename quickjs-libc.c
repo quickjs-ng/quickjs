@@ -828,7 +828,9 @@ int js_module_check_attributes(JSContext *ctx, void *opaque,
     return ret;
 }
 
-static void js_array_buffer_free(JSRuntime *rt, void *opaque, void *ptr)
+// js_free_array_buffer to avoid a name conflict with js_array_buffer_free
+// from quickjs.c in the amalgamation build
+static void js_free_array_buffer(JSRuntime *rt, void *opaque, void *ptr)
 {
     js_free_rt(rt, ptr);
 }
@@ -910,8 +912,8 @@ JSModuleDef *js_module_load(JSContext *ctx, const char *module_name,
         val = JS_NewStringLen(ctx, buf, buf_len);
         break;
     case JS_IMPORT_TYPE_BYTES:
-        val = JS_NewUint8Array(ctx, buf, buf_len, js_array_buffer_free,
-                               NULL, /*is_shared*/false);
+        val = JS_NewUint8Array(ctx, (uint8_t *)buf, buf_len,
+                               js_free_array_buffer, NULL, /*is_shared*/false);
         if (!JS_IsException(val)) {
             JSValue abuf = JS_GetTypedArrayBuffer(ctx, val, NULL, NULL, NULL);
             JS_SetImmutableArrayBuffer(abuf, /*immutable*/true);
