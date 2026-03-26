@@ -285,11 +285,11 @@ function bjson_test_bytecode()
 function bjson_test_fuzz()
 {
     var corpus = [
-        ["FxAAAAAABGA="],
-        ["F+bm5oIt"],
-        ["FwARABMGBgYGBgYGBgYGBv////8QABEALxH/vy8R/78="],
-        ["FwAIfwAK/////3//////////////////////////////3/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAD5+fn5+fn5+fn5+fkAAAAAAAYAqw=="],
-        ["FwAOAAAAFAA=", bjson.READ_OBJ_REFERENCE],
+        ["GP////8QAAAAAARg"],
+        ["GP/////m5uaCLQ=="],
+        ["GP////8AEQATBgYGBgYGBgYGBgb/////EAARAC8R/78vEf+/"],
+        ["GP////8ACH8ACv////9//////////////////////////////9//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAA+fn5+fn5+fn5+fn5AAAAAAAGAKs="],
+        ["GP////8ADgAAABQA=", bjson.READ_OBJ_REFERENCE],
     ];
     for (var [input, flags] of corpus) {
         var buf = base64decode(input);
@@ -297,6 +297,29 @@ function bjson_test_fuzz()
             bjson.read(buf, 0, buf.byteLength, flags);
         } catch (e) {
             if (/invalid version/.test(e.message)) throw e; // corpus needs update
+            if (/checksum error/.test(e.message)) throw e;
+        }
+    }
+}
+
+function bjson_test_csum()
+{
+    var buf = bjson.write("fortytwo");
+    var tab = new Uint8Array(buf);
+    for (var i = 5; i < tab.length; i++) {
+        for (var k = 0; k < 256; k++) {
+            var t = tab[i];
+            if (t == k)
+                continue;
+            tab[i] = k;
+            var caught = false;
+            try {
+                bjson.read(buf, 0, buf.byteLength);
+            } catch (e) {
+                caught = /checksum error/.test(e.message);
+            }
+            assert(caught);
+            tab[i] = t;
         }
     }
 }
@@ -337,6 +360,7 @@ function bjson_test_all()
     bjson_test_symbol();
     bjson_test_bytecode();
     bjson_test_fuzz();
+    bjson_test_csum();
 }
 
 bjson_test_all();

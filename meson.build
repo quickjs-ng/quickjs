@@ -1,7 +1,7 @@
 project(
   'quickjs-ng',
   'c',
-  version: '0.12.1',
+  version: '0.13.0',
   default_options: [
     'c_std=gnu11,c11',
     'warning_level=3',
@@ -517,6 +517,20 @@ if tests.allowed()
 
       c_args: qjs_c_args,
       dependencies: qjs_dep,
+      build_by_default: false,
+    ),
+  )
+
+  # LRE test
+  test(
+    'lre',
+    executable(
+      'lre-test',
+      'lre-test.c',
+      'libregexp.c',
+      'libunicode.c',
+
+      c_args: qjs_c_args,
       build_by_default: false,
     ),
   )

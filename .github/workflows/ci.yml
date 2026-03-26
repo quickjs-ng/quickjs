@@ -60,13 +60,12 @@ jobs:
           - { os: ubuntu-latest, configType: tcc }
           - { os: ubuntu-latest, arch: x86, runTest262: true }
           - { os: ubuntu-latest, arch: riscv64 }
-          - { os: ubuntu-latest, arch: s390x }
 
           - { os: macos-14, configType: Debug }
           - { os: macos-14, configType: Release }
           - { os: macos-14, configType: examples }
           - { os: macos-14, configType: shared }
-          - { os: macos-14, configType: asan+ubsan }
+          - { os: macos-14, configType: asan+ubsan, runTest262: true }
     steps:
       - uses: actions/checkout@v6
         with:
@@ -169,6 +168,10 @@ jobs:
         run: |
           ./build/api-test
 
+      - name: test lre
+        run: |
+          ./build/lre-test
+
   windows-msvc:
     runs-on: ${{ matrix.config.os }}
     strategy:
@@ -205,6 +208,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.config.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.config.buildType}}\lre-test.exe
       - name: Set up Visual Studio shell
         uses: egor-tensin/vs-shell@v2
         with:
@@ -245,6 +251,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.buildType}}\lre-test.exe
 
   windows-ninja:
     runs-on: windows-latest
@@ -277,6 +286,9 @@ jobs:
       - name: test api
         run: |
           build\api-test.exe
+      - name: test lre
+        run: |
+          build\lre-test.exe
 
   windows-sdk:
     runs-on: windows-latest
@@ -310,6 +322,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.buildType}}\lre-test.exe
 
   windows-mingw:
     runs-on: windows-latest
@@ -364,6 +379,9 @@ jobs:
     - name: test api
       run: |
         ./build/api-test
+    - name: test lre
+      run: |
+        ./build/lre-test
   windows-mingw-shared:
     runs-on: windows-latest
     defaults:
@@ -456,6 +474,10 @@ jobs:
       - name: test api
         run: |
           ./build/api-test
+
+      - name: test lre
+        run: |
+          ./build/lre-test
 
   openbsd:
     runs-on: ubuntu-latest

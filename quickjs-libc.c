@@ -788,26 +788,12 @@ int js_module_set_import_meta(JSContext *ctx, JSValueConst func_val,
     return 0;
 }
 
-static int json_module_init(JSContext *ctx, JSModuleDef *m)
+static int default_module_init(JSContext *ctx, JSModuleDef *m)
 {
     JSValue val;
     val = JS_GetModulePrivateValue(ctx, m);
     JS_SetModuleExport(ctx, m, "default", val);
     return 0;
-}
-
-static JSModuleDef *create_json_module(JSContext *ctx, const char *module_name, JSValue val)
-{
-    JSModuleDef *m;
-    m = JS_NewCModule(ctx, module_name, json_module_init);
-    if (!m) {
-        JS_FreeValue(ctx, val);
-        return NULL;
-    }
-    /* only export the "default" symbol which will contain the JSON object */
-    JS_AddModuleExport(ctx, m, "default");
-    JS_SetModulePrivateValue(ctx, m, val);
-    return m;
 }
 
 /* in order to conform with the specification, only the keys should be
@@ -842,8 +828,22 @@ int js_module_check_attributes(JSContext *ctx, void *opaque,
     return ret;
 }
 
+// js_free_array_buffer to avoid a name conflict with js_array_buffer_free
+// from quickjs.c in the amalgamation build
+static void js_free_array_buffer(JSRuntime *rt, void *opaque, void *ptr)
+{
+    js_free_rt(rt, ptr);
+}
+
+enum {
+    JS_IMPORT_TYPE_JS,
+    JS_IMPORT_TYPE_JSON,
+    JS_IMPORT_TYPE_TEXT,
+    JS_IMPORT_TYPE_BYTES,
+};
+
 /* return > 0 if the attributes indicate a JSON module, 0 otherwise, -1 on error */
-int js_module_test_json(JSContext *ctx, JSValueConst attributes)
+static int js_module_import_type(JSContext *ctx, JSValueConst attributes)
 {
     JSValue str;
     const char *cstr;
@@ -851,80 +851,111 @@ int js_module_test_json(JSContext *ctx, JSValueConst attributes)
     int res;
 
     if (JS_IsUndefined(attributes))
-        return 0;
+        return JS_IMPORT_TYPE_JS;
     str = JS_GetPropertyStr(ctx, attributes, "type");
     if (JS_IsException(str))
         return -1;
     if (!JS_IsString(str)) {
         JS_FreeValue(ctx, str);
-        return 0;
+        return JS_IMPORT_TYPE_JS;
     }
     cstr = JS_ToCStringLen(ctx, &len, str);
     JS_FreeValue(ctx, str);
     if (!cstr)
         return -1;
     if (len == 4 && !memcmp(cstr, "json", len)) {
-        res = 1;
+        res = JS_IMPORT_TYPE_JSON;
+    } else if (len == 4 && !memcmp(cstr, "text", len)) {
+        res = JS_IMPORT_TYPE_TEXT;
+    } else if (len == 5 && !memcmp(cstr, "bytes", len)) {
+        res = JS_IMPORT_TYPE_BYTES;
     } else {
         /* unknown type - throw error */
         JS_ThrowTypeError(ctx, "unsupported module type: '%s'", cstr);
-        JS_FreeCString(ctx, cstr);
-        return -1;
+        res = -1;
     }
     JS_FreeCString(ctx, cstr);
     return res;
 }
 
-JSModuleDef *js_module_loader(JSContext *ctx,
-                              const char *module_name, void *opaque,
-                              JSValueConst attributes)
+JSModuleDef *js_module_load(JSContext *ctx, const char *module_name,
+                            void *opaque, JSValueConst attributes,
+                            JSLoadFileFunc *load_file)
 {
     JSModuleDef *m;
+    JSValue val;
+    size_t buf_len;
+    char *buf;
+    int type;
 
-    if (js__has_suffix(module_name, QJS_NATIVE_MODULE_SUFFIX)) {
-        m = js_module_loader_so(ctx, module_name);
+    type = js_module_import_type(ctx, attributes);
+    if (type < 0)
+        return NULL;
+    if (type != JS_IMPORT_TYPE_BYTES)
+        if (js__has_suffix(module_name, ".json"))
+            type = JS_IMPORT_TYPE_JSON;
+    buf = (char *)load_file(ctx, &buf_len, module_name);
+    if (!buf) {
+        JS_ThrowReferenceError(ctx, "could not load module filename '%s'",
+                               module_name);
+        return NULL;
+    }
+    switch (type) {
+    case JS_IMPORT_TYPE_JS:
+        val = JS_Eval(ctx, buf, buf_len, module_name,
+                      JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+        break;
+    case JS_IMPORT_TYPE_JSON:
+        val = JS_ParseJSON(ctx, buf, buf_len, module_name);
+        break;
+    case JS_IMPORT_TYPE_TEXT:
+        val = JS_NewStringLen(ctx, buf, buf_len);
+        break;
+    case JS_IMPORT_TYPE_BYTES:
+        val = JS_NewUint8Array(ctx, (uint8_t *)buf, buf_len,
+                               js_free_array_buffer, NULL, /*is_shared*/false);
+        if (!JS_IsException(val)) {
+            JSValue abuf = JS_GetTypedArrayBuffer(ctx, val, NULL, NULL, NULL);
+            JS_SetImmutableArrayBuffer(abuf, /*immutable*/true);
+            JS_FreeValue(ctx, abuf);
+            buf = NULL;
+        }
+        break;
+    default:
+        val = JS_ThrowInternalError(ctx, "unhandled import type");
+        break;
+    }
+    js_free(ctx, buf);
+    if (JS_IsException(val))
+        return NULL;
+    if (type == JS_IMPORT_TYPE_JS) {
+        if (js_module_set_import_meta(ctx, val, true, false) < 0) {
+            JS_FreeValue(ctx, val);
+            return NULL;
+        }
+        // the module is already referenced, so we must free it
+        m = JS_VALUE_GET_PTR(val);
+        JS_FreeValue(ctx, val);
     } else {
-        int res;
-        size_t buf_len;
-        uint8_t *buf;
-
-        res = js_module_test_json(ctx, attributes);
-        if (res < 0)
-            return NULL;
-        buf = js_load_file(ctx, &buf_len, module_name);
-        if (!buf) {
-            JS_ThrowReferenceError(ctx, "could not load module filename '%s'",
-                                   module_name);
+        m = JS_NewCModule(ctx, module_name, default_module_init);
+        if (!m) {
+            JS_FreeValue(ctx, val);
             return NULL;
         }
-        if (js__has_suffix(module_name, ".json") || res > 0) {
-            /* compile as JSON */
-            JSValue val;
-            val = JS_ParseJSON(ctx, (char *)buf, buf_len, module_name);
-            js_free(ctx, buf);
-            if (JS_IsException(val))
-                return NULL;
-            m = create_json_module(ctx, module_name, val);
-            if (!m)
-                return NULL;
-        } else {
-            JSValue func_val;
-            /* compile the module */
-            func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
-                               JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
-            js_free(ctx, buf);
-            if (JS_IsException(func_val))
-                return NULL;
-            if (js_module_set_import_meta(ctx, func_val, true, false) < 0) {
-                JS_FreeValue(ctx, func_val);
-                return NULL;
-            }
-            /* the module is already referenced, so we must free it */
-            m = JS_VALUE_GET_PTR(func_val);
-            JS_FreeValue(ctx, func_val);
-        }
+        // only export the "default" symbol which will contain the string
+        // or JSON object
+        JS_AddModuleExport(ctx, m, "default");
+        JS_SetModulePrivateValue(ctx, m, val);
     }
     return m;
+}
+
+JSModuleDef *js_module_loader(JSContext *ctx, const char *module_name,
+                              void *opaque, JSValueConst attributes)
+{
+    if (js__has_suffix(module_name, QJS_NATIVE_MODULE_SUFFIX))
+        return js_module_loader_so(ctx, module_name);
+    return js_module_load(ctx, module_name, opaque, attributes, js_load_file);
 }
 
 static JSValue js_std_exit(JSContext *ctx, JSValueConst this_val,
