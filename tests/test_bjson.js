@@ -285,11 +285,11 @@ function bjson_test_bytecode()
 function bjson_test_fuzz()
 {
     var corpus = [
-        ["GP////8QAAAAAARg"],
-        ["GP/////m5uaCLQ=="],
-        ["GP////8AEQATBgYGBgYGBgYGBgb/////EAARAC8R/78vEf+/"],
-        ["GP////8ACH8ACv////9//////////////////////////////9//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAA+fn5+fn5+fn5+fn5AAAAAAAGAKs="],
-        ["GP////8ADgAAABQA=", bjson.READ_OBJ_REFERENCE],
+        ["Gf////8QAAAAAARg"],
+        ["Gf/////m5uaCLQ=="],
+        ["Gf////8AEQATBgYGBgYGBgYGBgb/////EAARAC8R/78vEf+/"],
+        ["Gf////8ACH8ACv////9//////////////////////////////9//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAA+fn5+fn5+fn5+fn5AAAAAAAGAKs="],
+        ["Gf////8ADgAAABQA=", bjson.READ_OBJ_REFERENCE],
     ];
     for (var [input, flags] of corpus) {
         var buf = base64decode(input);
