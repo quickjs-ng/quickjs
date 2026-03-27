@@ -58219,7 +58219,7 @@ static int typed_array_init(JSContext *ctx, JSValue obj, JSValue buffer,
     list_add_tail(&ta->link, &abuf->array_list);
     p->u.typed_array = ta;
     p->u.array.count = len;
-    p->u.array.u.ptr = abuf->data + offset;
+    p->u.array.u.ptr = abuf->data ? abuf->data + offset : NULL;
     return 0;
 }
 
