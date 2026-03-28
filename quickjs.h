@@ -542,7 +542,10 @@ JS_EXTERN void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj)
 JS_EXTERN JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
 JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
 
-/* Debug callback - called for each bytecode operation during execution */
+#ifdef QJS_ENABLE_DEBUGGER
+
+/* Debug callback - called for each bytecode operation during execution.
+   Return 0 to continue, non-zero to raise an exception. */
 typedef int JSOPChangedHandler(JSContext *ctx,
                                uint8_t op,
                                const char *filename,
@@ -553,23 +556,26 @@ typedef int JSOPChangedHandler(JSContext *ctx,
 JS_EXTERN void JS_SetOPChangedHandler(JSContext *ctx, JSOPChangedHandler *cb, void *opaque);
 
 /* Debug API: Get local variables in stack frames */
-typedef struct JSLocalVar {
+typedef struct JSDebugLocalVar {
     const char *name;      /* variable name (must be freed with JS_FreeCString) */
     JSValue value;         /* variable value (must be freed with JS_FreeValue) */
     int is_arg;            /* 1 if argument, 0 if local variable */
     int scope_level;       /* scope level of the variable */
-} JSLocalVar;
+} JSDebugLocalVar;
 
 /* Get the call stack depth */
 JS_EXTERN int JS_GetStackDepth(JSContext *ctx);
 
 /* Get local variables at a specific stack level (0 = current frame, 1 = caller, etc.)
    *pcount: output, number of variables returned
-   Returns allocated array of JSLocalVar (must be freed with JS_FreeLocalVariables), or NULL on error */
-JS_EXTERN JSLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount);
+   Returns allocated array of JSDebugLocalVar (must be freed with JS_FreeLocalVariables),
+   or NULL on error */
+JS_EXTERN JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount);
 
 /* Free local variables array returned by JS_GetLocalVariablesAtLevel */
-JS_EXTERN void JS_FreeLocalVariables(JSContext *ctx, JSLocalVar *vars, int count);
+JS_EXTERN void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count);
+
+#endif /* QJS_ENABLE_DEBUGGER */
 
 /* the following functions are used to select the intrinsic object to
    save memory */

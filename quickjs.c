@@ -48,7 +48,7 @@
 #include "libregexp.h"
 #include "dtoa.h"
 
-#if defined(EMSCRIPTEN) || defined(_MSC_VER)
+#if defined(EMSCRIPTEN) || defined(_MSC_VER) || defined(QJS_ENABLE_DEBUGGER)
 #define DIRECT_DISPATCH  0
 #else
 #define DIRECT_DISPATCH  1
@@ -535,9 +535,10 @@ struct JSContext {
                              const char *input, size_t input_len,
                              const char *filename, int line, int flags, int scope_idx);
     void *user_opaque;
-
+#ifdef QJS_ENABLE_DEBUGGER
     JSOPChangedHandler *operation_changed;
     void *oc_opaque;
+#endif
 };
 
 typedef union JSFloat64Union {
@@ -2560,6 +2561,8 @@ JSValue JS_GetFunctionProto(JSContext *ctx)
     return js_dup(ctx->function_proto);
 }
 
+#ifdef QJS_ENABLE_DEBUGGER
+
 void JS_SetOPChangedHandler(JSContext *ctx, JSOPChangedHandler *cb, void *opaque)
 {
     ctx->operation_changed = cb;
@@ -2595,7 +2598,7 @@ int JS_GetStackDepth(JSContext *ctx)
 }
 
 /* Get local variables at a specific stack level */
-JSLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount)
+JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount)
 {
     if (pcount)
         *pcount = 0;
@@ -2618,7 +2621,7 @@ JSLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount)
     if (total_vars == 0)
         return NULL;
     
-    JSLocalVar *vars = js_malloc(ctx, sizeof(JSLocalVar) * total_vars);
+    JSDebugLocalVar *vars = js_malloc(ctx, sizeof(JSDebugLocalVar) * total_vars);
     if (!vars)
         return NULL;
     
@@ -2648,7 +2651,7 @@ JSLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount)
 }
 
 /* Free local variables array */
-void JS_FreeLocalVariables(JSContext *ctx, JSLocalVar *vars, int count)
+void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count)
 {
     if (!vars)
         return;
@@ -2658,6 +2661,8 @@ void JS_FreeLocalVariables(JSContext *ctx, JSLocalVar *vars, int count)
     }
     js_free(ctx, vars);
 }
+
+#endif /* QJS_ENABLE_DEBUGGER */
 
 typedef enum JSFreeModuleEnum {
     JS_FREE_MODULE_ALL,
@@ -17573,34 +17578,29 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         int call_argc;
         JSValue *call_argv;
 
-        {
-            if (b && ctx->operation_changed != NULL) {
-                int col_num = 0;
-                int line_num = -1;
-                const char *filename = NULL;
-                const char *funcname = NULL;
+#ifdef QJS_ENABLE_DEBUGGER
+        if (b && ctx->operation_changed != NULL) {
+            int col_num = 0;
+            int line_num = -1;
 
-                uint32_t pc_index = (uint32_t)(pc - b->byte_code_buf);
-                if (b->pc2line_buf) {
-                    line_num = find_line_num(ctx, b, pc_index, &col_num);
-                }
-                filename = b->filename  ? JS_AtomToCString(ctx, b->filename)  : NULL;
-                funcname = b->func_name ? JS_AtomToCString(ctx, b->func_name) : NULL;
-
-                int ret = 0;
-                ret = ctx->operation_changed(ctx, *pc, filename, funcname, line_num, col_num, ctx->oc_opaque);
-                if (filename) {
-                    // fprintf(stderr, "op:%d %d at %s %s:%d:%d\n", *pc, OP_return, funcname, filename, line_num, col_num);
-                    JS_FreeCString(ctx, filename);
-                    JS_FreeCString(ctx, funcname);
-                }
-
-                if(ret != 0)
-                {
-                    goto exception;
-                }
+            uint32_t pc_index = (uint32_t)(pc - b->byte_code_buf);
+            if (b->pc2line_buf) {
+                line_num = find_line_num(ctx, b, pc_index, &col_num);
             }
+            const char *filename = b->filename  ? JS_AtomToCString(ctx, b->filename)  : NULL;
+            const char *funcname = b->func_name ? JS_AtomToCString(ctx, b->func_name) : NULL;
+
+            int ret = ctx->operation_changed(ctx, *pc, filename, funcname,
+                                             line_num, col_num, ctx->oc_opaque);
+            if (filename)
+                JS_FreeCString(ctx, filename);
+            if (funcname)
+                JS_FreeCString(ctx, funcname);
+
+            if (ret != 0)
+                goto exception;
         }
+#endif /* QJS_ENABLE_DEBUGGER */
 
         SWITCH(pc) {
         CASE(OP_push_i32):
