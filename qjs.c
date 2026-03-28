@@ -441,7 +441,7 @@ int main(int argc, char **argv)
        the script */
     while (optind < argc && *argv[optind] == '-') {
         char *arg = argv[optind] + 1;
-        const char *longopt = "";
+        char *longopt = "";
         char *optarg = NULL;
         /* a single - is not an option, it also stops argument scanning */
         if (!*arg)

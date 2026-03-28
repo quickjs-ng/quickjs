@@ -227,9 +227,7 @@ char *skip_prefix(const char *str, const char *prefix)
 
 char *get_basename(const char *filename)
 {
-    char *p;
-
-    p = strrchr(filename, '/');
+    const char *p = strrchr(filename, '/');
     if (!p)
         return NULL;
     return strdup_len(filename, p - filename);
@@ -1828,10 +1826,10 @@ int run_test(ThreadLocalStorage *tls, const char *filename, int *msec)
     harness = harness_dir;
 
     if (!harness) {
-        p = strstr(filename, "test/");
-        if (p) {
+        const char *p1 = strstr(filename, "test/");
+        if (p1) {
             snprintf(harnessbuf, sizeof(harnessbuf), "%.*s%s",
-                     (int)(p - filename), filename, "harness");
+                     (int)(p1 - filename), filename, "harness");
         }
         harness = harnessbuf;
     }
