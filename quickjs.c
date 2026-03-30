@@ -10044,11 +10044,17 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
 /* return -1 if exception */
 static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
 {
-    uint32_t new_size;
+    uint32_t old_size, new_size;
     size_t slack;
     JSValue *new_array_prop;
-    /* XXX: potential arithmetic overflow */
-    new_size = max_int(new_len, p->u.array.u1.size * 3 / 2);
+
+    old_size = p->u.array.u1.size;
+    new_size = old_size + old_size/2;   // grow by 50%
+    if (new_size < old_size) {          // integer overflow
+        JS_ThrowOutOfMemory(ctx);
+        return -1;
+    }
+    new_size = max_int(new_len, new_size);
     new_array_prop = js_realloc2(ctx, p->u.array.u.values, sizeof(JSValue) * new_size, &slack);
     if (!new_array_prop)
         return -1;
