@@ -64,4 +64,9 @@ Python bindings for quickjs-ng based on https://github.com/PetterS/quickjs.
 Proxy server using quickjs-ng for PAC file processing.
 
 ## [std::slop](https://github.com/hsaliak/std_slop)
+
 A C++/SQL based Coding agent. It exposes a QuickJS-ng environment to the LLM. The Agent accomplishes all it's work through this QuickJS-NG based "control plane".
+
+## [QuickBEAM](https://github.com/elixir-volt/quickbeam)
+
+JavaScript runtime for the BEAM - Web APIs backed by OTP, native DOM, and a built-in TypeScript toolchain.
