@@ -905,6 +905,56 @@ static void immutable_array_buffer(void)
     JS_FreeRuntime(rt);
 }
 
+static void get_uint8array(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue val;
+    uint8_t *p;
+    size_t size;
+    uint8_t buf[3] = { 1, 2, 3 };
+
+    val = eval(ctx, "new Uint8Array(0)");
+    assert(!JS_IsException(val));
+    p = JS_GetUint8Array(ctx, &size, val);
+    assert(p == NULL);
+    assert(size == 0);
+    JS_FreeValue(ctx, val);
+
+    val = JS_NewUint8Array(ctx, NULL, 0, NULL, NULL, false);
+    assert(!JS_IsException(val));
+    p = JS_GetUint8Array(ctx, &size, val);
+    assert(p == NULL);
+    assert(size == 0);
+    JS_FreeValue(ctx, val);
+
+    val = JS_NewUint8ArrayCopy(ctx, buf, sizeof(buf));
+    assert(!JS_IsException(val));
+    p = JS_GetUint8Array(ctx, &size, val);
+    assert(p != NULL);
+    assert(size == 3);
+    assert(p[0] == 1 && p[1] == 2 && p[2] == 3);
+    JS_FreeValue(ctx, val);
+
+    val = eval(ctx, "new Uint8Array([4, 5, 6])");
+    assert(!JS_IsException(val));
+    p = JS_GetUint8Array(ctx, &size, val);
+    assert(p != NULL);
+    assert(size == 3);
+    assert(p[0] == 4 && p[1] == 5 && p[2] == 6);
+    JS_FreeValue(ctx, val);
+
+    val = eval(ctx, "new Int32Array(4)");
+    assert(!JS_IsException(val));
+    p = JS_GetUint8Array(ctx, &size, val);
+    assert(p == NULL);
+    assert(size == 0);
+    JS_FreeValue(ctx, val);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -923,5 +973,6 @@ int main(void)
     global_object_prototype();
     slice_string_tocstring();
     immutable_array_buffer();
+    get_uint8array();
     return 0;
 }
