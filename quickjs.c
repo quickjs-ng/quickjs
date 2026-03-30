@@ -537,8 +537,8 @@ struct JSContext {
                              const char *filename, int line, int flags, int scope_idx);
     void *user_opaque;
 #ifdef QJS_ENABLE_DEBUGGER
-    JSOPChangedHandler *operation_changed;
-    void *oc_opaque;
+    JSBytecodeTraceFunc *bytecode_trace;
+    void *trace_opaque;
 #endif
 };
 
@@ -2565,12 +2565,6 @@ JSValue JS_GetFunctionProto(JSContext *ctx)
 
 #ifdef QJS_ENABLE_DEBUGGER
 
-void JS_SetOPChangedHandler(JSContext *ctx, JSOPChangedHandler *cb, void *opaque)
-{
-    ctx->operation_changed = cb;
-    ctx->oc_opaque = opaque;
-}
-
 /* Debug API: Get stack frame at specific level */
 static JSStackFrame *js_get_stack_frame_at_level(JSContext *ctx, int level)
 {
@@ -2585,9 +2579,20 @@ static JSStackFrame *js_get_stack_frame_at_level(JSContext *ctx, int level)
     return sf;
 }
 
+#endif /* QJS_ENABLE_DEBUGGER */
+
+void JS_SetBytecodeTraceHandler(JSContext *ctx, JSBytecodeTraceFunc *cb, void *opaque)
+{
+#ifdef QJS_ENABLE_DEBUGGER
+    ctx->bytecode_trace = cb;
+    ctx->trace_opaque = opaque;
+#endif
+}
+
 /* Get the call stack depth */
 int JS_GetStackDepth(JSContext *ctx)
 {
+#ifdef QJS_ENABLE_DEBUGGER
     JSRuntime *rt = ctx->rt;
     JSStackFrame *sf = rt->current_stack_frame;
     int depth = 0;
@@ -2597,6 +2602,9 @@ int JS_GetStackDepth(JSContext *ctx)
         sf = sf->prev_frame;
     }
     return depth;
+#else
+    return -1;
+#endif
 }
 
 /* Get local variables at a specific stack level */
@@ -2604,7 +2612,7 @@ JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pco
 {
     if (pcount)
         *pcount = 0;
-    
+#ifdef QJS_ENABLE_DEBUGGER
     JSStackFrame *sf = js_get_stack_frame_at_level(ctx, level);
     if (sf == NULL)
         return NULL;
@@ -2650,11 +2658,15 @@ JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pco
     if (pcount)
         *pcount = total_vars;
     return vars;
+#else
+    return NULL;
+#endif
 }
 
 /* Free local variables array */
 void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count)
 {
+#ifdef QJS_ENABLE_DEBUGGER
     if (!vars)
         return;
     for (int i = 0; i < count; i++) {
@@ -2662,9 +2674,8 @@ void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count)
         JS_FreeValue(ctx, vars[i].value);
     }
     js_free(ctx, vars);
+#endif
 }
-
-#endif /* QJS_ENABLE_DEBUGGER */
 
 typedef enum JSFreeModuleEnum {
     JS_FREE_MODULE_ALL,
@@ -17581,7 +17592,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         JSValue *call_argv;
 
 #ifdef QJS_ENABLE_DEBUGGER
-        if (b && ctx->operation_changed != NULL) {
+        if (b && ctx->bytecode_trace != NULL) {
             int col_num = 0;
             int line_num = -1;
 
@@ -17592,8 +17603,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             const char *filename = b->filename  ? JS_AtomToCString(ctx, b->filename)  : NULL;
             const char *funcname = b->func_name ? JS_AtomToCString(ctx, b->func_name) : NULL;
 
-            int ret = ctx->operation_changed(ctx, *pc, filename, funcname,
-                                             line_num, col_num, ctx->oc_opaque);
+            int ret = ctx->bytecode_trace(ctx, *pc, filename, funcname,
+                                          line_num, col_num, ctx->trace_opaque);
             if (filename)
                 JS_FreeCString(ctx, filename);
             if (funcname)
@@ -23193,6 +23204,12 @@ static void emit_source_loc(JSParseState *s)
     dbuf_put_u32(bc, s->token.col_num);
 }
 
+#ifdef QJS_ENABLE_DEBUGGER
+#define emit_source_loc_debug(s) emit_source_loc(s)
+#else
+#define emit_source_loc_debug(s) ((void)0)
+#endif
+
 static void emit_op(JSParseState *s, uint8_t val)
 {
     JSFunctionDef *fd = s->cur_func;
@@ -28308,7 +28325,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             goto fail;
         break;
     case TOK_RETURN:
-        emit_source_loc(s);
+        emit_source_loc_debug(s);
         if (s->cur_func->is_eval) {
             js_parse_error(s, "return not in a function");
             goto fail;
@@ -28346,14 +28363,14 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
     case TOK_LET:
     case TOK_CONST:
     haslet:
-        emit_source_loc(s);
+        emit_source_loc_debug(s);
         if (!(decl_mask & DECL_MASK_OTHER)) {
             js_parse_error(s, "lexical declarations can't appear in single-statement context");
             goto fail;
         }
         /* fall thru */
     case TOK_VAR:
-        emit_source_loc(s);
+        emit_source_loc_debug(s);
         if (next_token(s))
             goto fail;
         if (js_parse_var(s, PF_IN_ACCEPTED, tok, /*export_flag*/false))
@@ -28364,7 +28381,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
     case TOK_IF:
         {
             int label1, label2, mask;
-            emit_source_loc(s);
+            emit_source_loc_debug(s);
             if (next_token(s))
                 goto fail;
             /* create a new scope for `let f;if(1) function f(){}` */
@@ -28473,7 +28490,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             int tok, bits;
             bool is_async;
 
-            emit_source_loc(s);
+            emit_source_loc_debug(s);
             if (next_token(s))
                 goto fail;
 
@@ -28632,7 +28649,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             }
             if (js_parse_expect_semi(s))
                 goto fail;
-            emit_source_loc(s);
+            emit_source_loc_debug(s);
         }
         break;
     case TOK_SWITCH:
@@ -28641,7 +28658,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             int default_label_pos;
             BlockEnv break_entry;
 
-            emit_source_loc(s);
+            emit_source_loc_debug(s);
             if (next_token(s))
                 goto fail;
 
@@ -28850,7 +28867,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 js_parse_error(s, "expecting catch or finally");
                 goto fail;
             }
-            emit_source_loc(s);
+            emit_source_loc_debug(s);
             emit_label(s, label_finally);
             if (s->token.val == TOK_FINALLY) {
                 int saved_eval_ret_idx = 0; /* avoid warning */
@@ -28886,7 +28903,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 }
                 pop_break_entry(s->cur_func);
             }
-            emit_source_loc(s);
+            emit_source_loc_debug(s);
             emit_op(s, OP_ret);
             emit_label(s, label_end);
         }
@@ -28991,7 +29008,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
 
     default:
     hasexpr:
-        emit_source_loc(s);
+        emit_source_loc_debug(s);
         if (js_parse_expr(s))
             goto fail;
         if (s->cur_func->eval_ret_idx >= 0) {
