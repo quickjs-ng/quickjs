@@ -536,10 +536,9 @@ struct JSContext {
                              const char *input, size_t input_len,
                              const char *filename, int line, int flags, int scope_idx);
     void *user_opaque;
-#ifdef QJS_ENABLE_DEBUGGER
+    
     JSBytecodeTraceFunc *bytecode_trace;
     void *trace_opaque;
-#endif
 };
 
 typedef union JSFloat64Union {
@@ -2583,10 +2582,8 @@ static JSStackFrame *js_get_stack_frame_at_level(JSContext *ctx, int level)
 
 void JS_SetBytecodeTraceHandler(JSContext *ctx, JSBytecodeTraceFunc *cb, void *opaque)
 {
-#ifdef QJS_ENABLE_DEBUGGER
     ctx->bytecode_trace = cb;
     ctx->trace_opaque = opaque;
-#endif
 }
 
 /* Get the call stack depth */
