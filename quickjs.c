@@ -10980,13 +10980,21 @@ static int JS_DefineAutoInitProperty(JSContext *ctx, JSValueConst this_obj,
     return true;
 }
 
+/* Like JS_DefinePropertyValue but borrows val (does not free it) */
+static int JS_DefinePropertyValueConst(JSContext *ctx, JSValueConst this_obj,
+                                       JSAtom prop, JSValueConst val, int flags)
+{
+    return JS_DefineProperty(ctx, this_obj, prop, val, JS_UNDEFINED, JS_UNDEFINED,
+                             flags | JS_PROP_HAS_VALUE | JS_PROP_HAS_CONFIGURABLE |
+                             JS_PROP_HAS_WRITABLE | JS_PROP_HAS_ENUMERABLE);
+}
+
 /* shortcut to add or redefine a new property value */
 int JS_DefinePropertyValue(JSContext *ctx, JSValueConst this_obj,
                            JSAtom prop, JSValue val, int flags)
 {
     int ret;
-    ret = JS_DefineProperty(ctx, this_obj, prop, val, JS_UNDEFINED, JS_UNDEFINED,
-                            flags | JS_PROP_HAS_VALUE | JS_PROP_HAS_CONFIGURABLE | JS_PROP_HAS_WRITABLE | JS_PROP_HAS_ENUMERABLE);
+    ret = JS_DefinePropertyValueConst(ctx, this_obj, prop, val, flags);
     JS_FreeValue(ctx, val);
     return ret;
 }
@@ -11057,6 +11065,29 @@ static int JS_CreateDataPropertyUint32(JSContext *ctx, JSValueConst this_obj,
     return JS_DefinePropertyValueValue(ctx, this_obj, js_int64(idx),
                                        val, flags | JS_PROP_CONFIGURABLE |
                                        JS_PROP_ENUMERABLE | JS_PROP_WRITABLE);
+}
+
+/* Like JS_DefinePropertyValueInt64 but borrows val (does not free it) */
+static int JS_DefinePropertyValueInt64Const(JSContext *ctx, JSValueConst this_obj,
+                                            int64_t idx, JSValueConst val, int flags)
+{
+    JSAtom atom;
+    int ret;
+    atom = JS_ValueToAtom(ctx, js_int64(idx));
+    if (unlikely(atom == JS_ATOM_NULL))
+        return -1;
+    ret = JS_DefinePropertyValueConst(ctx, this_obj, atom, val, flags);
+    JS_FreeAtom(ctx, atom);
+    return ret;
+}
+
+/* Like JS_CreateDataPropertyUint32 but borrows val (does not free it) */
+static int JS_CreateDataPropertyUint32Const(JSContext *ctx, JSValueConst this_obj,
+                                            int64_t idx, JSValueConst val, int flags)
+{
+    return JS_DefinePropertyValueInt64Const(ctx, this_obj, idx, val,
+                                            flags | JS_PROP_CONFIGURABLE |
+                                            JS_PROP_ENUMERABLE | JS_PROP_WRITABLE);
 }
 
 
@@ -39745,11 +39776,11 @@ static JSValue js_object_getOwnPropertyDescriptor(JSContext *ctx, JSValueConst t
                 goto exception1;
             flags = JS_PROP_C_W_E | JS_PROP_THROW;
             if (desc.flags & JS_PROP_GETSET) {
-                if (JS_DefinePropertyValue(ctx, ret, JS_ATOM_get, js_dup(desc.getter), flags) < 0
-                ||  JS_DefinePropertyValue(ctx, ret, JS_ATOM_set, js_dup(desc.setter), flags) < 0)
+                if (JS_DefinePropertyValueConst(ctx, ret, JS_ATOM_get, desc.getter, flags) < 0
+                ||  JS_DefinePropertyValueConst(ctx, ret, JS_ATOM_set, desc.setter, flags) < 0)
                     goto exception1;
             } else {
-                if (JS_DefinePropertyValue(ctx, ret, JS_ATOM_value, js_dup(desc.value), flags) < 0
+                if (JS_DefinePropertyValueConst(ctx, ret, JS_ATOM_value, desc.value, flags) < 0
                 ||  JS_DefinePropertyValue(ctx, ret, JS_ATOM_writable,
                                            js_bool(desc.flags & JS_PROP_WRITABLE),
                                            flags) < 0)
@@ -41201,8 +41232,8 @@ static JSValue js_aggregate_error_constructor(JSContext *ctx,
                                  JS_CLASS_ERROR);
     if (JS_IsException(obj))
         return obj;
-    JS_DefinePropertyValue(ctx, obj, JS_ATOM_errors, js_dup(errors),
-                           JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+    JS_DefinePropertyValueConst(ctx, obj, JS_ATOM_errors, errors,
+                               JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
     return obj;
 }
 
@@ -41433,8 +41464,8 @@ static JSValue js_array_of(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(obj))
         return JS_EXCEPTION;
     for(i = 0; i < argc; i++) {
-        if (JS_CreateDataPropertyUint32(ctx, obj, i, js_dup(argv[i]),
-                                        JS_PROP_THROW) < 0) {
+        if (JS_CreateDataPropertyUint32Const(ctx, obj, i, argv[i],
+                                             JS_PROP_THROW) < 0) {
             goto fail;
         }
     }
@@ -41679,8 +41710,8 @@ static JSValue js_array_concat(JSContext *ctx, JSValueConst this_val,
                 JS_ThrowTypeError(ctx, "Array loo long");
                 goto exception;
             }
-            if (JS_DefinePropertyValueInt64(ctx, arr, n, js_dup(e),
-                                            JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+            if (JS_DefinePropertyValueInt64Const(ctx, arr, n, e,
+                                                 JS_PROP_C_W_E | JS_PROP_THROW) < 0)
                 goto exception;
             n++;
         }
@@ -41854,8 +41885,8 @@ static JSValue js_array_every(JSContext *ctx, JSValueConst this_val,
             case special_filter:
             case special_filter | special_TA:
                 if (JS_ToBoolFree(ctx, res)) {
-                    if (JS_DefinePropertyValueInt64(ctx, ret, n++, js_dup(val),
-                                                    JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+                    if (JS_DefinePropertyValueInt64Const(ctx, ret, n++, val,
+                                                         JS_PROP_C_W_E | JS_PROP_THROW) < 0)
                         goto exception;
                 }
                 break;
@@ -42636,7 +42667,7 @@ static JSValue js_array_slice(JSContext *ctx, JSValueConst this_val,
         js_is_fast_array(ctx, arr)) {
         /* XXX: should share code with fast array constructor */
         for (; k < final && k < count32; k++, n++) {
-            if (JS_CreateDataPropertyUint32(ctx, arr, n, js_dup(arrp[k]), JS_PROP_THROW) < 0)
+            if (JS_CreateDataPropertyUint32Const(ctx, arr, n, arrp[k], JS_PROP_THROW) < 0)
                 goto exception;
         }
     }
@@ -44013,7 +44044,7 @@ static JSValue js_iterator_proto_set_toStringTag(JSContext *ctx, JSValueConst th
         if (JS_SetProperty(ctx, this_val, JS_ATOM_Symbol_toStringTag, js_dup(val)) < 0)
             return JS_EXCEPTION;
     } else {
-        if (JS_DefinePropertyValue(ctx, this_val, JS_ATOM_Symbol_toStringTag, js_dup(val), JS_PROP_C_W_E) < 0)
+        if (JS_DefinePropertyValueConst(ctx, this_val, JS_ATOM_Symbol_toStringTag, val, JS_PROP_C_W_E) < 0)
             return JS_EXCEPTION;
     }
     return JS_UNDEFINED;
@@ -48396,8 +48427,8 @@ static JSValue js_regexp_Symbol_replace(JSContext *ctx, JSValueConst this_val,
         tab = JS_NewArray(ctx);
         if (JS_IsException(tab))
             goto exception;
-        if (JS_DefinePropertyValueInt64(ctx, tab, 0, js_dup(matched),
-                                        JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+        if (JS_DefinePropertyValueInt64Const(ctx, tab, 0, matched,
+                                             JS_PROP_C_W_E | JS_PROP_THROW) < 0)
             goto exception;
         for(n = 1; n < nCaptures; n++) {
             JSValue capN;
@@ -48420,10 +48451,10 @@ static JSValue js_regexp_Symbol_replace(JSContext *ctx, JSValueConst this_val,
         if (functionalReplace) {
             if (JS_DefinePropertyValueInt64(ctx, tab, n++, js_int32(position), JS_PROP_C_W_E | JS_PROP_THROW) < 0)
                 goto exception;
-            if (JS_DefinePropertyValueInt64(ctx, tab, n++, js_dup(str), JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+            if (JS_DefinePropertyValueInt64Const(ctx, tab, n++, str, JS_PROP_C_W_E | JS_PROP_THROW) < 0)
                 goto exception;
             if (!JS_IsUndefined(namedCaptures)) {
-                if (JS_DefinePropertyValueInt64(ctx, tab, n++, js_dup(namedCaptures), JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+                if (JS_DefinePropertyValueInt64Const(ctx, tab, n++, namedCaptures, JS_PROP_C_W_E | JS_PROP_THROW) < 0)
                     goto exception;
             }
             args[0] = JS_UNDEFINED;
@@ -50300,16 +50331,16 @@ static JSValue js_create_desc(JSContext *ctx, JSValueConst val,
     if (JS_IsException(ret))
         return ret;
     if (flags & JS_PROP_HAS_GET) {
-        JS_DefinePropertyValue(ctx, ret, JS_ATOM_get, js_dup(getter),
-                               JS_PROP_C_W_E);
+        JS_DefinePropertyValueConst(ctx, ret, JS_ATOM_get, getter,
+                                    JS_PROP_C_W_E);
     }
     if (flags & JS_PROP_HAS_SET) {
-        JS_DefinePropertyValue(ctx, ret, JS_ATOM_set, js_dup(setter),
-                               JS_PROP_C_W_E);
+        JS_DefinePropertyValueConst(ctx, ret, JS_ATOM_set, setter,
+                                    JS_PROP_C_W_E);
     }
     if (flags & JS_PROP_HAS_VALUE) {
-        JS_DefinePropertyValue(ctx, ret, JS_ATOM_value, js_dup(val),
-                               JS_PROP_C_W_E);
+        JS_DefinePropertyValueConst(ctx, ret, JS_ATOM_value, val,
+                                    JS_PROP_C_W_E);
     }
     if (flags & JS_PROP_HAS_WRITABLE) {
         JS_DefinePropertyValue(ctx, ret, JS_ATOM_writable,
