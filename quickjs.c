@@ -56931,8 +56931,7 @@ JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValueConst obj,
     return js_dup(JS_MKPTR(JS_TAG_OBJECT, ta->buffer));
 }
 
-/* return NULL if exception. WARNING: any JS call can detach the
-   buffer and render the returned pointer invalid */
+/* WARNING: any JS call can detach the buffer and render the returned pointer invalid */
 uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj)
 {
     JSObject *p;
