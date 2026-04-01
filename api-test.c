@@ -917,14 +917,21 @@ static void get_uint8array(void)
     val = eval(ctx, "new Uint8Array(0)");
     assert(!JS_IsException(val));
     p = JS_GetUint8Array(ctx, &size, val);
-    assert(p == NULL);
+    assert(p != NULL);
     assert(size == 0);
     JS_FreeValue(ctx, val);
 
     val = JS_NewUint8Array(ctx, NULL, 0, NULL, NULL, false);
     assert(!JS_IsException(val));
     p = JS_GetUint8Array(ctx, &size, val);
-    assert(p == NULL);
+    assert(p != NULL);
+    assert(size == 0);
+    JS_FreeValue(ctx, val);
+
+    val = JS_NewUint8ArrayCopy(ctx, NULL, 0);
+    assert(!JS_IsException(val));
+    p = JS_GetUint8Array(ctx, &size, val);
+    assert(p != NULL);
     assert(size == 0);
     JS_FreeValue(ctx, val);
 
