@@ -560,8 +560,8 @@ JS_EXTERN JSContext *JS_NewDebugContext(JSRuntime *rt,
 
 /* Debug API: Get local variables in stack frames */
 typedef struct JSDebugLocalVar {
-    const char *name;      /* variable name (must be freed with JS_FreeCString) */
-    JSValue value;         /* variable value (must be freed with JS_FreeValue) */
+    const char *name;      /* variable name */
+    JSValue value;         /* variable value */
     int is_arg;            /* 1 if argument, 0 if local variable */
     int scope_level;       /* scope level of the variable */
 } JSDebugLocalVar;

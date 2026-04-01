@@ -17590,17 +17590,23 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 int col_num = 0;
                 int line_num = -1;
                 uint32_t pc_index = (uint32_t)(pc - b->byte_code_buf - 1);
-                if (b->pc2line_buf) {
-                    line_num = find_line_num(ctx, b, pc_index, &col_num);
-                }
-                const char *filename = b->filename  ? JS_AtomToCString(ctx, b->filename)  : NULL;
+                line_num = find_line_num(ctx, b, pc_index, &col_num);
+                /*const char *filename = b->filename  ? JS_AtomToCString(ctx, b->filename)  : NULL;
                 const char *funcname = b->func_name ? JS_AtomToCString(ctx, b->func_name) : NULL;
                 int ret = ctx->debug_break(ctx, filename, funcname,
                                            line_num, col_num);
                 if (filename)
                     JS_FreeCString(ctx, filename);
                 if (funcname)
-                    JS_FreeCString(ctx, funcname);
+                    JS_FreeCString(ctx, funcname);*/
+
+                char filename[ATOM_GET_STR_BUF_SIZE];
+                JS_AtomGetStr(ctx, filename, sizeof(filename), b->filename);
+                char funcname[ATOM_GET_STR_BUF_SIZE];
+                JS_AtomGetStr(ctx, funcname, sizeof(funcname), b->func_name);
+                int ret = ctx->debug_break(ctx, filename, funcname,
+                                           line_num, col_num);
+
                 if (ret != 0)
                     goto exception;
             }
