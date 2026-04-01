@@ -64,7 +64,6 @@ FMT(label_u16)
 #endif
 
 DEF(invalid, 1, 0, 0, none) /* never emitted */
-DEF(  debug, 1, 0, 0, none) /* debugger break point */
 
 /* push values */
 DEF(       push_i32, 5, 0, 1, i32)
@@ -364,6 +363,8 @@ DEF(   is_undefined, 1, 1, 1, none)
 DEF(        is_null, 1, 1, 1, none)
 DEF(typeof_is_undefined, 1, 1, 1, none)
 DEF( typeof_is_function, 1, 1, 1, none)
+
+DEF(  debug, 1, 0, 0, none) /* debugger break point */
 
 #undef DEF
 #undef def
