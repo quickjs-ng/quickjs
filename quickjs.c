@@ -56156,20 +56156,23 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
             memset(abuf->data, 0, sab_alloc_len);
         } else {
             /* the allocation must be done after the object creation */
-            if (len > 0) {
-                abuf->data = js_mallocz(ctx, len);
-                if (!abuf->data)
-                    goto fail;
-            } else {
-                abuf->data = NULL;
-            }
+            abuf->data = js_mallocz(ctx, max_int(len, 1));
+            if (!abuf->data)
+                goto fail;
         }
     } else {
         if (class_id == JS_CLASS_SHARED_ARRAY_BUFFER &&
             rt->sab_funcs.sab_dup) {
             rt->sab_funcs.sab_dup(rt->sab_funcs.sab_opaque, buf);
         }
-        abuf->data = buf;
+        if (buf) {
+            abuf->data = buf;
+        } else {
+            abuf->data = js_mallocz(ctx, 1);
+            if (!abuf->data)
+                goto fail;
+            free_func = js_array_buffer_free;
+        }
     }
     init_list_head(&abuf->array_list);
     abuf->detached = false;
@@ -56177,7 +56180,7 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
     abuf->shared = (class_id == JS_CLASS_SHARED_ARRAY_BUFFER);
     abuf->opaque = opaque;
     abuf->free_func = free_func;
-    if (alloc_flag && buf && len > 0)
+    if (alloc_flag && buf)
         memcpy(abuf->data, buf, len);
     JS_SetOpaqueInternal(obj, abuf);
     return obj;
@@ -56647,16 +56650,11 @@ static JSValue js_array_buffer_resize(JSContext *ctx, JSValueConst this_val,
         // 2 bytes big in A, and 1 byte big in B
         abuf->byte_length = len;
     } else {
-        if (len > 0) {
-            data = js_realloc(ctx, abuf->data, len);
-            if (!data)
-                return JS_EXCEPTION;
-            if (len > abuf->byte_length)
-                memset(&data[abuf->byte_length], 0, len - abuf->byte_length);
-        } else {
-            js_free(ctx, abuf->data);
-            data = NULL;
-        }
+        data = js_realloc(ctx, abuf->data, max_int(len, 1));
+        if (!data)
+            return JS_EXCEPTION;
+        if (len > abuf->byte_length)
+            memset(&data[abuf->byte_length], 0, len - abuf->byte_length);
         abuf->byte_length = len;
         abuf->data = data;
     }
@@ -56739,8 +56737,7 @@ static JSValue js_array_buffer_slice(JSContext *ctx,
         JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
         goto fail;
     }
-    if (new_len > 0)
-        memcpy(new_abuf->data, abuf->data + start, new_len);
+    memcpy(new_abuf->data, abuf->data + start, new_len);
     new_abuf->immutable = immutable;
     return new_obj;
  fail:
@@ -56931,7 +56928,8 @@ JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValueConst obj,
     return js_dup(JS_MKPTR(JS_TAG_OBJECT, ta->buffer));
 }
 
-/* WARNING: any JS call can detach the buffer and render the returned pointer invalid */
+/* return NULL if exception. WARNING: any JS call can detach the
+   buffer and render the returned pointer invalid */
 uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj)
 {
     JSObject *p;
@@ -56952,7 +56950,7 @@ uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj)
     abuf = ta->buffer->u.array_buffer;
 
     *psize = ta->length;
-    return abuf->data ? abuf->data + ta->offset : NULL;
+    return abuf->data + ta->offset;
  fail:
     *psize = 0;
     return NULL;
@@ -57019,10 +57017,8 @@ static JSValue js_typed_array_set_internal(JSContext *ctx,
         /* copying between typed objects */
         if (src_p->class_id == p->class_id) {
             /* same type, use memmove */
-            if (src_len > 0) {
-                memmove(dest_abuf->data + dest_ta->offset + (offset << shift),
-                        src_abuf->data + src_ta->offset, src_len << shift);
-            }
+            memmove(dest_abuf->data + dest_ta->offset + (offset << shift),
+                    src_abuf->data + src_ta->offset, src_len << shift);
             goto done;
         }
         if (dest_abuf->data == src_abuf->data) {
@@ -58587,7 +58583,7 @@ static int typed_array_init(JSContext *ctx, JSValue obj, JSValue buffer,
     list_add_tail(&ta->link, &abuf->array_list);
     p->u.typed_array = ta;
     p->u.array.count = len;
-    p->u.array.u.ptr = abuf->data ? abuf->data + offset : NULL;
+    p->u.array.u.ptr = abuf->data + offset;
     return 0;
 }
 
@@ -58729,8 +58725,7 @@ static JSValue js_typed_array_constructor_ta(JSContext *ctx,
         goto fail;
     if (p->class_id == classid) {
         /* same type: copy the content */
-        if (abuf->byte_length > 0)
-            memcpy(abuf->data, src_abuf->data + ta->offset, abuf->byte_length);
+        memcpy(abuf->data, src_abuf->data + ta->offset, abuf->byte_length);
     } else {
         for(i = 0; i < len; i++) {
             JSValue val;
