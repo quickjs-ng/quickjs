@@ -34365,6 +34365,13 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             col_num = get_u32(bc_buf + pos + 5);
             break;
 
+        case OP_debug:
+            /* record pc2line so the debugger can resolve the source
+               location when OP_debug is hit at runtime */
+            add_pc2line_info(s, bc_out.size, line_num, col_num);
+            dbuf_putc(&bc_out, OP_debug);
+            break;
+            
         case OP_label:
             {
                 label = get_u32(bc_buf + pos + 1);
