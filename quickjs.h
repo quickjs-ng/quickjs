@@ -542,17 +542,21 @@ JS_EXTERN void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj)
 JS_EXTERN JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
 JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
 
-/* Debug callback - called for each bytecode operation during execution.
+/* Debug callback - invoked when the interpreter hits an OP_debug opcode.
    Return 0 to continue, non-zero to raise an exception.
-   Only functional when compiled with QJS_ENABLE_DEBUGGER. */
-typedef int JSBytecodeTraceFunc(JSContext *ctx,
-                                uint8_t op,
-                                const char *filename,
-                                const char *funcname,
-                                int line,
-                                int col,
-                                void *opaque);
-JS_EXTERN void JS_SetBytecodeTraceHandler(JSContext *ctx, JSBytecodeTraceFunc *cb, void *opaque);
+   OP_debug opcodes are only emitted when debugging is enabled at context
+   creation time (JS_NewDebugContext). */
+typedef int JSDebugBreakFunc(JSContext *ctx,
+                             const char *filename,
+                             const char *funcname,
+                             int line,
+                             int col);
+
+/* Create a new context with debugging support.  Bytecode compiled in this
+   context will contain OP_debug opcodes at statement boundaries.  When
+   the interpreter hits one, |cb| is called.  Pass NULL to disable. */
+JS_EXTERN JSContext *JS_NewDebugContext(JSRuntime *rt,
+    JSDebugBreakFunc *cb);
 
 /* Debug API: Get local variables in stack frames */
 typedef struct JSDebugLocalVar {
@@ -563,13 +567,13 @@ typedef struct JSDebugLocalVar {
 } JSDebugLocalVar;
 
 /* Get the call stack depth.
-   Returns -1 when compiled without QJS_ENABLE_DEBUGGER. */
+   Returns -1 when no debug context is active. */
 JS_EXTERN int JS_GetStackDepth(JSContext *ctx);
 
 /* Get local variables at a specific stack level (0 = current frame, 1 = caller, etc.)
    *pcount: output, number of variables returned
    Returns allocated array of JSDebugLocalVar (must be freed with JS_FreeLocalVariables),
-   or NULL on error / when compiled without QJS_ENABLE_DEBUGGER */
+   or NULL on error. */
 JS_EXTERN JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount);
 
 /* Free local variables array returned by JS_GetLocalVariablesAtLevel */

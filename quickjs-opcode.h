@@ -64,6 +64,7 @@ FMT(label_u16)
 #endif
 
 DEF(invalid, 1, 0, 0, none) /* never emitted */
+DEF(  debug, 1, 0, 0, none) /* debugger break point */
 
 /* push values */
 DEF(       push_i32, 5, 0, 1, i32)
