@@ -23184,7 +23184,6 @@ static void emit_source_loc(JSParseState *s)
     dbuf_putc(bc, OP_source_loc);
     dbuf_put_u32(bc, s->token.line_num);
     dbuf_put_u32(bc, s->token.col_num);
-    fd->last_opcode_pos = bc->size;
     dbuf_putc(bc, OP_debug);
 }
 
