@@ -544,18 +544,20 @@ JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
 
 /* Debug callback - invoked when the interpreter hits an OP_debug opcode.
    Return 0 to continue, non-zero to raise an exception.
-   OP_debug opcodes are only emitted when debugging is enabled at context
-   creation time (JS_NewDebugContext). */
+   OP_debug opcodes are always emitted at statement boundaries.  The
+   callback is only invoked when one has been set via
+   JS_SetDebugBreakHandler. */
 typedef int JSDebugBreakFunc(JSContext *ctx,
                              const char *filename,
                              const char *funcname,
                              int line,
                              int col);
 
-/* Create a new context with debugging support.  Bytecode compiled in this
-   context will contain OP_debug opcodes at statement boundaries.  When
-   the interpreter hits one, |cb| is called.  Pass NULL to disable. */
-JS_EXTERN JSContext *JS_NewDebugContext(JSRuntime *rt,
+/* Set (or clear) the debug break handler on a context.  When the
+   interpreter hits an OP_debug opcode and a handler is set, it is
+   called.  Pass NULL to disable.  Works with any context, including
+   those created with JS_NewContextRaw. */
+JS_EXTERN void JS_SetDebugBreakHandler(JSContext *ctx,
     JSDebugBreakFunc *cb);
 
 /* Debug API: Get local variables in stack frames */

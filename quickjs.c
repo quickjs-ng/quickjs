@@ -2561,14 +2561,9 @@ JSValue JS_GetFunctionProto(JSContext *ctx)
     return js_dup(ctx->function_proto);
 }
 
-JSContext *JS_NewDebugContext(JSRuntime *rt, JSDebugBreakFunc *cb)
+void JS_SetDebugBreakHandler(JSContext *ctx, JSDebugBreakFunc *cb)
 {
-    JSContext *ctx;
-
-    ctx = JS_NewContext(rt);
-    if (ctx)
-        ctx->debug_break = cb;
-    return ctx;
+    ctx->debug_break = cb;
 }
 
 /* Debug API: Get stack frame at specific level */
@@ -21604,7 +21599,6 @@ typedef struct JSParseState {
     JSFunctionDef *cur_func;
     bool is_module; /* parsing a module */
     bool allow_html_comments;
-    bool emit_debug; /* emit OP_debug opcodes for debugger */
 } JSParseState;
 
 typedef struct JSOpCode {
@@ -23190,10 +23184,8 @@ static void emit_source_loc(JSParseState *s)
     dbuf_putc(bc, OP_source_loc);
     dbuf_put_u32(bc, s->token.line_num);
     dbuf_put_u32(bc, s->token.col_num);
-    if (s->emit_debug) {
-        fd->last_opcode_pos = bc->size;
-        dbuf_putc(bc, OP_debug);
-    }
+    fd->last_opcode_pos = bc->size;
+    dbuf_putc(bc, OP_debug);
 }
 
 static void emit_op(JSParseState *s, uint8_t val)
@@ -36525,7 +36517,6 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->token.val = ' ';
     s->token.line_num = 1;
     s->token.col_num = 1;
-    s->emit_debug = (ctx->debug_break != NULL);
 }
 
 static JSValue JS_EvalFunctionInternal(JSContext *ctx, JSValue fun_obj,
