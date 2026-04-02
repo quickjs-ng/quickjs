@@ -546,19 +546,19 @@ JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
    Return 0 to continue, non-zero to raise an exception.
    OP_debug opcodes are always emitted at statement boundaries.  The
    callback is only invoked when one has been set via
-   JS_SetDebugBreakHandler. */
-typedef int JSDebugBreakFunc(JSContext *ctx,
+   JS_SetDebugTraceHandler. */
+typedef int JSDebugTraceFunc(JSContext *ctx,
                              const char *filename,
                              const char *funcname,
                              int line,
                              int col);
 
-/* Set (or clear) the debug break handler on a context.  When the
+/* Set (or clear) the debug trace handler on a context.  When the
    interpreter hits an OP_debug opcode and a handler is set, it is
    called.  Pass NULL to disable.  Works with any context, including
    those created with JS_NewContextRaw. */
-JS_EXTERN void JS_SetDebugBreakHandler(JSContext *ctx,
-    JSDebugBreakFunc *cb);
+JS_EXTERN void JS_SetDebugTraceHandler(JSContext *ctx,
+                                       JSDebugTraceFunc *cb);
 
 /* Debug API: Get local variables in stack frames */
 typedef struct JSDebugLocalVar {
@@ -568,8 +568,7 @@ typedef struct JSDebugLocalVar {
     int scope_level;       /* scope level of the variable */
 } JSDebugLocalVar;
 
-/* Get the call stack depth.
-   Returns -1 when no debug context is active. */
+/* Get the call stack depth (0 when no frames are active). */
 JS_EXTERN int JS_GetStackDepth(JSContext *ctx);
 
 /* Get local variables at a specific stack level (0 = current frame, 1 = caller, etc.)

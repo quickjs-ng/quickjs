@@ -537,7 +537,7 @@ struct JSContext {
                              const char *filename, int line, int flags, int scope_idx);
     void *user_opaque;
 
-    JSDebugBreakFunc *debug_break;
+    JSDebugTraceFunc *debug_trace;
 };
 
 typedef union JSFloat64Union {
@@ -2561,9 +2561,9 @@ JSValue JS_GetFunctionProto(JSContext *ctx)
     return js_dup(ctx->function_proto);
 }
 
-void JS_SetDebugBreakHandler(JSContext *ctx, JSDebugBreakFunc *cb)
+void JS_SetDebugTraceHandler(JSContext *ctx, JSDebugTraceFunc *cb)
 {
-    ctx->debug_break = cb;
+    ctx->debug_trace = cb;
 }
 
 /* Debug API: Get stack frame at specific level */
@@ -17581,7 +17581,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 
         SWITCH(pc) {
         CASE(OP_debug):
-            if (unlikely(ctx->debug_break)) {
+            if (unlikely(ctx->debug_trace)) {
                 int col_num = 0;
                 int line_num = -1;
                 uint32_t pc_index = (uint32_t)(pc - b->byte_code_buf - 1);
@@ -17591,7 +17591,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JS_AtomGetStr(ctx, filename, sizeof(filename), b->filename);
                 char funcname[ATOM_GET_STR_BUF_SIZE];
                 JS_AtomGetStr(ctx, funcname, sizeof(funcname), b->func_name);
-                int ret = ctx->debug_break(ctx, filename, funcname,
+                int ret = ctx->debug_trace(ctx, filename, funcname,
                                            line_num, col_num);
 
                 if (ret != 0)
@@ -36911,7 +36911,7 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 25
+#define BC_VERSION 26
 
 typedef struct BCWriterState {
     JSContext *ctx;
