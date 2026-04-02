@@ -962,6 +962,130 @@ static void get_uint8array(void)
     JS_FreeRuntime(rt);
 }
 
+static struct {
+    int call_count;
+    int last_line;
+    int last_col;
+    char last_filename[256];
+    char last_funcname[256];
+    int stack_depth;
+    int max_local_count;
+    int abort_at;        /* abort (return -1) on this call, 0 = never */
+} trace_state;
+
+static int debug_trace_cb(JSContext *ctx,
+                           const char *filename,
+                           const char *funcname,
+                           int line,
+                           int col)
+{
+    trace_state.call_count++;
+    trace_state.last_line = line;
+    trace_state.last_col = col;
+    snprintf(trace_state.last_filename, sizeof(trace_state.last_filename),
+             "%s", filename);
+    snprintf(trace_state.last_funcname, sizeof(trace_state.last_funcname),
+             "%s", funcname);
+    trace_state.stack_depth = JS_GetStackDepth(ctx);
+    int count = 0;
+    JSDebugLocalVar *vars = JS_GetLocalVariablesAtLevel(ctx, 0, &count);
+    if (count > trace_state.max_local_count)
+        trace_state.max_local_count = count;
+    if (vars)
+        JS_FreeLocalVariables(ctx, vars, count);
+    if (trace_state.abort_at > 0 &&
+        trace_state.call_count >= trace_state.abort_at)
+        return -1;
+    return 0;
+}
+
+static void debug_trace(void)
+{
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    /* no handler set: eval should work and call_count stays 0 */
+    memset(&trace_state, 0, sizeof(trace_state));
+    {
+        JSValue ret = eval(ctx, "1+2");
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        assert(trace_state.call_count == 0);
+    }
+
+    /* set handler: callback fires for each statement */
+    JS_SetDebugTraceHandler(ctx, debug_trace_cb);
+    memset(&trace_state, 0, sizeof(trace_state));
+    {
+        JSValue ret = eval(ctx, "var x = 1; x + 2");
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        assert(trace_state.call_count > 0);
+        assert(!strcmp(trace_state.last_filename, "<input>"));
+    }
+
+    /* stack depth inside a nested call */
+    memset(&trace_state, 0, sizeof(trace_state));
+    {
+        static const char code[] =
+            "function outer() {\n"
+            "  function inner() {\n"
+            "    return 42;\n"
+            "  }\n"
+            "  return inner();\n"
+            "}\n"
+            "outer();\n";
+        JSValue ret = eval(ctx, code);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        assert(trace_state.call_count > 0);
+        /* the deepest invocation should have a stack depth > 1 */
+        /* (just verify we got a sane value; exact depth depends on internals) */
+        assert(trace_state.stack_depth >= 1);
+    }
+
+    /* local variables are visible inside the callback */
+    memset(&trace_state, 0, sizeof(trace_state));
+    {
+        static const char code[] =
+            "function f(a, b) {\n"
+            "  var c = a + b;\n"
+            "  return c;\n"
+            "}\n"
+            "f(10, 20);\n";
+        JSValue ret = eval(ctx, code);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        assert(trace_state.call_count > 0);
+        /* inside f() we should see locals (a, b, c) at some point */
+        assert(trace_state.max_local_count >= 2);
+    }
+
+    /* returning non-zero aborts execution */
+    memset(&trace_state, 0, sizeof(trace_state));
+    trace_state.abort_at = 1; /* abort on first callback */
+    {
+        JSValue ret = eval(ctx, "1+2; 3+4");
+        assert(JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+    }
+
+    /* clear handler: callbacks no longer fire */
+    JS_SetDebugTraceHandler(ctx, NULL);
+    memset(&trace_state, 0, sizeof(trace_state));
+    {
+        JSValue ret = eval(ctx, "1+2");
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        assert(trace_state.call_count == 0);
+    }
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -981,5 +1105,6 @@ int main(void)
     slice_string_tocstring();
     immutable_array_buffer();
     get_uint8array();
+    debug_trace();
     return 0;
 }
