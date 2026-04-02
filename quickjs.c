@@ -17586,7 +17586,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 
         SWITCH(pc) {
         CASE(OP_debug):
-            if (ctx->debug_break) {
+            if (unlikely(ctx->debug_break)) {
                 int col_num = 0;
                 int line_num = -1;
                 uint32_t pc_index = (uint32_t)(pc - b->byte_code_buf - 1);
