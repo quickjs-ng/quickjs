@@ -9815,16 +9815,6 @@ static int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
                 if (p->class_id == JS_CLASS_ARRAY ||
                     p->class_id == JS_CLASS_ARGUMENTS ||
                     p->class_id == JS_CLASS_MAPPED_ARGUMENTS) {
-                    /* Special case deleting the last element of a fast Array */
-                    if (idx == p->u.array.count - 1) {
-                        if (p->class_id == JS_CLASS_MAPPED_ARGUMENTS) {
-                            free_var_ref(ctx->rt, p->u.array.u.var_refs[idx]);
-                        } else {
-                            JS_FreeValue(ctx, p->u.array.u.values[idx]);
-                        }
-                        p->u.array.count = idx;
-                        return true;
-                    }
                     if (convert_fast_array_to_array(ctx, p))
                         return -1;
                     goto redo;
