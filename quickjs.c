@@ -43468,10 +43468,12 @@ static JSValue js_iterator_concat_next(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (it->running)
         return JS_ThrowTypeError(ctx, "already running");
+    it->running = true;
 next:
     if (it->index >= it->count) {
         *pdone = true;
-        return JS_UNDEFINED;
+        val = JS_UNDEFINED;
+        goto done;
     }
     obj = &it->values[it->index + 0];
     meth = &it->values[it->index + 1];
@@ -43479,31 +43481,30 @@ next:
     if (JS_IsUndefined(iter)) {
         iter = JS_GetIterator2(ctx, *obj, *meth);
         if (JS_IsException(iter))
-            return JS_EXCEPTION;
+            goto fail;
         it->iter = iter;
     }
     next = it->next;
     if (JS_IsUndefined(next)) {
         next = JS_GetProperty(ctx, iter, JS_ATOM_next);
         if (JS_IsException(next))
-            return JS_EXCEPTION;
+            goto fail;
         it->next = next;
     }
-    it->running = true;
     item = JS_IteratorNext2(ctx, iter, next, 0, NULL, &done);
-    it->running = false;
     if (JS_IsException(item))
-        return JS_EXCEPTION;
+        goto fail;
     if (!done) {
         *pdone = false;
-        return item;
+        val = item;
+        goto done;
     }
     // done==1 means really done, done==2 means "unknown, inspect object"
     if (done == 2) {
         val = JS_GetProperty(ctx, item, JS_ATOM_done);
         if (JS_IsException(val)) {
             JS_FreeValue(ctx, item);
-            return JS_EXCEPTION;
+            goto fail;
         }
         done = JS_ToBoolFree(ctx, val);
     }
@@ -43521,7 +43522,12 @@ next:
     val = JS_GetProperty(ctx, item, JS_ATOM_value);
     JS_FreeValue(ctx, item);
     *pdone = false;
+done:
+    it->running = false;
     return val;
+fail:
+    val = JS_EXCEPTION;
+    goto done;
 }
 
 static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
