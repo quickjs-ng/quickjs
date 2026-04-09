@@ -108,6 +108,13 @@ if(NOT SUNOS)
 xcheck_add_c_compiler_flag(-funsigned-char)
 endif()
 
+# Clang on Windows without MSVC command line fails because the codebase uses 
+# functions like strcpy over strcpy_s
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND WIN32 AND NOT MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE)
+endif()
+
 # ClangCL is command line compatible with MSVC, so 'MSVC' is set.
 if(MSVC)
     xcheck_add_c_compiler_flag(-Wno-unsafe-buffer-usage)
