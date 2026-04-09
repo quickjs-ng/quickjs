@@ -38,6 +38,7 @@
 #else
 #include <dirent.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #endif
 
 #include "cutils.h"
@@ -226,9 +227,7 @@ char *skip_prefix(const char *str, const char *prefix)
 
 char *get_basename(const char *filename)
 {
-    char *p;
-
-    p = strrchr(filename, '/');
+    const char *p = strrchr(filename, '/');
     if (!p)
         return NULL;
     return strdup_len(filename, p - filename);
@@ -418,6 +417,11 @@ static void consider_test_file(const char *path, const char *name, int is_dir)
     while (pathlen > 0 && ispathsep(path[pathlen-1]))
         pathlen--;
     snprintf(s, sizeof(s), "%.*s/%s", (int)pathlen, path, name);
+#if !defined(_WIN32) && !defined(DT_DIR)
+    struct stat st;
+    if (is_dir < 0)
+        is_dir = !stat(s, &st) && S_ISDIR(st.st_mode);
+#endif
     if (is_dir)
         find_test_files(s);
     else
@@ -448,7 +452,11 @@ static void find_test_files(const char *path)
     n = scandir(path, &ds, NULL, alphasort);
     for (i = 0; i < n; i++) {
         d = ds[i];
+#ifdef DT_DIR
         consider_test_file(path, d->d_name, d->d_type == DT_DIR);
+#else
+        consider_test_file(path, d->d_name, -1);
+#endif
         free(d);
     }
     free(ds);
@@ -498,6 +506,15 @@ static JSValue js_print_262(JSContext *ctx, JSValueConst this_val,
         if (verbose > 1)
             printf("%s%s", &" "[i < 1], s);
         JS_FreeCString(ctx, s);
+        if (verbose > 2 && JS_IsError(v)) {
+            JSValue stack = JS_GetPropertyStr(ctx, v, "stack");
+            s = JS_ToCString(ctx, stack);
+            JS_FreeValue(ctx, stack);
+            if (s) {
+                printf("\n%s", s);
+                JS_FreeCString(ctx, s);
+            }
+        }
     }
     if (outfile)
         fputc('\n', outfile);
@@ -890,6 +907,13 @@ static JSValue js_IsHTMLDDA(JSContext *ctx, JSValueConst this_val,
     return JS_NULL;
 }
 
+static JSValue js_gc(JSContext *ctx, JSValueConst this_val,
+                     int argc, JSValueConst *argv)
+{
+    JS_RunGC(JS_GetRuntime(ctx));
+    return JS_UNDEFINED;
+}
+
 static JSValue add_helpers1(JSContext *ctx)
 {
     JSValue global_obj;
@@ -899,6 +923,8 @@ static JSValue add_helpers1(JSContext *ctx)
 
     JS_SetPropertyStr(ctx, global_obj, "print",
                       JS_NewCFunction(ctx, js_print_262, "print", 1));
+    JS_SetPropertyStr(ctx, global_obj, "gc",
+                      JS_NewCFunction(ctx, js_gc, "gc", 0));
 
     is_html_dda = JS_NewCFunction(ctx, js_IsHTMLDDA, "IsHTMLDDA", 0);
     JS_SetIsHTMLDDA(ctx, is_html_dda);
@@ -943,12 +969,9 @@ static char *load_file(const char *filename, size_t *lenp)
 }
 
 static JSModuleDef *js_module_loader_test(JSContext *ctx,
-                                          const char *module_name, void *opaque)
+                                          const char *module_name, void *opaque,
+                                          JSValueConst attributes)
 {
-    size_t buf_len;
-    uint8_t *buf;
-    JSModuleDef *m;
-    JSValue func_val;
     char *filename, *slash, path[1024];
 
     // interpret import("bar.js") from path/to/foo.js as
@@ -962,24 +985,7 @@ static JSModuleDef *js_module_loader_test(JSContext *ctx,
             module_name = path;
         }
     }
-
-    buf = js_load_file(ctx, &buf_len, module_name);
-    if (!buf) {
-        JS_ThrowReferenceError(ctx, "could not load module filename '%s'",
-                               module_name);
-        return NULL;
-    }
-
-    /* compile the module */
-    func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
-                       JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
-    js_free(ctx, buf);
-    if (JS_IsException(func_val))
-        return NULL;
-    /* the module is already referenced, so we must free it */
-    m = JS_VALUE_GET_PTR(func_val);
-    JS_FreeValue(ctx, func_val);
-    return m;
+    return js_module_load(ctx, module_name, opaque, attributes, js_load_file);
 }
 
 int is_line_sep(char c)
@@ -1389,7 +1395,7 @@ static int eval_buf(JSContext *ctx, const char *buf, size_t buf_len,
 
     if (JS_IsException(res_val)) {
         exception_val = JS_GetException(ctx);
-        is_error = JS_IsError(ctx, exception_val);
+        is_error = JS_IsError(exception_val);
         js_print_262(ctx, JS_NULL, 1, (JSValueConst *)&exception_val);
         if (is_error) {
             JSValue name, stack;
@@ -1700,15 +1706,32 @@ void update_stats(JSRuntime *rt, const char *filename) {
     js_mutex_unlock(&stats_mutex);
 }
 
+static JSValue qjs_black_box(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst argv[], int magic)
+{
+    return JS_NewInt32(ctx, js_std_cmd(magic, ctx, &argv[0]));
+}
+
+static const JSCFunctionListEntry qjs_methods[] = {
+    JS_CFUNC_MAGIC_DEF("getStringKind", 1, qjs_black_box, /*GetStringKind*/3),
+};
+
+static const JSCFunctionListEntry qjs_object =
+    JS_OBJECT_DEF("qjs", qjs_methods, countof(qjs_methods), JS_PROP_C_W_E);
+
 JSContext *JS_NewCustomContext(JSRuntime *rt)
 {
     JSContext *ctx;
+    JSValue obj;
 
     ctx = JS_NewContext(rt);
     if (ctx && local) {
         js_init_module_std(ctx, "qjs:std");
         js_init_module_os(ctx, "qjs:os");
         js_init_module_bjson(ctx, "qjs:bjson");
+        obj = JS_GetGlobalObject(ctx);
+        JS_SetPropertyFunctionList(ctx, obj, &qjs_object, 1);
+        JS_FreeValue(ctx, obj);
     }
     return ctx;
 }
@@ -1740,7 +1763,7 @@ int run_test_buf(ThreadLocalStorage *tls, const char *filename, char *harness,
     JS_SetCanBlock(rt, can_block);
 
     /* loader for ES6 modules */
-    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader_test, (void *) filename);
+    JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader_test, NULL, (void *) filename);
 
     if (track_promise_rejections)
         JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker, NULL);
@@ -1803,10 +1826,10 @@ int run_test(ThreadLocalStorage *tls, const char *filename, int *msec)
     harness = harness_dir;
 
     if (!harness) {
-        p = strstr(filename, "test/");
-        if (p) {
+        const char *p1 = strstr(filename, "test/");
+        if (p1) {
             snprintf(harnessbuf, sizeof(harnessbuf), "%.*s%s",
-                     (int)(p - filename), filename, "harness");
+                     (int)(p1 - filename), filename, "harness");
         }
         harness = harnessbuf;
     }
@@ -1965,7 +1988,7 @@ int run_test(ThreadLocalStorage *tls, const char *filename, int *msec)
 
 /* run a test when called by test262-harness+eshost */
 int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
-                             bool is_module)
+                             bool is_module, bool can_block)
 {
     JSRuntime *rt;
     JSContext *ctx;
@@ -1973,7 +1996,6 @@ int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
     size_t buf_len;
     int eval_flags, ret_code, ret;
     JSValue res_val;
-    bool can_block;
 
     outfile = stdout; /* for js_print_262 */
 
@@ -1990,11 +2012,10 @@ int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
     }
     JS_SetRuntimeInfo(rt, filename);
 
-    can_block = true;
     JS_SetCanBlock(rt, can_block);
 
     /* loader for ES6 modules */
-    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader_test, (void *) filename);
+    JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader_test, NULL, (void *) filename);
 
     add_helpers(ctx);
 
@@ -2113,7 +2134,8 @@ void help(void)
            "-d dir         run all test files in directory tree 'dir'\n"
            "-e file        load the known errors from 'file'\n"
            "-f file        execute single test from 'file'\n"
-           "-x file        exclude tests listed in 'file'\n",
+           "-x file        exclude tests listed in 'file'\n"
+           "--no-can-block set [[CanBlock]] to false (Atomics.wait will throw)\n",
            JS_GetVersion());
     exit(1);
 }
@@ -2136,6 +2158,8 @@ int main(int argc, char **argv)
     const char *ignore = "";
     bool is_test262_harness = false;
     bool is_module = false;
+    bool can_block = true;
+    bool enable_progress = true;
 
     js_std_set_worker_new_context_func(JS_NewCustomContext);
 
@@ -2203,6 +2227,8 @@ int main(int argc, char **argv)
             is_test262_harness = true;
         } else if (str_equal(arg, "--module")) {
             is_module = true;
+        } else if (str_equal(arg, "--no-can-block")) {
+            can_block = false;
         } else {
             fatal(1, "unknown option: %s", arg);
             break;
@@ -2213,7 +2239,7 @@ int main(int argc, char **argv)
         help();
 
     if (is_test262_harness) {
-        return run_test262_harness_test(tls, argv[optind], is_module);
+        return run_test262_harness_test(tls, argv[optind], is_module, can_block);
     }
 
     nthreads = max_int(nthreads, 1);
@@ -2237,6 +2263,12 @@ int main(int argc, char **argv)
     }
 
     update_exclude_dirs();
+
+#ifndef _WIN32
+    if (!isatty(STDOUT_FILENO)) {
+        enable_progress = false;
+    }
+#endif
 
     if (is_dir_list) {
         if (optind < argc && !isdigit((unsigned char)argv[optind][0])) {
@@ -2266,7 +2298,9 @@ int main(int argc, char **argv)
         }
         js_cond_init(&progress_cond);
         js_mutex_init(&progress_mutex);
-        js_thread_create(&progress_thread, show_progress, NULL, /*flags*/0);
+        if (enable_progress) {
+            js_thread_create(&progress_thread, show_progress, NULL, /*flags*/0);
+        }
         for (i = 0; i < nthreads; i++) {
             js_thread_create(&threads[i], run_test_dir_list,
                              (void *)(uintptr_t)i, /*flags*/0);
@@ -2276,7 +2310,9 @@ int main(int argc, char **argv)
         js_mutex_lock(&progress_mutex);
         js_cond_signal(&progress_cond);
         js_mutex_unlock(&progress_mutex);
-        js_thread_join(progress_thread);
+        if (enable_progress) {
+            js_thread_join(progress_thread);
+        }
         js_mutex_destroy(&progress_mutex);
         js_cond_destroy(&progress_cond);
     } else {

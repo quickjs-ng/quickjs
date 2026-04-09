@@ -43,8 +43,9 @@ extern "C" {
 #define LRE_FLAG_NAMED_GROUPS (1 << 7) /* named groups are present in the regexp */
 #define LRE_FLAG_UNICODE_SETS (1 << 8)
 
-#define LRE_RET_MEMORY_ERROR (-1)
-#define LRE_RET_TIMEOUT      (-2)
+#define LRE_RET_MEMORY_ERROR   (-1)
+#define LRE_RET_TIMEOUT        (-2)
+#define LRE_RET_BYTECODE_ERROR (-3)
 
 uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
                      const char *buf, size_t buf_len, int re_flags,
@@ -58,8 +59,6 @@ int lre_exec(uint8_t **capture,
 
 int lre_parse_escape(const uint8_t **pp, int allow_utf16);
 bool lre_is_space(int c);
-
-void lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped);
 
 /* must be provided by the user */
 bool lre_check_stack_overflow(void *opaque, size_t alloca_size);

@@ -378,6 +378,70 @@ function test_string()
     assert(eval('"\0"'), "\0");
 
     assert("abc".padStart(Infinity, ""), "abc");
+
+    assert(qjs.getStringKind("xyzzy".slice(1)),
+           /*JS_STRING_KIND_NORMAL*/0);
+    assert(qjs.getStringKind("xyzzy".repeat(512).slice(1)),
+           /*JS_STRING_KIND_SLICE*/1);
+}
+
+function rope_concat(n, dir)
+{
+    var i, s;
+    s = "";
+    if (dir > 0) {
+        for(i = 0; i < n; i++)
+            s += String.fromCharCode(i & 0xffff);
+    } else {
+        for(i = n - 1; i >= 0; i--)
+            s = String.fromCharCode(i & 0xffff) + s;
+    }
+
+    for(i = 0; i < n; i++) {
+        /* test before the assert to go faster */
+        if (s.charCodeAt(i) != (i & 0xffff)) {
+            assert(s.charCodeAt(i), i & 0xffff);
+        }
+    }
+}
+
+function test_rope()
+{
+    var i, s, s2;
+
+    /* test forward and backward concatenation */
+    rope_concat(100000, 1);
+    rope_concat(100000, -1);
+
+    /* test rope comparison */
+    s = "";
+    s2 = "";
+    for (i = 0; i < 10000; i++) {
+        s += "abc";
+        s2 += "abc";
+    }
+    assert(s === s2, true);
+    assert(s < s2, false);
+    assert(s > s2, false);
+
+    /* test rope indexing */
+    s = "";
+    for (i = 0; i < 10000; i++)
+        s += "x";
+    assert(s.length, 10000);
+    assert(s[0], "x");
+    assert(s[5000], "x");
+    assert(s[9999], "x");
+
+    /* test rope with string methods */
+    s = "";
+    for (i = 0; i < 1000; i++)
+        s += "test";
+    assert(s.indexOf("test"), 0);
+    assert(s.lastIndexOf("test"), 3996);
+    assert(s.includes("test"), true);
+    assert(s.slice(0, 8), "testtest");
+    assert(s.substring(0, 8), "testtest");
 }
 
 function test_math()
@@ -392,10 +456,11 @@ function test_math()
     assert(Math.imul((-2)**31, (-2)**31), 0);
     assert(Math.imul(2**31-1, 2**31-1), 1);
     assert(Math.fround(0.1), 0.10000000149011612);
-    assert(Math.hypot() == 0);
-    assert(Math.hypot(-2) == 2);
-    assert(Math.hypot(3, 4) == 5);
+    assert(Math.hypot(), 0);
+    assert(Math.hypot(-2), 2);
+    assert(Math.hypot(3, 4), 5);
     assert(Math.abs(Math.hypot(3, 4, 5) - 7.0710678118654755) <= 1e-15);
+    assert(Math.sumPrecise([1,Number.EPSILON/2,Number.MIN_VALUE]), 1.0000000000000002);
 }
 
 function test_number()
@@ -427,10 +492,24 @@ function test_number()
     assert((-25).toExponential(0), "-3e+1");
     assert((2.5).toPrecision(1), "3");
     assert((-2.5).toPrecision(1), "-3");
+    assert((25).toPrecision(1) === "3e+1");
     assert((1.125).toFixed(2), "1.13");
     assert((-1.125).toFixed(2), "-1.13");
     assert((0.5).toFixed(0), "1");
     assert((-0.5).toFixed(0), "-1");
+    assert((-1e-10).toFixed(0), "-0");
+
+    assert((1.3).toString(7), "1.2046204620462046205");
+    assert((1.3).toString(35), "1.ahhhhhhhhhm");
+
+    assert((123.456).toExponential(100),
+           "1.2345600000000000306954461848363280296325683593750000000000000000000000000000000000000000000000000000e+2");
+    assert((1.23e-99).toExponential(100),
+           "1.2299999999999999636794326616259654935901564299639709630577493044757187515388707554223010856511630028e-99");
+    assert((-0.0007).toExponential(100),
+           "-6.9999999999999999288763374849509091291110962629318237304687500000000000000000000000000000000000000000e-4");
+    assert((0).toExponential(100),
+           "0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e+0");
 }
 
 function test_eval2()
@@ -569,6 +648,66 @@ function test_typed_array()
     assert(a.buffer, b.buffer);
     assert(a.toString(), "0,0,0,255");
     assert(b.toString(), "0,0,255,255");
+
+    const TypedArray = class extends Object.getPrototypeOf(Uint8Array) {};
+    let caught = false;
+    try {
+        new TypedArray(); // extensible but not instantiable
+    } catch (e) {
+        assert(e instanceof TypeError);
+        assert(/cannot be called/.test(e.message));
+        caught = true;
+    }
+    assert(caught);
+
+    // https://github.com/quickjs-ng/quickjs/issues/1208
+    buffer = new ArrayBuffer(16);
+    a = new Uint8Array(buffer);
+    a.fill(42);
+    assert(a[0], 42);
+    buffer.transfer();
+    assert(a[0], undefined);
+
+    // https://github.com/quickjs-ng/quickjs/issues/1210
+    var buffer = new ArrayBuffer(16, {maxByteLength: 16});
+    var desc = Object.getOwnPropertyDescriptor(ArrayBuffer, Symbol.species);
+    assert(typeof desc.get, "function");
+    var get = function() {
+        buffer.resize(1);
+        return ArrayBuffer;
+    };
+    Object.defineProperty(ArrayBuffer, Symbol.species, {...desc, get});
+    let ex;
+    try {
+        buffer.slice();
+    } catch (ex_) {
+        ex = ex_;
+    }
+    Object.defineProperty(ArrayBuffer, Symbol.species, desc); // restore
+    assert(ex instanceof TypeError);
+    assert("ArrayBuffer is detached", ex.message);
+
+    var buffer = new ArrayBuffer(2);
+    var ta = new Uint16Array(buffer);
+    var desc = Object.getOwnPropertyDescriptor(ta, "0");
+    ta[0] = 42;
+    assert(ta[0], 42);
+    Object.defineProperty(ta, "0", {value: 1337});
+    assert(ta[0], 1337);
+    assert(desc.writable, true);
+    assert(desc.enumerable, true);
+    assert(desc.configurable, true);
+
+    var buffer = new ArrayBuffer(2).sliceToImmutable();
+    var ta = new Uint16Array(buffer);
+    var desc = Object.getOwnPropertyDescriptor(ta, "0");
+    ta[0] = 42;
+    assert(ta[0], 0);
+    Object.defineProperty(ta, "0", {value: 1337});
+    assert(ta[0], 0);
+    assert(desc.writable, false);
+    assert(desc.enumerable, true);
+    assert(desc.configurable, false);
 }
 
 function test_json()
@@ -893,6 +1032,77 @@ function test_weak_map()
     /* the WeakMap should be empty here */
 }
 
+function test_set()
+{
+    const iter = {
+        a: [4, 5, 6],
+        nextCalls: 0,
+        returnCalls: 0,
+        next() {
+            const done = this.nextCalls >= this.a.length
+            const value = this.a[this.nextCalls]
+            this.nextCalls++
+            return {done, value}
+        },
+        return() {
+            this.returnCalls++
+            return this
+        },
+    }
+    const setlike = {
+        size: iter.a.length,
+        has(v) { return iter.a.includes(v) },
+        keys() { return iter },
+    }
+    // set must be bigger than iter.a to hit iter.next and iter.return
+    assert(new Set([4,5,6,7]).isSupersetOf(setlike), true)
+    assert(iter.nextCalls, 4)
+    assert(iter.returnCalls, 0)
+    iter.nextCalls = iter.returnCalls = 0
+    assert(new Set([0,1,2,3]).isSupersetOf(setlike), false)
+    assert(iter.nextCalls, 1)
+    assert(iter.returnCalls, 1)
+    iter.nextCalls = iter.returnCalls = 0
+    // set must be bigger than iter.a to hit iter.next and iter.return
+    assert(new Set([4,5,6,7]).isDisjointFrom(setlike), false)
+    assert(iter.nextCalls, 1)
+    assert(iter.returnCalls, 1)
+    iter.nextCalls = iter.returnCalls = 0
+    assert(new Set([0,1,2,3]).isDisjointFrom(setlike), true)
+    assert(iter.nextCalls, 4)
+    assert(iter.returnCalls, 0)
+    iter.nextCalls = iter.returnCalls = 0
+    function expectException(klass, sizes) {
+        for (const size of sizes) {
+            let ex
+            try {
+                new Set([]).union({size})
+            } catch (e) {
+                ex = e
+            }
+            assert(ex instanceof klass)
+            assert(typeof ex.message, "string")
+            assert(ex.message.includes(".size"))
+        }
+    }
+    expectException(RangeError, [-1, -(Number.MAX_SAFE_INTEGER+1), -Infinity])
+    expectException(TypeError, [NaN])
+    const legal = [
+        0, -0, 1, 2,
+        Number.MAX_SAFE_INTEGER + 1,
+        Number.MAX_SAFE_INTEGER + 2,
+        Number.MAX_SAFE_INTEGER + 3,
+        Infinity
+    ]
+    for (const size of legal) {
+        new Set([]).union({
+            size,
+            has() { return false },
+            keys() { return [].values() },
+        })
+    }
+}
+
 function test_weak_set()
 {
     var a, e;
@@ -1078,6 +1288,7 @@ test_function();
 test_enum();
 test_array();
 test_string();
+test_rope();
 test_math();
 test_number();
 test_eval();
@@ -1088,6 +1299,7 @@ test_regexp();
 test_symbol();
 test_map();
 test_weak_map();
+test_set();
 test_weak_set();
 test_generator();
 test_proxy_iter();

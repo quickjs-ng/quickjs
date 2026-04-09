@@ -3,9 +3,8 @@ shared_module(
   'fib.c',
 
   name_prefix: '',
-  gnu_symbol_visibility: 'default',
-  c_args: ['-DJS_SHARED_LIBRARY'],
-  dependencies: host_system == 'windows' ? qjs_dep : [],
+  gnu_symbol_visibility: 'hidden',
+  dependencies: qjs_module_dep,
 )
 
 shared_module(
@@ -13,7 +12,6 @@ shared_module(
   'point.c',
 
   name_prefix: '',
-  gnu_symbol_visibility: 'default',
-  c_args: ['-DJS_SHARED_LIBRARY'],
-  dependencies: host_system == 'windows' ? qjs_dep : [],
+  gnu_symbol_visibility: 'hidden',
+  dependencies: qjs_module_dep,
 )

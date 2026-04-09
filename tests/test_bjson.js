@@ -268,7 +268,7 @@ function bjson_test_bytecode()
     var buf, o, r, e, i;
 
     o = std.evalScript(";(function f(o){ return o.i })", {compile_only: true});
-    buf = bjson.write(o, /*JS_WRITE_OBJ_BYTECODE*/(1 << 0));
+    buf = bjson.write(o, bjson.WRITE_OBJ_BYTECODE);
     try {
         bjson.read(buf, 0, buf.byteLength);
     } catch (_e) {
@@ -276,7 +276,7 @@ function bjson_test_bytecode()
     }
     assert(String(e), "SyntaxError: no bytecode allowed");
 
-    o = bjson.read(buf, 0, buf.byteLength, /*JS_READ_OBJ_BYTECODE*/(1 << 0));
+    o = bjson.read(buf, 0, buf.byteLength, bjson.READ_OBJ_BYTECODE);
     assert(String(o), "[function bytecode]");
     o = std.evalScript(o, {eval_function: true});
     for (i = 0; i < 42; i++) o({i}); // exercise o.i IC
@@ -285,17 +285,41 @@ function bjson_test_bytecode()
 function bjson_test_fuzz()
 {
     var corpus = [
-        "FBAAAAAABGA=",
-        "FObm5oIt",
-        "FAARABMGBgYGBgYGBgYGBv////8QABEALxH/vy8R/78=",
-        "FAAIfwAK/////3//////////////////////////////3/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAD5+fn5+fn5+fn5+fkAAAAAAAYAqw==",
+        ["Gf////8QAAAAAARg"],
+        ["Gf/////m5uaCLQ=="],
+        ["Gf////8AEQATBgYGBgYGBgYGBgb/////EAARAC8R/78vEf+/"],
+        ["Gf////8ACH8ACv////9//////////////////////////////9//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAA+fn5+fn5+fn5+fn5AAAAAAAGAKs="],
+        ["Gf////8ADgAAABQA=", bjson.READ_OBJ_REFERENCE],
     ];
-    for (var input of corpus) {
+    for (var [input, flags] of corpus) {
         var buf = base64decode(input);
         try {
-            bjson.read(buf, 0, buf.byteLength);
+            bjson.read(buf, 0, buf.byteLength, flags);
         } catch (e) {
             if (/invalid version/.test(e.message)) throw e; // corpus needs update
+            if (/checksum error/.test(e.message)) throw e;
+        }
+    }
+}
+
+function bjson_test_csum()
+{
+    var buf = bjson.write("fortytwo");
+    var tab = new Uint8Array(buf);
+    for (var i = 5; i < tab.length; i++) {
+        for (var k = 0; k < 256; k++) {
+            var t = tab[i];
+            if (t == k)
+                continue;
+            tab[i] = k;
+            var caught = false;
+            try {
+                bjson.read(buf, 0, buf.byteLength);
+            } catch (e) {
+                caught = /checksum error/.test(e.message);
+            }
+            assert(caught);
+            tab[i] = t;
         }
     }
 }
@@ -336,6 +360,7 @@ function bjson_test_all()
     bjson_test_symbol();
     bjson_test_bytecode();
     bjson_test_fuzz();
+    bjson_test_csum();
 }
 
 bjson_test_all();

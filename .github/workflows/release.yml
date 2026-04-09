@@ -7,14 +7,27 @@ on:
       - "v*.*.*"
 
 jobs:
+  check_meson_version:
+    runs-on: ubuntu-22.04
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: install meson and ninja
+        run: |
+          pip install --upgrade meson ninja
+      - name: check meson version
+        run: |
+          MESON_VERSION=$(meson introspect meson.build --projectinfo | jq -r '.version')
+          test "${{ github.ref_name }}" = "v${MESON_VERSION}"
+
   linux:
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
-        arch: [aarch64, riscv64, x86, x86_64]
+        arch: [aarch64, armv7, riscv64, x86, x86_64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: jirutka/setup-alpine@v1
         with:
           arch: ${{matrix.arch}}
@@ -24,7 +37,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -DQJS_BUILD_CLI_STATIC=ON ..
+          cmake -DQJS_BUILD_WERROR=ON -DQJS_BUILD_CLI_STATIC=ON ..
           cd ..
           cmake --build build --target qjs_exe -j$(getconf _NPROCESSORS_ONLN)
           cmake --build build --target qjsc -j$(getconf _NPROCESSORS_ONLN)
@@ -35,7 +48,7 @@ jobs:
         run: |
           file build/*-linux-${{matrix.arch}}
       - name: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qjs-linux-${{matrix.arch}}
           path: build/*-linux-${{matrix.arch}}
@@ -43,12 +56,12 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build
         run: |
           mkdir build
           cd build
-          cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ..
+          cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DQJS_BUILD_WERROR=ON ..
           make -j$(getconf _NPROCESSORS_ONLN)
           make -C .. amalgam # writes build/quickjs-amalgam.zip
           mv qjs qjs-darwin
@@ -57,13 +70,13 @@ jobs:
         run: |
           lipo -info build/qjs-darwin build/qjsc-darwin
       - name: upload amalgamation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quickjs-amalgam.zip
           path: build/quickjs-amalgam.zip
           compression-level: 0 # already compressed
       - name: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qjs-darwin
           path: build/*-darwin
@@ -78,7 +91,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -100,7 +113,7 @@ jobs:
           file build/qjs-windows-${{matrix.arch}}.exe
           ldd build/qjs-windows-${{matrix.arch}}.exe build/qjsc-windows-${{matrix.arch}}.exe
       - name: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qjs-windows-${{matrix.arch}}
           path: build/*-windows-${{matrix.arch}}.exe
@@ -108,35 +121,42 @@ jobs:
   wasi:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: setup wasi-sdk
         run: |
-          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.deb -P /tmp
+          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-x86_64-linux.deb -P /tmp
           sudo apt install /tmp/wasi-sdk*.deb
       - name: build
         run: |
-          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_BUILD_WERROR=ON
           make -C build qjs_exe
           mv build/qjs build/qjs-wasi.wasm
+      - name: build wasi reactor
+        run: |
+          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_BUILD_WERROR=ON -DQJS_WASI_REACTOR=ON
+          make -C build qjs_wasi
+          mv build/qjs.wasm build/qjs-wasi-reactor.wasm
       - name: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qjs-wasi
-          path: build/qjs-wasi.wasm
+          path: |
+            build/qjs-wasi.wasm
+            build/qjs-wasi-reactor.wasm
 
   upload-to-release:
-    needs: [linux, macos, windows, wasi]
+    needs: [linux, macos, windows, wasi, check_meson_version]
     runs-on: ubuntu-22.04
     steps:
       - name: get assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: build
           merge-multiple: true
       - run: ls -R build
       - name: release
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             build/*

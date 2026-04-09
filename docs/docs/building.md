@@ -31,7 +31,7 @@ instructions on how to use them.
 The amalgamated build rolls individual source files into a single big file.
 It's a good choice for projects that want to use QuickJS without CMake.
 
-Download quickjs-amalgam.zip from https://github.com/quickjs-ng/quickjs/releases
+Download quickjs-amalgam.zip from [Releases](https://github.com/quickjs-ng/quickjs/releases)
 
 To enable the std, os and bjson modules, compile quickjs-amalgam.c with
 `-DQJS_BUILD_LIBC`.

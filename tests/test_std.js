@@ -104,6 +104,17 @@ function test_popen()
     std.writeFile(fname, content);
     assert(std.loadFile(fname), content);
 
+    // popen pipe is unidirectional so mode should
+    // be either read or write but not both
+    let caught = false;
+    try {
+        std.popen(cmd, "rw");
+    } catch (e) {
+        assert(/invalid file mode/.test(e.message));
+        caught = true;
+    }
+    assert(caught);
+
     /* execute shell command */
     f = std.popen(cmd + " " + fname, "r");
     str = f.readAsString();
@@ -158,7 +169,10 @@ function test_os()
 
     [files, err] = os.readdir(fdir);
     assert(err, 0);
-    assert(files.indexOf(fname) >= 0);
+    assert(files.length >= 3);
+    assert(files.includes(fname));
+    assert(files.includes("."));
+    assert(files.includes(".."));
 
     fdate = 10000;
 
@@ -199,6 +213,32 @@ function test_os()
     assert(fd < 0);
 
     assert(os.remove(fdir) === 0);
+
+    if (!isWin) {
+        [fdir, err] = os.mkdtemp();
+        assert(err, 0);
+        assert(fdir.startsWith("tmp"));
+        assert(fdir.length, 9);
+
+        [fpath, fd] = os.mkstemp(`${fdir}/XXXXXX`);
+        assert(fdir.startsWith(`${fdir}`));
+        assert(fd >= 0);
+
+        const f = std.fdopen(fd, "w+");
+        f.write("xyzzy");
+        f.flush();
+        const b = new Uint8Array(5);
+        f.seek(0, std.SEEK_SET);
+        assert(5, f.read(b.buffer));
+        const s = [...b].map(c => String.fromCharCode(c)).join("");
+        assert(s, "xyzzy");
+        f.seek(0, std.SEEK_SET);
+        assert(0, f.read(b.buffer, 5, 42));
+        f.close();
+
+        assert(os.remove(fpath), 0);
+        assert(os.remove(fdir), 0);
+    }
 }
 
 function test_os_exec()

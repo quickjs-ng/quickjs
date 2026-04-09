@@ -441,7 +441,7 @@ int main(int argc, char **argv)
        the script */
     while (optind < argc && *argv[optind] == '-') {
         char *arg = argv[optind] + 1;
-        const char *longopt = "";
+        char *longopt = "";
         char *optarg = NULL;
         /* a single - is not an option, it also stops argument scanning */
         if (!*arg)
@@ -621,7 +621,7 @@ start:
     }
 
     /* loader for ES6 modules */
-    JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);
+    JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, js_module_check_attributes, NULL);
 
     /* exit on unhandled promise rejections */
     JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker, NULL);

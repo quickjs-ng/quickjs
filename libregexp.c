@@ -31,6 +31,10 @@
 #include "cutils.h"
 #include "libregexp.h"
 
+#if defined(__sun)
+#include <alloca.h>
+#endif
+
 /*
   TODO:
 
@@ -116,7 +120,7 @@ static inline int lre_is_digit(int c) {
 /* insert 'len' bytes at position 'pos'. Return < 0 if error. */
 static int dbuf_insert(DynBuf *s, int pos, int len)
 {
-    if (dbuf_realloc(s, s->size + len))
+    if (dbuf_claim(s, len))
         return -1;
     memmove(s->buf + pos + len, s->buf + pos, s->size - pos);
     s->size += len;
@@ -389,6 +393,13 @@ static int JS_PRINTF_FORMAT_ATTR(2, 3) re_parse_error(REParseState *s, const cha
 static int re_parse_out_of_memory(REParseState *s)
 {
     return re_parse_error(s, "out of memory");
+}
+
+static int lre_check_size(REParseState *s)
+{
+    if (s->byte_code.size < 64*1024*1024)
+        return 0;
+    return re_parse_out_of_memory(s);
 }
 
 /* If allow_overflow is false, return -1 in case of
@@ -830,7 +841,9 @@ static int re_parse_char_class(REParseState *s, const uint8_t **pp)
         const char *s = verboten;
         int n = 1;
         do {
-            if (!memcmp(s, p, n))
+            // not memcmp because some implementations compare word instead
+            // of byte at a time and will happily read past end of input
+            if (!strncmp(s, (const char *)p, n))
                 if (p[n] == ']')
                     goto invalid_class_range;
             s += n;
@@ -1176,6 +1189,8 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
     bool greedy, add_zero_advance_check, is_neg, is_backward_lookahead;
     CharRange cr_s, *cr = &cr_s;
 
+    if (lre_check_size(s))
+        return -1;
     last_atom_start = -1;
     last_capture_count = 0;
     p = s->buf_ptr;
@@ -1667,6 +1682,8 @@ static int re_parse_alternative(REParseState *s, bool is_backward_dir)
     int ret;
     size_t start, term_start, end, term_size;
 
+    if (lre_check_size(s))
+        return -1;
     start = s->byte_code.size;
     for(;;) {
         p = s->buf_ptr;
@@ -1683,7 +1700,7 @@ static int re_parse_alternative(REParseState *s, bool is_backward_dir)
                speed is not really critical here) */
             end = s->byte_code.size;
             term_size = end - term_start;
-            if (dbuf_realloc(&s->byte_code, end + term_size))
+            if (dbuf_claim(&s->byte_code, term_size))
                 return -1;
             memmove(s->byte_code.buf + start + term_size,
                     s->byte_code.buf + start,
@@ -1701,7 +1718,8 @@ static int re_parse_disjunction(REParseState *s, bool is_backward_dir)
 
     if (lre_check_stack_overflow(s->opaque, 0))
         return re_parse_error(s, "stack overflow");
-
+    if (lre_check_size(s))
+        return -1;
     start = s->byte_code.size;
     if (re_parse_alternative(s, is_backward_dir))
         return -1;
@@ -2232,7 +2250,8 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
         case REOP_save_start:
         case REOP_save_end:
             val = *pc++;
-            assert(val < s->capture_count);
+            if (val >= s->capture_count)
+                return LRE_RET_BYTECODE_ERROR;
             capture[2 * val + opcode - REOP_save_start] = (uint8_t *)cptr;
             break;
         case REOP_save_reset:
@@ -2241,7 +2260,8 @@ static intptr_t lre_exec_backtrack(REExecContext *s, uint8_t **capture,
                 val = pc[0];
                 val2 = pc[1];
                 pc += 2;
-                assert(val2 < s->capture_count);
+                if (val2 >= s->capture_count)
+                    return LRE_RET_BYTECODE_ERROR;
                 while (val <= val2) {
                     capture[2 * val] = NULL;
                     capture[2 * val + 1] = NULL;
@@ -2532,80 +2552,6 @@ const char *lre_get_groupnames(const uint8_t *bc_buf)
         return NULL;
     re_bytecode_len = get_u32(bc_buf + RE_HEADER_BYTECODE_LEN);
     return (const char *)(bc_buf + RE_HEADER_LEN + re_bytecode_len);
-}
-
-void lre_byte_swap(uint8_t *buf, size_t len, bool is_byte_swapped)
-{
-    uint8_t *p, *pe;
-    uint32_t n, r, nw;
-
-    p = buf;
-    if (len < RE_HEADER_LEN)
-        abort();
-
-    // format is:
-    //  <header>
-    //  <bytecode>
-    //  <capture group name 1>
-    //  <capture group name 2>
-    //  etc.
-    inplace_bswap16(&p[RE_HEADER_FLAGS]);
-
-    n = get_u32(&p[RE_HEADER_BYTECODE_LEN]);
-    inplace_bswap32(&p[RE_HEADER_BYTECODE_LEN]);
-    if (is_byte_swapped)
-        n = bswap32(n);
-    if (n > len - RE_HEADER_LEN)
-        abort();
-
-    p = &buf[RE_HEADER_LEN];
-    pe = &p[n];
-
-    while (p < pe) {
-        n = reopcode_info[*p].size;
-        switch (n) {
-        case 1:
-        case 2:
-            break;
-        case 3:
-            switch (*p) {
-            case REOP_save_reset: // has two 8 bit arguments
-                break;
-            case REOP_range32: // variable length
-                nw = get_u16(&p[1]);  // number of pairs of uint32_t
-                if (is_byte_swapped)
-                    n = bswap16(n);
-                for (r = 3 + 8 * nw; n < r; n += 4)
-                    inplace_bswap32(&p[n]);
-                goto doswap16;
-            case REOP_range: // variable length
-                nw = get_u16(&p[1]);  // number of pairs of uint16_t
-                if (is_byte_swapped)
-                    n = bswap16(n);
-                for (r = 3 + 4 * nw; n < r; n += 2)
-                    inplace_bswap16(&p[n]);
-                goto doswap16;
-            default:
-            doswap16:
-                inplace_bswap16(&p[1]);
-                break;
-            }
-            break;
-        case 5:
-            inplace_bswap32(&p[1]);
-            break;
-        case 17:
-            assert(*p == REOP_simple_greedy_quant);
-            inplace_bswap32(&p[1]);
-            inplace_bswap32(&p[5]);
-            inplace_bswap32(&p[9]);
-            inplace_bswap32(&p[13]);
-            break;
-        default:
-            abort();
-        }
-        p = &p[n];
-    }
 }
 
 #ifdef TEST

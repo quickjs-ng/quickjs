@@ -26,7 +26,7 @@ jobs:
   codegen:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build
         run: |
           make codegen
@@ -58,17 +58,16 @@ jobs:
           - { os: ubuntu-latest, configType: asan+ubsan, runTest262: true }
           - { os: ubuntu-latest, configType: msan }
           - { os: ubuntu-latest, configType: tcc }
-          - { os: ubuntu-latest, arch: x86 }
+          - { os: ubuntu-latest, arch: x86, runTest262: true }
           - { os: ubuntu-latest, arch: riscv64 }
-          - { os: ubuntu-latest, arch: s390x }
 
           - { os: macos-14, configType: Debug }
           - { os: macos-14, configType: Release }
           - { os: macos-14, configType: examples }
           - { os: macos-14, configType: shared }
-          - { os: macos-14, configType: asan+ubsan }
+          - { os: macos-14, configType: asan+ubsan, runTest262: true }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -97,7 +96,7 @@ jobs:
         uses: jirutka/setup-alpine@v1
         with:
           arch: ${{ matrix.config.arch }}
-          packages: "build-base make cmake"
+          packages: "build-base make cmake git"
 
       - name: uname
         run: uname -a
@@ -169,6 +168,10 @@ jobs:
         run: |
           ./build/api-test
 
+      - name: test lre
+        run: |
+          ./build/lre-test
+
   windows-msvc:
     runs-on: ${{ matrix.config.os }}
     strategy:
@@ -182,10 +185,10 @@ jobs:
           - { arch: ARM64, vsArch: arm64, buildType: Debug, os: windows-11-arm }
           - { arch: ARM64, vsArch: arm64, buildType: Release, os: windows-11-arm }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build
         run: |
-          cmake -B build -DQJS_BUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -A ${{matrix.config.arch}}
+          cmake -B build -DQJS_BUILD_WERROR=ON -DQJS_BUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -A ${{matrix.config.arch}}
           cmake --build build --config ${{matrix.config.buildType}}
       - name: stats
         run: |
@@ -205,6 +208,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.config.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.config.buildType}}\lre-test.exe
       - name: Set up Visual Studio shell
         uses: egor-tensin/vs-shell@v2
         with:
@@ -221,7 +227,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: install ninja
         run: |
           choco install ninja
@@ -255,10 +261,11 @@ jobs:
         buildType: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build
         run: |
           git submodule update --init --checkout --depth 1
-          cmake -B build -DQJS_BUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -T ClangCL
+          cmake -B build -DQJS_BUILD_WERROR=ON -DQJS_BUILD_EXAMPLES=ON -G "Visual Studio 17 2022" -T ClangCL
           cmake --build build --config ${{matrix.buildType}}
       - name: stats
         run: |
@@ -278,6 +285,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.buildType}}\lre-test.exe
 
   windows-ninja:
     runs-on: windows-latest
@@ -286,7 +296,7 @@ jobs:
       matrix:
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: install ninja
         run: |
           choco install ninja
@@ -294,7 +304,7 @@ jobs:
       - name: build
         run: |
           git submodule update --init --checkout --depth 1
-          cmake -B build -DQJS_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Ninja"
+          cmake -B build -DQJS_BUILD_WERROR=ON -DQJS_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=${{matrix.buildType}} -G "Ninja"
           cmake --build build
       - name: stats
         run: |
@@ -310,6 +320,9 @@ jobs:
       - name: test api
         run: |
           build\api-test.exe
+      - name: test lre
+        run: |
+          build\lre-test.exe
 
   windows-sdk:
     runs-on: windows-latest
@@ -319,7 +332,7 @@ jobs:
         arch: [x64, Win32]
         buildType: [Debug, Release]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install windows sdk
         uses: ChristopheLav/windows-sdk-install@v1
         with:
@@ -327,7 +340,7 @@ jobs:
           features: 'OptionId.DesktopCPPx86,OptionId.DesktopCPPx64'
       - name: build
         run: |
-          cmake -B build -DQJS_BUILD_EXAMPLES=ON -DCMAKE_SYSTEM_VERSION="10.0.26100.0" -A ${{matrix.arch}}
+          cmake -B build -DQJS_BUILD_WERROR=ON -DQJS_BUILD_EXAMPLES=ON -DCMAKE_SYSTEM_VERSION="10.0.26100.0" -A ${{matrix.arch}}
           cmake --build build --config ${{matrix.buildType}}
       - name: stats
         run: |
@@ -343,6 +356,9 @@ jobs:
       - name: test api
         run: |
           build\${{matrix.buildType}}\api-test.exe
+      - name: test lre
+        run: |
+          build\${{matrix.buildType}}\lre-test.exe
 
   windows-mingw:
     runs-on: windows-latest
@@ -359,7 +375,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
@@ -397,13 +413,16 @@ jobs:
     - name: test api
       run: |
         ./build/api-test
+    - name: test lre
+      run: |
+        ./build/lre-test
   windows-mingw-shared:
     runs-on: windows-latest
     defaults:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -425,32 +444,37 @@ jobs:
   emscripten:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: mymindstorm/setup-emsdk@v13
+      - uses: actions/checkout@v6
+      - uses: mymindstorm/setup-emsdk@v15
       - name: check emsdk
         run: emcc -v
       - name: build
         run: |
-          emcmake cmake -B build -DQJS_BUILD_LIBC=ON
+          emcmake cmake -B build -DQJS_BUILD_WERROR=ON -DQJS_BUILD_LIBC=ON
           emmake make -C build qjs_wasm "-j$(getconf _NPROCESSORS_ONLN)"
       - name: result
         run: ls -lh build
   wasi:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: jcbhmr/setup-wasmtime@v2
       - name: setup wasi-sdk
         run: |
-          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-linux.deb -P /tmp
+          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-x86_64-linux.deb -P /tmp
           sudo apt install /tmp/wasi-sdk*.deb
       - name: test
         run: |
-          cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
+          cmake -B build -DQJS_BUILD_WERROR=ON -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
           make -C build qjs_exe
           wasmtime run build/qjs -qd
           echo "console.log('hello wasi!');" > t.js
           wasmtime run --dir . build/qjs t.js
+      - name: build wasi reactor
+        run: |
+          cmake -B build -DQJS_BUILD_WERROR=ON -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_WASI_REACTOR=ON
+          make -C build qjs_wasi
+          ls -lh build/qjs.wasm
 
   cygwin:
     runs-on: windows-latest
@@ -466,7 +490,7 @@ jobs:
         with:
             packages: make cmake gcc-g++ bash
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: build
         run: make
@@ -485,10 +509,14 @@ jobs:
         run: |
           ./build/api-test
 
+      - name: test lre
+        run: |
+          ./build/lre-test
+
   openbsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build + test
         uses: vmactions/openbsd-vm@v1
         with:
@@ -502,7 +530,7 @@ jobs:
   freebsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build + test
         uses: vmactions/freebsd-vm@v1
         with:
@@ -517,7 +545,7 @@ jobs:
     runs-on: ubuntu-latest
     container: reactnativecommunity/react-native-android:v13.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Configure android arm64
         # see build options you can use in https://developer.android.com/ndk/guides/cmake
         run: |
@@ -532,10 +560,10 @@ jobs:
   ios:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: configure
         run: |
-          cmake -B build -GXcode -DCMAKE_SYSTEM_NAME:STRING=iOS -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED:BOOL=NO -DQJS_BUILD_LIBC=ON
+          cmake -B build -GXcode -DQJS_BUILD_WERROR=ON -DCMAKE_SYSTEM_NAME:STRING=iOS -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED:BOOL=NO -DQJS_BUILD_LIBC=ON
       - name: build
         run: |
           cmake --build build --config Release --target qjs
@@ -547,7 +575,7 @@ jobs:
       QJS_BUILD_CLI_WITH_MIMALLOC: ON
       MIMALLOC_SHOW_STATS: 1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: install dependencies
         run: |
           sudo apt update && sudo apt -y install libmimalloc-dev
@@ -567,7 +595,7 @@ jobs:
       QJS_BUILD_CLI_WITH_STATIC_MIMALLOC: ON
       MIMALLOC_SHOW_STATS: 1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: install dependencies
         run: |
           brew install mimalloc
@@ -590,7 +618,7 @@ jobs:
           - { os: macos-latest }
     runs-on: ${{ matrix.config.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build
         run: |
           make
@@ -610,7 +638,7 @@ jobs:
   jscheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: jscheck
         run: |
           make jscheck
@@ -618,7 +646,7 @@ jobs:
   parserless:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: build
         run: |
           make QJS_DISABLE_PARSER=ON QJS_BUILD_EXAMPLES=ON
@@ -676,11 +704,14 @@ jobs:
           - name: clang+sanitize
             args: >-
               "-Db_sanitize=address,undefined"
+              "-Db_lundef=false"
             extra_envs:
               CC: clang
               CXX: clang++
           - name: clang+msan
-            args: -Db_sanitize=memory
+            args: >-
+              "-Db_sanitize=memory"
+              "-Db_lundef=false"
             extra_envs:
               CC: clang
               CXX: clang++
@@ -690,11 +721,7 @@ jobs:
           - name: clang-cl+sanitize
             args: >-
               "-Db_sanitize=address,undefined"
-            extra_envs:
-              CC: clang-cl
-              CXX: clang-cl
-          - name: clang-cl+msan
-            args: -Db_sanitize=memory
+              "-Db_lundef=false"
             extra_envs:
               CC: clang-cl
               CXX: clang-cl
@@ -711,12 +738,6 @@ jobs:
           - platform: macos-latest
             mode:
               name: clang-cl+sanitize
-          - platform: ubuntu-latest
-            mode:
-              name: clang-cl+msan
-          - platform: macos-latest
-            mode:
-              name: clang-cl+msan
 
           # Use clang-cl instead of MSYS2 clang.
           #
@@ -797,7 +818,7 @@ jobs:
       # ... good job, microsoft :))))
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Activate MSVC and Configure
         if: ${{ matrix.platform == 'windows-latest' }}
         env: ${{ matrix.mode.extra_envs }}
@@ -817,7 +838,7 @@ jobs:
         run: |
           meson test -C build-${{ matrix.flavor }} --timeout-multiplier 5 --print-errorlogs
           meson test --benchmark -C build-${{ matrix.flavor }} --timeout-multiplier 5 --print-errorlogs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ failure() }}
         with:
           name: ${{ matrix.platform }}-${{ matrix.mode.name }}-${{ matrix.features.name }}-${{ matrix.flavor }}-logs

@@ -259,6 +259,15 @@ function test_delete()
     assert(err, true, "delete");
 }
 
+function test_constructor()
+{
+    function *G() {}
+    let ex
+    try { new G() } catch (ex_) { ex = ex_ }
+    assert(ex instanceof TypeError)
+    assert(ex.message, "G is not a constructor")
+}
+
 function test_prototype()
 {
     var f = function f() { };
@@ -278,6 +287,13 @@ function test_arguments()
         assert(arguments[1], 3, "arguments");
     }
     f2(1, 3);
+
+    /* mapped arguments with GC must not crash (non-detached var_refs) */
+    function f3(a) {
+        arguments;
+        gc();
+    }
+    f3(0);
 }
 
 function test_class()
@@ -360,6 +376,13 @@ function test_class()
     assert(new P().set(), "456");
     assert(new P().async(), "789");
     assert(new P().static(), 42);
+
+    /* test that division after private field in parens is not parsed as regex */
+    class Q {
+        #x = 10;
+        f() { return (this.#x / 2); }
+    }
+    assert(new Q().f(), 5);
 };
 
 function test_template()
@@ -718,6 +741,7 @@ test_eq();
 test_inc_dec();
 test_op2();
 test_delete();
+test_constructor();
 test_prototype();
 test_arguments();
 test_class();

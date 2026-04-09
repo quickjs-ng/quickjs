@@ -63,6 +63,8 @@ function test_bigint1()
 
     r = 1n << 32n;
     assert(r, 4294967296n, "1 << 32n === 4294967296n");
+
+    assert(String(-9223372036854775808n), "-9223372036854775808");
 }
 
 function test_bigint2()

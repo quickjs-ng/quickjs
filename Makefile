@@ -1,10 +1,10 @@
 #
 # QuickJS Javascript Engine
 #
-# Copyright (c) 2017-2024 Fabrice Bellard
+# Copyright (c) 2017-2026 Fabrice Bellard
 # Copyright (c) 2017-2024 Charlie Gordon
-# Copyright (c) 2023-2025 Ben Noordhuis
-# Copyright (c) 2023-2025 Saúl Ibarra Corretgé
+# Copyright (c) 2023-2026 Ben Noordhuis
+# Copyright (c) 2023-2026 Saúl Ibarra Corretgé
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -79,8 +79,10 @@ codegen: $(QJSC)
 	$(QJSC) -e -o gen/function_source.c tests/function_source.js
 	$(QJSC) -e -o gen/hello.c examples/hello.js
 	$(QJSC) -e -o gen/hello_module.c -m examples/hello_module.js
-	$(QJSC) -e -o gen/test_fib.c -M examples/fib.so,fib -m examples/test_fib.js
+	$(QJSC) -e -o gen/test_fib.c -m examples/test_fib.js
 	$(QJSC) -C -ss -o builtin-array-fromasync.h builtin-array-fromasync.js
+	$(QJSC) -C -ss -o builtin-iterator-zip.h builtin-iterator-zip.js
+	$(QJSC) -C -ss -o builtin-iterator-zip-keyed.h builtin-iterator-zip-keyed.js
 
 debug:
 	BUILD_TYPE=Debug $(MAKE)

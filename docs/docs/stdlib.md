@@ -56,7 +56,10 @@ Supported flags:
 
 - `READ_OBJ_BYTECODE`: allow de-serializing functions and modules
 - `READ_OBJ_REFERENCE`: allow de-serializing object references
-- `READ_OBJ_SAB`: allow de-serializing SharedArrayBuffer instances
+
+Security caveat: `bjson.read()` is resilient against malformed input (the wire
+format is checksummed) but is not designed to withstand adversarial attacks.
+Don't feed it untrusted input.
 
 ## `qjs:os` module
 
@@ -155,6 +158,31 @@ Change the current directory. Return 0 if OK or `-errno`.
 
 Create a directory at `path`. Return 0 if OK or `-errno`.
 
+### `mkdtemp(pattern = "tmpXXXXXX")`
+
+Create a temporary directory. `XXXXXX` must be at the end of the pattern
+string and is replaced with a random name. The directory is created with
+file mode `0o700`.
+
+Return `[path, err]` where `path` is a string and `err` is 0 or `-errno`.
+
+Not available on Windows and WASI.
+
+### `mkstemp(pattern = "tmpXXXXXX")`
+
+Create a temporary file and open it. `XXXXXX` must be at the end of the
+pattern string and is replaced with a random name. The file is created with
+file mode `0o600` and opened in read/write mode.
+
+Return `[path, fd]` where `path` is a string and `fd` is the file descriptor
+or `-errno`, i.e., the error code if less than zero.
+
+Unlike `std.tmpfile()`, the file is not automatically deleted on close.
+
+See also `std.fdopen()`.
+
+Not available on Windows and WASI.
+
 ### `stat(path)` / `lstat(path)`
 
 Return `[obj, err]` where `obj` is an object containing the
@@ -198,7 +226,8 @@ the error code.
 
 Return `[array, err]` where `array` is an array of strings
 containing the filenames of the directory `path`. `err` is
-the error code.
+the error code. `array` contains at least `"."` and `".."`
+if successful.
 
 ### `setReadHandler(fd, func)`
 
@@ -253,6 +282,8 @@ object containing optional parameters:
   process.
 - `uid` - Integer. If present, the process uid with `setuid`.
 - `gid` - Integer. If present, the process gid with `setgid`.
+- `groups` - Array of integer. If present, the supplementary
+   group IDs with `setgroup`.
 
 ### `waitpid(pid, options)`
 
@@ -539,15 +570,15 @@ Return true if there was an error.
 
 Clear the error indication.
 
-#### `read(buffer, position, length)`
+#### `read(buffer, position = 0, length = buffer.length)`
 
 Read `length` bytes from the file to the ArrayBuffer `buffer` at byte
-position `position` (wrapper to the libc `fread`).
+position `position`. Wrapper to the libc function `fread`.
 
-#### `write(buffer, position, length)`
+#### `write(buffer, position = 0, length = buffer.length)`
 
-Write `length` bytes to the file from the ArrayBuffer `buffer` at byte
-position `position` (wrapper to the libc `fwrite`).
+Write `length` bytes to the file from the ArrayBuffer or string `buffer`
+at byte position `position`. Wrapper to the libc function `fwrite`.
 
 #### `getline()`
 
