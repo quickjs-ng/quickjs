@@ -11451,6 +11451,11 @@ bool JS_IsFunction(JSContext *ctx, JSValueConst val)
     }
 }
 
+bool JS_IsAsyncFunction(JSValueConst val)
+{
+    return JS_CLASS_ASYNC_FUNCTION == JS_GetClassID(val);
+}
+
 static bool JS_IsCFunction(JSContext *ctx, JSValueConst val, JSCFunction *func,
                            int magic)
 {
