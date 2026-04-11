@@ -976,7 +976,8 @@ static void new_symbol(void)
     JS_SetPropertyStr(ctx, global, "sym_local_null", sym);
 
     ret = eval(ctx, "typeof sym_local_null === 'symbol' && sym_local_null.description === undefined && Symbol.keyFor(sym_local_null) === undefined");
-    assert(JS_IsBool(ret) && JS_VALUE_GET_BOOL(ret));
+    assert(JS_IsBool(ret));
+    assert(JS_VALUE_GET_BOOL(ret));
     JS_FreeValue(ctx, ret);
 
     /* Global symbol with NULL description -> Symbol.for() -> Symbol.for('undefined') */
@@ -986,7 +987,8 @@ static void new_symbol(void)
     JS_SetPropertyStr(ctx, global, "sym_global_null", sym);
 
     ret = eval(ctx, "typeof sym_global_null === 'symbol' && sym_global_null.description === 'undefined' && Symbol.keyFor(sym_global_null) === 'undefined'");
-    assert(JS_IsBool(ret) && JS_VALUE_GET_BOOL(ret));
+    assert(JS_IsBool(ret));
+    assert(JS_VALUE_GET_BOOL(ret));
     JS_FreeValue(ctx, ret);
 
     /* Local symbol with description -> Symbol('test_local') */
@@ -996,7 +998,8 @@ static void new_symbol(void)
     JS_SetPropertyStr(ctx, global, "sym_local_str", sym);
 
     ret = eval(ctx, "sym_local_str.description === 'test_local' && Symbol.keyFor(sym_local_str) === undefined");
-    assert(JS_IsBool(ret) && JS_VALUE_GET_BOOL(ret));
+    assert(JS_IsBool(ret));
+    assert(JS_VALUE_GET_BOOL(ret));
     JS_FreeValue(ctx, ret);
 
     /* Global symbol with description -> Symbol.for('test_global') */
@@ -1006,7 +1009,8 @@ static void new_symbol(void)
     JS_SetPropertyStr(ctx, global, "sym_global_str", sym);
 
     ret = eval(ctx, "sym_global_str.description === 'test_global' && Symbol.keyFor(sym_global_str) === 'test_global'");
-    assert(JS_IsBool(ret) && JS_VALUE_GET_BOOL(ret));
+    assert(JS_IsBool(ret));
+    assert(JS_VALUE_GET_BOOL(ret));
     JS_FreeValue(ctx, ret);
 
     JS_FreeValue(ctx, global);
