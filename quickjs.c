@@ -4591,22 +4591,22 @@ static void js_free_cstring(JSRuntime *rt, const void *ptr)
 
 void JS_FreeCString(JSContext *ctx, const char *ptr)
 {
-    return js_free_cstring(ctx->rt, ptr);
+    js_free_cstring(ctx->rt, ptr);
 }
 
 void JS_FreeCStringRT(JSRuntime *rt, const char *ptr)
 {
-    return js_free_cstring(rt, ptr);
+    js_free_cstring(rt, ptr);
 }
 
 void JS_FreeCStringUTF16(JSContext *ctx, const uint16_t *ptr)
 {
-    return js_free_cstring(ctx->rt, ptr);
+    js_free_cstring(ctx->rt, ptr);
 }
 
 void JS_FreeCStringRT_UTF16(JSRuntime *rt, const uint16_t *ptr)
 {
-    return js_free_cstring(rt, ptr);
+    js_free_cstring(rt, ptr);
 }
 
 static int memcmp16_8(const uint16_t *src1, const uint8_t *src2, int len)
