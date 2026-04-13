@@ -187,6 +187,7 @@ DEF(          gosub, 5, 0, 0, label) /* used to execute the finally block */
 DEF(            ret, 1, 1, 0, none) /* used to return from the finally block */
 DEF(      nip_catch, 1, 2, 1, none) /* catch ... a -> a */
 
+DEF(   check_object, 1, 1, 1, none)
 DEF(      to_object, 1, 1, 1, none)
 //DEF(      to_string, 1, 1, 1, none)
 DEF(     to_propkey, 1, 1, 1, none)
@@ -209,7 +210,6 @@ DEF(   for_of_start, 1, 1, 3, none)
 DEF(for_await_of_start, 1, 1, 3, none)
 DEF(    for_in_next, 1, 1, 3, none)
 DEF(    for_of_next, 2, 3, 5, u8)
-DEF(iterator_check_object, 1, 1, 1, none)
 DEF(iterator_get_value_done, 1, 1, 2, none)
 DEF( iterator_close, 1, 3, 0, none)
 DEF(  iterator_next, 1, 4, 4, none)
@@ -263,6 +263,38 @@ DEF(     strict_neq, 1, 2, 1, none)
 DEF(is_undefined_or_null, 1, 1, 1, none)
 DEF(     private_in, 1, 2, 1, none)
 DEF(push_bigint_i32, 5, 0, 1, i32)
+/* Push the initial disposal error_state sentinel (JS_UNINITIALIZED).
+   Using a distinct tag lets disposal distinguish "no error yet" from a
+   user-thrown undefined or null. Stack: -> sentinel */
+DEF(using_dispose_init, 1, 0, 1, none)
+/* Dispose a using variable. Reads local at u16 index.
+   Stack: error_state -> error_state (modified if disposal throws).
+   If the value is null/undefined, does nothing.
+   Otherwise calls [Symbol.dispose]() on the value.
+   If disposal throws and error_state is not undefined,
+   creates SuppressedError(dispose_error, error_state). */
+DEF(  using_dispose, 3, 1, 1, loc)
+/* Call the async dispose method of a using variable. Looks up
+   Symbol.asyncDispose first, falling back to Symbol.dispose. Pushes the
+   method's return value to be awaited; throws on any failure (caller
+   should wrap in OP_catch and merge via OP_using_dispose_merge).
+   Pushes undefined if the value is null/undefined.
+   Stack: (no change at the value stack except push). push=1. */
+DEF(using_dispose_async, 3, 0, 1, loc)
+/* Merge a newly thrown error into the disposal error_state, creating
+   a SuppressedError if error_state is already set.
+   Stack: error_state, new_error -> merged_error_state */
+DEF(using_dispose_merge, 1, 2, 1, none)
+/* After all using vars are disposed, throw if error_state != undefined */
+DEF(using_dispose_end, 1, 1, 0, none)
+/* Validate a using declaration's initialiser (TOS) and resolve the
+   dispose method once (spec snapshots the method at declaration).
+   If value is null/undefined, pushes JS_UNDEFINED as the method.
+   If not an object, throws TypeError.
+   Otherwise looks up Symbol.asyncDispose (with Symbol.dispose fallback
+   when u8=1) or Symbol.dispose (u8=0) and throws TypeError if missing
+   or non-callable. Stack: value -> value, method. */
+DEF(    using_check, 2, 1, 2, u8)
 /* must be the last non short and non temporary opcode */
 DEF(            nop, 1, 0, 0, none)
 
@@ -287,6 +319,8 @@ def(scope_in_private_field, 7, 1, 1, atom_u16) /* obj -> res emitted in phase 1,
 def(get_field_opt_chain, 5, 1, 1, atom) /* emitted in phase 1, removed in phase 2 */
 def(get_array_el_opt_chain, 1, 2, 1, none) /* emitted in phase 1, removed in phase 2 */
 def( set_class_name, 5, 1, 1, u32) /* emitted in phase 1, removed in phase 2 */
+
+def( dispose_scope, 3, 0, 0, u16) /* emitted in phase 1, removed in phase 2 */
 
 def(     source_loc, 9, 0, 0, u32x2) /* emitted in phase 1, removed in phase 3 */
 
