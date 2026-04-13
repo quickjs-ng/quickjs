@@ -1082,6 +1082,10 @@ static void debug_trace(void)
         assert(trace_state.call_count == 0);
     }
 
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void new_symbol(void)
 {
     JSRuntime *rt = JS_NewRuntime();
