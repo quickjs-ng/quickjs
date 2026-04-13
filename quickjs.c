@@ -28384,14 +28384,31 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             js_parse_error(s, "return in a static initializer block");
             goto fail;
         }
-        if (next_token(s))
-            goto fail;
-        if (s->token.val != ';' && s->token.val != '}' && !s->got_lf) {
-            if (js_parse_expr(s))
+        {
+            bool hasval;
+            /* Save the source location of the 'return' keyword so that
+               emit_return() records the correct line, not the following
+               token which may be on a different line due to ASI. */
+            int ret_line_num = s->token.line_num;
+            int ret_col_num = s->token.col_num;
+            if (next_token(s))
                 goto fail;
-            emit_return(s, true);
-        } else {
-            emit_return(s, false);
+            if (s->token.val != ';' && s->token.val != '}' && !s->got_lf) {
+                if (js_parse_expr(s))
+                    goto fail;
+                hasval = true;
+            } else {
+                hasval = false;
+            }
+            {
+                int save_line = s->token.line_num;
+                int save_col = s->token.col_num;
+                s->token.line_num = ret_line_num;
+                s->token.col_num = ret_col_num;
+                emit_return(s, hasval);
+                s->token.line_num = save_line;
+                s->token.col_num = save_col;
+            }
         }
         if (js_parse_expect_semi(s))
             goto fail;
