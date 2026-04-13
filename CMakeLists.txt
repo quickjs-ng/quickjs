@@ -108,6 +108,13 @@ if(NOT SUNOS)
 xcheck_add_c_compiler_flag(-funsigned-char)
 endif()
 
+# Clang on Windows without MSVC command line fails because the codebase uses 
+# functions like strcpy over strcpy_s
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND WIN32 AND NOT MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE)
+endif()
+
 # ClangCL is command line compatible with MSVC, so 'MSVC' is set.
 if(MSVC)
     xcheck_add_c_compiler_flag(-Wno-unsafe-buffer-usage)
@@ -145,6 +152,9 @@ endif()
 if(WIN32)
     if(MSVC)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:8388608")
+    elseif(CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT MINGW)
+        # Clang frontend (clang.exe) targeting the MSVC ABI (using lld-link)
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Xlinker /STACK:8388608")
     else()
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack,8388608")
     endif()
