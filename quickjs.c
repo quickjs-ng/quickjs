@@ -17651,6 +17651,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         JSValue *call_argv;
 
         SWITCH(pc) {
+#ifdef QJS_ENABLE_DEBUGGER
         CASE(OP_debug):
             if (unlikely(ctx->debug_trace)) {
                 int col_num = 0;
@@ -17669,6 +17670,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     goto exception;
             }
             BREAK;
+#endif
         CASE(OP_push_i32):
             *sp++ = js_int32(get_u32(pc));
             pc += 4;
@@ -23255,7 +23257,9 @@ static void emit_source_loc(JSParseState *s)
     dbuf_putc(bc, OP_source_loc);
     dbuf_put_u32(bc, s->token.line_num);
     dbuf_put_u32(bc, s->token.col_num);
+#ifdef QJS_ENABLE_DEBUGGER
     dbuf_putc(bc, OP_debug);
+#endif
 }
 
 static void emit_op(JSParseState *s, uint8_t val)
@@ -33434,8 +33438,10 @@ static bool code_match(CodeContext *s, int pos, ...)
                 line_num = get_u32(tab + pos + 1);
                 col_num = get_u32(tab + pos + 5);
                 pos = pos_next;
+#ifdef QJS_ENABLE_DEBUGGER
             } else if (op == OP_debug) {
                 pos = pos_next;
+#endif
             } else {
                 break;
             }
@@ -33723,9 +33729,11 @@ static int get_label_pos(JSFunctionDef *s, int label)
             case OP_source_loc:
                 pos += 9;
                 continue;
+#ifdef QJS_ENABLE_DEBUGGER
             case OP_debug:
                 pos += 1;
                 continue;
+#endif
             case OP_label:
                 pos += 5;
                 continue;
@@ -34184,10 +34192,12 @@ static bool code_has_label(CodeContext *s, int pos, int label)
             pos += 9;
             continue;
         }
+#ifdef QJS_ENABLE_DEBUGGER
         if (op == OP_debug) {
             pos += 1;
             continue;
         }
+#endif
         if (op == OP_label) {
             int lab = get_u32(s->bc_buf + pos + 1);
             if (lab == label)
@@ -34220,7 +34230,9 @@ static int find_jump_target(JSFunctionDef *s, int label, int *pop)
             switch(op = s->byte_code.buf[pos]) {
             case OP_source_loc:
             case OP_label:
+#ifdef QJS_ENABLE_DEBUGGER
             case OP_debug:
+#endif
                 pos += opcode_info[op].size;
                 continue;
             case OP_goto:
@@ -34436,12 +34448,14 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             col_num = get_u32(bc_buf + pos + 5);
             break;
 
+#ifdef QJS_ENABLE_DEBUGGER
         case OP_debug:
             /* record pc2line so the debugger can resolve the source
                location when OP_debug is hit at runtime */
             add_pc2line_info(s, bc_out.size, line_num, col_num);
             dbuf_putc(&bc_out, OP_debug);
             break;
+#endif
             
         case OP_label:
             {
@@ -36999,7 +37013,7 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 26
+#define BC_VERSION 25
 
 typedef struct BCWriterState {
     JSContext *ctx;
