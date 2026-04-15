@@ -28379,7 +28379,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             goto fail;
         break;
     case TOK_RETURN:
+#ifdef QJS_ENABLE_DEBUGGER
         emit_source_loc(s);
+#endif
         if (s->cur_func->is_eval) {
             js_parse_error(s, "return not in a function");
             goto fail;
@@ -28388,6 +28390,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             js_parse_error(s, "return in a static initializer block");
             goto fail;
         }
+#ifdef QJS_ENABLE_DEBUGGER
         {
             bool hasval;
             /* Save the source location of the 'return' keyword so that
@@ -28414,6 +28417,17 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 s->token.col_num = save_col;
             }
         }
+#else
+        if (next_token(s))
+            goto fail;
+        if (s->token.val != ';' && s->token.val != '}' && !s->got_lf) {
+            if (js_parse_expr(s))
+                goto fail;
+            emit_return(s, true);
+        } else {
+            emit_return(s, false);
+        }
+#endif
         if (js_parse_expect_semi(s))
             goto fail;
         break;
