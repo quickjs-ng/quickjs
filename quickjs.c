@@ -27899,10 +27899,14 @@ static void emit_return(JSParseState *s, bool hasval)
         emit_label(s, label_return);
         emit_op(s, OP_return);
     } else if (s->cur_func->func_kind != JS_FUNC_NORMAL) {
+#ifdef QJS_ENABLE_DEBUGGER
         emit_source_loc(s);
+#endif
         emit_op(s, OP_return_async);
     } else {
+#ifdef QJS_ENABLE_DEBUGGER
         emit_source_loc(s);
+#endif
         emit_op(s, hasval ? OP_return : OP_return_undef);
     }
 }
@@ -28448,14 +28452,18 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
     case TOK_LET:
     case TOK_CONST:
     haslet:
+#ifdef QJS_ENABLE_DEBUGGER
         emit_source_loc(s);
+#endif
         if (!(decl_mask & DECL_MASK_OTHER)) {
             js_parse_error(s, "lexical declarations can't appear in single-statement context");
             goto fail;
         }
         /* fall thru */
     case TOK_VAR:
+#ifdef QJS_ENABLE_DEBUGGER
         emit_source_loc(s);
+#endif
         if (next_token(s))
             goto fail;
         if (js_parse_var(s, PF_IN_ACCEPTED, tok, /*export_flag*/false))
@@ -28466,7 +28474,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
     case TOK_IF:
         {
             int label1, label2, mask;
+#ifdef QJS_ENABLE_DEBUGGER
             emit_source_loc(s);
+#endif
             if (next_token(s))
                 goto fail;
             /* create a new scope for `let f;if(1) function f(){}` */
@@ -28575,7 +28585,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             int tok, bits;
             bool is_async;
 
+#ifdef QJS_ENABLE_DEBUGGER
             emit_source_loc(s);
+#endif
             if (next_token(s))
                 goto fail;
 
@@ -28734,7 +28746,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             }
             if (js_parse_expect_semi(s))
                 goto fail;
+#ifdef QJS_ENABLE_DEBUGGER
             emit_source_loc(s);
+#endif
         }
         break;
     case TOK_SWITCH:
@@ -28743,7 +28757,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             int default_label_pos;
             BlockEnv break_entry;
 
+#ifdef QJS_ENABLE_DEBUGGER
             emit_source_loc(s);
+#endif
             if (next_token(s))
                 goto fail;
 
@@ -28952,7 +28968,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 js_parse_error(s, "expecting catch or finally");
                 goto fail;
             }
+#ifdef QJS_ENABLE_DEBUGGER
             emit_source_loc(s);
+#endif
             emit_label(s, label_finally);
             if (s->token.val == TOK_FINALLY) {
                 int saved_eval_ret_idx = 0; /* avoid warning */
@@ -28988,7 +29006,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                 }
                 pop_break_entry(s->cur_func);
             }
+#ifdef QJS_ENABLE_DEBUGGER
             emit_source_loc(s);
+#endif
             emit_op(s, OP_ret);
             emit_label(s, label_end);
         }
