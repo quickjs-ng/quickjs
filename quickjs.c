@@ -23255,13 +23255,13 @@ static void emit_source_loc(JSParseState *s)
     dbuf_putc(bc, OP_source_loc);
     dbuf_put_u32(bc, s->token.line_num);
     dbuf_put_u32(bc, s->token.col_num);
-    if (s->ctx->debug_trace)
+    if (unlikely(s->ctx->debug_trace))
         dbuf_putc(bc, OP_debug);
 }
 
 static void emit_source_loc_debug(JSParseState *s)
 {
-    if (s->ctx->debug_trace)
+    if (unlikely(s->ctx->debug_trace))
         emit_source_loc(s);
 }
 
@@ -27902,10 +27902,8 @@ static void emit_return(JSParseState *s, bool hasval)
         emit_label(s, label_return);
         emit_op(s, OP_return);
     } else if (s->cur_func->func_kind != JS_FUNC_NORMAL) {
-        emit_source_loc_debug(s);
         emit_op(s, OP_return_async);
     } else {
-        emit_source_loc_debug(s);
         emit_op(s, hasval ? OP_return : OP_return_undef);
     }
 }
@@ -28391,31 +28389,14 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             js_parse_error(s, "return in a static initializer block");
             goto fail;
         }
-        {
-            bool hasval;
-            /* Save the source location of the 'return' keyword so that
-               emit_return() records the correct line, not the following
-               token which may be on a different line due to ASI. */
-            int ret_line_num = s->token.line_num;
-            int ret_col_num = s->token.col_num;
-            if (next_token(s))
+        if (next_token(s))
+            goto fail;
+        if (s->token.val != ';' && s->token.val != '}' && !s->got_lf) {
+            if (js_parse_expr(s))
                 goto fail;
-            if (s->token.val != ';' && s->token.val != '}' && !s->got_lf) {
-                if (js_parse_expr(s))
-                    goto fail;
-                hasval = true;
-            } else {
-                hasval = false;
-            }
-            {
-                int save_line = s->token.line_num;
-                int save_col = s->token.col_num;
-                s->token.line_num = ret_line_num;
-                s->token.col_num = ret_col_num;
-                emit_return(s, hasval);
-                s->token.line_num = save_line;
-                s->token.col_num = save_col;
-            }
+            emit_return(s, true);
+        } else {
+            emit_return(s, false);
         }
         if (js_parse_expect_semi(s))
             goto fail;
