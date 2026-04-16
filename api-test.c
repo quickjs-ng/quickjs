@@ -962,7 +962,6 @@ static void get_uint8array(void)
     JS_FreeRuntime(rt);
 }
 
-#ifdef QJS_ENABLE_DEBUGGER
 static struct {
     int call_count;
     int last_line;
@@ -1086,7 +1085,6 @@ static void debug_trace(void)
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
-#endif /* QJS_ENABLE_DEBUGGER */
 
 static void new_symbol(void)
 {
@@ -1163,9 +1161,7 @@ int main(void)
     slice_string_tocstring();
     immutable_array_buffer();
     get_uint8array();
-#ifdef QJS_ENABLE_DEBUGGER
     debug_trace();
-#endif
     new_symbol();
     return 0;
 }
