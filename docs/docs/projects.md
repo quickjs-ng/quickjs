@@ -29,7 +29,7 @@ Rust wrapper focus on embedding-ready and no-pain type conversion and interopera
 
 ## [CSPro](https://github.com/csprousers/cspro)
 
-CSPro incorporates the QuickJS‑NG engine as its embedded JavaScript runtime for executing logic, complementing its own domain‑specific language, CSPro Logic.
+CSPro incorporates the QuickJS-NG engine as its embedded JavaScript runtime for executing logic, complementing its own domain-specific language, CSPro Logic.
 
 ## [GodotJS](https://github.com/godotjs/GodotJS)
 
