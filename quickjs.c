@@ -10013,6 +10013,35 @@ static int add_fast_array_element(JSContext *ctx, JSObject *p,
     return true;
 }
 
+/* Allocate a new fast array initialized to JS_UNDEFINED. Its maximum
+   size is 2^31-1 elements. For convenience, 'len' is a 64 bit
+   integer. */
+static JSValue js_allocate_fast_array(JSContext *ctx, int64_t len)
+{
+    JSValue arr;
+    JSObject *p;
+    int i;
+
+    if (len > INT32_MAX)
+        return JS_ThrowRangeError(ctx, "invalid array length");
+    arr = JS_NewArray(ctx);
+    if (JS_IsException(arr))
+        return arr;
+    if (len > 0) {
+        p = JS_VALUE_GET_OBJ(arr);
+        if (expand_fast_array(ctx, p, len) < 0) {
+            JS_FreeValue(ctx, arr);
+            return JS_EXCEPTION;
+        }
+        p->u.array.count = len;
+        for(i = 0; i < len; i++)
+            p->u.array.u.values[i] = JS_UNDEFINED;
+        /* update the 'length' field */
+        set_value(ctx, &p->prop[0].u.value, js_int32(len));
+    }
+    return arr;
+}
+
 static void js_free_desc(JSContext *ctx, JSPropertyDescriptor *desc)
 {
     JS_FreeValue(ctx, desc->getter);
@@ -41608,11 +41637,6 @@ static JSValue js_array_with(JSContext *ctx, JSValueConst this_val,
     if (js_get_length64(ctx, &len, obj))
         goto exception;
 
-    if (len > UINT32_MAX) {
-        JS_ThrowRangeError(ctx, "invalid array length");
-        goto exception;
-    }
-
     if (JS_ToInt64Sat(ctx, &idx, argv[0]))
         goto exception;
 
@@ -41624,15 +41648,11 @@ static JSValue js_array_with(JSContext *ctx, JSValueConst this_val,
         goto exception;
     }
 
-    arr = JS_NewArray(ctx);
+    arr = js_allocate_fast_array(ctx, len);
     if (JS_IsException(arr))
         goto exception;
 
     p = JS_VALUE_GET_OBJ(arr);
-    if (expand_fast_array(ctx, p, len) < 0)
-        goto exception;
-    p->u.array.count = len;
-
     i = 0;
     pval = p->u.array.u.values;
     if (js_get_fast_array(ctx, obj, &arrp, &count32) && count32 == len) {
@@ -41644,20 +41664,13 @@ static JSValue js_array_with(JSContext *ctx, JSValueConst this_val,
     } else {
         for (; i < idx; i++, pval++)
             if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
-                goto fill_and_fail;
+                goto exception;
         *pval = js_dup(argv[1]);
         for (i++, pval++; i < len; i++, pval++) {
-            if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval)) {
-            fill_and_fail:
-                for (; i < len; i++, pval++)
-                    *pval = JS_UNDEFINED;
+            if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                 goto exception;
-            }
         }
     }
-
-    if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(len)) < 0)
-        goto exception;
 
     ret = arr;
     arr = JS_UNDEFINED;
@@ -42568,20 +42581,12 @@ static JSValue js_array_toReversed(JSContext *ctx, JSValueConst this_val,
     if (js_get_length64(ctx, &len, obj))
         goto exception;
 
-    if (len > UINT32_MAX) {
-        JS_ThrowRangeError(ctx, "invalid array length");
-        goto exception;
-    }
-
-    arr = JS_NewArray(ctx);
+    arr = js_allocate_fast_array(ctx, len);
     if (JS_IsException(arr))
         goto exception;
 
     if (len > 0) {
         p = JS_VALUE_GET_OBJ(arr);
-        if (expand_fast_array(ctx, p, len) < 0)
-            goto exception;
-        p->u.array.count = len;
 
         i = len - 1;
         pval = p->u.array.u.values;
@@ -42591,17 +42596,10 @@ static JSValue js_array_toReversed(JSContext *ctx, JSValueConst this_val,
         } else {
             // Query order is observable; test262 expects descending order.
             for (; i >= 0; i--, pval++) {
-                if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval)) {
-                    // Exception; initialize remaining elements.
-                    for (; i >= 0; i--, pval++)
-                        *pval = JS_UNDEFINED;
+                if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                     goto exception;
-                }
             }
         }
-
-        if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(len)) < 0)
-            goto exception;
     }
 
     ret = arr;
@@ -42727,8 +42725,6 @@ static JSValue js_array_toSpliced(JSContext *ctx, JSValueConst this_val,
     int64_t i, j, len, newlen, start, add, del;
     uint32_t count32;
 
-    pval = NULL;
-    last = NULL;
     ret = JS_EXCEPTION;
     arr = JS_UNDEFINED;
 
@@ -42753,17 +42749,12 @@ static JSValue js_array_toSpliced(JSContext *ctx, JSValueConst this_val,
         add = argc - 2;
 
     newlen = len + add - del;
-    if (newlen > UINT32_MAX) {
-        // Per spec: TypeError if newlen >= 2**53, RangeError below
-        if (newlen > MAX_SAFE_INTEGER) {
-            JS_ThrowTypeError(ctx, "invalid array length");
-        } else {
-            JS_ThrowRangeError(ctx, "invalid array length");
-        }
+    if (newlen > MAX_SAFE_INTEGER) {
+        JS_ThrowTypeError(ctx, "invalid array length");
         goto exception;
     }
 
-    arr = JS_NewArray(ctx);
+    arr = js_allocate_fast_array(ctx, newlen);
     if (JS_IsException(arr))
         goto exception;
 
@@ -42771,10 +42762,6 @@ static JSValue js_array_toSpliced(JSContext *ctx, JSValueConst this_val,
         goto done;
 
     p = JS_VALUE_GET_OBJ(arr);
-    if (expand_fast_array(ctx, p, newlen) < 0)
-        goto exception;
-
-    p->u.array.count = newlen;
     pval = &p->u.array.u.values[0];
     last = &p->u.array.u.values[newlen];
 
@@ -42798,17 +42785,11 @@ static JSValue js_array_toSpliced(JSContext *ctx, JSValueConst this_val,
 
     assert(pval == last);
 
-    if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(newlen)) < 0)
-        goto exception;
-
 done:
     ret = arr;
     arr = JS_UNDEFINED;
 
 exception:
-    while (pval != last)
-        *pval++ = JS_UNDEFINED;
-
     JS_FreeValue(ctx, arr);
     JS_FreeValue(ctx, obj);
     return ret;
@@ -43141,21 +43122,12 @@ static JSValue js_array_toSorted(JSContext *ctx, JSValueConst this_val,
     if (js_get_length64(ctx, &len, obj))
         goto exception;
 
-    if (len > UINT32_MAX) {
-        JS_ThrowRangeError(ctx, "invalid array length");
-        goto exception;
-    }
-
-    arr = JS_NewArray(ctx);
+    arr = js_allocate_fast_array(ctx, len);
     if (JS_IsException(arr))
         goto exception;
 
     if (len > 0) {
         p = JS_VALUE_GET_OBJ(arr);
-        if (expand_fast_array(ctx, p, len) < 0)
-            goto exception;
-        p->u.array.count = len;
-
         i = 0;
         pval = p->u.array.u.values;
         if (js_get_fast_array(ctx, obj, &arrp, &count32) && count32 == len) {
@@ -43163,16 +43135,10 @@ static JSValue js_array_toSorted(JSContext *ctx, JSValueConst this_val,
                 *pval = js_dup(arrp[i]);
         } else {
             for (; i < len; i++, pval++) {
-                if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval)) {
-                    for (; i < len; i++, pval++)
-                        *pval = JS_UNDEFINED;
+                if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                     goto exception;
-                }
             }
         }
-
-        if (JS_SetProperty(ctx, arr, JS_ATOM_length, js_int64(len)) < 0)
-            goto exception;
     }
 
     ret = js_array_sort(ctx, arr, argc, argv);
