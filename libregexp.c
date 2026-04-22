@@ -477,9 +477,21 @@ int lre_parse_escape(const uint8_t **pp, int allow_utf16)
         c = '\v';
         break;
     case 'x':
+        {
+            int h0, h1;
+
+            h0 = from_hex(*p++);
+            if (h0 < 0)
+                return -1;
+            h1 = from_hex(*p++);
+            if (h1 < 0)
+                return -1;
+            c = (h0 << 4) | h1;
+        }
+        break;
     case 'u':
         {
-            int h, n, i;
+            int h, i;
             uint32_t c1;
 
             if (*p == '{' && allow_utf16) {
@@ -497,14 +509,8 @@ int lre_parse_escape(const uint8_t **pp, int allow_utf16)
                 }
                 p++;
             } else {
-                if (c == 'x') {
-                    n = 2;
-                } else {
-                    n = 4;
-                }
-
                 c = 0;
-                for(i = 0; i < n; i++) {
+                for(i = 0; i < 4; i++) {
                     h = from_hex(*p++);
                     if (h < 0) {
                         return -1;
@@ -2501,6 +2507,7 @@ int lre_exec(uint8_t **capture,
     REExecContext s_s, *s = &s_s;
     int re_flags, i, alloca_size, ret;
     StackInt *stack_buf;
+    const uint8_t *cptr;
 
     re_flags = lre_get_flags(bc_buf);
     s->multi_line = (re_flags & LRE_FLAG_MULTILINE) != 0;
@@ -2527,8 +2534,17 @@ int lre_exec(uint8_t **capture,
         capture[i] = NULL;
     alloca_size = s->stack_size_max * sizeof(stack_buf[0]);
     stack_buf = alloca(alloca_size);
+
+    cptr = cbuf + (cindex << cbuf_type);
+    if (0 < cindex && cindex < clen && s->cbuf_type == 2) {
+        const uint16_t *p = (const uint16_t *)cptr;
+        if (is_lo_surrogate(*p) && is_hi_surrogate(p[-1])) {
+            cptr = (const uint8_t *)(p - 1);
+        }
+    }
+
     ret = lre_exec_backtrack(s, capture, stack_buf, 0, bc_buf + RE_HEADER_LEN,
-                             cbuf + (cindex << cbuf_type), false);
+                             cptr, false);
     lre_realloc(s->opaque, s->state_stack, 0);
     return ret;
 }
