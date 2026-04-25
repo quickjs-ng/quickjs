@@ -535,7 +535,6 @@ jobs:
         with:
           usesh: true
           prepare: |
-            pkg update
             pkg install -y cmake gmake
           run: |
             gmake
