@@ -2636,7 +2636,7 @@ JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pco
         const char *name_str_;                                            \
         /* Skip compiler-generated internal names like <ret>, <this_func> */ \
         if (name_ != JS_ATOM_NULL) {                                      \
-            char tmp_[8];                                                 \
+            char tmp_[32];                                                \
             JS_AtomGetStr(ctx, tmp_, sizeof(tmp_), name_);                \
             if (tmp_[0] == '<')                                           \
                 break;                                                    \
