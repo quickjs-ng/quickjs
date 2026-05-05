@@ -10236,12 +10236,11 @@ retry:
         goto done;
     }
 
-    if (unlikely(!p->extensible)) {
-        ret = JS_ThrowTypeErrorOrFalse(ctx, flags, "object is not extensible");
-        goto done;
-    }
-
     if (p == JS_VALUE_GET_OBJ(obj)) {
+        if (unlikely(!p->extensible)) {
+            ret = JS_ThrowTypeErrorOrFalse(ctx, flags, "object is not extensible");
+            goto done;
+        }
         if (p->is_exotic) {
             if (p->class_id == JS_CLASS_ARRAY && p->fast_array &&
                 __JS_AtomIsTaggedInt(prop)) {
@@ -10282,6 +10281,10 @@ retry:
                                 JS_UNDEFINED, JS_UNDEFINED,
                                 JS_PROP_HAS_VALUE);
     } else {
+        if (unlikely(!p->extensible)) {
+            ret = JS_ThrowTypeErrorOrFalse(ctx, flags, "object is not extensible");
+            goto done;
+        }
     generic_create_prop:
         ret = JS_CreateProperty(ctx, p, prop, val, JS_UNDEFINED, JS_UNDEFINED,
                                 flags |
