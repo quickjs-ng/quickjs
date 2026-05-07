@@ -2265,6 +2265,7 @@ void JS_SetRuntimeInfo(JSRuntime *rt, const char *s)
 void JS_FreeRuntime(JSRuntime *rt)
 {
     struct list_head *el, *el1;
+    bool leak = false;
     int i;
 
     rt->in_free = true;
@@ -2305,6 +2306,7 @@ void JS_FreeRuntime(JSRuntime *rt)
                     header_done = true;
                 }
                 JS_DumpGCObject(rt, p);
+                leak = true;
             }
         }
 
@@ -2381,6 +2383,7 @@ void JS_FreeRuntime(JSRuntime *rt)
                     } else {
                         printf("\n");
                     }
+                    leak = true;
                 }
             }
         }
@@ -2429,6 +2432,7 @@ void JS_FreeRuntime(JSRuntime *rt)
         }
         if (rt->rt_info)
             printf("\n");
+        leak = true;
     }
 #endif
 
@@ -2448,14 +2452,20 @@ void JS_FreeRuntime(JSRuntime *rt)
             printf("Memory leak: %zd bytes lost in %zd block%s\n",
                    s->malloc_size - sizeof(JSRuntime),
                    s->malloc_count - 1, &"s"[s->malloc_count == 2]);
+            leak = true;
         }
     }
 #endif
+
+    leak &= check_dump_flag(rt, JS_ABORT_ON_LEAKS);
 
     {
         JSMallocState *ms = &rt->malloc_state;
         rt->mf.js_free(ms->opaque, rt);
     }
+
+    if (leak)
+        abort();
 }
 
 JSContext *JS_NewContextRaw(JSRuntime *rt)
@@ -3415,7 +3425,11 @@ JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global)
     JSAtom atom = JS_NewAtom(ctx, description);
     if (atom == JS_ATOM_NULL)
         return JS_EXCEPTION;
-    return JS_NewSymbolFromAtom(ctx, atom, is_global ? JS_ATOM_TYPE_GLOBAL_SYMBOL : JS_ATOM_TYPE_SYMBOL);
+    int atom_type =
+        is_global ? JS_ATOM_TYPE_GLOBAL_SYMBOL : JS_ATOM_TYPE_SYMBOL;
+    JSValue symbol = JS_NewSymbolFromAtom(ctx, atom, atom_type);
+    JS_FreeAtom(ctx, atom);
+    return symbol;
 }
 
 #define ATOM_GET_STR_BUF_SIZE 64
