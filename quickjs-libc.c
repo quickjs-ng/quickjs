@@ -4692,7 +4692,42 @@ static JSValue js_text_encoder_encode(JSContext *ctx, JSValueConst this_val,
     str = JS_ToCStringLen(ctx, &len, argv[0]);
     if (!str)
         return JS_EXCEPTION;
-    ret = JS_NewUint8ArrayCopy(ctx, (const uint8_t *)str, len);
+    /* JS_ToCStringLen keeps lone surrogates as their 3-byte CESU-8-like
+       encoding (ED A0..BF XX). USVString conversion in the WHATWG Encoding
+       spec replaces them with U+FFFD before UTF-8 encoding. Valid UTF-8
+       never produces ED A0..BF, so any such triple comes from a lone
+       surrogate. The replacement is 3 bytes, so output length is unchanged. */
+    {
+        const uint8_t *s = (const uint8_t *)str;
+        size_t i;
+        for (i = 0; i + 2 < len; i++) {
+            if (s[i] == 0xED && s[i+1] >= 0xA0 && s[i+1] <= 0xBF)
+                break;
+        }
+        if (i + 2 >= len) {
+            ret = JS_NewUint8ArrayCopy(ctx, s, len);
+        } else {
+            uint8_t *buf = js_malloc(ctx, len);
+            size_t j;
+            if (!buf) {
+                JS_FreeCString(ctx, str);
+                return JS_EXCEPTION;
+            }
+            memcpy(buf, s, i);
+            for (j = i; i < len; ) {
+                if (i + 2 < len && s[i] == 0xED
+                    && s[i+1] >= 0xA0 && s[i+1] <= 0xBF
+                    && s[i+2] >= 0x80 && s[i+2] <= 0xBF) {
+                    buf[j++] = 0xEF; buf[j++] = 0xBF; buf[j++] = 0xBD;
+                    i += 3;
+                } else {
+                    buf[j++] = s[i++];
+                }
+            }
+            ret = JS_NewUint8ArrayCopy(ctx, buf, j);
+            js_free(ctx, buf);
+        }
+    }
     JS_FreeCString(ctx, str);
     return ret;
 }
@@ -4733,6 +4768,11 @@ static JSValue js_text_encoder_encode_into(JSContext *ctx, JSValueConst this_val
     end = p + src_len;
     while (p < end) {
         cp = utf8_decode(p, &next);
+        /* JS_ToCStringLen keeps lone surrogates as ED A0..BF XX, which
+           utf8_decode happily decodes back to a surrogate code point. The
+           USVString conversion in the spec replaces them with U+FFFD. */
+        if (cp >= 0xD800 && cp <= 0xDFFF)
+            cp = 0xFFFD;
         enc_len = utf8_encode_len(cp);
         if ((size_t)written + enc_len > dst_len)
             break;
