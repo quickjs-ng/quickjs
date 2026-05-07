@@ -4643,6 +4643,17 @@ static int js_utf8_seq_len(uint8_t b)
     return 0;
 }
 
+/* Bounds for the first continuation byte after `lead`, matching the
+   acceptance set of utf8_decode() in cutils.h. Subsequent continuation
+   bytes are always [0x80, 0xBF]. */
+static void js_utf8_first_cont_bounds(uint8_t lead, uint8_t *lo, uint8_t *hi)
+{
+    if (lead == 0xE0)      { *lo = 0xA0; *hi = 0xBF; }
+    else if (lead == 0xF0) { *lo = 0x90; *hi = 0xBF; }
+    else if (lead == 0xF4) { *lo = 0x80; *hi = 0x8F; }
+    else                   { *lo = 0x80; *hi = 0xBF; }
+}
+
 /* TextEncoder ------------------------------------------------------------ */
 
 static JSValue js_text_encoder_constructor(JSContext *ctx,
@@ -4936,11 +4947,34 @@ static JSValue js_text_decoder_decode(JSContext *ctx, JSValueConst this_val,
             continue;
         }
         if (p + seq_len > p_end) {
-            /* Incomplete trailing sequence. */
+            /* Sequence is incomplete by length. Check the bytes we do have
+               against the per-lead continuation bounds: a byte that's out
+               of range is a known error and must be re-read as a fresh
+               lead, not buffered. */
+            int avail = (int)(p_end - p);
+            int k = 1;
+            if (avail >= 2) {
+                uint8_t lo, hi;
+                js_utf8_first_cont_bounds(*p, &lo, &hi);
+                if (p[1] >= lo && p[1] <= hi) {
+                    for (k = 2; k < avail; k++) {
+                        if (p[k] < 0x80 || p[k] > 0xBF) break;
+                    }
+                }
+            }
+            if (k < avail) {
+                /* p[k] violates the continuation rules: emit one error,
+                   advance past the lead and any valid continuations, and
+                   leave p[k] for the next iteration. */
+                if (td->fatal) goto invalid;
+                out[out_len++] = 0xEF; out[out_len++] = 0xBF; out[out_len++] = 0xBD;
+                p += k;
+                continue;
+            }
+            /* Truly partial: defer in stream mode, otherwise flush as one error. */
             if (stream) {
-                int rem = (int)(p_end - p);
-                memcpy(td->pending, p, rem);
-                td->pending_len = rem;
+                memcpy(td->pending, p, avail);
+                td->pending_len = avail;
                 p = p_end;
                 break;
             }
