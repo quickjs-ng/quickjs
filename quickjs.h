@@ -544,6 +544,57 @@ JS_EXTERN void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj)
 JS_EXTERN JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
 JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
 
+/* Debug callback - invoked when the interpreter hits an OP_debug opcode.
+   Return 0 to continue execution. Return non-zero to abort execution at
+   this point: the engine will jump to the exception handler.  The
+   callback may itself call JS_Throw* to provide a specific exception;
+   if the callback returns non-zero without having raised one, the engine
+   will synthesize a default InternalError("aborted by debugger").  If
+   the callback raises an exception via JS_Throw* but returns 0, the
+   engine still treats it as a request to abort.
+
+   The filename / funcname pointers passed to the callback are only valid
+   for the duration of the callback invocation; do not store them.
+
+   OP_debug opcodes are only emitted at statement boundaries when a debug
+   trace handler is registered at parse time.  Therefore only code that
+   is parsed (e.g. by JS_Eval / JS_Compile) AFTER JS_SetDebugTraceHandler
+   has been called will be instrumented; previously compiled bytecode
+   will not invoke the callback.  In practice, install the handler before
+   evaluating any application code. */
+typedef int JSDebugTraceFunc(JSContext *ctx,
+                             const char *filename,
+                             const char *funcname,
+                             int line,
+                             int col);
+
+/* Set (or clear) the debug trace handler on a context.  Pass NULL to
+   disable.  Works with any context, including those created with
+   JS_NewContextRaw.  See JSDebugTraceFunc above for the parse-time
+   instrumentation contract. */
+JS_EXTERN void JS_SetDebugTraceHandler(JSContext *ctx,
+                                       JSDebugTraceFunc *cb);
+
+/* Debug API: Get local variables in stack frames */
+typedef struct JSDebugLocalVar {
+    const char *name;      /* variable name */
+    JSValue value;         /* variable value */
+    int is_arg;            /* 1 if argument, 0 if local variable */
+    int scope_level;       /* scope level of the variable */
+} JSDebugLocalVar;
+
+/* Get the call stack depth (0 when no frames are active). */
+JS_EXTERN int JS_GetStackDepth(JSContext *ctx);
+
+/* Get local variables at a specific stack level (0 = current frame, 1 = caller, etc.)
+   *pcount: output, number of variables returned
+   Returns allocated array of JSDebugLocalVar (must be freed with JS_FreeLocalVariables),
+   or NULL on error. */
+JS_EXTERN JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount);
+
+/* Free local variables array returned by JS_GetLocalVariablesAtLevel */
+JS_EXTERN void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count);
+
 /* the following functions are used to select the intrinsic object to
    save memory */
 JS_EXTERN JSContext *JS_NewContextRaw(JSRuntime *rt);

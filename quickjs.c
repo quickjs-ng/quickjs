@@ -536,6 +536,8 @@ struct JSContext {
                              const char *input, size_t input_len,
                              const char *filename, int line, int flags, int scope_idx);
     void *user_opaque;
+
+    JSDebugTraceFunc *debug_trace;
 };
 
 typedef union JSFloat64Union {
@@ -2568,6 +2570,144 @@ JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id)
 JSValue JS_GetFunctionProto(JSContext *ctx)
 {
     return js_dup(ctx->function_proto);
+}
+
+void JS_SetDebugTraceHandler(JSContext *ctx, JSDebugTraceFunc *cb)
+{
+    ctx->debug_trace = cb;
+}
+
+/* Forward declaration: defined later in this file */
+static const char *JS_AtomGetStr(JSContext *ctx, char *buf, int buf_size, JSAtom atom);
+
+/* Debug API: Get stack frame at specific level */
+static JSStackFrame *js_get_stack_frame_at_level(JSContext *ctx, int level)
+{
+    JSRuntime *rt = ctx->rt;
+    JSStackFrame *sf = rt->current_stack_frame;
+    int current_level = 0;
+    
+    while (sf != NULL && current_level < level) {
+        sf = sf->prev_frame;
+        current_level++;
+    }
+    return sf;
+}
+
+/* Get the call stack depth */
+int JS_GetStackDepth(JSContext *ctx)
+{
+    JSRuntime *rt = ctx->rt;
+    JSStackFrame *sf = rt->current_stack_frame;
+    int depth = 0;
+    
+    while (sf != NULL) {
+        depth++;
+        sf = sf->prev_frame;
+    }
+    return depth;
+}
+
+/* Get local variables at a specific stack level (0 = current frame, 1 = caller, etc.) */
+JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount)
+{
+    if (pcount)
+        *pcount = 0;
+
+    JSStackFrame *sf = js_get_stack_frame_at_level(ctx, level);
+    if (sf == NULL)
+        return NULL;
+
+    JSValue func = sf->cur_func;
+    if (JS_VALUE_GET_TAG(func) != JS_TAG_OBJECT)
+        return NULL;
+
+    JSObject *p = JS_VALUE_GET_OBJ(func);
+    if (p->class_id != JS_CLASS_BYTECODE_FUNCTION)
+        return NULL;
+
+    JSFunctionBytecode *b = p->u.func.function_bytecode;
+    int total_vars = b->arg_count + b->var_count;
+
+    if (total_vars == 0)
+        return NULL;
+
+    JSDebugLocalVar *vars = js_malloc(ctx, sizeof(JSDebugLocalVar) * total_vars);
+    if (!vars)
+        return NULL;
+
+    int idx = 0;
+
+    /* Helper macro to capture a single variable; on JS_AtomToCString failure
+       (typically OOM), unwind everything and return NULL with *pcount = 0. */
+#define APPEND_VAR(vd_, value_, is_arg_)                                  \
+    do {                                                                  \
+        JSAtom name_ = (vd_)->var_name;                                   \
+        const char *name_str_;                                            \
+        /* Skip compiler-generated internal names like <ret>, <this_func> */ \
+        if (name_ != JS_ATOM_NULL) {                                      \
+            char tmp_[32];                                                \
+            JS_AtomGetStr(ctx, tmp_, sizeof(tmp_), name_);                \
+            if (tmp_[0] == '<')                                           \
+                break;                                                    \
+        }                                                                 \
+        name_str_ = JS_AtomToCString(ctx, name_);                         \
+        if (unlikely(!name_str_))                                         \
+            goto fail;                                                    \
+        vars[idx].name = name_str_;                                       \
+        /* JS_UNINITIALIZED is an internal sentinel (let/const TDZ); */   \
+        /* expose it as undefined to C callers. */                        \
+        if (JS_VALUE_GET_TAG(value_) == JS_TAG_UNINITIALIZED)             \
+            vars[idx].value = JS_UNDEFINED;                               \
+        else                                                              \
+            vars[idx].value = js_dup(value_);                             \
+        vars[idx].is_arg = (is_arg_);                                     \
+        vars[idx].scope_level = (vd_)->scope_level;                       \
+        idx++;                                                            \
+    } while (0)
+
+    /* First, get arguments */
+    for (int i = 0; i < b->arg_count; i++) {
+        JSVarDef *vd = &b->vardefs[i];
+        APPEND_VAR(vd, sf->arg_buf[i], 1);
+    }
+
+    /* Then, get local variables */
+    for (int i = 0; i < b->var_count; i++) {
+        JSVarDef *vd = &b->vardefs[b->arg_count + i];
+        APPEND_VAR(vd, sf->var_buf[i], 0);
+    }
+
+#undef APPEND_VAR
+
+    if (pcount)
+        *pcount = idx;
+    return vars;
+
+fail:
+    /* JS_AtomToCString failed (OOM). Free what we have, clear the pending
+       exception so it does not leak to the next API call, and return NULL. */
+    for (int i = 0; i < idx; i++) {
+        JS_FreeCString(ctx, vars[i].name);
+        JS_FreeValue(ctx, vars[i].value);
+    }
+    js_free(ctx, vars);
+    JS_FreeValue(ctx, JS_GetException(ctx));
+    if (pcount)
+        *pcount = 0;
+    return NULL;
+}
+
+/* Free local variables array */
+void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count)
+{
+    if (!vars)
+        return;
+    for (int i = 0; i < count; i++) {
+        JS_FreeCString(ctx, vars[i].name);
+        JS_FreeValue(ctx, vars[i].value);
+    }
+    js_free(ctx, vars);
 }
 
 typedef enum JSFreeModuleEnum {
@@ -17594,6 +17734,43 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         JSValue *call_argv;
 
         SWITCH(pc) {
+        CASE(OP_debug):
+            if (unlikely(ctx->debug_trace)) {
+                int col_num = 0;
+                int line_num = -1;
+                uint32_t pc_index = (uint32_t)(pc - b->byte_code_buf - 1);
+                line_num = find_line_num(ctx, b, pc_index, &col_num);
+
+                /* Use JS_AtomToCString to get the full filename / funcname
+                   without the 63-byte truncation that a stack buffer would
+                   impose. The pointers are only valid for the duration of
+                   the callback. */
+                const char *filename = JS_AtomToCString(ctx, b->filename);
+                if (unlikely(!filename)) {
+                    /* OOM: a pending exception has been raised */
+                    goto exception;
+                }
+                const char *funcname = JS_AtomToCString(ctx, b->func_name);
+                if (unlikely(!funcname)) {
+                    JS_FreeCString(ctx, filename);
+                    goto exception;
+                }
+                int ret = ctx->debug_trace(ctx, filename, funcname,
+                                           line_num, col_num);
+                JS_FreeCString(ctx, filename);
+                JS_FreeCString(ctx, funcname);
+
+                if (ret != 0 || JS_HasException(ctx)) {
+                    /* If the callback indicated failure but did not raise
+                       an exception itself, synthesize a default one so the
+                       caller never observes JS_UNINITIALIZED via
+                       JS_GetException(). */
+                    if (ret != 0 && !JS_HasException(ctx))
+                        JS_ThrowInternalError(ctx, "aborted by debugger");
+                    goto exception;
+                }
+            }
+            BREAK;
         CASE(OP_push_i32):
             *sp++ = js_int32(get_u32(pc));
             pc += 4;
@@ -22467,6 +22644,7 @@ static __exception int next_token(JSParseState *s)
             if (JS_VALUE_IS_NAN(ret) ||
                 lre_js_is_ident_next(utf8_decode(p, &p1))) {
                 JS_FreeValue(s->ctx, ret);
+                s->col_num = max_int(1, s->mark - s->eol);
                 js_parse_error(s, "invalid number literal");
                 goto fail;
             }
@@ -23179,6 +23357,18 @@ static void emit_source_loc(JSParseState *s)
     dbuf_putc(bc, OP_source_loc);
     dbuf_put_u32(bc, s->token.line_num);
     dbuf_put_u32(bc, s->token.col_num);
+}
+
+/* Emit an OP_source_loc + OP_debug pair at a statement boundary, but only
+   when a debug trace handler is currently registered on the context. When
+   no handler is set this is a no-op, so the produced bytecode is identical
+   to upstream and there is zero runtime overhead. */
+static void emit_source_loc_debug(JSParseState *s)
+{
+    if (unlikely(s->ctx->debug_trace)) {
+        emit_source_loc(s);
+        dbuf_putc(&s->cur_func->byte_code, OP_debug);
+    }
 }
 
 static void emit_op(JSParseState *s, uint8_t val)
@@ -28296,6 +28486,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             goto fail;
         break;
     case TOK_RETURN:
+        emit_source_loc_debug(s);
         if (s->cur_func->is_eval) {
             js_parse_error(s, "return not in a function");
             goto fail;
@@ -28323,6 +28514,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             js_parse_error(s, "line terminator not allowed after throw");
             goto fail;
         }
+        emit_source_loc_debug(s);
         emit_source_loc(s);
         if (js_parse_expr(s))
             goto fail;
@@ -28339,6 +28531,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         }
         /* fall thru */
     case TOK_VAR:
+        emit_source_loc_debug(s);
         if (next_token(s))
             goto fail;
         if (js_parse_var(s, PF_IN_ACCEPTED, tok, /*export_flag*/false))
@@ -28349,6 +28542,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
     case TOK_IF:
         {
             int label1, label2, mask;
+            emit_source_loc_debug(s);
             if (next_token(s))
                 goto fail;
             /* create a new scope for `let f;if(1) function f(){}` */
@@ -28457,6 +28651,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             int tok, bits;
             bool is_async;
 
+            emit_source_loc_debug(s);
             if (next_token(s))
                 goto fail;
 
@@ -28623,6 +28818,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             int default_label_pos;
             BlockEnv break_entry;
 
+            emit_source_loc_debug(s);
             if (next_token(s))
                 goto fail;
 
@@ -28970,6 +29166,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
 
     default:
     hasexpr:
+        emit_source_loc_debug(s);
         emit_source_loc(s);
         if (js_parse_expr(s))
             goto fail;
@@ -33329,6 +33526,8 @@ static bool code_match(CodeContext *s, int pos, ...)
                 line_num = get_u32(tab + pos + 1);
                 col_num = get_u32(tab + pos + 5);
                 pos = pos_next;
+            } else if (op == OP_debug) {
+                pos = pos_next;
             } else {
                 break;
             }
@@ -33615,6 +33814,9 @@ static int get_label_pos(JSFunctionDef *s, int label)
             switch (s->byte_code.buf[pos]) {
             case OP_source_loc:
                 pos += 9;
+                continue;
+            case OP_debug:
+                pos += 1;
                 continue;
             case OP_label:
                 pos += 5;
@@ -34319,6 +34521,13 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                performance */
             line_num = get_u32(bc_buf + pos + 1);
             col_num = get_u32(bc_buf + pos + 5);
+            break;
+
+        case OP_debug:
+            /* record pc2line so the debugger can resolve the source
+               location when OP_debug is hit at runtime */
+            add_pc2line_info(s, bc_out.size, line_num, col_num);
+            dbuf_putc(&bc_out, OP_debug);
             break;
 
         case OP_label:
