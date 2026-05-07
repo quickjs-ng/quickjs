@@ -5091,11 +5091,13 @@ static const JSCFunctionListEntry js_text_decoder_proto_funcs[] = {
     JS_CGETSET_DEF("ignoreBOM", js_text_decoder_get_ignore_bom, NULL),
 };
 
-static void js_std_install_text_codecs(JSContext *ctx, JSValue global_obj)
+void js_std_add_text_codecs(JSContext *ctx)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
-    JSValue proto, ctor;
+    JSValue global_obj, proto, ctor;
+
+    global_obj = JS_GetGlobalObject(ctx);
 
     JS_NewClassID(rt, &ts->text_encoder_class_id);
     JS_NewClass(rt, ts->text_encoder_class_id, &js_text_encoder_class);
@@ -5118,6 +5120,8 @@ static void js_std_install_text_codecs(JSContext *ctx, JSValue global_obj)
                             JS_CFUNC_constructor, 0);
     JS_SetConstructor(ctx, ctor, proto);
     JS_SetPropertyStr(ctx, global_obj, "TextDecoder", ctor);
+
+    JS_FreeValue(ctx, global_obj);
 }
 
 void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
@@ -5145,7 +5149,7 @@ void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
     JS_SetPropertyStr(ctx, global_obj, "print",
                       JS_NewCFunction(ctx, js_print, "print", 1));
 
-    js_std_install_text_codecs(ctx, global_obj);
+    js_std_add_text_codecs(ctx);
 
     JS_FreeValue(ctx, global_obj);
 }
