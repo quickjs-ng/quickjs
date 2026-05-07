@@ -4704,15 +4704,19 @@ static JSValue js_text_encoder_encode_into(JSContext *ctx, JSValueConst this_val
         return JS_ThrowTypeError(ctx, "'this' is not a TextEncoder");
     if (argc < 2)
         return JS_ThrowTypeError(ctx, "TextEncoder.encodeInto requires two arguments");
-    if (JS_GetTypedArrayType(argv[1]) != JS_TYPED_ARRAY_UINT8)
-        return JS_ThrowTypeError(ctx,
-            "TextEncoder.encodeInto: destination must be a Uint8Array");
-    dst = JS_GetUint8Array(ctx, &dst_len, argv[1]);
-    if (!dst)
-        return JS_EXCEPTION;
     src = JS_ToCStringLen(ctx, &src_len, argv[0]);
     if (!src)
         return JS_EXCEPTION;
+    if (JS_GetTypedArrayType(argv[1]) != JS_TYPED_ARRAY_UINT8) {
+        JS_FreeCString(ctx, src);
+        return JS_ThrowTypeError(ctx,
+            "TextEncoder.encodeInto: destination must be a Uint8Array");
+    }
+    dst = JS_GetUint8Array(ctx, &dst_len, argv[1]);
+    if (!dst) {
+        JS_FreeCString(ctx, src);
+        return JS_EXCEPTION;
+    }
 
     p = (const uint8_t *)src;
     end = p + src_len;
