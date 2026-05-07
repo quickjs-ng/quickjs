@@ -1729,6 +1729,7 @@ JSContext *JS_NewCustomContext(JSRuntime *rt)
         js_init_module_std(ctx, "qjs:std");
         js_init_module_os(ctx, "qjs:os");
         js_init_module_bjson(ctx, "qjs:bjson");
+        js_std_add_text_codecs(ctx);
         obj = JS_GetGlobalObject(ctx);
         JS_SetPropertyFunctionList(ctx, obj, &qjs_object, 1);
         JS_FreeValue(ctx, obj);

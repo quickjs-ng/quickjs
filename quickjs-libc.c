@@ -197,6 +197,8 @@ typedef struct JSThreadState {
 #endif // USE_WORKER
     JSClassID std_file_class_id;
     JSClassID worker_class_id;
+    JSClassID text_encoder_class_id;
+    JSClassID text_decoder_class_id;
 } JSThreadState;
 
 static uint64_t os_pending_signals;
@@ -4599,6 +4601,529 @@ done:
     return JS_UNDEFINED;
 }
 
+/**********************************************************/
+/* WHATWG Encoding: TextEncoder / TextDecoder (UTF-8 only) */
+
+typedef struct {
+    bool fatal;
+    bool ignore_bom;
+    /* Once we've decoded any input (or skipped a BOM), we stop treating
+       a leading U+FEFF as a BOM. Reset on non-stream decode(). */
+    bool bom_seen;
+    /* Up to 3 trailing bytes of an incomplete UTF-8 sequence saved
+       across stream decode() calls. */
+    uint8_t pending[4];
+    int pending_len;
+} JSTextDecoder;
+
+static void js_text_decoder_finalizer(JSRuntime *rt, JSValue val)
+{
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSTextDecoder *td = JS_GetOpaque(val, ts->text_decoder_class_id);
+    js_free_rt(rt, td);
+}
+
+static JSClassDef js_text_encoder_class = {
+    "TextEncoder",
+};
+
+static JSClassDef js_text_decoder_class = {
+    "TextDecoder",
+    .finalizer = js_text_decoder_finalizer,
+};
+
+/* Lead-byte length of a UTF-8 sequence, or 0 for invalid/continuation. */
+static int js_utf8_seq_len(uint8_t b)
+{
+    if (b < 0x80) return 1;
+    if (b < 0xC2) return 0;
+    if (b < 0xE0) return 2;
+    if (b < 0xF0) return 3;
+    if (b < 0xF5) return 4;
+    return 0;
+}
+
+/* Bounds for the first continuation byte after `lead`, matching the
+   acceptance set of utf8_decode() in cutils.h. Subsequent continuation
+   bytes are always [0x80, 0xBF]. */
+static void js_utf8_first_cont_bounds(uint8_t lead, uint8_t *lo, uint8_t *hi)
+{
+    if (lead == 0xE0)      { *lo = 0xA0; *hi = 0xBF; }
+    else if (lead == 0xF0) { *lo = 0x90; *hi = 0xBF; }
+    else if (lead == 0xF4) { *lo = 0x80; *hi = 0x8F; }
+    else                   { *lo = 0x80; *hi = 0xBF; }
+}
+
+/* TextEncoder ------------------------------------------------------------ */
+
+static JSValue js_text_encoder_constructor(JSContext *ctx,
+                                           JSValueConst new_target,
+                                           int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSValue proto, obj;
+
+    proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto))
+        return proto;
+    obj = JS_NewObjectProtoClass(ctx, proto, ts->text_encoder_class_id);
+    JS_FreeValue(ctx, proto);
+    if (JS_IsException(obj))
+        return obj;
+    /* Stateless; opaque is just a brand. */
+    JS_SetOpaque(obj, (void *)1);
+    return obj;
+}
+
+static JSValue js_text_encoder_encode(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    const char *str;
+    size_t len;
+    JSValue ret;
+
+    if (!JS_GetOpaque(this_val, ts->text_encoder_class_id))
+        return JS_ThrowTypeError(ctx, "'this' is not a TextEncoder");
+    if (argc < 1 || JS_IsUndefined(argv[0]))
+        return JS_NewUint8ArrayCopy(ctx, NULL, 0);
+    str = JS_ToCStringLen(ctx, &len, argv[0]);
+    if (!str)
+        return JS_EXCEPTION;
+    /* JS_ToCStringLen keeps lone surrogates as their 3-byte CESU-8-like
+       encoding (ED A0..BF XX). USVString conversion in the WHATWG Encoding
+       spec replaces them with U+FFFD before UTF-8 encoding. Valid UTF-8
+       never produces ED A0..BF, so any such triple comes from a lone
+       surrogate. The replacement is 3 bytes, so output length is unchanged. */
+    {
+        const uint8_t *s = (const uint8_t *)str;
+        size_t i;
+        for (i = 0; i + 2 < len; i++) {
+            if (s[i] == 0xED && s[i+1] >= 0xA0 && s[i+1] <= 0xBF)
+                break;
+        }
+        if (i + 2 >= len) {
+            ret = JS_NewUint8ArrayCopy(ctx, s, len);
+        } else {
+            uint8_t *buf = js_malloc(ctx, len);
+            size_t j;
+            if (!buf) {
+                JS_FreeCString(ctx, str);
+                return JS_EXCEPTION;
+            }
+            memcpy(buf, s, i);
+            for (j = i; i < len; ) {
+                if (i + 2 < len && s[i] == 0xED
+                    && s[i+1] >= 0xA0 && s[i+1] <= 0xBF
+                    && s[i+2] >= 0x80 && s[i+2] <= 0xBF) {
+                    buf[j++] = 0xEF; buf[j++] = 0xBF; buf[j++] = 0xBD;
+                    i += 3;
+                } else {
+                    buf[j++] = s[i++];
+                }
+            }
+            ret = JS_NewUint8ArrayCopy(ctx, buf, j);
+            js_free(ctx, buf);
+        }
+    }
+    JS_FreeCString(ctx, str);
+    return ret;
+}
+
+static JSValue js_text_encoder_encode_into(JSContext *ctx, JSValueConst this_val,
+                                           int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    const char *src;
+    size_t src_len, dst_len;
+    uint8_t *dst;
+    int read = 0, written = 0;
+    const uint8_t *p, *end, *next;
+    uint32_t cp;
+    size_t enc_len;
+    JSValue ret;
+
+    if (!JS_GetOpaque(this_val, ts->text_encoder_class_id))
+        return JS_ThrowTypeError(ctx, "'this' is not a TextEncoder");
+    if (argc < 2)
+        return JS_ThrowTypeError(ctx, "TextEncoder.encodeInto requires two arguments");
+    src = JS_ToCStringLen(ctx, &src_len, argv[0]);
+    if (!src)
+        return JS_EXCEPTION;
+    if (JS_GetTypedArrayType(argv[1]) != JS_TYPED_ARRAY_UINT8) {
+        JS_FreeCString(ctx, src);
+        return JS_ThrowTypeError(ctx,
+            "TextEncoder.encodeInto: destination must be a Uint8Array");
+    }
+    dst = JS_GetUint8Array(ctx, &dst_len, argv[1]);
+    if (!dst) {
+        JS_FreeCString(ctx, src);
+        return JS_EXCEPTION;
+    }
+
+    p = (const uint8_t *)src;
+    end = p + src_len;
+    while (p < end) {
+        cp = utf8_decode(p, &next);
+        /* JS_ToCStringLen keeps lone surrogates as ED A0..BF XX, which
+           utf8_decode happily decodes back to a surrogate code point. The
+           USVString conversion in the spec replaces them with U+FFFD. */
+        if (cp >= 0xD800 && cp <= 0xDFFF)
+            cp = 0xFFFD;
+        enc_len = utf8_encode_len(cp);
+        if ((size_t)written + enc_len > dst_len)
+            break;
+        utf8_encode(dst + written, cp);
+        written += (int)enc_len;
+        /* Spec: read counts UTF-16 code units consumed from the input. */
+        read += (cp > 0xFFFF) ? 2 : 1;
+        p = next;
+    }
+    JS_FreeCString(ctx, src);
+
+    ret = JS_NewObject(ctx);
+    if (JS_IsException(ret))
+        return ret;
+    JS_DefinePropertyValueStr(ctx, ret, "read",
+                              JS_NewInt32(ctx, read), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, ret, "written",
+                              JS_NewInt32(ctx, written), JS_PROP_C_W_E);
+    return ret;
+}
+
+static JSValue js_text_encoder_get_encoding(JSContext *ctx, JSValueConst this_val)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    if (!JS_GetOpaque(this_val, ts->text_encoder_class_id))
+        return JS_ThrowTypeError(ctx, "'this' is not a TextEncoder");
+    return JS_NewString(ctx, "utf-8");
+}
+
+static const JSCFunctionListEntry js_text_encoder_proto_funcs[] = {
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "TextEncoder", JS_PROP_CONFIGURABLE),
+    JS_CFUNC_DEF("encode", 1, js_text_encoder_encode),
+    JS_CFUNC_DEF("encodeInto", 2, js_text_encoder_encode_into),
+    JS_CGETSET_DEF("encoding", js_text_encoder_get_encoding, NULL),
+};
+
+/* TextDecoder ------------------------------------------------------------ */
+
+/* Match a label against the WHATWG list of UTF-8 aliases (case-insensitive,
+   ASCII-whitespace trimmed). Returns 0 on match, -1 otherwise. */
+static int js_text_decoder_label_is_utf8(const char *label, size_t len)
+{
+    static const char * const aliases[] = {
+        "unicode-1-1-utf-8", "unicode11utf8", "unicode20utf8",
+        "utf-8", "utf8", "x-unicode20utf8",
+    };
+    size_t i, j;
+    while (len > 0 && (*label == ' ' || *label == '\t' || *label == '\n'
+                       || *label == '\r' || *label == '\f')) {
+        label++; len--;
+    }
+    while (len > 0 && (label[len-1] == ' ' || label[len-1] == '\t'
+                       || label[len-1] == '\n' || label[len-1] == '\r'
+                       || label[len-1] == '\f')) {
+        len--;
+    }
+    for (i = 0; i < countof(aliases); i++) {
+        size_t alen = strlen(aliases[i]);
+        if (alen != len) continue;
+        for (j = 0; j < len; j++) {
+            int c = (unsigned char)label[j];
+            if (c >= 'A' && c <= 'Z') c += 32;
+            if (c != aliases[i][j]) break;
+        }
+        if (j == len) return 0;
+    }
+    return -1;
+}
+
+static JSValue js_text_decoder_constructor(JSContext *ctx,
+                                           JSValueConst new_target,
+                                           int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSValue proto, obj;
+    JSTextDecoder *td;
+    bool fatal = false, ignore_bom = false;
+
+    if (argc >= 1 && !JS_IsUndefined(argv[0])) {
+        size_t llen;
+        const char *label = JS_ToCStringLen(ctx, &llen, argv[0]);
+        if (!label)
+            return JS_EXCEPTION;
+        if (js_text_decoder_label_is_utf8(label, llen) < 0) {
+            JSValue err = JS_ThrowRangeError(ctx,
+                "The \"%s\" encoding is not supported", label);
+            JS_FreeCString(ctx, label);
+            return err;
+        }
+        JS_FreeCString(ctx, label);
+    }
+    if (argc >= 2 && JS_IsObject(argv[1])) {
+        JSValue v = JS_GetPropertyStr(ctx, argv[1], "fatal");
+        if (JS_IsException(v)) return v;
+        fatal = JS_ToBool(ctx, v);
+        JS_FreeValue(ctx, v);
+        v = JS_GetPropertyStr(ctx, argv[1], "ignoreBOM");
+        if (JS_IsException(v)) return v;
+        ignore_bom = JS_ToBool(ctx, v);
+        JS_FreeValue(ctx, v);
+    }
+
+    proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto))
+        return proto;
+    obj = JS_NewObjectProtoClass(ctx, proto, ts->text_decoder_class_id);
+    JS_FreeValue(ctx, proto);
+    if (JS_IsException(obj))
+        return obj;
+    td = js_mallocz(ctx, sizeof(*td));
+    if (!td) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    td->fatal = fatal;
+    td->ignore_bom = ignore_bom;
+    JS_SetOpaque(obj, td);
+    return obj;
+}
+
+/* Get the byte view of a BufferSource (ArrayBuffer or any TypedArray view).
+   On success returns 0 with bytes/len populated; on failure returns -1
+   with a TypeError pending. JS_UNDEFINED yields the empty input. */
+static int js_text_decoder_get_bytes(JSContext *ctx, JSValueConst v,
+                                     const uint8_t **bytes, size_t *len)
+{
+    if (JS_IsUndefined(v)) {
+        *bytes = NULL; *len = 0;
+        return 0;
+    }
+    if (JS_IsArrayBuffer(v)) {
+        size_t l;
+        uint8_t *p = JS_GetArrayBuffer(ctx, &l, v);
+        if (!p) return -1;
+        *bytes = p; *len = l;
+        return 0;
+    }
+    if (JS_GetTypedArrayType(v) >= 0) {
+        size_t off, blen, bpe, ablen;
+        JSValue ab = JS_GetTypedArrayBuffer(ctx, v, &off, &blen, &bpe);
+        uint8_t *p;
+        if (JS_IsException(ab)) return -1;
+        p = JS_GetArrayBuffer(ctx, &ablen, ab);
+        JS_FreeValue(ctx, ab);
+        if (!p) return -1;
+        *bytes = p + off; *len = blen;
+        return 0;
+    }
+    JS_ThrowTypeError(ctx,
+        "TextDecoder.decode: input must be an ArrayBuffer or TypedArray");
+    return -1;
+}
+
+static JSValue js_text_decoder_decode(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSTextDecoder *td;
+    const uint8_t *src;
+    size_t src_len;
+    bool stream = false;
+    uint8_t *combined = NULL;
+    uint8_t *out = NULL;
+    size_t out_len = 0, out_cap;
+    const uint8_t *p, *p_end, *next;
+    uint32_t cp;
+    JSValue ret;
+    JSValueConst input = argc > 0 ? argv[0] : JS_UNDEFINED;
+
+    td = JS_GetOpaque(this_val, ts->text_decoder_class_id);
+    if (!td)
+        return JS_ThrowTypeError(ctx, "'this' is not a TextDecoder");
+    if (argc >= 2 && JS_IsObject(argv[1])) {
+        JSValue v = JS_GetPropertyStr(ctx, argv[1], "stream");
+        if (JS_IsException(v)) return v;
+        stream = JS_ToBool(ctx, v);
+        JS_FreeValue(ctx, v);
+    }
+    if (js_text_decoder_get_bytes(ctx, input, &src, &src_len) < 0)
+        return JS_EXCEPTION;
+
+    if (td->pending_len > 0) {
+        size_t total = (size_t)td->pending_len + src_len;
+        combined = js_malloc(ctx, total ? total : 1);
+        if (!combined) return JS_EXCEPTION;
+        memcpy(combined, td->pending, td->pending_len);
+        if (src_len > 0) memcpy(combined + td->pending_len, src, src_len);
+        src = combined;
+        src_len = total;
+        td->pending_len = 0;
+    }
+
+    /* Worst case output: each byte expands to 3-byte U+FFFD replacement. */
+    out_cap = src_len * 3 + 4;
+    out = js_malloc(ctx, out_cap);
+    if (!out) {
+        if (combined) js_free(ctx, combined);
+        return JS_EXCEPTION;
+    }
+
+    p = src;
+    p_end = src + src_len;
+    while (p < p_end) {
+        int seq_len = js_utf8_seq_len(*p);
+        if (seq_len == 0) {
+            if (td->fatal) goto invalid;
+            out[out_len++] = 0xEF; out[out_len++] = 0xBF; out[out_len++] = 0xBD;
+            p++;
+            continue;
+        }
+        if (p + seq_len > p_end) {
+            /* Sequence is incomplete by length. Check the bytes we do have
+               against the per-lead continuation bounds: a byte that's out
+               of range is a known error and must be re-read as a fresh
+               lead, not buffered. */
+            int avail = (int)(p_end - p);
+            int k = 1;
+            if (avail >= 2) {
+                uint8_t lo, hi;
+                js_utf8_first_cont_bounds(*p, &lo, &hi);
+                if (p[1] >= lo && p[1] <= hi) {
+                    for (k = 2; k < avail; k++) {
+                        if (p[k] < 0x80 || p[k] > 0xBF) break;
+                    }
+                }
+            }
+            if (k < avail) {
+                /* p[k] violates the continuation rules: emit one error,
+                   advance past the lead and any valid continuations, and
+                   leave p[k] for the next iteration. */
+                if (td->fatal) goto invalid;
+                out[out_len++] = 0xEF; out[out_len++] = 0xBF; out[out_len++] = 0xBD;
+                p += k;
+                continue;
+            }
+            /* Truly partial: defer in stream mode, otherwise flush as one error. */
+            if (stream) {
+                memcpy(td->pending, p, avail);
+                td->pending_len = avail;
+                p = p_end;
+                break;
+            }
+            if (td->fatal) goto invalid;
+            out[out_len++] = 0xEF; out[out_len++] = 0xBF; out[out_len++] = 0xBD;
+            p = p_end;
+            break;
+        }
+        cp = utf8_decode_len(p, p_end - p, &next);
+        if (cp == 0xFFFD && next == p + 1 && *p >= 0x80) {
+            if (td->fatal) goto invalid;
+            out[out_len++] = 0xEF; out[out_len++] = 0xBF; out[out_len++] = 0xBD;
+            p = next;
+            continue;
+        }
+        if (!td->bom_seen) {
+            td->bom_seen = true;
+            if (!td->ignore_bom && cp == 0xFEFF) {
+                p = next;
+                continue;
+            }
+        }
+        out_len += utf8_encode(out + out_len, cp);
+        p = next;
+    }
+
+    if (!stream) {
+        td->pending_len = 0;
+        td->bom_seen = false;
+    }
+    ret = JS_NewStringLen(ctx, (const char *)out, out_len);
+    js_free(ctx, out);
+    if (combined) js_free(ctx, combined);
+    return ret;
+
+invalid:
+    js_free(ctx, out);
+    if (combined) js_free(ctx, combined);
+    return JS_ThrowTypeError(ctx, "The encoded data was not valid");
+}
+
+static JSValue js_text_decoder_get_encoding(JSContext *ctx, JSValueConst this_val)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    if (!JS_GetOpaque(this_val, ts->text_decoder_class_id))
+        return JS_ThrowTypeError(ctx, "'this' is not a TextDecoder");
+    return JS_NewString(ctx, "utf-8");
+}
+
+static JSValue js_text_decoder_get_fatal(JSContext *ctx, JSValueConst this_val)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSTextDecoder *td = JS_GetOpaque(this_val, ts->text_decoder_class_id);
+    if (!td) return JS_ThrowTypeError(ctx, "'this' is not a TextDecoder");
+    return JS_NewBool(ctx, td->fatal);
+}
+
+static JSValue js_text_decoder_get_ignore_bom(JSContext *ctx, JSValueConst this_val)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSTextDecoder *td = JS_GetOpaque(this_val, ts->text_decoder_class_id);
+    if (!td) return JS_ThrowTypeError(ctx, "'this' is not a TextDecoder");
+    return JS_NewBool(ctx, td->ignore_bom);
+}
+
+static const JSCFunctionListEntry js_text_decoder_proto_funcs[] = {
+    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "TextDecoder", JS_PROP_CONFIGURABLE),
+    JS_CFUNC_DEF("decode", 1, js_text_decoder_decode),
+    JS_CGETSET_DEF("encoding", js_text_decoder_get_encoding, NULL),
+    JS_CGETSET_DEF("fatal", js_text_decoder_get_fatal, NULL),
+    JS_CGETSET_DEF("ignoreBOM", js_text_decoder_get_ignore_bom, NULL),
+};
+
+void js_std_add_text_codecs(JSContext *ctx)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSThreadState *ts = js_get_thread_state(rt);
+    JSValue global_obj, proto, ctor;
+
+    global_obj = JS_GetGlobalObject(ctx);
+
+    JS_NewClassID(rt, &ts->text_encoder_class_id);
+    JS_NewClass(rt, ts->text_encoder_class_id, &js_text_encoder_class);
+    proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, proto, js_text_encoder_proto_funcs,
+                               countof(js_text_encoder_proto_funcs));
+    JS_SetClassProto(ctx, ts->text_encoder_class_id, proto);
+    ctor = JS_NewCFunction2(ctx, js_text_encoder_constructor, "TextEncoder", 0,
+                            JS_CFUNC_constructor, 0);
+    JS_SetConstructor(ctx, ctor, proto);
+    JS_SetPropertyStr(ctx, global_obj, "TextEncoder", ctor);
+
+    JS_NewClassID(rt, &ts->text_decoder_class_id);
+    JS_NewClass(rt, ts->text_decoder_class_id, &js_text_decoder_class);
+    proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, proto, js_text_decoder_proto_funcs,
+                               countof(js_text_decoder_proto_funcs));
+    JS_SetClassProto(ctx, ts->text_decoder_class_id, proto);
+    ctor = JS_NewCFunction2(ctx, js_text_decoder_constructor, "TextDecoder", 2,
+                            JS_CFUNC_constructor, 0);
+    JS_SetConstructor(ctx, ctor, proto);
+    JS_SetPropertyStr(ctx, global_obj, "TextDecoder", ctor);
+
+    JS_FreeValue(ctx, global_obj);
+}
+
 void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
 {
     JSValue global_obj, console, args;
@@ -4623,6 +5148,8 @@ void js_std_add_helpers(JSContext *ctx, int argc, char **argv)
 
     JS_SetPropertyStr(ctx, global_obj, "print",
                       JS_NewCFunction(ctx, js_print, "print", 1));
+
+    js_std_add_text_codecs(ctx);
 
     JS_FreeValue(ctx, global_obj);
 }
