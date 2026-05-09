@@ -986,7 +986,8 @@ static int debug_trace_cb(JSContext *ctx,
                            const char *filename,
                            const char *funcname,
                            int line,
-                           int col)
+                           int col,
+                           void *opaque)
 {
     trace_state.call_count++;
     trace_state.last_line = line;
@@ -1023,7 +1024,7 @@ static void debug_trace(void)
     }
 
     /* set handler: callback fires for each statement */
-    JS_SetDebugTraceHandler(ctx, debug_trace_cb);
+    JS_SetDebugTraceHandler(ctx, debug_trace_cb, NULL);
     memset(&trace_state, 0, sizeof(trace_state));
     {
         JSValue ret = eval(ctx, "var x = 1; x + 2");
@@ -1082,7 +1083,7 @@ static void debug_trace(void)
     }
 
     /* clear handler: callbacks no longer fire */
-    JS_SetDebugTraceHandler(ctx, NULL);
+    JS_SetDebugTraceHandler(ctx, NULL, NULL);
     memset(&trace_state, 0, sizeof(trace_state));
     {
         JSValue ret = eval(ctx, "1+2");

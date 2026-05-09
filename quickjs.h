@@ -566,14 +566,16 @@ typedef int JSDebugTraceFunc(JSContext *ctx,
                              const char *filename,
                              const char *funcname,
                              int line,
-                             int col);
+                             int col,
+                             void *opaque);
 
 /* Set (or clear) the debug trace handler on a context.  Pass NULL to
    disable.  Works with any context, including those created with
    JS_NewContextRaw.  See JSDebugTraceFunc above for the parse-time
    instrumentation contract. */
 JS_EXTERN void JS_SetDebugTraceHandler(JSContext *ctx,
-                                       JSDebugTraceFunc *cb);
+                                       JSDebugTraceFunc *cb,
+                                       void *opaque);
 
 /* Debug API: Get local variables in stack frames */
 typedef struct JSDebugLocalVar {

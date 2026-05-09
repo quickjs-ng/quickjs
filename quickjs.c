@@ -538,6 +538,7 @@ struct JSContext {
     void *user_opaque;
 
     JSDebugTraceFunc *debug_trace;
+    void *debug_trace_opaque;
 };
 
 typedef union JSFloat64Union {
@@ -2572,9 +2573,10 @@ JSValue JS_GetFunctionProto(JSContext *ctx)
     return js_dup(ctx->function_proto);
 }
 
-void JS_SetDebugTraceHandler(JSContext *ctx, JSDebugTraceFunc *cb)
+void JS_SetDebugTraceHandler(JSContext *ctx, JSDebugTraceFunc *cb, void *opaque)
 {
     ctx->debug_trace = cb;
+    ctx->debug_trace_opaque = opaque;
 }
 
 /* Forward declaration: defined later in this file */
@@ -17756,7 +17758,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     goto exception;
                 }
                 int ret = ctx->debug_trace(ctx, filename, funcname,
-                                           line_num, col_num);
+                                           line_num, col_num,
+                                           ctx->debug_trace_opaque);
                 JS_FreeCString(ctx, filename);
                 JS_FreeCString(ctx, funcname);
 
