@@ -334,6 +334,10 @@ struct JSRuntime {
     } u;
     JSModuleCheckSupportedImportAttributes *module_check_attrs;
     void *module_loader_opaque;
+    JSModuleImportMetaInitFunc *module_import_meta_init_func;
+    void *module_import_meta_init_opaque;
+    JSModuleDynamicImportFunc *module_dynamic_import_func;
+    void *module_dynamic_import_opaque;
     /* timestamp for internal use in module evaluation */
     int64_t module_async_evaluation_next_timestamp;
 
@@ -888,6 +892,7 @@ typedef struct JSReqModuleEntry {
     JSAtom module_name;
     JSModuleDef *module; /* used using resolution */
     JSValue attributes; /* JS_UNDEFINED or an object containing the attributes as key/value */
+    JSModuleImportPhaseEnum phase;
 } JSReqModuleEntry;
 
 typedef enum JSExportTypeEnum {
@@ -919,14 +924,7 @@ typedef struct JSImportEntry {
     int req_module_idx; /* in req_module_entries */
 } JSImportEntry;
 
-typedef enum {
-    JS_MODULE_STATUS_UNLINKED,
-    JS_MODULE_STATUS_LINKING,
-    JS_MODULE_STATUS_LINKED,
-    JS_MODULE_STATUS_EVALUATING,
-    JS_MODULE_STATUS_EVALUATING_ASYNC,
-    JS_MODULE_STATUS_EVALUATED,
-} JSModuleStatus;
+typedef JSModuleStatusEnum JSModuleStatus;
 
 struct JSModuleDef {
     JSRefCountHeader header; /* must come first, 32-bit */
@@ -954,6 +952,7 @@ struct JSModuleDef {
     JSModuleInitFunc *init_func; /* only used for C modules */
     bool has_tla; /* true if func_obj contains await */
     bool resolved;
+    bool has_host_linked_modules;
     bool func_created;
     JSModuleStatus status : 8;
     /* temp use during js_module_link() & js_module_evaluate() */
@@ -29077,17 +29076,106 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
 
 #ifndef QJS_DISABLE_PARSER
 
+static int js_module_attributes_equal(JSContext *ctx,
+                                      JSValueConst a,
+                                      JSValueConst b)
+{
+    JSPropertyEnum *a_atoms = NULL, *b_atoms = NULL;
+    uint32_t a_len = 0, b_len = 0, i;
+    int ret = -1;
+
+    if (JS_IsUndefined(a) && JS_IsUndefined(b))
+        return 1;
+    if (JS_IsUndefined(a)) {
+        if (!JS_IsObject(b))
+            return 0;
+        if (JS_GetOwnPropertyNamesInternal(ctx, &b_atoms, &b_len,
+                                           JS_VALUE_GET_OBJ(b),
+                                           JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY))
+            return -1;
+        ret = (b_len == 0);
+        JS_FreePropertyEnum(ctx, b_atoms, b_len);
+        return ret;
+    }
+    if (JS_IsUndefined(b)) {
+        if (!JS_IsObject(a))
+            return 0;
+        if (JS_GetOwnPropertyNamesInternal(ctx, &a_atoms, &a_len,
+                                           JS_VALUE_GET_OBJ(a),
+                                           JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY))
+            return -1;
+        ret = (a_len == 0);
+        JS_FreePropertyEnum(ctx, a_atoms, a_len);
+        return ret;
+    }
+    if (!JS_IsObject(a) || !JS_IsObject(b))
+        return 0;
+
+    if (JS_GetOwnPropertyNamesInternal(ctx, &a_atoms, &a_len,
+                                       JS_VALUE_GET_OBJ(a),
+                                       JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY))
+        goto done;
+    if (JS_GetOwnPropertyNamesInternal(ctx, &b_atoms, &b_len,
+                                       JS_VALUE_GET_OBJ(b),
+                                       JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY))
+        goto done;
+    if (a_len != b_len) {
+        ret = 0;
+        goto done;
+    }
+
+    for(i = 0; i < a_len; i++) {
+        JSValue a_val, b_val;
+        int has_prop;
+
+        has_prop = JS_HasProperty(ctx, b, a_atoms[i].atom);
+        if (has_prop < 0)
+            goto done;
+        if (!has_prop) {
+            ret = 0;
+            goto done;
+        }
+        a_val = JS_GetProperty(ctx, a, a_atoms[i].atom);
+        if (JS_IsException(a_val))
+            goto done;
+        b_val = JS_GetProperty(ctx, b, a_atoms[i].atom);
+        if (JS_IsException(b_val)) {
+            JS_FreeValue(ctx, a_val);
+            goto done;
+        }
+        if (!js_same_value(ctx, a_val, b_val))
+            ret = 0;
+        JS_FreeValue(ctx, a_val);
+        JS_FreeValue(ctx, b_val);
+        if (ret == 0)
+            goto done;
+    }
+    ret = 1;
+
+done:
+    JS_FreePropertyEnum(ctx, a_atoms, a_len);
+    JS_FreePropertyEnum(ctx, b_atoms, b_len);
+    return ret;
+}
+
 static int add_req_module_entry(JSContext *ctx, JSModuleDef *m,
-                                JSAtom module_name)
+                                JSAtom module_name,
+                                JSValueConst attributes,
+                                JSModuleImportPhaseEnum phase)
 {
     JSReqModuleEntry *rme;
-    int i;
+    int i, ret;
 
     /* no need to add the module request if it is already present */
     for(i = 0; i < m->req_module_entries_count; i++) {
         rme = &m->req_module_entries[i];
-        if (rme->module_name == module_name)
-            return i;
+        if (rme->module_name == module_name && rme->phase == phase) {
+            ret = js_module_attributes_equal(ctx, rme->attributes, attributes);
+            if (ret < 0)
+                return -1;
+            if (ret)
+                return i;
+        }
     }
 
     if (js_resize_array(ctx, (void **)&m->req_module_entries,
@@ -29098,7 +29186,8 @@ static int add_req_module_entry(JSContext *ctx, JSModuleDef *m,
     rme = &m->req_module_entries[m->req_module_entries_count++];
     rme->module_name = JS_DupAtom(ctx, module_name);
     rme->module = NULL;
-    rme->attributes = JS_UNDEFINED;
+    rme->attributes = JS_DupValue(ctx, attributes);
+    rme->phase = phase;
     return i;
 }
 
@@ -29260,6 +29349,22 @@ void JS_SetModuleNormalizeFunc2(JSRuntime *rt,
 {
     rt->module_normalize_has_attr = true;
     rt->normalize_u.module_normalize_func2 = module_normalize;
+}
+
+void JS_SetModuleImportMetaInitFunc(JSRuntime *rt,
+                                    JSModuleImportMetaInitFunc *cb,
+                                    void *opaque)
+{
+    rt->module_import_meta_init_func = cb;
+    rt->module_import_meta_init_opaque = opaque;
+}
+
+void JS_SetModuleDynamicImportFunc(JSRuntime *rt,
+                                   JSModuleDynamicImportFunc *cb,
+                                   void *opaque)
+{
+    rt->module_dynamic_import_func = cb;
+    rt->module_dynamic_import_opaque = opaque;
 }
 
 int JS_SetModulePrivateValue(JSContext *ctx, JSModuleDef *m, JSValue val)
@@ -29873,20 +29978,43 @@ static int js_resolve_module(JSContext *ctx, JSModuleDef *m)
         printf("resolving module '%s':\n", JS_AtomGetStr(ctx, buf1, sizeof(buf1), m->module_name));
     }
 #endif
-    m->resolved = true;
     /* resolve each requested module */
+    if (m->has_host_linked_modules) {
+        for(i = 0; i < m->req_module_entries_count; i++) {
+            JSReqModuleEntry *rme = &m->req_module_entries[i];
+            if (!rme->module) {
+                JS_ThrowReferenceError(ctx, "module request is not linked");
+                return -1;
+            }
+        }
+        m->resolved = true;
+        for(i = 0; i < m->req_module_entries_count; i++) {
+            JSReqModuleEntry *rme = &m->req_module_entries[i];
+            if (js_resolve_module(ctx, rme->module) < 0) {
+                m->resolved = false;
+                return -1;
+            }
+        }
+        return 0;
+    }
+
+    m->resolved = true;
     for(i = 0; i < m->req_module_entries_count; i++) {
         JSReqModuleEntry *rme = &m->req_module_entries[i];
         m1 = js_host_resolve_imported_module_atom(ctx, m->module_name,
                                                   rme->module_name,
                                                   rme->attributes);
-        if (!m1)
+        if (!m1) {
+            m->resolved = false;
             return -1;
+        }
         rme->module = m1;
         /* already done in js_host_resolve_imported_module() except if
            the module was loaded with JS_EvalBinary() */
-        if (js_resolve_module(ctx, m1) < 0)
+        if (js_resolve_module(ctx, m1) < 0) {
+            m->resolved = false;
             return -1;
+        }
     }
     return 0;
 }
@@ -30277,6 +30405,12 @@ JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m)
         obj = JS_NewObjectProto(ctx, JS_NULL);
         if (JS_IsException(obj))
             return JS_EXCEPTION;
+        if (ctx->rt->module_import_meta_init_func &&
+            ctx->rt->module_import_meta_init_func(
+                ctx, m, obj, ctx->rt->module_import_meta_init_opaque) < 0) {
+            JS_FreeValue(ctx, obj);
+            return JS_EXCEPTION;
+        }
         m->meta_obj = obj;
     }
     return js_dup(obj);
@@ -30306,6 +30440,101 @@ static JSValue js_import_meta(JSContext *ctx)
 static JSValue JS_NewModuleValue(JSContext *ctx, JSModuleDef *m)
 {
     return js_dup(JS_MKPTR(JS_TAG_MODULE, m));
+}
+
+JSModuleDef *JS_GetModuleDef(JSContext *ctx, JSValueConst value)
+{
+    (void)ctx;
+    if (JS_VALUE_GET_TAG(value) != JS_TAG_MODULE)
+        return NULL;
+    return JS_VALUE_GET_PTR(value);
+}
+
+JSValue JS_DupModuleValue(JSContext *ctx, JSModuleDef *m)
+{
+    if (!m)
+        return JS_UNDEFINED;
+    return JS_NewModuleValue(ctx, m);
+}
+
+int JS_GetModuleRequestCount(JSContext *ctx, JSModuleDef *m)
+{
+    (void)ctx;
+    if (!m)
+        return -1;
+    return m->req_module_entries_count;
+}
+
+int JS_GetModuleRequest(JSContext *ctx, JSModuleDef *m,
+                        int index, JSModuleRequest *out)
+{
+    JSReqModuleEntry *rme;
+    if (!m || !out || index < 0 || index >= m->req_module_entries_count)
+        return -1;
+    rme = &m->req_module_entries[index];
+    out->module_name = JS_DupAtom(ctx, rme->module_name);
+    out->attributes = JS_DupValue(ctx, rme->attributes);
+    out->phase = rme->phase;
+    return 0;
+}
+
+void JS_FreeModuleRequest(JSContext *ctx, JSModuleRequest *request)
+{
+    if (!request)
+        return;
+    JS_FreeAtom(ctx, request->module_name);
+    JS_FreeValue(ctx, request->attributes);
+    request->module_name = JS_ATOM_NULL;
+    request->attributes = JS_UNDEFINED;
+    request->phase = JS_MODULE_IMPORT_PHASE_EVALUATION;
+}
+
+int JS_SetModuleRequestModule(JSContext *ctx, JSModuleDef *m,
+                              int index, JSModuleDef *requested)
+{
+    if (!m || !requested || index < 0 || index >= m->req_module_entries_count) {
+        JS_ThrowRangeError(ctx, "invalid module request index");
+        return -1;
+    }
+    m->req_module_entries[index].module = requested;
+    m->has_host_linked_modules = true;
+    if (m->status == JS_MODULE_STATUS_UNLINKED)
+        m->resolved = false;
+    return 0;
+}
+
+int JS_LinkModule(JSContext *ctx, JSModuleDef *m)
+{
+    if (!m) {
+        JS_ThrowTypeError(ctx, "module expected");
+        return -1;
+    }
+    if (js_resolve_module(ctx, m) < 0)
+        return -1;
+    if (js_create_module_function(ctx, m) < 0)
+        return -1;
+    return js_link_module(ctx, m);
+}
+
+JSModuleStatusEnum JS_GetModuleStatus(JSContext *ctx, JSModuleDef *m)
+{
+    (void)ctx;
+    if (!m)
+        return JS_MODULE_STATUS_UNLINKED;
+    return m->status;
+}
+
+JSValue JS_GetModuleEvaluationException(JSContext *ctx, JSModuleDef *m)
+{
+    if (!m || !m->eval_has_exception)
+        return JS_UNDEFINED;
+    return JS_DupValue(ctx, m->eval_exception);
+}
+
+bool JS_ModuleHasTopLevelAwait(JSContext *ctx, JSModuleDef *m)
+{
+    (void)ctx;
+    return m ? m->has_tla : false;
 }
 
 static JSValue js_load_module_rejected(JSContext *ctx, JSValueConst this_val,
@@ -30520,6 +30749,28 @@ static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier,
             JS_FreeValue(ctx, attributes_obj);
             attributes_obj = JS_UNDEFINED;
         }
+    }
+
+    if (ctx->rt->module_dynamic_import_func) {
+        JSModuleDef *referrer = NULL;
+        if (JS_IsString(basename_val)) {
+            JSAtom basename_atom = JS_ValueToAtom(ctx, basename_val);
+            if (basename_atom == JS_ATOM_NULL)
+                goto exception;
+            referrer = js_find_loaded_module(ctx, basename_atom);
+            JS_FreeAtom(ctx, basename_atom);
+        }
+        ret = ctx->rt->module_dynamic_import_func(
+            ctx, referrer, basename_val, specifier_str, attributes,
+            JS_MODULE_IMPORT_PHASE_EVALUATION,
+            ctx->rt->module_dynamic_import_opaque);
+        JS_FreeValue(ctx, promise);
+        JS_FreeValue(ctx, basename_val);
+        JS_FreeValue(ctx, resolving_funcs[0]);
+        JS_FreeValue(ctx, resolving_funcs[1]);
+        JS_FreeValue(ctx, specifier_str);
+        JS_FreeValue(ctx, attributes);
+        return ret;
     }
 
     args[0] = resolving_funcs[0];
@@ -30940,26 +31191,72 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
     return js_dup(m->promise);
 }
 
+JSValue JS_EvaluateModule(JSContext *ctx, JSModuleDef *m)
+{
+    if (!m)
+        return JS_ThrowTypeError(ctx, "module expected");
+    if (m->status == JS_MODULE_STATUS_UNLINKED) {
+        if (JS_LinkModule(ctx, m) < 0)
+            return JS_EXCEPTION;
+    }
+    return js_evaluate_module(ctx, m);
+}
+
+static bool js_module_has_async_graph_rec(JSContext *ctx,
+                                          JSModuleDef *m,
+                                          JSModuleDef ***visited,
+                                          int *visited_count,
+                                          int *visited_size)
+{
+    int i;
+
+    for(i = 0; i < *visited_count; i++) {
+        if ((*visited)[i] == m)
+            return false;
+    }
+    if (js_resize_array(ctx, (void **)visited, sizeof((*visited)[0]),
+                        visited_size, *visited_count + 1))
+        return false;
+    (*visited)[(*visited_count)++] = m;
+
+    if (m->has_tla)
+        return true;
+    for(i = 0; i < m->req_module_entries_count; i++) {
+        JSModuleDef *m1 = m->req_module_entries[i].module;
+        if (m1 && js_module_has_async_graph_rec(ctx, m1, visited,
+                                                visited_count, visited_size))
+            return true;
+    }
+    return false;
+}
+
+bool JS_ModuleHasAsyncGraph(JSContext *ctx, JSModuleDef *m)
+{
+    JSModuleDef **visited = NULL;
+    int visited_count = 0, visited_size = 0;
+    bool ret;
+
+    if (!m)
+        return false;
+    ret = js_module_has_async_graph_rec(ctx, m, &visited,
+                                        &visited_count, &visited_size);
+    js_free(ctx, visited);
+    return ret;
+}
+
 #ifndef QJS_DISABLE_PARSER
 
-/* Parse 'with { key: "value", ... }' clause for import attributes.
-   rme->attributes is set to JS_UNDEFINED if no 'with' clause or an object
-   containing the attributes as key/value pairs. If rme->attributes is already
-   set (from a previous import of the same module), we still parse the tokens
-   but skip adding to the object since they should be the same. */
-static __exception int js_parse_with_clause(JSParseState *s, JSReqModuleEntry *rme)
+/* Parse 'with { key: "value", ... }' clause for import attributes. */
+static __exception int js_parse_with_clause(JSParseState *s, JSValue *attributes_out)
 {
     JSContext *ctx = s->ctx;
+    JSValue attributes = JS_UNDEFINED;
     JSAtom key;
     int ret;
-    bool already_set;
 
+    *attributes_out = JS_UNDEFINED;
     if (s->token.val != TOK_WITH)
         return 0; /* no 'with' clause */
-
-    /* If attributes already set from previous import of same module,
-       just parse to consume tokens but don't modify the object. */
-    already_set = !JS_IsUndefined(rme->attributes);
 
     if (next_token(s))
         return -1;
@@ -30990,55 +31287,63 @@ static __exception int js_parse_with_clause(JSParseState *s, JSReqModuleEntry *r
             JS_FreeAtom(ctx, key);
             return -1;
         }
-        if (!already_set) {
-            if (JS_IsUndefined(rme->attributes)) {
-                JSValue attributes = JS_NewObjectProto(ctx, JS_NULL);
-                if (JS_IsException(attributes)) {
-                    JS_FreeAtom(ctx, key);
-                    return -1;
-                }
-                rme->attributes = attributes;
-            }
-            /* check for duplicate keys */
-            ret = JS_HasProperty(ctx, rme->attributes, key);
-            if (ret != 0) {
-                if (ret < 0) {
-                    JS_FreeAtom(ctx, key);
-                    return -1;
-                } else {
-                    js_parse_error(s, "duplicate with key");
-                    JS_FreeAtom(ctx, key);
-                    return -1;
-                }
-            }
-            ret = JS_DefinePropertyValue(ctx, rme->attributes, key,
-                                         js_dup(s->token.u.str.str), JS_PROP_C_W_E);
-            if (ret < 0) {
+        if (JS_IsUndefined(attributes)) {
+            attributes = JS_NewObjectProto(ctx, JS_NULL);
+            if (JS_IsException(attributes)) {
                 JS_FreeAtom(ctx, key);
                 return -1;
             }
         }
+        /* check for duplicate keys */
+        ret = JS_HasProperty(ctx, attributes, key);
+        if (ret != 0) {
+            if (ret < 0) {
+                JS_FreeAtom(ctx, key);
+                JS_FreeValue(ctx, attributes);
+                return -1;
+            } else {
+                js_parse_error(s, "duplicate with key");
+                JS_FreeAtom(ctx, key);
+                JS_FreeValue(ctx, attributes);
+                return -1;
+            }
+        }
+        ret = JS_DefinePropertyValue(ctx, attributes, key,
+                                     js_dup(s->token.u.str.str), JS_PROP_C_W_E);
+        if (ret < 0) {
+            JS_FreeAtom(ctx, key);
+            JS_FreeValue(ctx, attributes);
+            return -1;
+        }
         JS_FreeAtom(ctx, key);
         if (next_token(s))
-            return -1;
+            goto fail;
         if (s->token.val != '}') {
             if (js_parse_expect(s, ','))
-                return -1;
+                goto fail;
         }
     }
     /* check attributes validity if checker function provided */
-    if (!already_set && !JS_IsUndefined(rme->attributes) &&
+    if (!JS_IsUndefined(attributes) &&
         ctx->rt->module_check_attrs &&
-        ctx->rt->module_check_attrs(ctx, ctx->rt->module_loader_opaque, rme->attributes) < 0) {
-        return -1;
+        ctx->rt->module_check_attrs(ctx, ctx->rt->module_loader_opaque, attributes) < 0) {
+        goto fail;
     }
-    return js_parse_expect(s, '}');
+    if (js_parse_expect(s, '}'))
+        goto fail;
+    *attributes_out = attributes;
+    return 0;
+fail:
+    JS_FreeValue(ctx, attributes);
+    return -1;
 }
 
 /* return the module index in m->req_module_entries[] or < 0 if error */
-static __exception int js_parse_from_clause(JSParseState *s, JSModuleDef *m)
+static __exception int js_parse_from_clause(JSParseState *s, JSModuleDef *m,
+                                            JSModuleImportPhaseEnum phase)
 {
     JSAtom module_name;
+    JSValue attributes = JS_UNDEFINED;
     int idx;
 
     if (!token_is_pseudo_keyword(s, JS_ATOM_from)) {
@@ -31059,14 +31364,17 @@ static __exception int js_parse_from_clause(JSParseState *s, JSModuleDef *m)
         return -1;
     }
 
-    idx = add_req_module_entry(s->ctx, m, module_name);
+    if (s->token.val == TOK_WITH) {
+        if (js_parse_with_clause(s, &attributes)) {
+            JS_FreeAtom(s->ctx, module_name);
+            return -1;
+        }
+    }
+    idx = add_req_module_entry(s->ctx, m, module_name, attributes, phase);
     JS_FreeAtom(s->ctx, module_name);
+    JS_FreeValue(s->ctx, attributes);
     if (idx < 0)
         return -1;
-    if (s->token.val == TOK_WITH) {
-        if (js_parse_with_clause(s, &m->req_module_entries[idx]))
-            return -1;
-    }
     return idx;
 }
 
@@ -31176,7 +31484,7 @@ static __exception int js_parse_export(JSParseState *s)
         if (js_parse_expect(s, '}'))
             return -1;
         if (token_is_pseudo_keyword(s, JS_ATOM_from)) {
-            idx = js_parse_from_clause(s, m);
+            idx = js_parse_from_clause(s, m, JS_MODULE_IMPORT_PHASE_EVALUATION);
             if (idx < 0)
                 return -1;
             for(i = first_export; i < m->export_entries_count; i++) {
@@ -31206,7 +31514,7 @@ static __exception int js_parse_export(JSParseState *s)
             }
             if (next_token(s))
                 goto fail1;
-            idx = js_parse_from_clause(s, m);
+            idx = js_parse_from_clause(s, m, JS_MODULE_IMPORT_PHASE_EVALUATION);
             if (idx < 0)
                 goto fail1;
             me = add_export_entry(s, m, JS_ATOM__star_, export_name,
@@ -31216,7 +31524,7 @@ static __exception int js_parse_export(JSParseState *s)
                 return -1;
             me->u.req_module_idx = idx;
         } else {
-            idx = js_parse_from_clause(s, m);
+            idx = js_parse_from_clause(s, m, JS_MODULE_IMPORT_PHASE_EVALUATION);
             if (idx < 0)
                 return -1;
             if (add_star_export_entry(ctx, m, idx) < 0)
@@ -31315,12 +31623,14 @@ static __exception int js_parse_import(JSParseState *s)
     JSModuleDef *m = s->cur_func->module;
     JSAtom local_name, import_name, module_name;
     int first_import, i, idx;
+    JSModuleImportPhaseEnum import_phase = JS_MODULE_IMPORT_PHASE_EVALUATION;
 
     if (next_token(s))
         return -1;
 
     first_import = m->import_entries_count;
     if (s->token.val == TOK_STRING) {
+        JSValue attributes = JS_UNDEFINED;
         module_name = JS_ValueToAtom(ctx, s->token.u.str.str);
         if (module_name == JS_ATOM_NULL)
             return -1;
@@ -31328,15 +31638,37 @@ static __exception int js_parse_import(JSParseState *s)
             JS_FreeAtom(ctx, module_name);
             return -1;
         }
-        idx = add_req_module_entry(ctx, m, module_name);
+        if (s->token.val == TOK_WITH) {
+            if (js_parse_with_clause(s, &attributes)) {
+                JS_FreeAtom(ctx, module_name);
+                return -1;
+            }
+        }
+        idx = add_req_module_entry(ctx, m, module_name, attributes,
+                                   JS_MODULE_IMPORT_PHASE_EVALUATION);
         JS_FreeAtom(ctx, module_name);
+        JS_FreeValue(ctx, attributes);
         if (idx < 0)
             return -1;
-        if (s->token.val == TOK_WITH) {
-            if (js_parse_with_clause(s, &m->req_module_entries[idx]))
-                return -1;
-        }
     } else {
+        if (s->token.val == TOK_IDENT &&
+            s->token.u.ident.atom == JS_ATOM_source &&
+            peek_token(s, false) == TOK_IDENT) {
+            import_phase = JS_MODULE_IMPORT_PHASE_SOURCE;
+            if (next_token(s))
+                return -1;
+            if (s->token.u.ident.is_reserved)
+                return js_parse_error_reserved_identifier(s);
+            local_name = JS_DupAtom(ctx, s->token.u.ident.atom);
+            import_name = JS_ATOM_default;
+            if (next_token(s))
+                goto fail;
+            if (add_import(s, m, local_name, import_name))
+                goto fail;
+            JS_FreeAtom(ctx, local_name);
+            goto end_import_clause;
+        }
+
         if (s->token.val == TOK_IDENT) {
             if (s->token.u.ident.is_reserved) {
                 return js_parse_error_reserved_identifier(s);
@@ -31422,7 +31754,7 @@ static __exception int js_parse_import(JSParseState *s)
                 return -1;
         }
     end_import_clause:
-        idx = js_parse_from_clause(s, m);
+        idx = js_parse_from_clause(s, m, import_phase);
         if (idx < 0)
             return -1;
     }
@@ -36605,10 +36937,10 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
     fun_obj = js_create_function(ctx, fd);
     if (JS_IsException(fun_obj))
         goto fail1;
-    /* Could add a flag to avoid resolution if necessary */
     if (m) {
         m->func_obj = fun_obj;
-        if (js_resolve_module(ctx, m) < 0)
+        if (!(flags & JS_EVAL_FLAG_COMPILE_ONLY) &&
+            js_resolve_module(ctx, m) < 0)
             goto fail1;
         fun_obj = JS_NewModuleValue(ctx, m);
     }
