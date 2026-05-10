@@ -735,6 +735,34 @@ function test_parse_semicolon()
     }
 }
 
+function test_non_extensible_receiver_existing_property_set()
+{
+    var proto, receiver, ret;
+
+    proto = { x: 1 };
+    receiver = { x: 0 };
+    Object.preventExtensions(receiver);
+    ret = Reflect.set(proto, "x", 2, receiver);
+    assert(ret, true, "non-extensible receiver existing property Reflect.set result");
+    assert(receiver.x, 2, "non-extensible receiver existing property Reflect.set value");
+
+    class A {
+    }
+    A.prototype.x = 1;
+
+    class B extends A {
+        setX(value) {
+            super.x = value;
+        }
+    }
+
+    receiver = new B();
+    receiver.x = 0;
+    Object.preventExtensions(receiver);
+    receiver.setX(3);
+    assert(receiver.x, 3, "non-extensible receiver existing property super set value");
+}
+
 test_op1();
 test_cvt();
 test_eq();
@@ -760,3 +788,4 @@ test_number_literals();
 test_syntax();
 test_optional_chaining();
 test_parse_semicolon();
+test_non_extensible_receiver_existing_property_set();
