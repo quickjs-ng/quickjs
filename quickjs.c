@@ -22100,7 +22100,7 @@ static int find_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
         if (i == -1)
             goto not_found;
         vd = &fd->vars[i];
-        if (fd->vars[i].scope_level == 0)
+        if (vd->scope_level == 0)
             return i;
     }
     for(i = fd->var_count; i-- > 0;) {
