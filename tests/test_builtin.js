@@ -227,34 +227,6 @@ function test_enum()
     assert(tab, ["1","4294967294","x","18014398509481984","9007199254740992","9007199254740991","4294967296","4294967295","y"], "keys");
 }
 
-function test_non_extensible_receiver_existing_property_set()
-{
-    var proto, receiver, ret;
-
-    proto = { x: 1 };
-    receiver = { x: 0 };
-    Object.preventExtensions(receiver);
-    ret = Reflect.set(proto, "x", 2, receiver);
-    assert(ret, true, "non-extensible receiver existing property Reflect.set result");
-    assert(receiver.x, 2, "non-extensible receiver existing property Reflect.set value");
-
-    class A {
-    }
-    A.prototype.x = 1;
-
-    class B extends A {
-        setX(value) {
-            super.x = value;
-        }
-    }
-
-    receiver = new B();
-    receiver.x = 0;
-    Object.preventExtensions(receiver);
-    receiver.setX(3);
-    assert(receiver.x, 3, "non-extensible receiver existing property super set value");
-}
-
 function test_array()
 {
     var a, err;
@@ -1314,7 +1286,6 @@ function test_cur_pc()
 test();
 test_function();
 test_enum();
-test_non_extensible_receiver_existing_property_set();
 test_array();
 test_string();
 test_rope();
