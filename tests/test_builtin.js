@@ -50,6 +50,60 @@ function test_exception_prepare_stack()
     assert(f.getLineNumber(), 39);
     assert(f.getColumnNumber(), 19);
     assert(!f.isNative());
+
+    for (const name of [
+        'getThis',
+        'getTypeName',
+        'getFunction',
+        'getFunctionName',
+        'getMethodName',
+        'getFileName',
+        'getLineNumber',
+        'getColumnNumber',
+        'getEvalOrigin',
+        'getScriptNameOrSourceURL',
+        'getScriptHash',
+        'getPosition',
+        'getPromiseIndex',
+        'getEnclosingLineNumber',
+        'getEnclosingColumnNumber',
+        'isToplevel',
+        'isEval',
+        'isNative',
+        'isConstructor',
+        'isAsync',
+        'isPromiseAll',
+        'toString',
+    ]) {
+        assert(typeof f[name], 'function', name);
+    }
+
+    assert(f.getScriptNameOrSourceURL().endsWith('test_builtin.js'));
+    assert(f.getMethodName(), 'test_exception_prepare_stack');
+    assert(f.isEval(), false);
+    assert(f.isConstructor(), false);
+    assert(f.isAsync(), false);
+    assert(f.isPromiseAll(), false);
+    assert(f.getEvalOrigin(), null);
+    assert(f.getPromiseIndex(), null);
+    assert(typeof f.toString(), 'string');
+}
+
+function test_exception_prepare_stack_data_property()
+{
+    var o = {};
+
+    Object.defineProperty(Error, 'prepareStackTrace', {
+        configurable: true,
+        writable: true,
+        value: (_, frames) => frames,
+    });
+
+    Error.captureStackTrace(o);
+    Error.prepareStackTrace = undefined;
+
+    assert(Array.isArray(o.stack));
+    assert(typeof o.stack[0].getFileName, 'function');
 }
 
 // Keep this at the top; it tests source positions.
@@ -64,7 +118,7 @@ function test_exception_stack_size_limit()
     };
 
     try {
-        throw new Error(""); // line 67, column 19
+        throw new Error(""); // line 121, column 19
     } catch(_e) {
         e = _e;
     }
@@ -76,7 +130,7 @@ function test_exception_stack_size_limit()
     const f = e.stack[0];
     assert(f.getFunctionName(), 'test_exception_stack_size_limit');
     assert(f.getFileName().endsWith('test_builtin.js'));
-    assert(f.getLineNumber(), 67);
+    assert(f.getLineNumber(), 121);
     assert(f.getColumnNumber(), 19);
     assert(!f.isNative());
 }
@@ -1308,6 +1362,7 @@ test_finalization_registry();
 test_exception_source_pos();
 test_function_source_pos();
 test_exception_prepare_stack();
+test_exception_prepare_stack_data_property();
 test_exception_stack_size_limit();
 test_exception_capture_stack_trace();
 test_exception_capture_stack_trace_filter();
