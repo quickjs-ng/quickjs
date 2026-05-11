@@ -9901,6 +9901,7 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
         if (len < old_len) {
             for(i = len; i < old_len; i++) {
                 JS_FreeValue(ctx, p->u.array.u.values[i]);
+                p->u.array.u.values[i] = JS_UNDEFINED;
             }
             p->u.array.count = len;
         }
