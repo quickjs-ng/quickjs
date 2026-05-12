@@ -9986,7 +9986,7 @@ static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
         JS_ThrowOutOfMemory(ctx);
         return -1;
     }
-    new_size = max_int(new_len, new_size);
+    new_size = max_uint32(new_len, new_size);
     new_array_prop = js_realloc2(ctx, p->u.array.u.values, sizeof(JSValue) * new_size, &slack);
     if (!new_array_prop)
         return -1;
