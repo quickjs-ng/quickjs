@@ -42476,7 +42476,7 @@ static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                         p->u.array.u.values[array_len + i] = js_dup(argv[i]);
                     }
                     p->u.array.count = new_len;
-                    p->prop[0].u.value = js_int32(new_len);
+                    p->prop[0].u.value = js_uint32(new_len);
                     return js_int32(new_len);
                 }
             }
