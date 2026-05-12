@@ -6495,7 +6495,7 @@ static void js_array_mark(JSRuntime *rt, JSValueConst val,
                           JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
-    int i;
+    uint32_t i;
 
     for(i = 0; i < p->u.array.count; i++) {
         JS_MarkValue(rt, p->u.array.u.values[i], mark_func);
