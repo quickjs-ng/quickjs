@@ -6483,7 +6483,7 @@ static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
 static void js_array_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
-    int i;
+    uint32_t i;
 
     for(i = 0; i < p->u.array.count; i++) {
         JS_FreeValueRT(rt, p->u.array.u.values[i]);
