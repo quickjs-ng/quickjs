@@ -9980,9 +9980,14 @@ static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
     size_t slack;
     JSValue *new_array_prop;
 
+    if (unlikely(new_len > (uint32_t)INT32_MAX)) {
+        JS_ThrowOutOfMemory(ctx);
+        return -1;
+    }
+
     old_size = p->u.array.u1.size;
-    new_size = old_size + old_size/2;   // grow by 50%
-    if (new_size < old_size) {          // integer overflow
+    new_size = old_size + old_size/2;
+    if (new_size < old_size) {  {
         JS_ThrowOutOfMemory(ctx);
         return -1;
     }
@@ -42467,6 +42472,7 @@ static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                        (p->shape->prop->flags & JS_PROP_WRITABLE))) {
                 array_len = JS_VALUE_GET_INT(p->prop[0].u.value);
                 new_len = array_len + argc;
+                if (likely(new_len >= array_len && new_len <= (uint32_t)INT32_MAX)) { /* no overflow and within fast-array bounds *///
                 if (likely(new_len >= array_len)) { /* no overflow */
                     if (unlikely(new_len > p->u.array.u1.size)) {
                         if (expand_fast_array(ctx, p, new_len))
