@@ -3,10 +3,23 @@
 //      When new_len >= 0x80000000, cast to int makes it negative.
 //      max_int returns the small grow-by-50% size. Buffer is underallocated.
 //      add_fast_array_element then writes to values[new_len-1] — OOB write.
-// Run: qjs poc.js
+//
+// Pre-fix behavior: process crashes with SIGBUS (OOB write to unmapped memory)
+// Post-fix behavior: InternalError or RangeError thrown and caught cleanly
+//
+// Run: qjs poc_test_fixed.js
+// Expected output: PASS: got graceful error: ...
 
-const c = [1, 2, 3];
-c.length = 0x7FFFFFFF;  // sets length property; count stays 3
-c.push(4);              // new_len = count+1; if > size, expand_fast_array called
-                        // sign truncation: max_int underallocates; OOB write follows
-print("done");
+const arr = [1, 2, 3];
+arr.length = 0x7FFFFFFF;  // sets length property, no memory allocated
+
+try {
+    arr.push(4);  // triggers expand_fast_array with new_len=0x80000000
+    throw new Error("FAIL: expected InternalError or RangeError was not thrown");
+} catch(e) {
+    if (e instanceof InternalError || e instanceof RangeError) {
+        print("PASS: got graceful error:", e.message);
+    } else {
+        throw e;  // unexpected error type — re-throw to fail the test
+    }
+}
