@@ -16108,28 +16108,6 @@ static JSValue js_throw_type_error(JSContext *ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue js_function_proto_fileName(JSContext *ctx,
-                                          JSValueConst this_val)
-{
-    JSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
-    if (b) {
-        return JS_AtomToString(ctx, b->filename);
-    }
-    return JS_UNDEFINED;
-}
-
-static JSValue js_function_proto_int32(JSContext *ctx,
-                                       JSValueConst this_val,
-                                       int magic)
-{
-    JSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
-    if (b) {
-        int *field = (int *) ((char *)b + magic);
-        return js_int32(*field);
-    }
-    return JS_UNDEFINED;
-}
-
 static int js_arguments_define_own_property(JSContext *ctx,
                                             JSValueConst this_obj,
                                             JSAtom prop, JSValueConst val,
@@ -41460,11 +41438,6 @@ static const JSCFunctionListEntry js_function_proto_funcs[] = {
     JS_CFUNC_DEF("bind", 1, js_function_bind ),
     JS_CFUNC_DEF("toString", 0, js_function_toString ),
     JS_CFUNC_DEF("[Symbol.hasInstance]", 1, js_function_hasInstance ),
-    JS_CGETSET_DEF("fileName", js_function_proto_fileName, NULL ),
-    JS_CGETSET_MAGIC_DEF("lineNumber", js_function_proto_int32, NULL,
-                         offsetof(JSFunctionBytecode, line_num)),
-    JS_CGETSET_MAGIC_DEF("columnNumber", js_function_proto_int32, NULL,
-                         offsetof(JSFunctionBytecode, col_num)),
 };
 
 /* Error class */
