@@ -836,6 +836,9 @@ JS_EXTERN void JS_ClearUncatchableError(JSContext *ctx, JSValueConst val);
 //  JS_Throw(ctx, exc);
 JS_EXTERN void JS_ResetUncatchableError(JSContext *ctx);
 JS_EXTERN JSValue JS_NewError(JSContext *ctx);
+JS_EXTERN JSValue JS_GetCurrentStackTrace(JSContext *ctx,
+                                          int frame_count,
+                                          int skip_frames);
 JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewInternalError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
 JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewPlainError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
 JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(2, 3) JS_NewRangeError(JSContext *ctx, JS_PRINTF_FORMAT const char *fmt, ...);
@@ -854,6 +857,7 @@ JS_EXTERN void JS_FreeValue(JSContext *ctx, JSValue v);
 JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
 JS_EXTERN JSValue JS_DupValue(JSContext *ctx, JSValueConst v);
 JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v);
+JS_EXTERN int JS_GetRefCount(JSValueConst v);
 JS_EXTERN int JS_ToBool(JSContext *ctx, JSValueConst val); /* return -1 for JS_EXCEPTION */
 static inline JSValue JS_ToBoolean(JSContext *ctx, JSValueConst val)
 {
@@ -1063,6 +1067,9 @@ JS_EXTERN JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
 JS_EXTERN JSValue JS_NewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len);
 JS_EXTERN void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj);
 JS_EXTERN uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize, JSValueConst obj);
+JS_EXTERN bool JS_GetArrayBufferFreeInfo(JSContext *ctx, JSValueConst obj,
+                                         JSFreeArrayBufferDataFunc **free_func,
+                                         void **opaque);
 JS_EXTERN bool JS_IsArrayBuffer(JSValueConst obj);
 // returns true or false if obj is an ArrayBuffer, -1 otherwise
 JS_EXTERN int JS_IsImmutableArrayBuffer(JSValueConst obj);
@@ -1097,6 +1104,28 @@ JS_EXTERN JSValue JS_NewUint8Array(JSContext *ctx, uint8_t *buf, size_t len,
 /* returns -1 if not a typed array otherwise return a JSTypedArrayEnum value */
 JS_EXTERN int JS_GetTypedArrayType(JSValueConst obj);
 JS_EXTERN JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len);
+
+typedef struct JSNativeWeakRef JSNativeWeakRef;
+typedef void JSNativeWeakRefFinalizer(JSRuntime *rt, void *opaque);
+typedef struct JSNativeWeakRefLink {
+    JSNativeWeakRef *owner;
+    struct JSNativeWeakRefLink *next;
+    JSNativeWeakRefFinalizer *cb;
+    void *opaque;
+} JSNativeWeakRefLink;
+JS_EXTERN JSNativeWeakRef *JS_GetNativeWeakRef(JSValueConst target);
+JS_EXTERN JSNativeWeakRef *JS_GetNativeWeakRefFromLink(
+    JSNativeWeakRefLink *link);
+JS_EXTERN int JS_AddNativeWeakRefLink(
+    JSContext *ctx,
+    JSValueConst target,
+    JSNativeWeakRefLink *link,
+    JSNativeWeakRefFinalizer *cb,
+    void *opaque);
+JS_EXTERN void JS_DeleteNativeWeakRefLink(
+    JSRuntime *rt,
+    JSNativeWeakRefLink *link);
+
 typedef struct {
     void *(*sab_alloc)(void *opaque, size_t size);
     void (*sab_free)(void *opaque, void *ptr);
@@ -1155,6 +1184,26 @@ JS_EXTERN void JS_SetIsHTMLDDA(JSContext *ctx, JSValueConst obj);
 
 typedef struct JSModuleDef JSModuleDef;
 
+typedef enum JSModuleImportPhaseEnum {
+    JS_MODULE_IMPORT_PHASE_EVALUATION = 0,
+    JS_MODULE_IMPORT_PHASE_SOURCE = 1,
+} JSModuleImportPhaseEnum;
+
+typedef enum JSModuleStatusEnum {
+    JS_MODULE_STATUS_UNLINKED,
+    JS_MODULE_STATUS_LINKING,
+    JS_MODULE_STATUS_LINKED,
+    JS_MODULE_STATUS_EVALUATING,
+    JS_MODULE_STATUS_EVALUATING_ASYNC,
+    JS_MODULE_STATUS_EVALUATED,
+} JSModuleStatusEnum;
+
+typedef struct JSModuleRequest {
+    JSAtom module_name;      /* duplicated; caller frees */
+    JSValue attributes;      /* duplicated; caller frees */
+    JSModuleImportPhaseEnum phase;
+} JSModuleRequest;
+
 /* return the module specifier (allocated with js_malloc()) or NULL if
    exception */
 typedef char *JSModuleNormalizeFunc(JSContext *ctx,
@@ -1177,6 +1226,16 @@ typedef JSModuleDef *JSModuleLoaderFunc2(JSContext *ctx,
 typedef int JSModuleCheckSupportedImportAttributes(JSContext *ctx, void *opaque,
                                                    JSValueConst attributes);
 
+typedef int JSModuleImportMetaInitFunc(JSContext *ctx, JSModuleDef *m,
+                                       JSValueConst meta, void *opaque);
+
+typedef JSValue JSModuleDynamicImportFunc(JSContext *ctx, JSModuleDef *referrer,
+                                          JSValueConst referrer_name,
+                                          JSValueConst specifier,
+                                          JSValueConst attributes,
+                                          JSModuleImportPhaseEnum phase,
+                                          void *opaque);
+
 /* module_normalize = NULL is allowed and invokes the default module
    filename normalizer */
 JS_EXTERN void JS_SetModuleLoaderFunc(JSRuntime *rt,
@@ -1194,7 +1253,28 @@ JS_EXTERN void JS_SetModuleLoaderFunc2(JSRuntime *rt,
 JS_EXTERN void JS_SetModuleNormalizeFunc2(JSRuntime *rt,
                                           JSModuleNormalizeFunc2 *module_normalize);
 
+JS_EXTERN void JS_SetModuleImportMetaInitFunc(JSRuntime *rt,
+                                              JSModuleImportMetaInitFunc *cb,
+                                              void *opaque);
+JS_EXTERN void JS_SetModuleDynamicImportFunc(JSRuntime *rt,
+                                             JSModuleDynamicImportFunc *cb,
+                                             void *opaque);
+
 /* return the import.meta object of a module */
+JS_EXTERN JSModuleDef *JS_GetModuleDef(JSContext *ctx, JSValueConst value);
+JS_EXTERN JSValue JS_DupModuleValue(JSContext *ctx, JSModuleDef *m);
+JS_EXTERN int JS_GetModuleRequestCount(JSContext *ctx, JSModuleDef *m);
+JS_EXTERN int JS_GetModuleRequest(JSContext *ctx, JSModuleDef *m,
+                                  int index, JSModuleRequest *out);
+JS_EXTERN void JS_FreeModuleRequest(JSContext *ctx, JSModuleRequest *request);
+JS_EXTERN int JS_SetModuleRequestModule(JSContext *ctx, JSModuleDef *m,
+                                        int index, JSModuleDef *requested);
+JS_EXTERN int JS_LinkModule(JSContext *ctx, JSModuleDef *m);
+JS_EXTERN JSValue JS_EvaluateModule(JSContext *ctx, JSModuleDef *m);
+JS_EXTERN JSModuleStatusEnum JS_GetModuleStatus(JSContext *ctx, JSModuleDef *m);
+JS_EXTERN JSValue JS_GetModuleEvaluationException(JSContext *ctx, JSModuleDef *m);
+JS_EXTERN bool JS_ModuleHasTopLevelAwait(JSContext *ctx, JSModuleDef *m);
+JS_EXTERN bool JS_ModuleHasAsyncGraph(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
