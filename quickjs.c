@@ -9987,7 +9987,7 @@ static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
 
     old_size = p->u.array.u1.size;
     new_size = old_size + old_size/2;
-    if (new_size < old_size)  {
+    if (new_size < old_size) {
         JS_ThrowOutOfMemory(ctx);
         return -1;
     }
