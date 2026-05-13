@@ -857,6 +857,7 @@ JS_EXTERN void JS_FreeValue(JSContext *ctx, JSValue v);
 JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
 JS_EXTERN JSValue JS_DupValue(JSContext *ctx, JSValueConst v);
 JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v);
+JS_EXTERN int JS_GetRefCount(JSValueConst v);
 JS_EXTERN int JS_ToBool(JSContext *ctx, JSValueConst val); /* return -1 for JS_EXCEPTION */
 static inline JSValue JS_ToBoolean(JSContext *ctx, JSValueConst val)
 {
@@ -1066,6 +1067,9 @@ JS_EXTERN JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
 JS_EXTERN JSValue JS_NewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len);
 JS_EXTERN void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj);
 JS_EXTERN uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize, JSValueConst obj);
+JS_EXTERN bool JS_GetArrayBufferFreeInfo(JSContext *ctx, JSValueConst obj,
+                                         JSFreeArrayBufferDataFunc **free_func,
+                                         void **opaque);
 JS_EXTERN bool JS_IsArrayBuffer(JSValueConst obj);
 // returns true or false if obj is an ArrayBuffer, -1 otherwise
 JS_EXTERN int JS_IsImmutableArrayBuffer(JSValueConst obj);
@@ -1100,6 +1104,28 @@ JS_EXTERN JSValue JS_NewUint8Array(JSContext *ctx, uint8_t *buf, size_t len,
 /* returns -1 if not a typed array otherwise return a JSTypedArrayEnum value */
 JS_EXTERN int JS_GetTypedArrayType(JSValueConst obj);
 JS_EXTERN JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len);
+
+typedef struct JSNativeWeakRef JSNativeWeakRef;
+typedef void JSNativeWeakRefFinalizer(JSRuntime *rt, void *opaque);
+typedef struct JSNativeWeakRefLink {
+    JSNativeWeakRef *owner;
+    struct JSNativeWeakRefLink *next;
+    JSNativeWeakRefFinalizer *cb;
+    void *opaque;
+} JSNativeWeakRefLink;
+JS_EXTERN JSNativeWeakRef *JS_GetNativeWeakRef(JSValueConst target);
+JS_EXTERN JSNativeWeakRef *JS_GetNativeWeakRefFromLink(
+    JSNativeWeakRefLink *link);
+JS_EXTERN int JS_AddNativeWeakRefLink(
+    JSContext *ctx,
+    JSValueConst target,
+    JSNativeWeakRefLink *link,
+    JSNativeWeakRefFinalizer *cb,
+    void *opaque);
+JS_EXTERN void JS_DeleteNativeWeakRefLink(
+    JSRuntime *rt,
+    JSNativeWeakRefLink *link);
+
 typedef struct {
     void *(*sab_alloc)(void *opaque, size_t size);
     void (*sab_free)(void *opaque, void *ptr);

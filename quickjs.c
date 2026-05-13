@@ -553,17 +553,27 @@ typedef enum {
     JS_WEAK_REF_KIND_MAP,
     JS_WEAK_REF_KIND_WEAK_REF,
     JS_WEAK_REF_KIND_FINALIZATION_REGISTRY_ENTRY,
+    JS_WEAK_REF_KIND_NATIVE,
 } JSWeakRefKindEnum;
 
-typedef struct JSWeakRefRecord {
+typedef struct JSWeakRefRecord JSWeakRefRecord;
+
+struct JSNativeWeakRef {
+    JSValue target;
+    JSWeakRefRecord *record;
+    JSNativeWeakRefLink *links;
+};
+
+struct JSWeakRefRecord {
     JSWeakRefKindEnum kind;
     struct JSWeakRefRecord *next_weak_ref;
     union {
         struct JSMapRecord *map_record;
         struct JSWeakRefData *weak_ref_data;
         struct JSFinRecEntry *fin_rec_entry;
+        struct JSNativeWeakRef *native_weak_ref;
     } u;
-} JSWeakRefRecord;
+};
 
 typedef struct JSMapRecord {
     int ref_count; /* used during enumeration to avoid freeing the record */
@@ -1550,6 +1560,14 @@ static JSValue js_dup(JSValueConst v)
         p->ref_count++;
     }
     return unsafe_unconst(v);
+}
+
+int JS_GetRefCount(JSValueConst v)
+{
+    if (!JS_VALUE_HAS_REF_COUNT(v))
+        return 0;
+    JSRefCountHeader *p = (JSRefCountHeader *)JS_VALUE_GET_PTR(v);
+    return p->ref_count;
 }
 
 JSValue JS_DupValue(JSContext *ctx, JSValueConst v)
@@ -56938,6 +56956,21 @@ uint8_t *JS_GetArrayBuffer(JSContext *ctx, size_t *psize, JSValueConst obj)
     return NULL;
 }
 
+bool JS_GetArrayBufferFreeInfo(JSContext *ctx, JSValueConst obj,
+                               JSFreeArrayBufferDataFunc **free_func,
+                               void **opaque)
+{
+    JSArrayBuffer *abuf = js_get_array_buffer(ctx, obj);
+    if (!abuf)
+        return false;
+
+    if (free_func)
+        *free_func = abuf->free_func;
+    if (opaque)
+        *opaque = abuf->opaque;
+    return true;
+}
+
 static bool array_buffer_is_resizable(const JSArrayBuffer *abuf)
 {
     return abuf->max_byte_length >= 0;
@@ -60731,6 +60764,8 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             fre = wr->u.fin_rec_entry;
             list_del(&fre->link);
             break;
+        case JS_WEAK_REF_KIND_NATIVE:
+            break;
         default:
             abort();
         }
@@ -60780,6 +60815,29 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             js_finrec_free(rt, fre);
             break;
         }
+        case JS_WEAK_REF_KIND_NATIVE: {
+            JSNativeWeakRef *nwr = wr->u.native_weak_ref;
+            if (nwr) {
+                JSNativeWeakRefLink *link = nwr->links;
+                nwr->target = JS_UNDEFINED;
+                nwr->record = NULL;
+                while (link) {
+                    JSNativeWeakRefLink *link_next = link->next;
+                    JSNativeWeakRefFinalizer *cb = link->cb;
+                    void *opaque = link->opaque;
+                    link->owner = NULL;
+                    link->next = NULL;
+                    link->cb = NULL;
+                    link->opaque = NULL;
+                    if (cb)
+                        cb(rt, opaque);
+                    link = link_next;
+                }
+                nwr->links = NULL;
+                js_free_rt(rt, nwr);
+            }
+            break;
+        }
         default:
             abort();
         }
@@ -60815,6 +60873,122 @@ static void insert_weakref_record(JSValueConst target,
     /* Add the weak reference */
     wr->next_weak_ref = *pwr;
     *pwr = wr;
+}
+
+JSNativeWeakRef *JS_GetNativeWeakRef(JSValueConst target)
+{
+    if (!is_valid_weakref_target(target))
+        return NULL;
+
+    JSWeakRefRecord *wr = *get_first_weak_ref(target);
+    while (wr) {
+        if (wr->kind == JS_WEAK_REF_KIND_NATIVE)
+            return wr->u.native_weak_ref;
+        wr = wr->next_weak_ref;
+    }
+    return NULL;
+}
+
+JSNativeWeakRef *JS_GetNativeWeakRefFromLink(JSNativeWeakRefLink *link)
+{
+    return link ? link->owner : NULL;
+}
+
+static JSNativeWeakRef *JS_GetOrCreateNativeWeakRef(JSContext *ctx,
+                                                    JSValueConst target)
+{
+    if (!is_valid_weakref_target(target))
+        return NULL;
+
+    JSNativeWeakRef *existing = JS_GetNativeWeakRef(target);
+    if (existing)
+        return existing;
+
+    JSNativeWeakRef *nwr = js_malloc(ctx, sizeof(*nwr));
+    if (!nwr)
+        return NULL;
+
+    JSWeakRefRecord *wr = js_malloc(ctx, sizeof(*wr));
+    if (!wr) {
+        js_free(ctx, nwr);
+        return NULL;
+    }
+
+    nwr->target = target;
+    nwr->record = wr;
+    nwr->links = NULL;
+
+    wr->kind = JS_WEAK_REF_KIND_NATIVE;
+    wr->u.native_weak_ref = nwr;
+    insert_weakref_record(target, wr);
+    return nwr;
+}
+
+int JS_AddNativeWeakRefLink(
+    JSContext *ctx,
+    JSValueConst target,
+    JSNativeWeakRefLink *link,
+    JSNativeWeakRefFinalizer *cb,
+    void *opaque)
+{
+    if (!link || !cb)
+        return -1;
+
+    JSNativeWeakRef *ref = JS_GetOrCreateNativeWeakRef(ctx, target);
+    if (!ref)
+        return -1;
+
+    link->owner = ref;
+    link->next = ref->links;
+    link->cb = cb;
+    link->opaque = opaque;
+    ref->links = link;
+    return 0;
+}
+
+void JS_DeleteNativeWeakRefLink(JSRuntime *rt, JSNativeWeakRefLink *link)
+{
+    JSWeakRefRecord **pwr, *wr;
+    JSNativeWeakRefLink **plink, *current;
+    JSNativeWeakRef *ref;
+
+    if (!link)
+        return;
+
+    ref = link->owner;
+    if (!ref)
+        return;
+
+    plink = &ref->links;
+    for(;;) {
+        current = *plink;
+        assert(current != NULL);
+        if (current == link)
+            break;
+        plink = &current->next;
+    }
+    *plink = link->next;
+    link->owner = NULL;
+    link->next = NULL;
+    link->cb = NULL;
+    link->opaque = NULL;
+
+    if (ref->links)
+        return;
+
+    if (ref->record) {
+        pwr = get_first_weak_ref(ref->target);
+        for(;;) {
+            wr = *pwr;
+            assert(wr != NULL);
+            if (wr == ref->record)
+                break;
+            pwr = &wr->next_weak_ref;
+        }
+        *pwr = wr->next_weak_ref;
+        js_free_rt(rt, wr);
+    }
+    js_free_rt(rt, ref);
 }
 
 /* CallSite */
