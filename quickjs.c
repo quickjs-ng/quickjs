@@ -6483,7 +6483,7 @@ static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
 static void js_array_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
-    int i;
+    uint32_t i;
 
     for(i = 0; i < p->u.array.count; i++) {
         JS_FreeValueRT(rt, p->u.array.u.values[i]);
@@ -6495,7 +6495,7 @@ static void js_array_mark(JSRuntime *rt, JSValueConst val,
                           JS_MarkFunc *mark_func)
 {
     JSObject *p = JS_VALUE_GET_OBJ(val);
-    int i;
+    uint32_t i;
 
     for(i = 0; i < p->u.array.count; i++) {
         JS_MarkValue(rt, p->u.array.u.values[i], mark_func);
@@ -9980,13 +9980,18 @@ static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
     size_t slack;
     JSValue *new_array_prop;
 
-    old_size = p->u.array.u1.size;
-    new_size = old_size + old_size/2;   // grow by 50%
-    if (new_size < old_size) {          // integer overflow
+    if (unlikely(new_len > (uint32_t)INT32_MAX)) {
         JS_ThrowOutOfMemory(ctx);
         return -1;
     }
-    new_size = max_int(new_len, new_size);
+
+    old_size = p->u.array.u1.size;
+    new_size = old_size + old_size/2;
+    if (new_size < old_size) {
+        JS_ThrowOutOfMemory(ctx);
+        return -1;
+    }
+    new_size = max_uint32(new_len, new_size);
     new_array_prop = js_realloc2(ctx, p->u.array.u.values, sizeof(JSValue) * new_size, &slack);
     if (!new_array_prop)
         return -1;
@@ -42467,7 +42472,7 @@ static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                        (p->shape->prop->flags & JS_PROP_WRITABLE))) {
                 array_len = JS_VALUE_GET_INT(p->prop[0].u.value);
                 new_len = array_len + argc;
-                if (likely(new_len >= array_len)) { /* no overflow */
+                if (likely(new_len >= array_len && new_len <= (uint32_t)INT32_MAX)) { /* no overflow and within fast-array bounds */
                     if (unlikely(new_len > p->u.array.u1.size)) {
                         if (expand_fast_array(ctx, p, new_len))
                             return JS_EXCEPTION;
@@ -42476,7 +42481,7 @@ static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                         p->u.array.u.values[array_len + i] = js_dup(argv[i]);
                     }
                     p->u.array.count = new_len;
-                    p->prop[0].u.value = js_int32(new_len);
+                    p->prop[0].u.value = js_uint32(new_len);
                     return js_int32(new_len);
                 }
             }
