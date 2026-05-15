@@ -4063,7 +4063,7 @@ static no_inline int string_buffer_realloc(StringBuffer *s, int new_len, int c)
         return -1;
 
     if (new_len > JS_STRING_LEN_MAX) {
-        JS_ThrowRangeError(s->ctx, "invalid string length");
+        JS_ThrowRangeError(s->ctx, "Invalid string length");
         return string_buffer_set_error(s);
     }
     new_size = min_int(max_int(new_len, s->size * 3 / 2), JS_STRING_LEN_MAX);
@@ -4365,7 +4365,7 @@ JSValue JS_NewStringLen(JSContext *ctx, const char *buf, size_t buf_len)
     /* Compute string kind and length: 7-bit, 8-bit, 16-bit, 16-bit UTF-16 */
     kind = utf8_scan(buf, buf_len, &len);
     if (unlikely(len > JS_STRING_LEN_MAX))
-        return JS_ThrowRangeError(ctx, "invalid string length");
+        return JS_ThrowRangeError(ctx, "Invalid string length");
 
     switch (kind) {
     case UTF8_PLAIN_ASCII:
@@ -4548,13 +4548,13 @@ const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValueConst val1,
                             pos++;
                             c = from_surrogate(c, c1);
                         } else {
-                            /* Keep unmatched surrogate code points */
-                            /* c = 0xfffd; */ /* error */
+                            c = 0xfffd;
                         }
-                    } else {
-                        /* Keep unmatched surrogate code points */
-                        /* c = 0xfffd; */ /* error */
+                    } else if (!cesu8) {
+                        c = 0xfffd;
                     }
+                } else if (is_lo_surrogate(c) && !cesu8) {
+                    c = 0xfffd;
                 }
                 q += utf8_encode(q, c);
             }
@@ -5055,7 +5055,7 @@ static JSValue JS_ConcatString1(JSContext *ctx, JSString *p1, JSString *p2)
 
     len = p1->len + p2->len;
     if (len > JS_STRING_LEN_MAX)
-        return JS_ThrowRangeError(ctx, "invalid string length");
+        return JS_ThrowRangeError(ctx, "Invalid string length");
     is_wide_char = p1->is_wide_char | p2->is_wide_char;
     p = js_alloc_string(ctx, len, is_wide_char);
     if (!p)
@@ -14209,7 +14209,7 @@ static JSValue JS_ToStringInternal(JSContext *ctx, JSValueConst val,
         if (flags & JS_TO_STRING_IS_PROPERTY_KEY) {
             return js_dup(val);
         } else {
-            return JS_ThrowTypeError(ctx, "cannot convert symbol to string");
+            return JS_ThrowTypeError(ctx, "Cannot convert a Symbol value to a string");
         }
     case JS_TAG_FLOAT64:
         return js_dtoa2(ctx, JS_VALUE_GET_FLOAT64(val), 10, 0,
@@ -46392,7 +46392,7 @@ static JSValue js_string_pad(JSContext *ctx, JSValueConst this_val,
         }
     }
     if (n > JS_STRING_LEN_MAX) {
-        JS_ThrowRangeError(ctx, "invalid string length");
+        JS_ThrowRangeError(ctx, "Invalid string length");
         goto fail3;
     }
     if (string_buffer_init(ctx, b, n))
@@ -46455,7 +46455,7 @@ static JSValue js_string_repeat(JSContext *ctx, JSValueConst this_val,
     if (len == 0 || n == 1)
         return str;
     if (val * len > JS_STRING_LEN_MAX) {
-        JS_ThrowRangeError(ctx, "invalid string length");
+        JS_ThrowRangeError(ctx, "Invalid string length");
         goto fail;
     }
     if (string_buffer_init2(ctx, b, n * len, p->is_wide_char))
@@ -56607,11 +56607,11 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
         return obj;
     /* XXX: we are currently limited to 2 GB */
     if (len > INT32_MAX) {
-        JS_ThrowRangeError(ctx, "invalid array buffer length");
+        JS_ThrowRangeError(ctx, "Array buffer allocation failed");
         goto fail;
     }
     if (max_len && *max_len > INT32_MAX) {
-        JS_ThrowRangeError(ctx, "invalid max array buffer length");
+        JS_ThrowRangeError(ctx, "Array buffer allocation failed");
         goto fail;
     }
     abuf = js_malloc(ctx, sizeof(*abuf));
