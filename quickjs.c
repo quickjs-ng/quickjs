@@ -8832,7 +8832,9 @@ JSValue JS_GetProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop)
 
 static JSValue JS_ThrowTypeErrorPrivateNotFound(JSContext *ctx, JSAtom atom)
 {
-    return JS_ThrowTypeErrorAtom(ctx, "private class field '%s' does not exist",
+    return JS_ThrowTypeErrorAtom(ctx,
+                                 "Cannot read private member %s from an object "
+                                 "whose class did not declare it",
                                  atom);
 }
 
@@ -14046,6 +14048,36 @@ int JS_ToIndex(JSContext *ctx, uint64_t *plen, JSValueConst val)
         *plen = 0;
         return -1;
     }
+    *plen = v;
+    return 0;
+}
+
+static int JS_ToTypedArrayLength(JSContext *ctx, uint64_t *plen, JSValueConst val)
+{
+    JSValue num;
+    int64_t v;
+
+    num = JS_ToNumber(ctx, val);
+    if (JS_IsException(num))
+        return -1;
+    if (JS_ToInt64Sat(ctx, &v, num)) {
+        JS_FreeValue(ctx, num);
+        return -1;
+    }
+    if (v < 0 || v > MAX_SAFE_INTEGER) {
+        const char *str;
+        str = JS_ToCString(ctx, num);
+        if (str) {
+            JS_ThrowRangeError(ctx, "Invalid typed array length: %s", str);
+            JS_FreeCString(ctx, str);
+        } else {
+            JS_ThrowRangeError(ctx, "Invalid typed array length");
+        }
+        *plen = 0;
+        JS_FreeValue(ctx, num);
+        return -1;
+    }
+    JS_FreeValue(ctx, num);
     *plen = v;
     return 0;
 }
@@ -40077,8 +40109,11 @@ static JSValue js_object_getPrototypeOf(JSContext *ctx, JSValueConst this_val,
     if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT) {
         /* ES6 feature non compatible with ES5.1: primitive types are
            accepted */
-        if (magic || JS_VALUE_GET_TAG(val) == JS_TAG_NULL ||
+        if (JS_VALUE_GET_TAG(val) == JS_TAG_NULL ||
             JS_VALUE_GET_TAG(val) == JS_TAG_UNDEFINED)
+            return JS_ThrowTypeError(ctx,
+                                     "Cannot convert undefined or null to object");
+        if (magic)
             return JS_ThrowTypeErrorNotAnObject(ctx);
     }
     return JS_GetPrototype(ctx, val);
@@ -59211,7 +59246,7 @@ static JSValue js_typed_array_constructor(JSContext *ctx,
 
     size_log2 = typed_array_size_log2(classid);
     if (JS_VALUE_GET_TAG(argv[0]) != JS_TAG_OBJECT) {
-        if (JS_ToIndex(ctx, &len, argv[0]))
+        if (JS_ToTypedArrayLength(ctx, &len, argv[0]))
             return JS_EXCEPTION;
         buffer = js_array_buffer_constructor1(ctx, JS_UNDEFINED,
                                               len << size_log2,
