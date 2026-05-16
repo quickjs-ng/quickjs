@@ -765,6 +765,37 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+static void backtrace_oom_current_exception(void)
+{
+    static const char setup_code[] =
+        "globalThis.f = function() { missing; };\n"
+        "Object.defineProperty(f, 'name', { value: 'x'.repeat(2 * 1024 * 1024) });";
+    JSMemoryUsage stats;
+    JSValue ret, exception;
+    JSRuntime *rt;
+    JSContext *ctx;
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+
+    ret = eval(ctx, setup_code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+
+    JS_ComputeMemoryUsage(rt, &stats);
+    JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + 128 * 1024);
+
+    ret = eval(ctx, "f()");
+    assert(JS_IsException(ret));
+    assert(JS_HasException(ctx));
+    exception = JS_GetException(ctx);
+    JS_FreeValue(ctx, exception);
+    JS_SetMemoryLimit(rt, 0);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static int gop_get_own_property(JSContext *ctx, JSPropertyDescriptor *desc,
                                 JSValueConst obj, JSAtom prop)
 {
@@ -1042,6 +1073,7 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    backtrace_oom_current_exception();
     global_object_prototype();
     slice_string_tocstring();
     immutable_array_buffer();
