@@ -1027,6 +1027,147 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+static void property_str_typed_accessors(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    JSValue r = eval(ctx, "({a: 42, b: 'hi', c: true, d: 3.5, e: null, f: 'not a number'})");
+    assert(!JS_IsException(r));
+
+    /* int32 */
+    assert(JS_GetPropertyStrInt32(ctx, r, "a", -1) == 42);
+    assert(JS_GetPropertyStrInt32(ctx, r, "missing", 7) == 7);
+    assert(JS_GetPropertyStrInt32(ctx, r, "e", 7) == 7); /* null -> fallback */
+    /* string coerces to int via ToInt32: "not a number" -> NaN -> 0 */
+    assert(JS_GetPropertyStrInt32(ctx, r, "f", -1) == 0);
+    assert(!JS_HasException(ctx));
+
+    /* int64 */
+    assert(JS_GetPropertyStrInt64(ctx, r, "a", -1) == 42);
+    assert(JS_GetPropertyStrInt64(ctx, r, "missing", 99) == 99);
+
+    /* float64 */
+    assert(JS_GetPropertyStrFloat64(ctx, r, "d", 0.0) == 3.5);
+    assert(JS_GetPropertyStrFloat64(ctx, r, "missing", 1.25) == 1.25);
+
+    /* bool */
+    assert(JS_GetPropertyStrBool(ctx, r, "c", -1) == 1);
+    assert(JS_GetPropertyStrBool(ctx, r, "a", -1) == 1); /* 42 is truthy */
+    assert(JS_GetPropertyStrBool(ctx, r, "missing", -1) == -1);
+    assert(JS_GetPropertyStrBool(ctx, r, "e", -1) == -1); /* null -> fallback */
+
+    /* exception in getter is swallowed, returns fallback */
+    JS_FreeValue(ctx, r);
+    r = eval(ctx, "({get x(){ throw new Error('boom'); }})");
+    assert(!JS_IsException(r));
+    assert(JS_GetPropertyStrInt32(ctx, r, "x", 11) == 11);
+    assert(!JS_HasException(ctx));
+
+    JS_FreeValue(ctx, r);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void free_cstring_safe(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    /* no-op on NULL should not crash */
+    JS_FreeCStringSafe(ctx, NULL);
+    const char *s = JS_ToCString(ctx, JS_NewString(ctx, "hello"));
+    JS_FreeCStringSafe(ctx, s);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void exception_as_string(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    /* no pending exception -> NULL */
+    const char *s = JS_GetExceptionAsString(ctx, true);
+    assert(s == NULL);
+
+    /* throw a string (not an Error) -> just the message */
+    JSValue r = eval(ctx, "throw 'oops'");
+    assert(JS_IsException(r));
+    JS_FreeValue(ctx, r);
+    s = JS_GetExceptionAsString(ctx, true);
+    assert(s != NULL);
+    assert(strcmp(s, "oops") == 0);
+    JS_FreeCString(ctx, s);
+    assert(!JS_HasException(ctx));
+
+    /* throw an Error, ask for stack */
+    r = eval(ctx, "throw new Error('boom')");
+    assert(JS_IsException(r));
+    JS_FreeValue(ctx, r);
+    s = JS_GetExceptionAsString(ctx, true);
+    assert(s != NULL);
+    assert(strstr(s, "Error: boom") != NULL);
+    assert(strchr(s, '\n') != NULL); /* has a stack line */
+    JS_FreeCString(ctx, s);
+
+    /* throw an Error, no stack requested */
+    r = eval(ctx, "throw new TypeError('nope')");
+    assert(JS_IsException(r));
+    JS_FreeValue(ctx, r);
+    s = JS_GetExceptionAsString(ctx, false);
+    assert(s != NULL);
+    assert(strstr(s, "nope") != NULL);
+    JS_FreeCString(ctx, s);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void resolve_reject_promise(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue global = JS_GetGlobalObject(ctx);
+
+    /* resolve case */
+    JSValue resolvers[2];
+    JSValue promise = JS_NewPromiseCapability(ctx, resolvers);
+    JS_SetPropertyStr(ctx, global, "p1", JS_DupValue(ctx, promise));
+    JS_FreeValue(ctx, promise);
+    JS_ResolvePromise(ctx, resolvers, JS_NewInt32(ctx, 7));
+
+    JSValue r = eval(ctx,
+        "let v1; p1.then(x => { v1 = x; });");
+    JS_FreeValue(ctx, r);
+    JSContext *out = NULL;
+    while (JS_ExecutePendingJob(rt, &out) > 0) ;
+    r = eval(ctx, "v1");
+    int32_t got = -1;
+    JS_ToInt32(ctx, &got, r);
+    assert(got == 7);
+    JS_FreeValue(ctx, r);
+
+    /* reject case */
+    promise = JS_NewPromiseCapability(ctx, resolvers);
+    JS_SetPropertyStr(ctx, global, "p2", JS_DupValue(ctx, promise));
+    JS_FreeValue(ctx, promise);
+    JS_RejectPromise(ctx, resolvers, JS_NewString(ctx, "fail"));
+
+    r = eval(ctx,
+        "let v2; p2.catch(e => { v2 = e; });");
+    JS_FreeValue(ctx, r);
+    while (JS_ExecutePendingJob(rt, &out) > 0) ;
+    r = eval(ctx, "v2");
+    const char *got_s = JS_ToCString(ctx, r);
+    assert(got_s && strcmp(got_s, "fail") == 0);
+    JS_FreeCString(ctx, got_s);
+    JS_FreeValue(ctx, r);
+
+    JS_FreeValue(ctx, global);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1047,5 +1188,9 @@ int main(void)
     immutable_array_buffer();
     get_uint8array();
     new_symbol();
+    property_str_typed_accessors();
+    free_cstring_safe();
+    exception_as_string();
+    resolve_reject_promise();
     return 0;
 }

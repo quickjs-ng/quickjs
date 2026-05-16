@@ -911,6 +911,13 @@ JS_EXTERN void JS_FreeCStringRT(JSRuntime *rt, const char *ptr);
 JS_EXTERN void JS_FreeCStringUTF16(JSContext *ctx, const uint16_t *ptr);
 JS_EXTERN void JS_FreeCStringRT_UTF16(JSRuntime *rt, const uint16_t *ptr);
 
+/* Convenience: JS_FreeCString that no-ops on a NULL pointer. Useful when
+   a value came from JS_ToCString and may be NULL on conversion failure. */
+static inline void JS_FreeCStringSafe(JSContext *ctx, const char *ptr)
+{
+    if (ptr) JS_FreeCString(ctx, ptr);
+}
+
 JS_EXTERN JSValue JS_NewObjectProtoClass(JSContext *ctx, JSValueConst proto,
                                          JSClassID class_id);
 JS_EXTERN JSValue JS_NewObjectClass(JSContext *ctx, JSClassID class_id);
@@ -985,6 +992,145 @@ JS_EXTERN int JS_GetLength(JSContext *ctx, JSValueConst obj, int64_t *pres);
 JS_EXTERN int JS_SetLength(JSContext *ctx, JSValueConst obj, int64_t len);
 JS_EXTERN int JS_SealObject(JSContext *ctx, JSValueConst obj);
 JS_EXTERN int JS_FreezeObject(JSContext *ctx, JSValueConst obj);
+
+/* Typed property accessors built on JS_GetPropertyStr. These wrap the
+   common "fetch property, convert, free" pattern. If the property is
+   missing (undefined) or null, |fallback| is returned. Conversion errors
+   return |fallback| and leave any pending exception cleared. */
+static inline int32_t JS_GetPropertyStrInt32(JSContext *ctx,
+                                             JSValueConst this_obj,
+                                             const char *prop,
+                                             int32_t fallback)
+{
+    JSValue v = JS_GetPropertyStr(ctx, this_obj, prop);
+    int32_t out = fallback;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v) && !JS_IsException(v)) {
+        if (JS_ToInt32(ctx, &out, v) < 0) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            out = fallback;
+        }
+    } else if (JS_IsException(v)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+}
+static inline int64_t JS_GetPropertyStrInt64(JSContext *ctx,
+                                             JSValueConst this_obj,
+                                             const char *prop,
+                                             int64_t fallback)
+{
+    JSValue v = JS_GetPropertyStr(ctx, this_obj, prop);
+    int64_t out = fallback;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v) && !JS_IsException(v)) {
+        if (JS_ToInt64(ctx, &out, v) < 0) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            out = fallback;
+        }
+    } else if (JS_IsException(v)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+}
+static inline double JS_GetPropertyStrFloat64(JSContext *ctx,
+                                              JSValueConst this_obj,
+                                              const char *prop,
+                                              double fallback)
+{
+    JSValue v = JS_GetPropertyStr(ctx, this_obj, prop);
+    double out = fallback;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v) && !JS_IsException(v)) {
+        if (JS_ToFloat64(ctx, &out, v) < 0) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+            out = fallback;
+        }
+    } else if (JS_IsException(v)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+}
+/* Returns 1 if truthy, 0 if falsy, fallback if missing/null/exception. */
+static inline int JS_GetPropertyStrBool(JSContext *ctx,
+                                        JSValueConst this_obj,
+                                        const char *prop,
+                                        int fallback)
+{
+    JSValue v = JS_GetPropertyStr(ctx, this_obj, prop);
+    int out = fallback;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v) && !JS_IsException(v)) {
+        int r = JS_ToBool(ctx, v);
+        if (r < 0) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        } else {
+            out = r ? 1 : 0;
+        }
+    } else if (JS_IsException(v)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+    JS_FreeValue(ctx, v);
+    return out;
+}
+
+/* Format the pending exception as a C string of the form "<message>"
+   or, with |with_stack|, "<message>\n<stack>". Consumes the pending
+   exception (so JS_HasException returns false after). Returns NULL if
+   no exception is pending or on OOM. Caller frees with JS_FreeCString.
+   Convenience for the common JS_GetException + JS_ToCString +
+   JS_GetPropertyStr("stack") dance. */
+static inline const char *JS_GetExceptionAsString(JSContext *ctx,
+                                                  bool with_stack)
+{
+    if (!JS_HasException(ctx))
+        return NULL;
+    JSValue exc = JS_GetException(ctx);
+    if (JS_IsNull(exc) || JS_IsUndefined(exc) || JS_IsUninitialized(exc)) {
+        JS_FreeValue(ctx, exc);
+        return NULL;
+    }
+    if (!with_stack || !JS_IsError(exc)) {
+        const char *s = JS_ToCString(ctx, exc);
+        JS_FreeValue(ctx, exc);
+        return s;
+    }
+    size_t mlen = 0, slen = 0;
+    const char *msg = JS_ToCStringLen(ctx, &mlen, exc);
+    JSValue stack = JS_GetPropertyStr(ctx, exc, "stack");
+    const char *stack_s = NULL;
+    if (JS_IsException(stack)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    } else if (!JS_IsUndefined(stack) && !JS_IsNull(stack)) {
+        stack_s = JS_ToCStringLen(ctx, &slen, stack);
+    }
+    JS_FreeValue(ctx, stack);
+    JS_FreeValue(ctx, exc);
+    if (!msg || !stack_s || slen == 0) {
+        JS_FreeCStringSafe(ctx, stack_s);
+        return msg;
+    }
+    char *tmp = (char *)js_malloc(ctx, mlen + 1 + slen + 1);
+    if (!tmp) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        JS_FreeCString(ctx, stack_s);
+        return msg;
+    }
+    memcpy(tmp, msg, mlen);
+    tmp[mlen] = '\n';
+    memcpy(tmp + mlen + 1, stack_s, slen);
+    tmp[mlen + 1 + slen] = '\0';
+    JSValue out = JS_NewStringLen(ctx, tmp, mlen + 1 + slen);
+    js_free(ctx, tmp);
+    JS_FreeCString(ctx, msg);
+    JS_FreeCString(ctx, stack_s);
+    if (JS_IsException(out)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return NULL;
+    }
+    const char *result = JS_ToCString(ctx, out);
+    JS_FreeValue(ctx, out);
+    return result;
+}
 
 #define JS_GPN_STRING_MASK  (1 << 0)
 #define JS_GPN_SYMBOL_MASK  (1 << 1)
@@ -1120,6 +1266,36 @@ JS_EXTERN JSPromiseStateEnum JS_PromiseState(JSContext *ctx,
 JS_EXTERN JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise);
 JS_EXTERN bool JS_IsPromise(JSValueConst val);
 JS_EXTERN JSValue JS_NewSettledPromise(JSContext *ctx, bool is_reject, JSValueConst value);
+
+/* Settle a promise capability returned by JS_NewPromiseCapability.
+   Takes ownership of |value| and of both resolving functions. The pending
+   exception (if any) from the resolver call is cleared. */
+static inline void JS_ResolvePromise(JSContext *ctx, JSValue resolving_funcs[2],
+                                     JSValue value)
+{
+    JSValueConst argv[1];
+    argv[0] = value;
+    JSValue r = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, argv);
+    if (JS_IsException(r))
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    JS_FreeValue(ctx, r);
+    JS_FreeValue(ctx, value);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+}
+static inline void JS_RejectPromise(JSContext *ctx, JSValue resolving_funcs[2],
+                                    JSValue reason)
+{
+    JSValueConst argv[1];
+    argv[0] = reason;
+    JSValue r = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, argv);
+    if (JS_IsException(r))
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    JS_FreeValue(ctx, r);
+    JS_FreeValue(ctx, reason);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+}
 
 JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global);
 
