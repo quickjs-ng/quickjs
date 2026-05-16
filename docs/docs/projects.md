@@ -78,3 +78,7 @@ JavaScript runtime for the BEAM - Web APIs backed by OTP, native DOM, and a buil
 ## [quickjs-go](https://github.com/buke/quickjs-go)
 
 Golang bindings for QuickJS-NG using cgo
+
+## [Nordstjernen](https://github.com/nordstjernen-web/nordstjernen)
+
+Nordstjernen web browser.
