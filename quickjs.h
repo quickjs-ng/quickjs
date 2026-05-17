@@ -1231,8 +1231,14 @@ JS_EXTERN uint8_t *JS_WriteObject(JSContext *ctx, size_t *psize, JSValueConst ob
 JS_EXTERN uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
                                    int flags, JSSABTab *psab_tab);
 
+/* WARNING: only enable JS_READ_OBJ_BYTECODE on input from a trusted writer.
+   The bytecode format is not designed to resist a hostile producer; loading
+   adversarial bytecode can lead to memory corruption. */
 #define JS_READ_OBJ_BYTECODE  (1 << 0) /* allow function/module */
 #define JS_READ_OBJ_ROM_DATA  (0)      /* avoid duplicating 'buf' data (obsolete, broken by ICs) */
+/* WARNING: serialized SharedArrayBuffers carry a literal host pointer in the
+   blob; only enable JS_READ_OBJ_SAB on input produced by a trusted writer in
+   the same process (e.g. another Worker on the same runtime). */
 #define JS_READ_OBJ_SAB       (1 << 2) /* allow SharedArrayBuffer */
 #define JS_READ_OBJ_REFERENCE (1 << 3) /* allow object references */
 JS_EXTERN JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len, int flags);

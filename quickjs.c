@@ -4410,6 +4410,13 @@ JSValue JS_NewStringUTF16(JSContext *ctx, const uint16_t *buf, size_t len)
 
     if (unlikely(!len))
         return js_empty_string(ctx->rt);
+    /* Without this check, a size_t length just above INT_MAX truncates when
+       passed to js_alloc_string (which takes int), producing a tiny or
+       negative-sized allocation while the subsequent memcpy writes the full
+       len*2 bytes — heap overflow. The sibling JS_NewStringLen has the
+       same guard. */
+    if (unlikely(len > JS_STRING_LEN_MAX))
+        return JS_ThrowRangeError(ctx, "invalid string length");
 
     str = js_alloc_string(ctx, len, 1);
     if (unlikely(!str))
@@ -38599,7 +38606,11 @@ static int bc_get_sleb128(BCReaderState *s, int32_t *pval)
     return 0;
 }
 
-/* XXX: used to read an `int` with a positive value */
+/* XXX: used to read an `int` with a positive value, but writer encodes a
+   handful of negative sentinels (e.g. scope_next=-2 → 0xFFFFFFFF, decoded
+   here and adjusted by the caller). A blanket "reject high bit" check
+   therefore can't go here — callers that need a non-negative result must
+   range-check explicitly. */
 static int bc_get_leb128_int(BCReaderState *s, int *pval)
 {
     return bc_get_leb128(s, (uint32_t *)pval);
@@ -38712,7 +38723,7 @@ static uint32_t bc_get_flags(uint32_t flags, int *pidx, int n)
 }
 
 static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
-                                   int byte_code_offset, uint32_t bc_len)
+                                   size_t byte_code_offset, uint32_t bc_len)
 {
     uint8_t *bc_buf;
     int pos, len, op;
@@ -38725,9 +38736,17 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
     b->byte_code_buf = bc_buf;
 
     pos = 0;
-    while (pos < bc_len) {
+    while ((uint32_t)pos < bc_len) {
         op = bc_buf[pos];
         len = short_opcode_info(op).size;
+        /* Refuse zero-length opcodes (would loop forever) and opcodes whose
+           operand bytes would run off the end of bc_buf. Without this the
+           OP_FMT_atom* arms below read 4 bytes past the buffer and then
+           write the resolved atom back, corrupting the adjacent heap chunk. */
+        if (len <= 0 || (uint32_t)pos + (uint32_t)len > bc_len) {
+            b->byte_code_len = pos;
+            return -1;
+        }
         switch(short_opcode_info(op).fmt) {
         case OP_FMT_atom:
         case OP_FMT_atom_u8:
@@ -38836,8 +38855,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     uint16_t v16;
     uint8_t v8;
     int idx, i, local_count, has_debug_info;
-    int function_size, cpool_offset, byte_code_offset;
-    int closure_var_offset, vardefs_offset;
+    size_t function_size, cpool_offset, byte_code_offset;
+    size_t closure_var_offset, vardefs_offset;
 
     memset(&bc, 0, sizeof(bc));
     bc.header.ref_count = 1;
@@ -38881,15 +38900,36 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     if (bc_get_leb128_int(s, &local_count))
         goto fail;
 
+    /* Defence in depth: reject negative or implausibly large counts so the
+       size arithmetic below cannot wrap. The cap keeps every per-section
+       size, and the final sum, well within size_t on any supported host.
+       closure_var_count is a uint16_t and cannot overflow the size formula. */
+    if (bc.cpool_count < 0 || bc.byte_code_len < 0 || local_count < 0)
+        goto fail;
+    if ((size_t)bc.cpool_count   > (SIZE_MAX / 16) / sizeof(*bc.cpool) ||
+        (size_t)local_count      > (SIZE_MAX / 16) / sizeof(*bc.vardefs) ||
+        (size_t)bc.byte_code_len > SIZE_MAX / 16)
+        goto fail;
+    /* If the function has any vardefs at all, local_count must equal
+       arg_count + var_count. The interpreter indexes b->vardefs as
+       [0..arg_count-1] for args and [arg_count..arg_count+var_count-1] for
+       vars, so a smaller local_count with larger arg/var counts would let
+       opcodes walk past the vardefs region. local_count == 0 is the writer's
+       compact encoding for "no vardefs section", in which case b->vardefs
+       stays NULL below and the function must not reference vardefs at all. */
+    if (local_count != 0 &&
+        local_count != (int)bc.arg_count + (int)bc.var_count)
+        goto fail;
+
     function_size = sizeof(*b);
     cpool_offset = function_size;
-    function_size += bc.cpool_count * sizeof(*bc.cpool);
+    function_size += (size_t)bc.cpool_count * sizeof(*bc.cpool);
     vardefs_offset = function_size;
-    function_size += local_count * sizeof(*bc.vardefs);
+    function_size += (size_t)local_count * sizeof(*bc.vardefs);
     closure_var_offset = function_size;
-    function_size += bc.closure_var_count * sizeof(*bc.closure_var);
+    function_size += (size_t)bc.closure_var_count * sizeof(*bc.closure_var);
     byte_code_offset = function_size;
-    function_size += bc.byte_code_len;
+    function_size += (size_t)bc.byte_code_len;
 
     b = js_mallocz(ctx, function_size);
     if (!b)
@@ -39097,6 +39137,12 @@ static JSValue JS_ReadModule(BCReaderState *s)
         m->req_module_entries = js_mallocz(ctx, sizeof(m->req_module_entries[0]) * m->req_module_entries_size);
         if (!m->req_module_entries)
             goto fail;
+        /* js_mallocz zeroes attributes to 0x0 = JS_MKVAL(JS_TAG_INT, 0), not
+           JS_UNDEFINED. Initialise explicitly so the host-provided module
+           normalizer/loader (which is called below) receives the value it
+           expects, and so js_free_module_def's JS_FreeValue is well-defined. */
+        for(i = 0; i < m->req_module_entries_count; i++)
+            m->req_module_entries[i].attributes = JS_UNDEFINED;
         for(i = 0; i < m->req_module_entries_count; i++) {
             JSReqModuleEntry *rme = &m->req_module_entries[i];
             JSModuleDef **pm = &rme->module;
@@ -39133,8 +39179,20 @@ static JSValue JS_ReadModule(BCReaderState *s)
             if (me->export_type == JS_EXPORT_TYPE_LOCAL) {
                 if (bc_get_leb128_int(s, &me->u.local.var_idx))
                     goto fail;
+                /* var_idx is dereferenced as func.var_refs[var_idx] in
+                   js_resolve_export's caller. The actual var_ref_count lives
+                   on the inner function bytecode (m->func_obj is read below),
+                   so do an early sanity check here and rely on the consumer
+                   to range-check against the resolved var_refs. */
+                if (me->u.local.var_idx < 0)
+                    goto fail;
             } else {
                 if (bc_get_leb128_int(s, &me->u.req_module_idx))
+                    goto fail;
+                /* req_module_idx indexes m->req_module_entries; reject any
+                   value that can't be a valid slot. */
+                if (me->u.req_module_idx < 0 ||
+                    me->u.req_module_idx >= m->req_module_entries_count)
                     goto fail;
                 if (bc_get_atom(s, &me->local_name))
                     goto fail;
@@ -39155,6 +39213,9 @@ static JSValue JS_ReadModule(BCReaderState *s)
             JSStarExportEntry *se = &m->star_export_entries[i];
             if (bc_get_leb128_int(s, &se->req_module_idx))
                 goto fail;
+            if (se->req_module_idx < 0 ||
+                se->req_module_idx >= m->req_module_entries_count)
+                goto fail;
         }
     }
 
@@ -39169,9 +39230,14 @@ static JSValue JS_ReadModule(BCReaderState *s)
             JSImportEntry *mi = &m->import_entries[i];
             if (bc_get_leb128_int(s, &mi->var_idx))
                 goto fail;
+            if (mi->var_idx < 0)
+                goto fail;
             if (bc_get_atom(s, &mi->import_name))
                 goto fail;
             if (bc_get_leb128_int(s, &mi->req_module_idx))
+                goto fail;
+            if (mi->req_module_idx < 0 ||
+                mi->req_module_idx >= m->req_module_entries_count)
                 goto fail;
         }
     }
@@ -39665,7 +39731,12 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
         if (type == 0) {
             if (bc_get_u32(s, &atom))
                 return -1;
-            if (!__JS_AtomIsConst(atom)) {
+            /* The previous check used __JS_AtomIsConst(atom), which casts to
+               int32_t. Any value with the high bit set became negative and
+               compared "less than JS_ATOM_END", letting attacker-controlled
+               atom values (e.g. fake tagged-int atoms 0x80000000-0xFFFFFFFF)
+               slip into s->idx_to_atom. */
+            if (atom == 0 || atom >= JS_ATOM_END) {
                 JS_ThrowInternalError(s->ctx, "out of range atom");
                 return -1;
             }
