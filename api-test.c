@@ -1027,8 +1027,52 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+/* Feeds JS_ReadObject a hand-crafted bytecode-function blob whose
+   local_count (number of vardef slots allocated) is smaller than
+   arg_count + var_count. The interpreter and the GC's atom-free pass
+   both index b->vardefs as [0..arg+var-1], so a smaller local_count
+   leaves the writer accessing memory past the vardefs region. Before
+   the fix the reader accepted the blob; after the fix it rejects it. */
+static void bc_function_local_count_mismatch(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    const uint8_t blob[] = {
+        /* BC_VERSION   */ 26,
+        /* checksum     */ 0xFF, 0xFF, 0xFF, 0xFF,
+        /* atom_count=0 */ 0x00,
+        /* tag = BC_TAG_FUNCTION_BYTECODE (12) */ 0x0C,
+        /* flags (u16)  */ 0x00, 0x00,
+        /* is_strict    */ 0x00,
+        /* func_name = builtin atom 1 */ 0x02,
+        /* arg_count=5  */ 0x05,
+        /* var_count=5  */ 0x05,
+        /* defined_arg  */ 0x00,
+        /* stack_size   */ 0x00,
+        /* var_ref_count*/ 0x00,
+        /* closure_var  */ 0x00,
+        /* cpool_count  */ 0x00,
+        /* byte_code_len*/ 0x00,
+        /* local_count=3 (≠ arg+var=10 and ≠ 0) */ 0x03,
+        /* 3 vardefs: each is atom + scope_level + scope_next + flags.
+           We give each one builtin atom 1, scope_level 0, scope_next 0
+           (LEB128 1 → scope_next-1 = 0 in reader semantics), flags 0. */
+        /* vd 0 */ 0x02, 0x00, 0x01, 0x00,
+        /* vd 1 */ 0x02, 0x00, 0x01, 0x00,
+        /* vd 2 */ 0x02, 0x00, 0x01, 0x00,
+    };
+    JSValue v = JS_ReadObject(ctx, blob, sizeof(blob), JS_READ_OBJ_BYTECODE);
+    assert(JS_IsException(v));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
+    bc_function_local_count_mismatch();
     cfunctions();
     sync_call();
     async_call();

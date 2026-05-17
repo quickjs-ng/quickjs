@@ -38881,6 +38881,18 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     if (bc_get_leb128_int(s, &local_count))
         goto fail;
 
+    /* If the function has any vardefs at all (local_count != 0), the value
+       must equal arg_count + var_count. The interpreter indexes b->vardefs
+       as [0..arg_count-1] for args and [arg_count..arg_count+var_count-1]
+       for vars; a smaller local_count would let opcodes (and the GC's
+       atom-free pass) walk past the vardefs region. local_count == 0 is
+       the writer's compact encoding for "no vardefs section", in which
+       case b->vardefs stays NULL and the function must not reference
+       vardefs at all. */
+    if (local_count != 0 &&
+        local_count != (int)bc.arg_count + (int)bc.var_count)
+        goto fail;
+
     function_size = sizeof(*b);
     cpool_offset = function_size;
     function_size += bc.cpool_count * sizeof(*bc.cpool);
