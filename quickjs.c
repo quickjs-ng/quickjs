@@ -4410,6 +4410,13 @@ JSValue JS_NewStringUTF16(JSContext *ctx, const uint16_t *buf, size_t len)
 
     if (unlikely(!len))
         return js_empty_string(ctx->rt);
+    /* Without this clamp, a size_t length just above INT_MAX would truncate
+       when passed to js_alloc_string (whose length parameter is int). The
+       resulting allocation is tiny or negative-shifted, while the subsequent
+       memcpy(str16(str), buf, len * 2) writes the full len*2 bytes — heap
+       overflow. The sibling JS_NewStringLen has the same guard. */
+    if (unlikely(len > JS_STRING_LEN_MAX))
+        return JS_ThrowRangeError(ctx, "invalid string length");
 
     str = js_alloc_string(ctx, len, 1);
     if (unlikely(!str))

@@ -486,6 +486,25 @@ static void utf16_string(void)
         JS_FreeCStringUTF16(ctx, u);
         JS_FreeValue(ctx, v);
     }
+    {
+        /* Oversized length: must throw RangeError, not corrupt the heap.
+           Before the fix, len > INT_MAX was truncated when passed to
+           js_alloc_string(int), producing a tiny allocation that the
+           subsequent memcpy(..., len * 2) overflowed. Pre-fix: ASan
+           reports heap-buffer-overflow or process aborts. Post-fix:
+           returns an exception. We don't materialise a multi-GB buffer
+           here — JS_NewStringUTF16 must reject the length *before*
+           reading from buf. */
+        JSValue v = JS_NewStringUTF16(ctx, NULL, (size_t)INT_MAX + 1);
+        assert(JS_IsException(v));
+        JSValue e = JS_GetException(ctx);
+        assert(JS_IsError(e));
+        const char *s = JS_ToCString(ctx, e);
+        assert(s);
+        assert(strstr(s, "invalid string length") != NULL);
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, e);
+    }
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
