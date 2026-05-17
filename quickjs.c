@@ -6835,13 +6835,11 @@ void JS_MarkValue(JSRuntime *rt, JSValueConst val, JS_MarkFunc *mark_func)
 static void mark_weak_map_value(JSRuntime *rt, JSWeakRefRecord *first_weak_ref, JS_MarkFunc *mark_func) {
     JSWeakRefRecord *wr;
     JSMapRecord *mr;
-    JSMapState *s;
 
     for (wr = first_weak_ref; wr != NULL; wr = wr->next_weak_ref) {
         if (wr->kind == JS_WEAK_REF_KIND_MAP) {
             mr = wr->u.map_record;
-            s = mr->map;
-            assert(s->is_weak);
+            assert(mr->map->is_weak);
             assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
             JS_MarkValue(rt, mr->value, mark_func);
         }
@@ -9030,7 +9028,7 @@ static int num_keys_cmp(const void *p1, const void *p2, void *opaque)
     JSAtom atom1 = ((const JSPropertyEnum *)p1)->atom;
     JSAtom atom2 = ((const JSPropertyEnum *)p2)->atom;
     uint32_t v1, v2;
-    bool atom1_is_integer, atom2_is_integer;
+    __maybe_unused bool atom1_is_integer, atom2_is_integer;
 
     atom1_is_integer = JS_AtomIsArrayIndex(ctx, &v1, atom1);
     atom2_is_integer = JS_AtomIsArrayIndex(ctx, &v2, atom2);
@@ -43512,7 +43510,8 @@ static JSValue js_array_slice(JSContext *ctx, JSValueConst this_val,
 static JSValue js_array_toSpliced(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv)
 {
-    JSValue arr, obj, ret, *arrp, *pval, *last;
+    JSValue arr, obj, ret, *arrp, *pval;
+    __maybe_unused JSValue *last;
     JSObject *p;
     int64_t i, j, len, newlen, start, add, del;
     uint32_t count32;
