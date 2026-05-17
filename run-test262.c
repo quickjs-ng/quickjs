@@ -2239,6 +2239,8 @@ int main(int argc, char **argv)
         help();
 
     if (is_test262_harness) {
+        if (optind >= argc)
+            fatal(2, "missing test file argument for -N");
         return run_test262_harness_test(tls, argv[optind], is_module, can_block);
     }
 
