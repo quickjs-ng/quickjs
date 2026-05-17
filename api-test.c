@@ -1027,8 +1027,50 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+/* Feeds JS_ReadObject a hand-crafted bytecode-function blob whose body
+   is a single byte: an atom-format opcode (OP_push_atom_value = 4,
+   declared size 5 in quickjs-opcode.h) with no operand bytes following.
+   Before the fix the reader's loop unconditionally read 4 operand bytes
+   past the end of bc_buf via get_u32(), then wrote the resolved atom
+   back via put_u32(), corrupting the adjacent heap chunk. After the fix
+   the reader checks pos + len > bc_len before reading and rejects the
+   blob cleanly. */
+static void bc_function_opcode_bounds(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    const uint8_t blob[] = {
+        /* BC_VERSION   */ 26,
+        /* checksum     */ 0xFF, 0xFF, 0xFF, 0xFF,
+        /* atom_count=0 */ 0x00,
+        /* tag = BC_TAG_FUNCTION_BYTECODE (12) */ 0x0C,
+        /* flags (u16)  */ 0x00, 0x00,
+        /* is_strict    */ 0x00,
+        /* func_name = builtin atom 1 */ 0x02,
+        /* arg_count    */ 0x00,
+        /* var_count    */ 0x00,
+        /* defined_arg  */ 0x00,
+        /* stack_size   */ 0x00,
+        /* var_ref_count*/ 0x00,
+        /* closure_var  */ 0x00,
+        /* cpool_count  */ 0x00,
+        /* byte_code_len=1 */ 0x01,
+        /* local_count  */ 0x00,
+        /* byte_code: just the opcode byte, no operand */
+        /* OP_push_atom_value (= 4) */ 0x04,
+    };
+    JSValue v = JS_ReadObject(ctx, blob, sizeof(blob), JS_READ_OBJ_BYTECODE);
+    assert(JS_IsException(v));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
+    bc_function_opcode_bounds();
     cfunctions();
     sync_call();
     async_call();

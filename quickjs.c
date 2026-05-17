@@ -38725,9 +38725,17 @@ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
     b->byte_code_buf = bc_buf;
 
     pos = 0;
-    while (pos < bc_len) {
+    while ((uint32_t)pos < bc_len) {
         op = bc_buf[pos];
         len = short_opcode_info(op).size;
+        /* Refuse zero-length opcodes (would loop forever) and opcodes whose
+           operand bytes would run off the end of bc_buf. Without this the
+           OP_FMT_atom* arms below read 4 bytes past the buffer (and then
+           write the resolved atom back), corrupting the adjacent heap chunk. */
+        if (len <= 0 || (uint32_t)pos + (uint32_t)len > bc_len) {
+            b->byte_code_len = pos;
+            return -1;
+        }
         switch(short_opcode_info(op).fmt) {
         case OP_FMT_atom:
         case OP_FMT_atom_u8:
