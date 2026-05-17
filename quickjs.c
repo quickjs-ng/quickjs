@@ -4410,6 +4410,8 @@ JSValue JS_NewStringUTF16(JSContext *ctx, const uint16_t *buf, size_t len)
 
     if (unlikely(!len))
         return js_empty_string(ctx->rt);
+    if (unlikely(len > JS_STRING_LEN_MAX))
+        return JS_ThrowRangeError(ctx, "invalid string length");
 
     str = js_alloc_string(ctx, len, 1);
     if (unlikely(!str))

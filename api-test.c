@@ -486,6 +486,17 @@ static void utf16_string(void)
         JS_FreeCStringUTF16(ctx, u);
         JS_FreeValue(ctx, v);
     }
+    {
+        JSValue v = JS_NewStringUTF16(ctx, NULL, (size_t)INT_MAX + 1);
+        assert(JS_IsException(v));
+        JSValue e = JS_GetException(ctx);
+        assert(JS_IsError(e));
+        const char *s = JS_ToCString(ctx, e);
+        assert(s);
+        assert(strstr(s, "invalid string length") != NULL);
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, e);
+    }
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
