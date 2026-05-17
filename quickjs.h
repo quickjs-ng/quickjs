@@ -1072,6 +1072,70 @@ static inline int JS_GetPropertyStrBool(JSContext *ctx,
     JS_FreeValue(ctx, v);
     return out;
 }
+/* Fetches |prop| from |this_obj| and converts to a C string. Returns
+   NULL if the property is missing (undefined/null), if conversion fails,
+   or on OOM; any pending exception is cleared in those cases. On
+   success the returned pointer must be freed with JS_FreeCString (or
+   JS_FreeCStringSafe). */
+static inline const char *JS_GetPropertyStrString(JSContext *ctx,
+                                                  JSValueConst this_obj,
+                                                  const char *prop)
+{
+    JSValue v = JS_GetPropertyStr(ctx, this_obj, prop);
+    if (JS_IsException(v)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return NULL;
+    }
+    if (JS_IsUndefined(v) || JS_IsNull(v)) {
+        JS_FreeValue(ctx, v);
+        return NULL;
+    }
+    const char *s = JS_ToCString(ctx, v);
+    JS_FreeValue(ctx, v);
+    if (!s)
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    return s;
+}
+
+/* Typed setters mirroring the typed getters. Each returns the same
+   status as JS_SetPropertyStr (negative on error, otherwise the value
+   defined by the spec for [[Set]]). The boxed value is freed by the
+   underlying setter regardless of success. */
+static inline int JS_SetPropertyStrInt32(JSContext *ctx,
+                                         JSValueConst this_obj,
+                                         const char *prop, int32_t val)
+{
+    return JS_SetPropertyStr(ctx, this_obj, prop, JS_NewInt32(ctx, val));
+}
+static inline int JS_SetPropertyStrInt64(JSContext *ctx,
+                                         JSValueConst this_obj,
+                                         const char *prop, int64_t val)
+{
+    return JS_SetPropertyStr(ctx, this_obj, prop, JS_NewInt64(ctx, val));
+}
+static inline int JS_SetPropertyStrFloat64(JSContext *ctx,
+                                           JSValueConst this_obj,
+                                           const char *prop, double val)
+{
+    return JS_SetPropertyStr(ctx, this_obj, prop, JS_NewFloat64(ctx, val));
+}
+static inline int JS_SetPropertyStrBool(JSContext *ctx,
+                                        JSValueConst this_obj,
+                                        const char *prop, int val)
+{
+    return JS_SetPropertyStr(ctx, this_obj, prop, JS_NewBool(ctx, val != 0));
+}
+/* Stores a freshly-allocated JS string. Returns -1 (with pending
+   exception) on OOM without modifying |this_obj|. */
+static inline int JS_SetPropertyStrString(JSContext *ctx,
+                                          JSValueConst this_obj,
+                                          const char *prop, const char *val)
+{
+    JSValue s = JS_NewString(ctx, val);
+    if (JS_IsException(s))
+        return -1;
+    return JS_SetPropertyStr(ctx, this_obj, prop, s);
+}
 
 /* Format the pending exception as a C string of the form "<message>"
    or, with |with_stack|, "<message>\n<stack>". Consumes the pending
@@ -1130,6 +1194,91 @@ static inline const char *JS_GetExceptionAsString(JSContext *ctx,
     const char *result = JS_ToCString(ctx, out);
     JS_FreeValue(ctx, out);
     return result;
+}
+
+/* Argument-validation helpers for native callbacks. They accept the
+   |argc|/|argv| pair from a JSCFunction signature and, on failure,
+   throw a TypeError and return -1 with the pending exception left for
+   the caller to propagate (typically by returning JS_EXCEPTION). On
+   success they return 0 and write the converted value through the out
+   pointer. */
+
+/* Returns 0 when |min| <= |argc| and (|max| < 0 || |argc| <= |max|),
+   otherwise throws TypeError and returns -1. Pass |max| = -1 for "no
+   upper bound". */
+static inline int JS_CheckArgc(JSContext *ctx, int argc, int min, int max)
+{
+    if (argc < min) {
+        JS_ThrowTypeError(ctx,
+            "expected at least %d argument%s, got %d",
+            min, min == 1 ? "" : "s", argc);
+        return -1;
+    }
+    if (max >= 0 && argc > max) {
+        JS_ThrowTypeError(ctx,
+            "expected at most %d argument%s, got %d",
+            max, max == 1 ? "" : "s", argc);
+        return -1;
+    }
+    return 0;
+}
+
+static inline int JS_ArgInt32(JSContext *ctx, int argc, JSValueConst *argv,
+                              int idx, int32_t *out)
+{
+    if (idx < 0 || idx >= argc) {
+        JS_ThrowTypeError(ctx, "missing argument %d", idx);
+        return -1;
+    }
+    return JS_ToInt32(ctx, out, argv[idx]);
+}
+static inline int JS_ArgInt64(JSContext *ctx, int argc, JSValueConst *argv,
+                              int idx, int64_t *out)
+{
+    if (idx < 0 || idx >= argc) {
+        JS_ThrowTypeError(ctx, "missing argument %d", idx);
+        return -1;
+    }
+    return JS_ToInt64(ctx, out, argv[idx]);
+}
+static inline int JS_ArgFloat64(JSContext *ctx, int argc, JSValueConst *argv,
+                                int idx, double *out)
+{
+    if (idx < 0 || idx >= argc) {
+        JS_ThrowTypeError(ctx, "missing argument %d", idx);
+        return -1;
+    }
+    return JS_ToFloat64(ctx, out, argv[idx]);
+}
+static inline int JS_ArgBool(JSContext *ctx, int argc, JSValueConst *argv,
+                             int idx, int *out)
+{
+    if (idx < 0 || idx >= argc) {
+        JS_ThrowTypeError(ctx, "missing argument %d", idx);
+        return -1;
+    }
+    int r = JS_ToBool(ctx, argv[idx]);
+    if (r < 0)
+        return -1;
+    *out = r;
+    return 0;
+}
+/* On success writes a JS-owned C string into |*out_str| that the
+   caller must free with JS_FreeCString. On failure (missing arg or
+   conversion error) returns -1 with TypeError pending and |*out_str|
+   untouched. */
+static inline int JS_ArgCString(JSContext *ctx, int argc, JSValueConst *argv,
+                                int idx, const char **out_str)
+{
+    if (idx < 0 || idx >= argc) {
+        JS_ThrowTypeError(ctx, "missing argument %d", idx);
+        return -1;
+    }
+    const char *s = JS_ToCString(ctx, argv[idx]);
+    if (!s)
+        return -1;
+    *out_str = s;
+    return 0;
 }
 
 #define JS_GPN_STRING_MASK  (1 << 0)

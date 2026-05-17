@@ -2,6 +2,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
@@ -1170,6 +1171,167 @@ static void resolve_reject_promise(void)
     JS_FreeRuntime(rt);
 }
 
+static void property_str_string_accessor(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    JSValue r = eval(ctx, "({a: 'hello', b: 42, c: null, d: undefined})");
+    assert(!JS_IsException(r));
+
+    const char *s = JS_GetPropertyStrString(ctx, r, "a");
+    assert(s && strcmp(s, "hello") == 0);
+    JS_FreeCString(ctx, s);
+
+    /* number coerces to its string form */
+    s = JS_GetPropertyStrString(ctx, r, "b");
+    assert(s && strcmp(s, "42") == 0);
+    JS_FreeCString(ctx, s);
+
+    /* null/undefined/missing => NULL */
+    assert(JS_GetPropertyStrString(ctx, r, "c") == NULL);
+    assert(JS_GetPropertyStrString(ctx, r, "d") == NULL);
+    assert(JS_GetPropertyStrString(ctx, r, "missing") == NULL);
+    assert(!JS_HasException(ctx));
+
+    /* JS_FreeCStringSafe accepts NULL */
+    JS_FreeCStringSafe(ctx, JS_GetPropertyStrString(ctx, r, "missing"));
+
+    /* getter that throws => NULL, no exception left pending */
+    JS_FreeValue(ctx, r);
+    r = eval(ctx, "({get x(){ throw new Error('boom'); }})");
+    assert(!JS_IsException(r));
+    assert(JS_GetPropertyStrString(ctx, r, "x") == NULL);
+    assert(!JS_HasException(ctx));
+
+    JS_FreeValue(ctx, r);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void property_str_typed_setters(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    JSValue obj = JS_NewObject(ctx);
+    assert(JS_SetPropertyStrInt32(ctx, obj, "i32", -7) >= 0);
+    assert(JS_SetPropertyStrInt64(ctx, obj, "i64",
+                                  (int64_t)1 << 40) >= 0);
+    assert(JS_SetPropertyStrFloat64(ctx, obj, "f64", 1.5) >= 0);
+    assert(JS_SetPropertyStrBool(ctx, obj, "t", 1) >= 0);
+    assert(JS_SetPropertyStrBool(ctx, obj, "f", 0) >= 0);
+    assert(JS_SetPropertyStrString(ctx, obj, "s", "ok") >= 0);
+
+    assert(JS_GetPropertyStrInt32(ctx, obj, "i32", 0) == -7);
+    assert(JS_GetPropertyStrInt64(ctx, obj, "i64", 0) == ((int64_t)1 << 40));
+    assert(JS_GetPropertyStrFloat64(ctx, obj, "f64", 0.0) == 1.5);
+    assert(JS_GetPropertyStrBool(ctx, obj, "t", -1) == 1);
+    assert(JS_GetPropertyStrBool(ctx, obj, "f", -1) == 0);
+    const char *s = JS_GetPropertyStrString(ctx, obj, "s");
+    assert(s && strcmp(s, "ok") == 0);
+    JS_FreeCString(ctx, s);
+
+    /* round-trip through a JS expression to verify each stored value
+       has the JS type its setter advertises */
+    JSValue g = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, g, "_o", JS_DupValue(ctx, obj));
+    JSValue r = eval(ctx, "typeof _o.i32 + ',' + typeof _o.s + ',' + typeof _o.t");
+    const char *types = JS_ToCString(ctx, r);
+    assert(types && strcmp(types, "number,string,boolean") == 0);
+    JS_FreeCString(ctx, types);
+    JS_FreeValue(ctx, r);
+    JS_FreeValue(ctx, g);
+
+    JS_FreeValue(ctx, obj);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static JSValue cb_arg_helpers(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
+{
+    if (JS_CheckArgc(ctx, argc, 2, 4) < 0)
+        return JS_EXCEPTION;
+    int32_t i;
+    double d;
+    const char *s = NULL;
+    if (JS_ArgInt32(ctx, argc, argv, 0, &i) < 0)
+        return JS_EXCEPTION;
+    if (JS_ArgFloat64(ctx, argc, argv, 1, &d) < 0)
+        return JS_EXCEPTION;
+    if (argc >= 3 && JS_ArgCString(ctx, argc, argv, 2, &s) < 0)
+        return JS_EXCEPTION;
+    int b = 0;
+    if (argc >= 4 && JS_ArgBool(ctx, argc, argv, 3, &b) < 0) {
+        JS_FreeCStringSafe(ctx, s);
+        return JS_EXCEPTION;
+    }
+    /* assemble a result string for easy inspection from JS */
+    char buf[128];
+    snprintf(buf, sizeof buf, "%d|%g|%s|%d", (int)i, d, s ? s : "-", b);
+    JS_FreeCStringSafe(ctx, s);
+    return JS_NewString(ctx, buf);
+}
+
+static void arg_helpers(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue g = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, g, "f",
+                      JS_NewCFunction(ctx, cb_arg_helpers, "f", 4));
+    JS_FreeValue(ctx, g);
+
+    /* happy path: required pair */
+    JSValue r = eval(ctx, "f(3, 1.5)");
+    const char *s = JS_ToCString(ctx, r);
+    assert(s && strcmp(s, "3|1.5|-|0") == 0);
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, r);
+
+    /* all four optional args supplied */
+    r = eval(ctx, "f(10, 2.5, 'hi', 1)");
+    s = JS_ToCString(ctx, r);
+    assert(s && strcmp(s, "10|2.5|hi|1") == 0);
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, r);
+
+    /* too few -> TypeError from JS_CheckArgc */
+    r = eval(ctx, "try{ f(1); 'no-throw' }catch(e){ String(e) }");
+    s = JS_ToCString(ctx, r);
+    assert(s && strstr(s, "TypeError") && strstr(s, "at least 2"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, r);
+
+    /* too many -> TypeError */
+    r = eval(ctx, "try{ f(1,2,3,4,5); 'no-throw' }catch(e){ String(e) }");
+    s = JS_ToCString(ctx, r);
+    assert(s && strstr(s, "TypeError") && strstr(s, "at most 4"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, r);
+
+    /* conversion error on argv[0] (Symbol -> Int32) propagates as a thrown
+       TypeError from JS_ToInt32 */
+    r = eval(ctx, "try{ f(Symbol(), 1); 'no-throw' }catch(e){ String(e) }");
+    s = JS_ToCString(ctx, r);
+    assert(s && strstr(s, "TypeError"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, r);
+
+    /* unbounded max: pass max=-1 */
+    assert(JS_CheckArgc(ctx, /*argc*/ 5, /*min*/ 1, /*max*/ -1) == 0);
+    /* exact match */
+    assert(JS_CheckArgc(ctx, 2, 2, 2) == 0);
+    /* below min -> throws */
+    assert(JS_CheckArgc(ctx, 0, 1, 3) == -1);
+    assert(JS_HasException(ctx));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1191,6 +1353,9 @@ int main(void)
     get_uint8array();
     new_symbol();
     property_str_typed_accessors();
+    property_str_string_accessor();
+    property_str_typed_setters();
+    arg_helpers();
     free_cstring_safe();
     exception_as_string();
     resolve_reject_promise();
