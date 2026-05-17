@@ -38712,7 +38712,7 @@ static uint32_t bc_get_flags(uint32_t flags, int *pidx, int n)
 }
 
 static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
-                                   int byte_code_offset, uint32_t bc_len)
+                                   size_t byte_code_offset, uint32_t bc_len)
 {
     uint8_t *bc_buf;
     int pos, len, op;
@@ -38836,8 +38836,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     uint16_t v16;
     uint8_t v8;
     int idx, i, local_count, has_debug_info;
-    int function_size, cpool_offset, byte_code_offset;
-    int closure_var_offset, vardefs_offset;
+    size_t function_size, cpool_offset, byte_code_offset;
+    size_t closure_var_offset, vardefs_offset;
 
     memset(&bc, 0, sizeof(bc));
     bc.header.ref_count = 1;
@@ -38881,15 +38881,31 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     if (bc_get_leb128_int(s, &local_count))
         goto fail;
 
+    /* Defence in depth: reject negative or implausibly large counts so the
+       size arithmetic below cannot wrap. Before this guard, an int sum like
+       sizeof(*b) + cpool_count * sizeof(JSValue) would truncate when
+       cpool_count * sizeof(JSValue) exceeded INT_MAX, producing a tiny
+       allocation that subsequent OOB writes to b->cpool / b->vardefs /
+       b->byte_code corrupted. The cap (SIZE_MAX / 16) / sizeof(*field)
+       keeps every per-section size — and the final sum — well within
+       size_t on any supported host. closure_var_count is a uint16_t and
+       cannot overflow the size formula. */
+    if (bc.cpool_count < 0 || bc.byte_code_len < 0 || local_count < 0)
+        goto fail;
+    if ((size_t)bc.cpool_count   > (SIZE_MAX / 16) / sizeof(*bc.cpool) ||
+        (size_t)local_count      > (SIZE_MAX / 16) / sizeof(*bc.vardefs) ||
+        (size_t)bc.byte_code_len > SIZE_MAX / 16)
+        goto fail;
+
     function_size = sizeof(*b);
     cpool_offset = function_size;
-    function_size += bc.cpool_count * sizeof(*bc.cpool);
+    function_size += (size_t)bc.cpool_count * sizeof(*bc.cpool);
     vardefs_offset = function_size;
-    function_size += local_count * sizeof(*bc.vardefs);
+    function_size += (size_t)local_count * sizeof(*bc.vardefs);
     closure_var_offset = function_size;
-    function_size += bc.closure_var_count * sizeof(*bc.closure_var);
+    function_size += (size_t)bc.closure_var_count * sizeof(*bc.closure_var);
     byte_code_offset = function_size;
-    function_size += bc.byte_code_len;
+    function_size += (size_t)bc.byte_code_len;
 
     b = js_mallocz(ctx, function_size);
     if (!b)

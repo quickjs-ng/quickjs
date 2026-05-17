@@ -1027,8 +1027,53 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+/* Feeds JS_ReadObject a hand-crafted bytecode-function blob whose
+   cpool_count is the LEB128 encoding of 0xFFFFFFFF (=-1 as int). Before
+   the fix the reader cast that to int, treated it as negative, and built
+   a tiny allocation while accepting the blob; the resulting JSFunctionBytecode
+   has cpool=NULL with cpool_count=-1 — a corrupt object that escapes to
+   the caller. After the fix the reader rejects the blob outright. */
+static void bc_function_cpool_overflow(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    /* Minimal valid function-bytecode prefix:
+         version, csum-skip, atom_count=0, BC_TAG_FUNCTION_BYTECODE,
+         u16 flags=0, u8 strict=0, atom func_name=builtin atom 1
+         (LEB128 (1<<1)|0 = 0x02),
+         arg/var/defined_arg/stack/var_ref/closure_var counts all 0,
+         cpool_count = 0xFFFFFFFF as LEB128 (5 bytes),
+         byte_code_len=0, local_count=0. */
+    const uint8_t blob[] = {
+        /* BC_VERSION   */ 26,
+        /* checksum     */ 0xFF, 0xFF, 0xFF, 0xFF,
+        /* atom_count=0 */ 0x00,
+        /* tag = BC_TAG_FUNCTION_BYTECODE (12) */ 0x0C,
+        /* flags (u16)  */ 0x00, 0x00,
+        /* is_strict    */ 0x00,
+        /* func_name (LEB128 = builtin atom 1) */ 0x02,
+        /* arg_count    */ 0x00,
+        /* var_count    */ 0x00,
+        /* defined_arg  */ 0x00,
+        /* stack_size   */ 0x00,
+        /* var_ref_count*/ 0x00,
+        /* closure_var  */ 0x00,
+        /* cpool_count = 0xFFFFFFFF (LEB128) */ 0xFF, 0xFF, 0xFF, 0xFF, 0x0F,
+        /* byte_code_len*/ 0x00,
+        /* local_count  */ 0x00,
+    };
+    JSValue v = JS_ReadObject(ctx, blob, sizeof(blob), JS_READ_OBJ_BYTECODE);
+    assert(JS_IsException(v));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
+    bc_function_cpool_overflow();
     cfunctions();
     sync_call();
     async_call();
