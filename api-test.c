@@ -1075,7 +1075,9 @@ static void free_cstring_safe(void)
     JSContext *ctx = JS_NewContext(rt);
     /* no-op on NULL should not crash */
     JS_FreeCStringSafe(ctx, NULL);
-    const char *s = JS_ToCString(ctx, JS_NewString(ctx, "hello"));
+    JSValue v = JS_NewString(ctx, "hello");
+    const char *s = JS_ToCString(ctx, v);
+    JS_FreeValue(ctx, v);
     JS_FreeCStringSafe(ctx, s);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
