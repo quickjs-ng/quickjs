@@ -1027,8 +1027,62 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+/* Records the import-attributes value passed to a module loader installed
+   via JS_SetModuleLoaderFunc2. JS_ReadModule must hand the loader
+   JS_UNDEFINED for entries that the writer didn't decorate with
+   attributes; before the fix the slot was zero-initialised by js_mallocz,
+   which yields JS_MKVAL(JS_TAG_INT, 0) — a numeric zero — not
+   JS_UNDEFINED. */
+static int bc_module_attrs_recorded_tag = -42;
+
+static JSModuleDef *bc_module_attrs_loader(JSContext *ctx, const char *name,
+                                           void *opaque, JSValueConst attrs)
+{
+    bc_module_attrs_recorded_tag = JS_VALUE_GET_TAG(attrs);
+    /* Returning NULL aborts the JS_ReadObject. We only needed to record
+       what the loader saw. */
+    return NULL;
+}
+
+static void bc_module_attributes_init(void)
+{
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFunc2(rt, /*normalize*/NULL, bc_module_attrs_loader,
+                            /*check_attrs*/NULL, /*opaque*/NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    /* The outer module is named with builtin atom JS_ATOM_false ("false")
+       and the imported entry uses builtin atom JS_ATOM_true ("true") so
+       js_find_loaded_module's cache lookup for the imported name does
+       NOT collide with the outer module's name (an empty atom or matching
+       name would resolve to the outer module itself and the loader would
+       never be called). */
+    const uint8_t blob[] = {
+        /* BC_VERSION   */ 26,
+        /* checksum     */ 0xFF, 0xFF, 0xFF, 0xFF,
+        /* atom_count=0 */ 0x00,
+        /* tag = BC_TAG_MODULE (13) */ 0x0D,
+        /* module_name = builtin atom 2 ("false"): LEB128 (2<<1)=4 */ 0x04,
+        /* req_module_entries_count = 1 */ 0x01,
+        /*   rme[0].module_name = builtin atom 3 ("true"): LEB128 (3<<1)=6 */ 0x06,
+        /* (reader invokes loader here; rest is unreachable on this path) */
+    };
+    bc_module_attrs_recorded_tag = -42;
+    JSValue v = JS_ReadObject(ctx, blob, sizeof(blob), JS_READ_OBJ_BYTECODE);
+    /* The loader returned NULL, so the read failed regardless of the
+       attributes init; what matters is what value the loader saw. */
+    assert(JS_IsException(v));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+
+    assert(bc_module_attrs_recorded_tag == JS_TAG_UNDEFINED);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
+    bc_module_attributes_init();
     cfunctions();
     sync_call();
     async_call();

@@ -39097,6 +39097,14 @@ static JSValue JS_ReadModule(BCReaderState *s)
         m->req_module_entries = js_mallocz(ctx, sizeof(m->req_module_entries[0]) * m->req_module_entries_size);
         if (!m->req_module_entries)
             goto fail;
+        /* js_mallocz zeroes attributes to 0x0, which is
+           JS_MKVAL(JS_TAG_INT, 0), not JS_UNDEFINED. The host-provided
+           module normalizer/loader is called below with rme->attributes
+           and expects either JS_UNDEFINED or an object; receiving an
+           int with value 0 is wrong (and any embedder that inspects the
+           value as an object would dereference into the runtime). */
+        for(i = 0; i < m->req_module_entries_count; i++)
+            m->req_module_entries[i].attributes = JS_UNDEFINED;
         for(i = 0; i < m->req_module_entries_count; i++) {
             JSReqModuleEntry *rme = &m->req_module_entries[i];
             JSModuleDef **pm = &rme->module;
