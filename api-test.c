@@ -1027,8 +1027,44 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+/* Feeds JS_ReadObject a hand-crafted module blob whose star_export entry
+   references req_module index 0 even though req_module_entries_count is
+   0. js_resolve_export would later dereference
+   m->req_module_entries[0].module — an arbitrary-pointer read into
+   freshly-allocated zeroed memory at best, attacker-influenced heap
+   bytes otherwise. Before the fix the reader accepted the blob; after
+   the fix it rejects it. */
+static void bc_module_req_idx_oob(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    const uint8_t blob[] = {
+        /* BC_VERSION   */ 26,
+        /* checksum     */ 0xFF, 0xFF, 0xFF, 0xFF,
+        /* atom_count=0 */ 0x00,
+        /* tag = BC_TAG_MODULE (13) */ 0x0D,
+        /* module_name = builtin atom 1 */ 0x02,
+        /* req_module_entries_count = 0 */ 0x00,
+        /* export_entries_count   = 0 */ 0x00,
+        /* star_export_entries_count = 1 */ 0x01,
+        /*   star_export[0].req_module_idx = 0 (out of range vs count=0) */ 0x00,
+        /* import_entries_count   = 0 */ 0x00,
+        /* has_tla                  = 0 */ 0x00,
+        /* func_obj: BC_TAG_NULL (any object would do — reader never
+           reaches this position on the post-fix path) */ 0x01,
+    };
+    JSValue v = JS_ReadObject(ctx, blob, sizeof(blob), JS_READ_OBJ_BYTECODE);
+    assert(JS_IsException(v));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
+    bc_module_req_idx_oob();
     cfunctions();
     sync_call();
     async_call();

@@ -39133,8 +39133,21 @@ static JSValue JS_ReadModule(BCReaderState *s)
             if (me->export_type == JS_EXPORT_TYPE_LOCAL) {
                 if (bc_get_leb128_int(s, &me->u.local.var_idx))
                     goto fail;
+                /* var_idx indexes the bytecode-function's var_refs at
+                   resolution time; an early sign check is the most we
+                   can do here without the function in hand. */
+                if (me->u.local.var_idx < 0)
+                    goto fail;
             } else {
                 if (bc_get_leb128_int(s, &me->u.req_module_idx))
+                    goto fail;
+                /* req_module_idx indexes m->req_module_entries; reject any
+                   value that can't be a valid slot. Without this,
+                   js_resolve_export later dereferenced
+                   m->req_module_entries[idx].module with attacker-chosen
+                   idx, yielding an arbitrary-pointer read. */
+                if (me->u.req_module_idx < 0 ||
+                    me->u.req_module_idx >= m->req_module_entries_count)
                     goto fail;
                 if (bc_get_atom(s, &me->local_name))
                     goto fail;
@@ -39155,6 +39168,9 @@ static JSValue JS_ReadModule(BCReaderState *s)
             JSStarExportEntry *se = &m->star_export_entries[i];
             if (bc_get_leb128_int(s, &se->req_module_idx))
                 goto fail;
+            if (se->req_module_idx < 0 ||
+                se->req_module_idx >= m->req_module_entries_count)
+                goto fail;
         }
     }
 
@@ -39169,9 +39185,14 @@ static JSValue JS_ReadModule(BCReaderState *s)
             JSImportEntry *mi = &m->import_entries[i];
             if (bc_get_leb128_int(s, &mi->var_idx))
                 goto fail;
+            if (mi->var_idx < 0)
+                goto fail;
             if (bc_get_atom(s, &mi->import_name))
                 goto fail;
             if (bc_get_leb128_int(s, &mi->req_module_idx))
+                goto fail;
+            if (mi->req_module_idx < 0 ||
+                mi->req_module_idx >= m->req_module_entries_count)
                 goto fail;
         }
     }
