@@ -39665,7 +39665,12 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
         if (type == 0) {
             if (bc_get_u32(s, &atom))
                 return -1;
-            if (!__JS_AtomIsConst(atom)) {
+            /* The previous check was !__JS_AtomIsConst(atom), which casts to
+               int32_t. Any value with the high bit set became negative and
+               compared "less than JS_ATOM_END", letting attacker-controlled
+               atom values (e.g. 0x80000000-0xFFFFFFFF) slip into
+               s->idx_to_atom. Use an unsigned comparison. */
+            if (atom == 0 || atom >= JS_ATOM_END) {
                 JS_ThrowInternalError(s->ctx, "out of range atom");
                 return -1;
             }

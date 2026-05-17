@@ -1027,8 +1027,45 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+/* Feeds JS_ReadObject a hand-crafted bytecode blob whose constant-atom
+   index has the high bit set (0x80000001). Before the fix the reader's
+   __JS_AtomIsConst cast atom to int32_t, so any high-bit-set value
+   compared "negative < JS_ATOM_END" and slipped through, ending up in
+   s->idx_to_atom for later use as a property key. After the fix the
+   reader rejects the blob and JS_ReadObject returns an exception. */
+static void bc_atom_range_check(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    /* BC layout: version, checksum=UINT32_MAX (skips csum check),
+       LEB128 atom_count=1, u8 type=0, u32 atom=0x80000001 (LE),
+       u8 body tag (any; we never reach the body). */
+    const uint8_t blob[] = {
+        /* BC_VERSION   */ 26,
+        /* checksum     */ 0xFF, 0xFF, 0xFF, 0xFF,
+        /* atom_count=1 */ 0x01,
+        /* type=0       */ 0x00,
+        /* atom=0x80000001 little-endian */ 0x01, 0x00, 0x00, 0x80,
+        /* body tag (BC_TAG_NULL) */ 0x01,
+    };
+    JSValue v = JS_ReadObject(ctx, blob, sizeof(blob), 0);
+    assert(JS_IsException(v));
+    JSValue e = JS_GetException(ctx);
+    assert(JS_IsError(e));
+    const char *s = JS_ToCString(ctx, e);
+    assert(s);
+    assert(strstr(s, "out of range atom") != NULL);
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, e);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
+    bc_atom_range_check();
     cfunctions();
     sync_call();
     async_call();
