@@ -2640,7 +2640,7 @@ static void js_waker_signal(JSWaker *w)
         ret = write(w->write_fd, "", 1);
         if (ret == 1)
             break;
-        if (ret < 0 && (errno != EAGAIN || errno != EINTR))
+        if (ret < 0 && errno != EAGAIN && errno != EINTR)
             break;
     }
 }
