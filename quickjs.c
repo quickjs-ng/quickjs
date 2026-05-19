@@ -28997,6 +28997,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                     goto fail;
                 }
                 s->cur_func->has_await = true;
+                emit_source_loc_debug(s);
                 if (next_token(s)) /* skip 'using' */
                     goto fail;
                 if (js_parse_var(s, PF_IN_ACCEPTED | PF_AWAIT_USING, TOK_USING, /*export_flag*/false))
@@ -29725,6 +29726,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                     js_parse_error(s, "using declaration is not allowed at the top level of a script");
                     goto fail;
                 }
+                emit_source_loc_debug(s);
                 if (next_token(s))
                     goto fail;
                 if (js_parse_var(s, PF_IN_ACCEPTED, TOK_USING, /*export_flag*/false))
