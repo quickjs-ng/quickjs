@@ -579,20 +579,23 @@ JS_EXTERN void JS_SetDebugTraceHandler(JSContext *ctx,
 
 /* Debug API: Get local variables in stack frames */
 typedef struct JSDebugLocalVar {
-    const char *name;      /* variable name */
-    JSValue value;         /* variable value */
-    int is_arg;            /* 1 if argument, 0 if local variable */
-    int scope_level;       /* scope level of the variable */
+    const char *name;
+    JSValue value;
+    bool is_arg;
+    int scope_level;
 } JSDebugLocalVar;
 
 /* Get the call stack depth (0 when no frames are active). */
 JS_EXTERN int JS_GetStackDepth(JSContext *ctx);
 
-/* Get local variables at a specific stack level (0 = current frame, 1 = caller, etc.)
-   *pcount: output, number of variables returned
-   Returns allocated array of JSDebugLocalVar (must be freed with JS_FreeLocalVariables),
-   or NULL on error. */
-JS_EXTERN JSDebugLocalVar *JS_GetLocalVariablesAtLevel(JSContext *ctx, int level, int *pcount);
+/* Get local variables at a specific stack level (0 = current frame, 1 = caller, etc.).
+   On success, *pvars receives an allocated array of JSDebugLocalVar entries
+   that must be freed with JS_FreeLocalVariables(), and *pcount receives the
+   entry count.  If no variables are available, *pvars is set to NULL and
+   *pcount is set to 0.  Returns -1 on exception. */
+JS_EXTERN int JS_GetLocalVariablesAtLevel(JSContext *ctx, int level,
+                                          JSDebugLocalVar **pvars,
+                                          int *pcount);
 
 /* Free local variables array returned by JS_GetLocalVariablesAtLevel */
 JS_EXTERN void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count);

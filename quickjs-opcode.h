@@ -372,7 +372,7 @@ DEF(        is_null, 1, 1, 1, none)
 DEF(typeof_is_undefined, 1, 1, 1, none)
 DEF( typeof_is_function, 1, 1, 1, none)
 
-DEF(  debug, 1, 0, 0, none) /* debugger trace point */
+DEF(  debug, 1, 0, 0, none)
 
 #undef DEF
 #undef def

@@ -983,11 +983,11 @@ static struct {
 } trace_state;
 
 static int debug_trace_cb(JSContext *ctx,
-                           const char *filename,
-                           const char *funcname,
-                           int line,
-                           int col,
-                           void *opaque)
+                          const char *filename,
+                          const char *funcname,
+                          int line,
+                          int col,
+                          void *opaque)
 {
     trace_state.call_count++;
     trace_state.last_line = line;
@@ -998,7 +998,8 @@ static int debug_trace_cb(JSContext *ctx,
              "%s", funcname);
     trace_state.stack_depth = JS_GetStackDepth(ctx);
     int count = 0;
-    JSDebugLocalVar *vars = JS_GetLocalVariablesAtLevel(ctx, 0, &count);
+    JSDebugLocalVar *vars = NULL;
+    assert(JS_GetLocalVariablesAtLevel(ctx, 0, &vars, &count) == 0);
     if (count > trace_state.max_local_count)
         trace_state.max_local_count = count;
     if (vars)
@@ -1014,7 +1015,6 @@ static void debug_trace(void)
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx = JS_NewContext(rt);
 
-    /* no handler set: eval should work and call_count stays 0 */
     memset(&trace_state, 0, sizeof(trace_state));
     {
         JSValue ret = eval(ctx, "1+2");
@@ -1023,7 +1023,6 @@ static void debug_trace(void)
         assert(trace_state.call_count == 0);
     }
 
-    /* set handler: callback fires for each statement */
     JS_SetDebugTraceHandler(ctx, debug_trace_cb, NULL);
     memset(&trace_state, 0, sizeof(trace_state));
     {
@@ -1034,7 +1033,14 @@ static void debug_trace(void)
         assert(!strcmp(trace_state.last_filename, "<input>"));
     }
 
-    /* stack depth inside a nested call */
+    {
+        JSDebugLocalVar *vars = NULL;
+        int count = -1;
+        assert(JS_GetLocalVariablesAtLevel(ctx, 0, &vars, &count) == 0);
+        assert(vars == NULL);
+        assert(count == 0);
+    }
+
     memset(&trace_state, 0, sizeof(trace_state));
     {
         static const char code[] =
@@ -1049,12 +1055,9 @@ static void debug_trace(void)
         assert(!JS_IsException(ret));
         JS_FreeValue(ctx, ret);
         assert(trace_state.call_count > 0);
-        /* the deepest invocation should have a stack depth > 1 */
-        /* (just verify we got a sane value; exact depth depends on internals) */
         assert(trace_state.stack_depth >= 1);
     }
 
-    /* local variables are visible inside the callback */
     memset(&trace_state, 0, sizeof(trace_state));
     {
         static const char code[] =
@@ -1067,13 +1070,11 @@ static void debug_trace(void)
         assert(!JS_IsException(ret));
         JS_FreeValue(ctx, ret);
         assert(trace_state.call_count > 0);
-        /* inside f() we should see locals (a, b, c) at some point */
         assert(trace_state.max_local_count >= 2);
     }
 
-    /* returning non-zero aborts execution */
     memset(&trace_state, 0, sizeof(trace_state));
-    trace_state.abort_at = 1; /* abort on first callback */
+    trace_state.abort_at = 1;
     {
         JSValue ret = eval(ctx, "1+2; 3+4");
         assert(JS_IsException(ret));
@@ -1082,7 +1083,6 @@ static void debug_trace(void)
         JS_FreeValue(ctx, exc);
     }
 
-    /* clear handler: callbacks no longer fire */
     JS_SetDebugTraceHandler(ctx, NULL, NULL);
     memset(&trace_state, 0, sizeof(trace_state));
     {
