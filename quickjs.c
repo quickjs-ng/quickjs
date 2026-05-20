@@ -23562,14 +23562,19 @@ static void emit_u32(JSParseState *s, uint32_t val)
     dbuf_put_u32(&s->cur_func->byte_code, val);
 }
 
-static void emit_source_loc(JSParseState *s)
+static void emit_source_loc_at(JSParseState *s, int line_num, int col_num)
 {
     JSFunctionDef *fd = s->cur_func;
     DynBuf *bc = &fd->byte_code;
 
     dbuf_putc(bc, OP_source_loc);
-    dbuf_put_u32(bc, s->token.line_num);
-    dbuf_put_u32(bc, s->token.col_num);
+    dbuf_put_u32(bc, line_num);
+    dbuf_put_u32(bc, col_num);
+}
+
+static void emit_source_loc(JSParseState *s)
+{
+    emit_source_loc_at(s, s->token.line_num, s->token.col_num);
 }
 
 static void emit_debug(JSParseState *s)
@@ -26442,8 +26447,11 @@ static int js_parse_destructuring_element(JSParseState *s, int tok,
     } else if (s->token.val == '[') {
         bool has_spread;
         int enum_depth;
+        int source_line_num, source_col_num;
         BlockEnv block_env;
 
+        source_line_num = s->token.line_num;
+        source_col_num = s->token.col_num;
         if (next_token(s))
             return -1;
         /* the block environment is only needed in generators in case
@@ -26539,6 +26547,7 @@ static int js_parse_destructuring_element(JSParseState *s, int tok,
         }
         /* close iterator object:
            if completed, enum_obj has been replaced by undefined */
+        emit_source_loc_at(s, source_line_num, source_col_num);
         emit_op(s, OP_iterator_close);
         pop_break_entry(s->cur_func);
         if (next_token(s))
@@ -28561,7 +28570,9 @@ static int is_using(JSParseState *s, bool is_for_of)
 /* XXX: handle IteratorClose when exiting the loop before the
    enumeration is done */
 static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
-                                          bool is_async)
+                                          bool is_async,
+                                          int source_line_num,
+                                          int source_col_num)
 {
     JSContext *ctx = s->ctx;
     JSFunctionDef *fd = s->cur_func;
@@ -28868,6 +28879,7 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     emit_label(s, label_break);
     if (is_for_of) {
         /* close and drop enum_rec */
+        emit_source_loc_at(s, source_line_num, source_col_num);
         emit_op(s, OP_iterator_close);
     } else {
         emit_op(s, OP_drop);
@@ -29138,9 +29150,12 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             int for_scope_level;
             BlockEnv break_entry;
             int tok, bits;
+            int source_line_num, source_col_num;
             bool is_async;
 
             emit_source_loc_debug(s);
+            source_line_num = s->token.line_num;
+            source_col_num = s->token.col_num;
             if (next_token(s))
                 goto fail;
 
@@ -29164,7 +29179,8 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
 
             if (!(bits & SKIP_HAS_SEMI)) {
                 /* parse for/in or for/of */
-                if (js_parse_for_in_of(s, label_name, is_async))
+                if (js_parse_for_in_of(s, label_name, is_async,
+                                       source_line_num, source_col_num))
                     goto fail;
                 break;
             }
