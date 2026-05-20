@@ -4608,7 +4608,7 @@ typedef struct {
     int pending_len;
 } JSTextDecoder;
 
-static void js_text_decoder_finalizer(JSRuntime *rt, JSValue val)
+static void js_text_decoder_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSThreadState *ts = js_get_thread_state(rt);
     JSTextDecoder *td = JS_GetOpaque(val, ts->text_decoder_class_id);
