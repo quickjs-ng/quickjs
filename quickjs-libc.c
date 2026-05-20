@@ -3582,7 +3582,8 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
     bool block_flag = true, use_path = true;
     static const char *std_name[3] = { "stdin", "stdout", "stderr" };
     int std_fds[3];
-    uint32_t uid = -1, gid = -1;
+    uint32_t uid = 0, gid = 0;
+    bool uid_set = false, gid_set = false;
     int ngroups = -1;
     gid_t groups[64];
 
@@ -3677,6 +3678,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             JS_FreeValue(ctx, val);
             if (ret)
                 goto exception;
+            uid_set = true;
         }
 
         val = JS_GetPropertyStr(ctx, options, "gid");
@@ -3687,6 +3689,7 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             JS_FreeValue(ctx, val);
             if (ret)
                 goto exception;
+            gid_set = true;
         }
 
         val = JS_GetPropertyStr(ctx, options, "groups");
@@ -3757,16 +3760,21 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
             if (chdir(cwd) < 0)
                 _exit(127);
         }
+        /* Drop privileges in the correct order: supplementary groups and the
+           primary gid must change before setuid(), because setuid(non-root)
+           strips the capability needed for setgroups()/setgid() to succeed.
+           Track "was set" with explicit bools instead of a (uint32_t)-1
+           sentinel, which collided with the legitimate value 0xFFFFFFFF. */
         if (ngroups != -1) {
             if (setgroups(ngroups, groups) < 0)
                 _exit(127);
         }
-        if (uid != -1) {
-            if (setuid(uid) < 0)
+        if (gid_set) {
+            if (setgid(gid) < 0)
                 _exit(127);
         }
-        if (gid != -1) {
-            if (setgid(gid) < 0)
+        if (uid_set) {
+            if (setuid(uid) < 0)
                 _exit(127);
         }
 
