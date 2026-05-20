@@ -4969,7 +4969,13 @@ static JSValue js_text_decoder_decode(JSContext *ctx, JSValueConst this_val,
     }
 
     p = src;
-    p_end = src + src_len;
+    if (p == NULL){
+       assert(src_len == 0);
+       p_end = NULL;
+       goto skip_loop_1;
+    } else {
+       p_end = src + src_len;
+    }
     while (p < p_end) {
         int seq_len = js_utf8_seq_len(*p);
         if (seq_len == 0) {
@@ -5032,6 +5038,7 @@ static JSValue js_text_decoder_decode(JSContext *ctx, JSValueConst this_val,
         out_len += utf8_encode(out + out_len, cp);
         p = next;
     }
+    skip_loop_1:
 
     if (!stream) {
         td->pending_len = 0;
