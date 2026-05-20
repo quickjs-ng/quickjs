@@ -60,12 +60,6 @@ jobs:
           - { os: ubuntu-latest, configType: tcc }
           - { os: ubuntu-latest, arch: x86, runTest262: true }
           - { os: ubuntu-latest, arch: riscv64 }
-
-          - { os: macos-14, configType: Debug }
-          - { os: macos-14, configType: Release }
-          - { os: macos-14, configType: examples }
-          - { os: macos-14, configType: shared }
-          - { os: macos-14, configType: asan+ubsan, runTest262: true }
     steps:
       - uses: actions/checkout@v6
         with:
@@ -556,18 +550,6 @@ jobs:
           "$ANDROID_HOME/cmake/3.22.1/bin/cmake" --build build --target qjs
           ls -lh build
 
-  ios:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: configure
-        run: |
-          cmake -B build -GXcode -DQJS_BUILD_WERROR=ON -DCMAKE_SYSTEM_NAME:STRING=iOS -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED:BOOL=NO -DQJS_BUILD_LIBC=ON
-      - name: build
-        run: |
-          cmake --build build --config Release --target qjs
-          ls -lh build
-
   mimalloc-linux:
     runs-on: ubuntu-24.04
     env:
@@ -588,33 +570,12 @@ jobs:
         run: |
           make test
 
-  mimalloc-macos:
-    runs-on: macos-latest
-    env:
-      QJS_BUILD_CLI_WITH_STATIC_MIMALLOC: ON
-      MIMALLOC_SHOW_STATS: 1
-    steps:
-      - uses: actions/checkout@v6
-      - name: install dependencies
-        run: |
-          brew install mimalloc
-      - name: build
-        run: |
-          make
-      - name: cxxtest
-        run: |
-          make cxxtest
-      - name: test
-        run: |
-          make test
-
   amalgam:
     strategy:
       matrix:
         # TODO(bnoordhuis) test on windows
         config:
           - { os: ubuntu-latest }
-          - { os: macos-latest }
     runs-on: ${{ matrix.config.os }}
     steps:
       - uses: actions/checkout@v6
@@ -727,14 +688,10 @@ jobs:
         platform:
           - ubuntu-latest
           - windows-latest
-          - macos-latest
 
         exclude:
           # clang-cl only makes sense on windows.
           - platform: ubuntu-latest
-            mode:
-              name: clang-cl+sanitize
-          - platform: macos-latest
             mode:
               name: clang-cl+sanitize
 
@@ -756,41 +713,14 @@ jobs:
           - platform: ubuntu-latest
             mode:
               name: sanitize+asanonly
-          - platform: macos-latest
-            mode:
-              name: sanitize+asanonly
           - platform: windows-latest
             mode:
               name: sanitize
-
-          # clang is the default on macos
-          # also gcc is an alias to clang
-          - platform: macos-latest
-            mode:
-              name: clang
-          - platform: macos-latest
-            mode:
-              name: gcc
 
           # gcc is the default on linux
           - platform: ubuntu-latest
             mode:
               name: gcc
-
-          # only run sanitizer tests on linux
-          #
-          # gcc/clang's codegen shouldn't massively change across platforms,
-          # and linux supports most of the sanitizers.
-          - platform: macos-latest
-            mode:
-              name: clang+sanitize
-          - platform: macos-latest
-            mode:
-              # macos does not support msan
-              name: clang+msan
-          - platform: macos-latest
-            mode:
-              name: sanitize
 
     steps:
       - name: Setup meson
@@ -799,9 +729,6 @@ jobs:
       - name: Install mimalloc
         if: ${{ matrix.platform == 'ubuntu-latest' && matrix.features.name == 'mimalloc' }}
         run: sudo apt update && sudo apt -y install libmimalloc-dev
-      - name: Install mimalloc
-        if: ${{ matrix.platform == 'macos-latest' && matrix.features.name == 'mimalloc' }}
-        run: brew install mimalloc
       # TODO: Install mimalloc on Windows
       # You need to:
       # - checkout mimalloc
