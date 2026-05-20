@@ -22679,6 +22679,7 @@ static __exception int next_token(JSParseState *s)
             if (JS_VALUE_IS_NAN(ret) ||
                 lre_js_is_ident_next(utf8_decode(p, &p1))) {
                 JS_FreeValue(s->ctx, ret);
+                s->col_num = max_int(1, s->mark - s->eol);
                 js_parse_error(s, "invalid number literal");
                 goto fail;
             }
