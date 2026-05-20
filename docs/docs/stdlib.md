@@ -328,7 +328,7 @@ Cancel a timer.
 
 ### `platform`
 
-Return a string representing the platform: `"linux"`, `"darwin"`, `"win32"` or `"js"`.
+Return a string representing the platform: `"linux"`, `"win32"` or `"js"`.
 
 ### `Worker(module_filename)`
 

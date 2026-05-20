@@ -32,9 +32,6 @@
 #if !defined(_MSC_VER)
 #include <sys/time.h>
 #endif
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,9 +47,7 @@ extern "C" {
 #define alloca _alloca
 #define ssize_t ptrdiff_t
 #endif
-#if defined(__APPLE__)
-#include <malloc/malloc.h>
-#elif defined(__linux__) || defined(__ANDROID__) || defined(__CYGWIN__) || defined(__GLIBC__)
+#if defined(__linux__) || defined(__ANDROID__) || defined(__CYGWIN__) || defined(__GLIBC__)
 #include <malloc.h>
 #elif defined(__FreeBSD__)
 #include <malloc_np.h>
@@ -600,9 +595,7 @@ static inline uint64_t js__hrtime_ns(void);
 
 static inline size_t js__malloc_usable_size(const void *ptr)
 {
-#if defined(__APPLE__)
-    return malloc_size(ptr);
-#elif defined(_WIN32)
+#if defined(_WIN32)
     return _msize((void *)ptr);
 #elif defined(__linux__) || defined(__ANDROID__) || defined(__CYGWIN__) || defined(__FreeBSD__) || defined(__GLIBC__)
     return malloc_usable_size((void *)ptr);
@@ -1662,37 +1655,6 @@ error:
     free(utf16_buffer);
     return -1;
 }
-#elif defined(__APPLE__)
-static inline int js_exepath(char *buffer, size_t *size) {
-    /* realpath(exepath) may be > PATH_MAX so double it to be on the safe side. */
-    char abspath[PATH_MAX * 2 + 1];
-    char exepath[PATH_MAX + 1];
-    uint32_t exepath_size;
-    size_t abspath_size;
-
-    if (buffer == NULL || size == NULL || *size == 0)
-        return -1;
-
-    exepath_size = sizeof(exepath);
-    if (_NSGetExecutablePath(exepath, &exepath_size))
-        return -1;
-
-    if (realpath(exepath, abspath) != abspath)
-        return -1;
-
-    abspath_size = strlen(abspath);
-    if (abspath_size == 0)
-        return -1;
-
-    *size -= 1;
-    if (*size > abspath_size)
-        *size = abspath_size;
-
-    memcpy(buffer, abspath, *size);
-    buffer[*size] = '\0';
-
-    return 0;
-}
 #elif defined(__linux__) || defined(__GNU__)
 static inline int js_exepath(char *buffer, size_t *size) {
     ssize_t n;
@@ -1846,7 +1808,7 @@ static inline void js_mutex_unlock(js_mutex_t *mutex) {
 }
 
 static inline void js_cond_init(js_cond_t *cond) {
-#if defined(__APPLE__) && defined(__MACH__)
+#if defined(__MACH__)
     if (pthread_cond_init(cond, NULL))
         abort();
 #else
@@ -1867,7 +1829,7 @@ static inline void js_cond_init(js_cond_t *cond) {
 }
 
 static inline void js_cond_destroy(js_cond_t *cond) {
-#if defined(__APPLE__) && defined(__MACH__)
+#if defined(__MACH__)
     /* It has been reported that destroying condition variables that have been
      * signalled but not waited on can sometimes result in application crashes.
      * See https://codereview.chromium.org/1323293005.
@@ -1894,7 +1856,7 @@ static inline void js_cond_destroy(js_cond_t *cond) {
 
     if (pthread_mutex_destroy(&mutex))
         abort();
-#endif /* defined(__APPLE__) && defined(__MACH__) */
+#endif /* defined(__MACH__) */
 
     if (pthread_cond_destroy(cond))
         abort();
@@ -1911,7 +1873,7 @@ static inline void js_cond_broadcast(js_cond_t *cond) {
 }
 
 static inline void js_cond_wait(js_cond_t *cond, js_mutex_t *mutex) {
-#if defined(__APPLE__) && defined(__MACH__)
+#if defined(__MACH__)
     int r;
 
     errno = 0;
@@ -1934,13 +1896,11 @@ static inline int js_cond_timedwait(js_cond_t *cond, js_mutex_t *mutex, uint64_t
     int r;
     struct timespec ts;
 
-#if !defined(__APPLE__)
     timeout += js__hrtime_ns();
-#endif
 
     ts.tv_sec = timeout / NANOSEC;
     ts.tv_nsec = timeout % NANOSEC;
-#if defined(__APPLE__) && defined(__MACH__)
+#if defined(__MACH__)
     r = pthread_cond_timedwait_relative_np(cond, mutex, &ts);
 #else
     r = pthread_cond_timedwait(cond, mutex, &ts);

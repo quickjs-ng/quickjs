@@ -7,7 +7,6 @@ sidebar_position: 8
 |  System | Supported versions | Notes |
 |---|---|---|
 | GNU/Linux | * | glibc and musl are supported |
-| macOS | macOS >= 11 | Currently supported macOS releases |
 | Windows | >= Windows 7* | VS >= 2022 and Clang are supported; requires `<stdatomic.h>` |
 | FreeBSD | * | Limited testing |
 | OpenBSD | * | Limited testing |

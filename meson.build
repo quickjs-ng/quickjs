@@ -40,11 +40,6 @@ if host_system != 'sunos'
   qjs_gcc_args += '-funsigned-char'
 endif
 
-if host_system == 'darwin'
-  # https://github.com/quickjs-ng/quickjs/issues/453
-  qjs_gcc_warning_args += '-Wno-maybe-uninitialized'
-endif
-
 # https://github.com/microsoft/cpp-docs/tree/main/docs/error-messages/compiler-warnings
 qjs_msvc_warning_args = [
   '/wd4018', # -Wno-sign-conversion

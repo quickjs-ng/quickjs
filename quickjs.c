@@ -54,11 +54,7 @@
 #define DIRECT_DISPATCH  1
 #endif
 
-#if defined(__APPLE__)
-#define MALLOC_OVERHEAD  0
-#else
 #define MALLOC_OVERHEAD  8
-#endif
 
 #if defined(__NEWLIB__)
 #define NO_TM_GMTOFF

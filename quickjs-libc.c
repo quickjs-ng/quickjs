@@ -66,13 +66,6 @@
 #include <grp.h>
 #endif
 
-#if defined(__APPLE__)
-typedef sig_t sighandler_t;
-#include <crt_externs.h>
-#include <TargetConditionals.h>
-#define environ (*_NSGetEnviron())
-#endif
-
 #ifdef __sun
 typedef void (*sighandler_t)(int);
 extern char **environ;
@@ -3264,16 +3257,6 @@ static JSValue js_os_stat(JSContext *ctx, JSValueConst this_val,
         JS_DefinePropertyValueStr(ctx, obj, "ctime",
                                   JS_NewInt64(ctx, (int64_t)st.st_ctime * 1000),
                                   JS_PROP_C_W_E);
-#elif defined(__APPLE__)
-        JS_DefinePropertyValueStr(ctx, obj, "atime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_atimespec)),
-                                  JS_PROP_C_W_E);
-        JS_DefinePropertyValueStr(ctx, obj, "mtime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_mtimespec)),
-                                  JS_PROP_C_W_E);
-        JS_DefinePropertyValueStr(ctx, obj, "ctime",
-                                  JS_NewInt64(ctx, timespec_to_ms(&st.st_ctimespec)),
-                                  JS_PROP_C_W_E);
 #else
         JS_DefinePropertyValueStr(ctx, obj, "atime",
                                   JS_NewInt64(ctx, timespec_to_ms(&st.st_atim)),
@@ -3396,7 +3379,7 @@ static JSValue js_os_realpath(JSContext *ctx, JSValueConst this_val,
 }
 #endif
 
-#if !defined(_WIN32) && !defined(__wasi__) && !(defined(__APPLE__) && (TARGET_OS_TV || TARGET_OS_WATCH))
+#if !defined(_WIN32) && !defined(__wasi__) && (TARGET_OS_TV || TARGET_OS_WATCH)
 static JSValue js_os_symlink(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -4380,8 +4363,6 @@ void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
 
 #if defined(_WIN32)
 #define OS_PLATFORM "win32"
-#elif defined(__APPLE__)
-#define OS_PLATFORM "darwin"
 #elif defined(EMSCRIPTEN)
 #define OS_PLATFORM "js"
 #elif defined(__CYGWIN__)
@@ -4487,7 +4468,7 @@ static const JSCFunctionListEntry js_os_funcs[] = {
 #if !defined(__wasi__)
     JS_CFUNC_DEF("realpath", 1, js_os_realpath ),
 #endif
-#if !defined(_WIN32) && !defined(__wasi__) && !(defined(__APPLE__) && (TARGET_OS_TV || TARGET_OS_WATCH))
+#if !defined(_WIN32) && !defined(__wasi__) && (TARGET_OS_TV || TARGET_OS_WATCH)
     JS_CFUNC_MAGIC_DEF("lstat", 1, js_os_stat, 1 ),
     JS_CFUNC_DEF("symlink", 2, js_os_symlink ),
     JS_CFUNC_DEF("readlink", 1, js_os_readlink ),

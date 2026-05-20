@@ -160,12 +160,6 @@ if(WIN32)
     endif()
 endif()
 
-# MacOS and GCC 11 or later need -Wno-maybe-uninitialized
-# https://github.com/quickjs-ng/quickjs/issues/453
-if(APPLE AND CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-    xcheck_add_c_compiler_flag(-Wno-maybe-uninitialized)
-endif()
-
 if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     add_compile_definitions(
         _WASI_EMULATED_PROCESS_CLOCKS
@@ -508,18 +502,12 @@ if(QJS_BUILD_EXAMPLES)
         PREFIX ""
     )
     target_link_libraries(fib PRIVATE qjs_module_lib)
-    if(APPLE)
-        target_link_options(fib PRIVATE -undefined dynamic_lookup)
-    endif()
 
     add_library(point MODULE examples/point.c)
     set_target_properties(point PROPERTIES
         PREFIX ""
     )
     target_link_libraries(point PRIVATE qjs_module_lib)
-    if(APPLE)
-        target_link_options(point PRIVATE -undefined dynamic_lookup)
-    endif()
 
     add_executable(test_fib
         gen/test_fib.c
