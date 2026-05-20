@@ -623,7 +623,7 @@ JS_EXTERN void JS_FreeAtomRT(JSRuntime *rt, JSAtom v);
 JS_EXTERN JSValue JS_AtomToValue(JSContext *ctx, JSAtom atom);
 JS_EXTERN JSValue JS_AtomToString(JSContext *ctx, JSAtom atom);
 JS_EXTERN const char *JS_AtomToCStringLen(JSContext *ctx, size_t *plen, JSAtom atom);
-static inline const char *JS_AtomToCString(JSContext *ctx, JSAtom atom) 
+static inline const char *JS_AtomToCString(JSContext *ctx, JSAtom atom)
 {
     return JS_AtomToCStringLen(ctx, NULL, atom);
 }
@@ -752,6 +752,17 @@ static inline JSValue JS_NewInt64(JSContext *ctx, int64_t val)
 }
 
 static inline JSValue JS_NewUint32(JSContext *ctx, uint32_t val)
+{
+    JSValue v;
+    if (val <= INT32_MAX) {
+        v = JS_NewInt32(ctx, (int32_t)val);
+    } else {
+        v = JS_NewFloat64(ctx, (double)val);
+    }
+    return v;
+}
+
+static inline JSValue JS_NewUint64(JSContext *ctx, uint64_t val)
 {
     JSValue v;
     if (val <= INT32_MAX) {
