@@ -1545,6 +1545,12 @@ static JSValue js_number(double d)
         return js_float64(d);
 }
 
+static JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
+{
+    (void)&ctx;
+    return JS_MKVAL(JS_TAG_SHORT_BIG_INT, d);
+}
+
 JSValue JS_NewNumber(JSContext *ctx, double d)
 {
     return js_number(d);

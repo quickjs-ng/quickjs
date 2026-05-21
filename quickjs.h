@@ -224,12 +224,6 @@ static inline JSValue __JS_NewFloat64(double d)
     return JS_MKVAL(JS_TAG_FLOAT64, (int)d);
 }
 
-static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
-{
-    (void)&ctx;
-    return JS_MKVAL(JS_TAG_SHORT_BIG_INT, d);
-}
-
 static inline bool JS_VALUE_IS_NAN(JSValue v)
 {
     (void)&v;
@@ -278,12 +272,6 @@ static inline JSValue __JS_NewFloat64(double d)
     else
         v = u.u64 - ((uint64_t)JS_FLOAT64_TAG_ADDEND << 32);
     return v;
-}
-
-static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int32_t d)
-{
-    (void)&ctx;
-    return JS_MKVAL(JS_TAG_SHORT_BIG_INT, d);
 }
 
 #define JS_TAG_IS_FLOAT64(tag) ((unsigned)((tag) - JS_TAG_FIRST) >= (JS_TAG_FLOAT64 - JS_TAG_FIRST))
@@ -369,15 +357,6 @@ static inline JSValue __JS_NewFloat64(double d)
     JSValue v;
     v.tag = JS_TAG_FLOAT64;
     v.u.float64 = d;
-    return v;
-}
-
-static inline JSValue __JS_NewShortBigInt(JSContext *ctx, int64_t d)
-{
-    (void)&ctx;
-    JSValue v;
-    v.tag = JS_TAG_SHORT_BIG_INT;
-    v.u.short_big_int = d;
     return v;
 }
 
