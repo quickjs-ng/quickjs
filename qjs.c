@@ -468,7 +468,7 @@ int main(int argc, char **argv)
                 help(0);
             }
             if (opt == 'v' || !strcmp(longopt, "version")) {
-                printf("QuickJS-ng version %s\n",JS_GetVersion());
+                printf("%s\n",JS_GetVersion());
                 return 0;
             }
             if (opt == 'e' || !strcmp(longopt, "eval")) {
