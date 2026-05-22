@@ -551,9 +551,6 @@ JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
    the callback raises an exception via JS_Throw* but returns 0, the
    engine still treats it as a request to abort.
 
-   The filename / funcname pointers passed to the callback are only valid
-   for the duration of the callback invocation; do not store them.
-
    OP_debug opcodes are only emitted at statement boundaries when a debug
    trace handler is registered at parse time.  Therefore only code that
    is parsed (e.g. by JS_Eval / JS_Compile) AFTER JS_SetDebugTraceHandler
