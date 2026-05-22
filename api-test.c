@@ -1017,16 +1017,16 @@ static struct {
     int call_count;
     int last_line;
     int last_col;
-    char last_filename[256];
-    char last_funcname[256];
+    JSAtom last_filename;
+    JSAtom last_funcname;
     int stack_depth;
     int max_local_count;
     int abort_at;        /* abort (return -1) on this call, 0 = never */
 } trace_state;
 
 static int debug_trace_cb(JSContext *ctx,
-                          const char *filename,
-                          const char *funcname,
+                          JSAtom filename,
+                          JSAtom funcname,
                           int line,
                           int col,
                           void *opaque)
@@ -1034,10 +1034,8 @@ static int debug_trace_cb(JSContext *ctx,
     trace_state.call_count++;
     trace_state.last_line = line;
     trace_state.last_col = col;
-    snprintf(trace_state.last_filename, sizeof(trace_state.last_filename),
-             "%s", filename);
-    snprintf(trace_state.last_funcname, sizeof(trace_state.last_funcname),
-             "%s", funcname);
+    trace_state.last_filename = filename;
+    trace_state.last_funcname = funcname;
     trace_state.stack_depth = JS_GetStackDepth(ctx);
     int count = 0;
     JSDebugLocalVar *vars = NULL;
@@ -1072,7 +1070,11 @@ static void debug_trace(void)
         assert(!JS_IsException(ret));
         JS_FreeValue(ctx, ret);
         assert(trace_state.call_count > 0);
-        assert(!strcmp(trace_state.last_filename, "<input>"));
+        {
+            const char *fn = JS_AtomToCString(ctx, trace_state.last_filename);
+            assert(fn && !strcmp(fn, "<input>"));
+            JS_FreeCString(ctx, fn);
+        }
     }
 
     {

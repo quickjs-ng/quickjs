@@ -17833,25 +17833,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 uint32_t pc_index = (uint32_t)(pc - b->byte_code_buf - 1);
                 line_num = find_line_num(ctx, b, pc_index, &col_num);
 
-                /* Use JS_AtomToCString to get the full filename / funcname
-                   without the 63-byte truncation that a stack buffer would
-                   impose. The pointers are only valid for the duration of
-                   the callback. */
-                const char *filename = JS_AtomToCString(ctx, b->filename);
-                if (unlikely(!filename)) {
-                    /* OOM: a pending exception has been raised */
-                    goto exception;
-                }
-                const char *funcname = JS_AtomToCString(ctx, b->func_name);
-                if (unlikely(!funcname)) {
-                    JS_FreeCString(ctx, filename);
-                    goto exception;
-                }
-                int ret = ctx->debug_trace(ctx, filename, funcname,
+                /* Pass the JSAtom values directly — no heap allocation.
+                   The atoms are valid for the lifetime of the bytecode
+                   object, which outlives the callback.  The embedder must
+                   call JS_DupAtom() if it needs to retain them. */
+                int ret = ctx->debug_trace(ctx, b->filename, b->func_name,
                                            line_num, col_num,
                                            ctx->debug_trace_opaque);
-                JS_FreeCString(ctx, filename);
-                JS_FreeCString(ctx, funcname);
 
                 if (ret != 0 || JS_HasException(ctx)) {
                     /* If the callback indicated failure but did not raise

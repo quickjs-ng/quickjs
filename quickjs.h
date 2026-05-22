@@ -540,10 +540,19 @@ JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
    is parsed (e.g. by JS_Eval / JS_Compile) AFTER JS_SetDebugTraceHandler
    has been called will be instrumented; previously compiled bytecode
    will not invoke the callback.  In practice, install the handler before
-   evaluating any application code. */
+   evaluating any application code.
+
+   'filename' and 'funcname' are JSAtom values identifying the source file
+   and enclosing function name.  They are valid only for the duration of
+   the callback; call JS_DupAtom() if you need to retain them.  Either
+   may be JS_ATOM_NULL (0) for anonymous functions or eval code.  Use
+   JS_AtomToCString() / JS_AtomToString() to convert to a C string or
+   JSValue when needed.  Accepting JSAtom avoids a heap allocation on
+   every instrumented statement when the embedder only needs to compare
+   against a known set of breakpoint locations. */
 typedef int JSDebugTraceFunc(JSContext *ctx,
-                             const char *filename,
-                             const char *funcname,
+                             JSAtom filename,
+                             JSAtom funcname,
                              int line,
                              int col,
                              void *opaque);
