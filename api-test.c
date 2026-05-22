@@ -1118,8 +1118,8 @@ static struct {
     int call_count;
     int last_line;
     int last_col;
-    JSAtom last_filename;
-    JSAtom last_funcname;
+    char last_filename[256];
+    char last_funcname[256];
     int stack_depth;
     int max_local_count;
     int abort_at;        /* abort (return -1) on this call, 0 = never */
@@ -1135,8 +1135,21 @@ static int debug_trace_cb(JSContext *ctx,
     trace_state.call_count++;
     trace_state.last_line = line;
     trace_state.last_col = col;
-    trace_state.last_filename = filename;
-    trace_state.last_funcname = funcname;
+    /* Convert while the atom is still valid (within callback lifetime).
+       Embedders who only need to compare against known breakpoint atoms
+       can skip this conversion entirely. */
+    const char *fn = JS_AtomToCString(ctx, filename);
+    if (fn) {
+        snprintf(trace_state.last_filename, sizeof(trace_state.last_filename),
+                 "%s", fn);
+        JS_FreeCString(ctx, fn);
+    }
+    const char *fnn = JS_AtomToCString(ctx, funcname);
+    if (fnn) {
+        snprintf(trace_state.last_funcname, sizeof(trace_state.last_funcname),
+                 "%s", fnn);
+        JS_FreeCString(ctx, fnn);
+    }
     trace_state.stack_depth = JS_GetStackDepth(ctx);
     int count = 0;
     JSDebugLocalVar *vars = NULL;
@@ -1171,11 +1184,7 @@ static void debug_trace(void)
         assert(!JS_IsException(ret));
         JS_FreeValue(ctx, ret);
         assert(trace_state.call_count > 0);
-        {
-            const char *fn = JS_AtomToCString(ctx, trace_state.last_filename);
-            assert(fn && !strcmp(fn, "<input>"));
-            JS_FreeCString(ctx, fn);
-        }
+        assert(!strcmp(trace_state.last_filename, "<input>"));
     }
 
     {
