@@ -487,14 +487,6 @@ static void utf16_string(void)
         JS_FreeValue(ctx, v);
     }
     {
-        /* Oversized length: must throw RangeError, not corrupt the heap.
-           Before the fix, len > INT_MAX was truncated when passed to
-           js_alloc_string(int), producing a tiny allocation that the
-           subsequent memcpy(..., len * 2) overflowed. Pre-fix: ASan
-           reports heap-buffer-overflow or process aborts. Post-fix:
-           returns an exception. We don't materialise a multi-GB buffer
-           here — JS_NewStringUTF16 must reject the length *before*
-           reading from buf. */
         JSValue v = JS_NewStringUTF16(ctx, NULL, (size_t)INT_MAX + 1);
         assert(JS_IsException(v));
         JSValue e = JS_GetException(ctx);
@@ -780,6 +772,37 @@ static void new_errors(void)
         JS_FreeValue(ctx, stack);
         JS_FreeValue(ctx, obj);
     }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void backtrace_oom_current_exception(void)
+{
+    static const char setup_code[] =
+        "globalThis.f = function() { missing; };\n"
+        "Object.defineProperty(f, 'name', { value: 'x'.repeat(2 * 1024 * 1024) });";
+    JSMemoryUsage stats;
+    JSValue ret, exception;
+    JSRuntime *rt;
+    JSContext *ctx;
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+
+    ret = eval(ctx, setup_code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+
+    JS_ComputeMemoryUsage(rt, &stats);
+    JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + 128 * 1024);
+
+    ret = eval(ctx, "f()");
+    assert(JS_IsException(ret));
+    assert(JS_HasException(ctx));
+    exception = JS_GetException(ctx);
+    JS_FreeValue(ctx, exception);
+    JS_SetMemoryLimit(rt, 0);
+
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
@@ -1186,6 +1209,7 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    backtrace_oom_current_exception();
     global_object_prototype();
     slice_string_tocstring();
     immutable_array_buffer();

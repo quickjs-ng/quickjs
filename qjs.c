@@ -372,11 +372,12 @@ static const JSMallocFunctions mi_mf = {
 
 #define PROG_NAME "qjs"
 
-void help(void)
+void help(int exit_status)
 {
     printf("QuickJS-ng version %s\n"
            "usage: " PROG_NAME " [options] [file [args]]\n"
            "-h  --help         list options\n"
+           "-v  --version      print version string and then exit\n"
            "-e  --eval EXPR    evaluate EXPR\n"
            "-i  --interactive  go to interactive mode\n"
            "-C  --script       load as JS classic script (default=autodetect)\n"
@@ -392,7 +393,7 @@ void help(void)
            "    --memory-limit n       limit the memory usage to 'n' Kbytes\n"
            "    --stack-size n         limit the stack size to 'n' Kbytes\n"
            "-q  --quit         just instantiate the interpreter and quit\n", JS_GetVersion());
-    exit(1);
+    exit(exit_status);
 }
 
 int main(int argc, char **argv)
@@ -465,8 +466,11 @@ int main(int argc, char **argv)
                     optarg = arg;
             }
             if (opt == 'h' || opt == '?' || !strcmp(longopt, "help")) {
-                help();
-                continue;
+                help(0);
+            }
+            if (opt == 'v' || !strcmp(longopt, "version")) {
+                printf("%s\n",JS_GetVersion());
+                return 0;
             }
             if (opt == 'e' || !strcmp(longopt, "eval")) {
                 if (!optarg) {
@@ -583,12 +587,12 @@ int main(int argc, char **argv)
             } else {
                 fprintf(stderr, "qjs: unknown option '--%s'\n", longopt);
             }
-            help();
+            help(1);
         }
     }
 
     if (compile_file && !out)
-        help();
+        help(1);
 
 start:
 

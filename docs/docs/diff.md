@@ -23,7 +23,7 @@ average of a new release every 2 months.
 Since its inception testing has been a focus. Each PR is tested in over 50 configurations,
 involving different operating systems, build types and sanitizers.
 
-The `test262` suite is also ran for every change.
+The `test262` suite is also run for every change.
 
 ## Cross-platform support
 
