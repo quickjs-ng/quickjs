@@ -532,6 +532,13 @@ if(QJS_BUILD_EXAMPLES)
     set_target_properties(test_fib PROPERTIES ENABLE_EXPORTS TRUE)
 endif()
 
+# Test c++
+option(TEST_CXX "Build tests" ON)
+
+if(TEST_CXX)
+    add_subdirectory(tests-cpp)
+endif()
+
 # Install target
 #
 
@@ -548,6 +555,7 @@ if (QJS_ENABLE_INSTALL)
         SOVERSION ${QJS_VERSION_MAJOR}
     )
     install(FILES quickjs.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(FILES quickjs.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     if(QJS_BUILD_LIBC)
         install(FILES quickjs-libc.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     endif()
