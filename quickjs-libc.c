@@ -4734,10 +4734,6 @@ static void js_std_dump_error1(JSContext *ctx, JSValueConst exception_val)
         js_dump_obj(ctx, stderr, current);
         if (is_error) {
             val = JS_GetPropertyStr(ctx, current, "stack");
-            if (JS_IsException(val)) {
-                JS_FreeValue(ctx, JS_GetException(ctx));
-                val = JS_UNDEFINED;
-            }
         } else if (depth == 0) {
             js_std_cmd(/*ErrorBackTrace*/2, ctx, &val);
         } else {
@@ -4750,10 +4746,6 @@ static void js_std_dump_error1(JSContext *ctx, JSValueConst exception_val)
         if (!is_error || depth >= JS_DUMP_ERROR_MAX_CAUSE_DEPTH)
             break;
         val = JS_GetPropertyStr(ctx, current, "cause");
-        if (JS_IsException(val)) {
-            JS_FreeValue(ctx, JS_GetException(ctx));
-            break;
-        }
         if (JS_IsUndefined(val)) {
             JS_FreeValue(ctx, val);
             break;
