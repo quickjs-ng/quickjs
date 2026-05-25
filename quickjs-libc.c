@@ -4254,7 +4254,10 @@ static JSValue js_worker_postMessage(JSContext *ctx, JSValueConst this_val,
     msg->data = malloc(data_len);
     if (!msg->data)
         goto fail;
-    memcpy(msg->data, data, data_len);
+    /* memcpy with NULL src/dst is UB even when n == 0; the writer side
+       can produce zero-length payloads (e.g. JSON.stringify(undefined)). */
+    if (data_len > 0)
+        memcpy(msg->data, data, data_len);
     msg->data_len = data_len;
 
     if (sab_tab.len > 0) {
