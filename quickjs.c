@@ -519,6 +519,10 @@ struct JSContext {
     JSValue throw_type_error;
     JSValue eval_obj;
 
+    /* borrowed atom naming the callee of the call currently being set up,
+       consumed by JS_ThrowTypeErrorNotAFunction; JS_ATOM_NULL if unknown */
+    JSAtom error_callee_name;
+
     JSValue global_obj; /* global object */
     JSValue global_var_obj; /* contains the global let/const definitions */
 
@@ -2521,6 +2525,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->error_back_trace = JS_UNDEFINED;
     ctx->error_prepare_stack = JS_UNDEFINED;
     ctx->error_stack_trace_limit = js_int32(10);
+    ctx->error_callee_name = JS_ATOM_NULL;
     init_list_head(&ctx->loaded_modules);
 
     if (JS_AddIntrinsicBasicObjects(ctx)) {
@@ -8161,6 +8166,13 @@ fini:
 
 static JSValue JS_ThrowTypeErrorNotAFunction(JSContext *ctx)
 {
+    JSAtom name = ctx->error_callee_name;
+    ctx->error_callee_name = JS_ATOM_NULL;
+    if (name != JS_ATOM_NULL) {
+        char buf[ATOM_GET_STR_BUF_SIZE];
+        return JS_ThrowTypeError(ctx, "%s is not a function",
+                                 JS_AtomGetStr(ctx, buf, sizeof(buf), name));
+    }
     return JS_ThrowTypeError(ctx, "not a function");
 }
 
@@ -17623,6 +17635,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         not_a_function:
             return JS_ThrowTypeErrorNotAFunction(caller_ctx);
         }
+        /* callee is callable; don't let its name leak into nested throws */
+        caller_ctx->error_callee_name = JS_ATOM_NULL;
         return call_func(caller_ctx, func_obj, this_obj, argc,
                          argv, flags);
     }
@@ -17675,6 +17689,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     sf->prev_frame = rt->current_stack_frame;
     rt->current_stack_frame = sf;
     ctx = b->realm; /* set the current realm */
+    ctx->error_callee_name = JS_ATOM_NULL; /* don't inherit caller's callee name */
 
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_STEP
     if (check_dump_flag(ctx->rt, JS_DUMP_BYTECODE_STEP))
@@ -18047,6 +18062,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 ret_val = JS_CallInternal(ctx, call_argv[-1], JS_UNDEFINED,
                                           JS_UNDEFINED, call_argc,
                                           vc(call_argv), 0);
+                ctx->error_callee_name = JS_ATOM_NULL;
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
                 if (opcode == OP_tail_call)
@@ -18084,6 +18100,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 ret_val = JS_CallInternal(ctx, call_argv[-1], call_argv[-2],
                                           JS_UNDEFINED, call_argc,
                                           vc(call_argv), 0);
+                ctx->error_callee_name = JS_ATOM_NULL;
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
                 if (opcode == OP_tail_call_method)
@@ -18331,6 +18348,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 val = JS_GetGlobalVar(ctx, atom, opcode - OP_get_var_undef);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
+                ctx->error_callee_name = atom; /* borrowed from bytecode */
                 *sp++ = val;
             }
             BREAK;
@@ -19143,6 +19161,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     if (unlikely(JS_IsException(val)))
                         goto exception;
                 }
+                ctx->error_callee_name = atom; /* borrowed from bytecode */
                 *sp++ = val;
             }
             BREAK;
