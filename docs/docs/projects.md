@@ -83,6 +83,6 @@ Golang bindings for QuickJS-NG using cgo
 
 Nordstjernen web browser.
 
-## [quickjs-cpp](https://github.com/qr243vbi/quickjs)
+## [quickjs-cpp](https://github.com/qr243vbi/quickjs-cpp)
 
-Fork of quickjs-ng with modern C++ interface.
+Header only library for quickjs-ng with modern C++ interface.
