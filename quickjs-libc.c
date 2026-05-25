@@ -4720,22 +4720,41 @@ static void js_dump_obj(JSContext *ctx, FILE *f, JSValueConst val)
     }
 }
 
+#define JS_DUMP_ERROR_MAX_CAUSE_DEPTH 10
+
 static void js_std_dump_error1(JSContext *ctx, JSValueConst exception_val)
 {
-    JSValue val;
+    JSValue val, current;
     bool is_error;
+    int depth;
 
-    is_error = JS_IsError(exception_val);
-    js_dump_obj(ctx, stderr, exception_val);
-    if (is_error) {
-        val = JS_GetPropertyStr(ctx, exception_val, "stack");
-    } else {
-        js_std_cmd(/*ErrorBackTrace*/2, ctx, &val);
+    current = JS_DupValue(ctx, exception_val);
+    for (depth = 0; ; depth++) {
+        is_error = JS_IsError(current);
+        js_dump_obj(ctx, stderr, current);
+        if (is_error) {
+            val = JS_GetPropertyStr(ctx, current, "stack");
+        } else if (depth == 0) {
+            js_std_cmd(/*ErrorBackTrace*/2, ctx, &val);
+        } else {
+            val = JS_UNDEFINED;
+        }
+        if (!JS_IsUndefined(val)) {
+            js_dump_obj(ctx, stderr, val);
+            JS_FreeValue(ctx, val);
+        }
+        if (!is_error || depth >= JS_DUMP_ERROR_MAX_CAUSE_DEPTH)
+            break;
+        val = JS_GetPropertyStr(ctx, current, "cause");
+        if (JS_IsUndefined(val)) {
+            JS_FreeValue(ctx, val);
+            break;
+        }
+        fputs("Caused by: ", stderr);
+        JS_FreeValue(ctx, current);
+        current = val;
     }
-    if (!JS_IsUndefined(val)) {
-        js_dump_obj(ctx, stderr, val);
-        JS_FreeValue(ctx, val);
-    }
+    JS_FreeValue(ctx, current);
 }
 
 void js_std_dump_error(JSContext *ctx)
