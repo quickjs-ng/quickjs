@@ -547,11 +547,15 @@ JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
    JSValue when needed.  Accepting JSAtom avoids a heap allocation on
    every instrumented statement when the embedder only needs to compare
    against a known set of breakpoint locations. */
+/* Flags passed to JSDebugTraceFunc.  Use bitwise-AND to test specific bits. */
+#define JS_DEBUG_TRACE_DEBUGGER_STMT (1 << 0) /* triggered by `debugger;` statement */
+
 typedef int JSDebugTraceFunc(JSContext *ctx,
                              JSAtom filename,
                              JSAtom funcname,
                              int line,
                              int col,
+                             int flags,
                              void *opaque);
 
 /* Set (or clear) the debug trace handler on a context.  Pass NULL to
@@ -567,6 +571,7 @@ typedef struct JSDebugLocalVar {
     const char *name;
     JSValue value;
     bool is_arg;
+    bool is_closure;       /* true if captured from an enclosing scope */
     int scope_level;
 } JSDebugLocalVar;
 
@@ -577,13 +582,37 @@ JS_EXTERN int JS_GetStackDepth(JSContext *ctx);
    On success, *pvars receives an allocated array of JSDebugLocalVar entries
    that must be freed with JS_FreeLocalVariables(), and *pcount receives the
    entry count.  If no variables are available, *pvars is set to NULL and
-   *pcount is set to 0.  Returns -1 on exception. */
+   *pcount is set to 0.  Returns -1 on exception.
+
+   The returned array contains arguments first, then locals, then any closure
+   variables captured from enclosing scopes (with `is_closure = true`). */
 JS_EXTERN int JS_GetLocalVariablesAtLevel(JSContext *ctx, int level,
                                           JSDebugLocalVar **pvars,
                                           int *pcount);
 
 /* Free local variables array returned by JS_GetLocalVariablesAtLevel */
 JS_EXTERN void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count);
+
+/* Set a local or closure variable in a stack frame by name.
+   Returns 0 on success, -1 if the variable is not found, -2 if it is a const
+   binding (read-only), or -3 on type/argument errors. */
+JS_EXTERN int JS_SetVariableAtLevel(JSContext *ctx, int level,
+                                    const char *name, JSValue value);
+
+/* Evaluate an expression in the context of the given stack frame.
+   The expression has access to the frame's local and closure variables.
+   On success, returns the resulting JSValue.  On error, returns
+   JS_EXCEPTION (the exception is set on `ctx`).
+
+   This is a best-effort implementation: simple identifiers are resolved
+   against the frame's bindings, and otherwise the expression is evaluated
+   in a synthetic scope that surfaces the frame variables as globals on a
+   transient object.  Modifications to those bindings are NOT propagated
+   back to the underlying stack frame -- use JS_SetVariableAtLevel for
+   that. */
+JS_EXTERN JSValue JS_EvalInStackFrame(JSContext *ctx, int level,
+                                      const char *input, size_t input_len,
+                                      const char *filename);
 
 /* the following functions are used to select the intrinsic object to
    save memory */

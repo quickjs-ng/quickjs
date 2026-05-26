@@ -2654,7 +2654,7 @@ int JS_GetLocalVariablesAtLevel(JSContext *ctx, int level,
         return 0;
 
     JSFunctionBytecode *b = p->u.func.function_bytecode;
-    int total_vars = b->arg_count + b->var_count;
+    int total_vars = b->arg_count + b->var_count + b->closure_var_count;
 
     if (total_vars == 0)
         return 0;
@@ -2685,6 +2685,7 @@ int JS_GetLocalVariablesAtLevel(JSContext *ctx, int level,
         else                                                              \
             vars[idx].value = js_dup(value_);                             \
         vars[idx].is_arg = (is_arg_);                                     \
+        vars[idx].is_closure = false;                                     \
         vars[idx].scope_level = (vd_)->scope_level;                       \
         idx++;                                                            \
     } while (0)
@@ -2700,6 +2701,36 @@ int JS_GetLocalVariablesAtLevel(JSContext *ctx, int level,
     }
 
 #undef APPEND_VAR
+
+    /* Append closure variables captured from enclosing scopes. */
+    {
+        JSVarRef **var_refs = p->u.func.var_refs;
+        for (int i = 0; i < b->closure_var_count; i++) {
+            JSClosureVar *cv = &b->closure_var[i];
+            JSAtom name = cv->var_name;
+            if (name != JS_ATOM_NULL) {
+                char tmp[32];
+                JS_AtomGetStr(ctx, tmp, sizeof(tmp), name);
+                if (tmp[0] == '<')
+                    continue;
+            }
+            const char *name_str = JS_AtomToCString(ctx, name);
+            if (unlikely(!name_str))
+                goto fail;
+            JSValue cv_val = JS_UNDEFINED;
+            if (var_refs && var_refs[i] && var_refs[i]->pvalue) {
+                JSValue v = *var_refs[i]->pvalue;
+                if (JS_VALUE_GET_TAG(v) != JS_TAG_UNINITIALIZED)
+                    cv_val = js_dup(v);
+            }
+            vars[idx].name = name_str;
+            vars[idx].value = cv_val;
+            vars[idx].is_arg = false;
+            vars[idx].is_closure = true;
+            vars[idx].scope_level = 0;
+            idx++;
+        }
+    }
 
     if (idx == 0) {
         js_free(ctx, vars);
@@ -2730,6 +2761,143 @@ void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count)
         JS_FreeValue(ctx, vars[i].value);
     }
     js_free(ctx, vars);
+}
+
+int JS_SetVariableAtLevel(JSContext *ctx, int level,
+                          const char *name, JSValue value)
+{
+    if (!name) {
+        JS_FreeValue(ctx, value);
+        return -3;
+    }
+
+    JSStackFrame *sf = js_get_stack_frame_at_level(ctx, level);
+    if (sf == NULL) {
+        JS_FreeValue(ctx, value);
+        return -1;
+    }
+
+    JSValue func = sf->cur_func;
+    if (JS_VALUE_GET_TAG(func) != JS_TAG_OBJECT) {
+        JS_FreeValue(ctx, value);
+        return -1;
+    }
+    JSObject *p = JS_VALUE_GET_OBJ(func);
+    if (p->class_id != JS_CLASS_BYTECODE_FUNCTION) {
+        JS_FreeValue(ctx, value);
+        return -1;
+    }
+    JSFunctionBytecode *b = p->u.func.function_bytecode;
+
+    JSAtom target_atom = JS_NewAtom(ctx, name);
+    if (target_atom == JS_ATOM_NULL) {
+        JS_FreeValue(ctx, value);
+        return -3;
+    }
+
+    int rc = -1;
+
+    /* Search arguments. */
+    for (int i = 0; i < b->arg_count; i++) {
+        if (b->vardefs[i].var_name == target_atom) {
+            JSValue old = sf->arg_buf[i];
+            sf->arg_buf[i] = js_dup(value);
+            JS_FreeValue(ctx, old);
+            rc = 0;
+            goto done;
+        }
+    }
+
+    /* Search locals. */
+    for (int i = 0; i < b->var_count; i++) {
+        JSVarDef *vd = &b->vardefs[b->arg_count + i];
+        if (vd->var_name == target_atom) {
+            if (vd->is_const) {
+                rc = -2;
+                goto done;
+            }
+            JSValue old = sf->var_buf[i];
+            sf->var_buf[i] = js_dup(value);
+            JS_FreeValue(ctx, old);
+            rc = 0;
+            goto done;
+        }
+    }
+
+    /* Search closure vars. */
+    {
+        JSVarRef **var_refs = p->u.func.var_refs;
+        for (int i = 0; i < b->closure_var_count; i++) {
+            JSClosureVar *cv = &b->closure_var[i];
+            if (cv->var_name == target_atom) {
+                if (cv->is_const) {
+                    rc = -2;
+                    goto done;
+                }
+                if (var_refs && var_refs[i] && var_refs[i]->pvalue) {
+                    set_value(ctx, var_refs[i]->pvalue, js_dup(value));
+                    rc = 0;
+                }
+                goto done;
+            }
+        }
+    }
+
+done:
+    JS_FreeAtom(ctx, target_atom);
+    JS_FreeValue(ctx, value);
+    return rc;
+}
+
+JSValue JS_EvalInStackFrame(JSContext *ctx, int level,
+                            const char *input, size_t input_len,
+                            const char *filename)
+{
+    if (!input)
+        return JS_ThrowTypeError(ctx, "input must not be NULL");
+
+    /* Reuse the normal direct-eval pipeline: temporarily swap the runtime's
+       current stack frame to the target frame so that JS_EVAL_TYPE_DIRECT
+       picks up its bytecode, var_refs and closure chain via the same path
+       used by the `eval(...)` operator at runtime. */
+    JSStackFrame *target = js_get_stack_frame_at_level(ctx, level);
+    if (!target)
+        return JS_ThrowReferenceError(ctx, "no stack frame at level %d", level);
+
+    if (JS_VALUE_GET_TAG(target->cur_func) != JS_TAG_OBJECT)
+        return JS_ThrowTypeError(ctx,
+                                 "stack frame at level %d is not a JS function",
+                                 level);
+    JSObject *p = JS_VALUE_GET_OBJ(target->cur_func);
+    if (p->class_id != JS_CLASS_BYTECODE_FUNCTION)
+        return JS_ThrowTypeError(ctx,
+                                 "stack frame at level %d is not a JS function",
+                                 level);
+    JSFunctionBytecode *b = p->u.func.function_bytecode;
+
+    /* Pick the deepest lexical scope index so add_closure_variables() walks
+       through every enclosing block scope, exposing let/const bindings as
+       well as args, var-declared locals and closure refs. */
+    int scope_idx = -1;
+    int max_level = 0;
+    for (int i = 0; i < b->var_count; i++) {
+        JSVarDef *vd = &b->vardefs[b->arg_count + i];
+        if (vd->scope_level > max_level) {
+            max_level = vd->scope_level;
+            scope_idx = i;
+        }
+    }
+
+    JSRuntime *rt = ctx->rt;
+    JSStackFrame *saved = rt->current_stack_frame;
+    rt->current_stack_frame = target;
+
+    JSValue ret = JS_EvalInternal(ctx, JS_UNDEFINED, input, input_len,
+                                  filename ? filename : "<debugger-eval>",
+                                  1, JS_EVAL_TYPE_DIRECT, scope_idx);
+
+    rt->current_stack_frame = saved;
+    return ret;
 }
 
 typedef enum JSFreeModuleEnum {
@@ -17827,10 +17995,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
 
         SWITCH(pc) {
         CASE(OP_debug):
+        CASE(OP_debugger_stmt):
             if (unlikely(ctx->debug_trace)) {
                 int col_num = 0;
                 int line_num = -1;
                 uint32_t pc_index = (uint32_t)(pc - b->byte_code_buf - 1);
+                int flags = (pc[-1] == OP_debugger_stmt)
+                                ? JS_DEBUG_TRACE_DEBUGGER_STMT : 0;
                 line_num = find_line_num(ctx, b, pc_index, &col_num);
 
                 /* Pass the JSAtom values directly — no heap allocation.
@@ -17838,7 +18009,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                    object, which outlives the callback.  The embedder must
                    call JS_DupAtom() if it needs to retain them. */
                 int ret = ctx->debug_trace(ctx, b->filename, b->func_name,
-                                           line_num, col_num,
+                                           line_num, col_num, flags,
                                            ctx->debug_trace_opaque);
 
                 if (ret != 0 || JS_HasException(ctx)) {
@@ -29777,7 +29948,14 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         break;
 
     case TOK_DEBUGGER:
-        /* currently no debugger, so just skip the keyword */
+        /* Emit OP_source_loc + OP_debugger_stmt unconditionally so that an
+           attached debugger can pause on the `debugger` statement even when
+           the handler was not yet set at parse time.  The dedicated opcode
+           lets the trace handler distinguish a real `debugger;` statement
+           from a statement-boundary OP_debug via the JS_DEBUG_TRACE_DEBUGGER_STMT
+           flag. */
+        emit_source_loc(s);
+        dbuf_putc(&s->cur_func->byte_code, OP_debugger_stmt);
         if (next_token(s))
             goto fail;
         if (js_parse_expect_semi(s))
@@ -34157,7 +34335,7 @@ static bool code_match(CodeContext *s, int pos, ...)
                 line_num = get_u32(tab + pos + 1);
                 col_num = get_u32(tab + pos + 5);
                 pos = pos_next;
-            } else if (op == OP_debug) {
+            } else if (op == OP_debug || op == OP_debugger_stmt) {
                 pos = pos_next;
             } else {
                 break;
@@ -34447,6 +34625,7 @@ static int get_label_pos(JSFunctionDef *s, int label)
                 pos += 9;
                 continue;
             case OP_debug:
+            case OP_debugger_stmt:
                 pos += 1;
                 continue;
             case OP_label:
@@ -35215,6 +35394,12 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
                location when OP_debug is hit at runtime */
             add_pc2line_info(s, bc_out.size, line_num, col_num);
             dbuf_putc(&bc_out, OP_debug);
+            break;
+
+        case OP_debugger_stmt:
+            /* same as OP_debug but carries the `debugger;` flag at runtime */
+            add_pc2line_info(s, bc_out.size, line_num, col_num);
+            dbuf_putc(&bc_out, OP_debugger_stmt);
             break;
 
         case OP_label:
