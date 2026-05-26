@@ -1130,8 +1130,10 @@ static int debug_trace_cb(JSContext *ctx,
                           JSAtom funcname,
                           int line,
                           int col,
+                          int flags,
                           void *opaque)
 {
+    (void)flags;
     trace_state.call_count++;
     trace_state.last_line = line;
     trace_state.last_col = col;
