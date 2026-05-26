@@ -2732,6 +2732,7 @@ void JS_FreeContext(JSContext *ctx)
     JS_FreeValue(ctx, ctx->error_back_trace);
     JS_FreeValue(ctx, ctx->error_prepare_stack);
     JS_FreeValue(ctx, ctx->error_stack_trace_limit);
+    JS_FreeAtom(ctx, ctx->error_callee_name);
     for(i = 0; i < rt->class_count; i++) {
         JS_FreeValue(ctx, ctx->class_proto[i]);
     }
@@ -8170,8 +8171,10 @@ static JSValue JS_ThrowTypeErrorNotAFunction(JSContext *ctx)
     ctx->error_callee_name = JS_ATOM_NULL;
     if (name != JS_ATOM_NULL) {
         char buf[ATOM_GET_STR_BUF_SIZE];
-        return JS_ThrowTypeError(ctx, "%s is not a function",
-                                 JS_AtomGetStr(ctx, buf, sizeof(buf), name));
+        JSValue ret = JS_ThrowTypeError(ctx, "%s is not a function",
+                                        JS_AtomGetStr(ctx, buf, sizeof(buf), name));
+        JS_FreeAtom(ctx, name);
+        return ret;
     }
     return JS_ThrowTypeError(ctx, "not a function");
 }
@@ -17636,6 +17639,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             return JS_ThrowTypeErrorNotAFunction(caller_ctx);
         }
         /* callee is callable; don't let its name leak into nested throws */
+        JS_FreeAtom(caller_ctx, caller_ctx->error_callee_name);
         caller_ctx->error_callee_name = JS_ATOM_NULL;
         return call_func(caller_ctx, func_obj, this_obj, argc,
                          argv, flags);
@@ -17689,6 +17693,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     sf->prev_frame = rt->current_stack_frame;
     rt->current_stack_frame = sf;
     ctx = b->realm; /* set the current realm */
+    JS_FreeAtom(ctx, ctx->error_callee_name);
     ctx->error_callee_name = JS_ATOM_NULL; /* don't inherit caller's callee name */
 
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_STEP
@@ -18062,6 +18067,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 ret_val = JS_CallInternal(ctx, call_argv[-1], JS_UNDEFINED,
                                           JS_UNDEFINED, call_argc,
                                           vc(call_argv), 0);
+                JS_FreeAtom(ctx, ctx->error_callee_name);
                 ctx->error_callee_name = JS_ATOM_NULL;
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
@@ -18100,6 +18106,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 ret_val = JS_CallInternal(ctx, call_argv[-1], call_argv[-2],
                                           JS_UNDEFINED, call_argc,
                                           vc(call_argv), 0);
+                JS_FreeAtom(ctx, ctx->error_callee_name);
                 ctx->error_callee_name = JS_ATOM_NULL;
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
@@ -18348,7 +18355,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 val = JS_GetGlobalVar(ctx, atom, opcode - OP_get_var_undef);
                 if (unlikely(JS_IsException(val)))
                     goto exception;
-                ctx->error_callee_name = atom; /* borrowed from bytecode */
+                JS_FreeAtom(ctx, ctx->error_callee_name);
+                ctx->error_callee_name = JS_DupAtom(ctx, atom);
                 *sp++ = val;
             }
             BREAK;
@@ -19161,7 +19169,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     if (unlikely(JS_IsException(val)))
                         goto exception;
                 }
-                ctx->error_callee_name = atom; /* borrowed from bytecode */
+                JS_FreeAtom(ctx, ctx->error_callee_name);
+                ctx->error_callee_name = JS_DupAtom(ctx, atom);
                 *sp++ = val;
             }
             BREAK;
