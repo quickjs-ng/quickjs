@@ -746,7 +746,6 @@ static void new_errors(void)
     } Entry;
     static const Entry entries[] = {
         {"Error",           JS_NewPlainError},
-        {"InternalError",   JS_NewInternalError},
         {"RangeError",      JS_NewRangeError},
         {"ReferenceError",  JS_NewReferenceError},
         {"SyntaxError",     JS_NewSyntaxError},

@@ -1,4 +1,4 @@
-;(function(IteratorHelper, InternalError, TypeError, call,
+;(function(IteratorHelper, Error, TypeError, call,
            hasOwnEnumProperty, getOwnPropertyKeys, Symbol·iterator) {
     function check(v, s) {
         if (typeof v === "object" && v !== null) return
@@ -104,7 +104,7 @@
                 case 3: // complete
                     return {value:undefined, done:true}
                 default:
-                    throw new InternalError("bug")
+                    throw new Error("bug")
                 }
                 let dones = 0
                 let values = 0
@@ -113,7 +113,7 @@
                     let key = keys[i]
                     let iter = iters[i]
                     if (!iter) {
-                        if (mode !== "longest") throw new InternalError("bug")
+                        if (mode !== "longest") throw new Error("bug")
                         results[key] = pads[i]
                         continue
                     }
@@ -181,7 +181,7 @@
                 case 3: // complete
                     return {value:undefined, done:true}
                 default:
-                    throw new InternalError(`bug: state=${state}`)
+                    throw new Error(`bug: state=${state}`)
                 }
                 // TODO skip when already closed because of earlier exception
                 let ex = closeall(iters, count)

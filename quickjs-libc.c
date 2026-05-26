@@ -923,7 +923,7 @@ JSModuleDef *js_module_load(JSContext *ctx, const char *module_name,
         }
         break;
     default:
-        val = JS_ThrowInternalError(ctx, "unhandled import type");
+        val = JS_ThrowPlainError(ctx, "unhandled import type");
         break;
     }
     js_free(ctx, buf);

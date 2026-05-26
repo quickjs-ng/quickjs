@@ -209,7 +209,6 @@ typedef enum JSErrorEnum {
     JS_SYNTAX_ERROR,
     JS_TYPE_ERROR,
     JS_URI_ERROR,
-    JS_INTERNAL_ERROR,
     JS_AGGREGATE_ERROR,
     JS_SUPPRESSED_ERROR,
 
@@ -4479,7 +4478,7 @@ static JSValue js_force_tostring(JSContext *ctx, JSValueConst val1)
     if (!JS_IsException(val))
         return val;
     // Stringification can fail when there is an exception pending,
-    // e.g. a stack overflow InternalError. Special-case exception
+    // e.g. a stack overflow RangeError. Special-case exception
     // objects to make debugging easier, look up the .message property
     // and stringify that.
     if (JS_VALUE_GET_TAG(val1) != JS_TAG_OBJECT)
@@ -4871,7 +4870,7 @@ static JSValue js_new_string_rope(JSContext *ctx, JSValue op1, JSValue op2)
         depth = max_int(depth, r2->depth);
     }
     if (len > JS_STRING_LEN_MAX) {
-        JS_ThrowInternalError(ctx, "string too long");
+        JS_ThrowRangeError(ctx, "string too long");
         goto fail;
     }
     r = js_malloc(ctx, sizeof(*r));
@@ -8038,7 +8037,6 @@ JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
 }
 
 #define JS_ERROR_MAP(X)     \
-    X(Internal, INTERNAL)   \
     X(Plain, PLAIN)         \
     X(Range, RANGE)         \
     X(Reference, REFERENCE) \
@@ -8129,7 +8127,7 @@ JSValue JS_ThrowOutOfMemory(JSContext *ctx)
     JSRuntime *rt = ctx->rt;
     if (!rt->in_out_of_memory) {
         rt->in_out_of_memory = true;
-        JS_ThrowInternalError(ctx, "out of memory");
+        JS_ThrowRangeError(ctx, "out of memory");
         rt->in_out_of_memory = false;
     }
     return JS_EXCEPTION;
@@ -8214,7 +8212,7 @@ static JSValue JS_ThrowTypeErrorInvalidClass(JSContext *ctx, int class_id)
 
 static void JS_ThrowInterrupted(JSContext *ctx)
 {
-    JS_ThrowInternalError(ctx, "interrupted");
+    JS_ThrowPlainError(ctx, "interrupted");
     JS_SetUncatchableError(ctx, ctx->rt->current_exception);
 }
 
@@ -8595,9 +8593,9 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
         {
             JSValue argv[] = {
                 js_dup(ctx->class_proto[JS_CLASS_ITERATOR_HELPER]),
-                JS_NewCFunctionMagic(ctx, js_error_constructor, "InternalError",
+                JS_NewCFunctionMagic(ctx, js_error_constructor, "Error",
                                      1, JS_CFUNC_constructor_or_func_magic,
-                                     JS_INTERNAL_ERROR),
+                                     -1),
                 JS_NewCFunctionMagic(ctx, js_error_constructor, "TypeError",
                                      1, JS_CFUNC_constructor_or_func_magic,
                                      JS_TYPE_ERROR),
@@ -8614,9 +8612,9 @@ static JSValue js_bytecode_autoinit(JSContext *ctx, JSObject *p, JSAtom atom,
         {
             JSValue argv[] = {
                 js_dup(ctx->class_proto[JS_CLASS_ITERATOR_HELPER]),
-                JS_NewCFunctionMagic(ctx, js_error_constructor, "InternalError",
+                JS_NewCFunctionMagic(ctx, js_error_constructor, "Error",
                                      1, JS_CFUNC_constructor_or_func_magic,
-                                     JS_INTERNAL_ERROR),
+                                     -1),
                 JS_NewCFunctionMagic(ctx, js_error_constructor, "TypeError",
                                      1, JS_CFUNC_constructor_or_func_magic,
                                      JS_TYPE_ERROR),
@@ -16854,7 +16852,7 @@ static __exception int js_append_enumerate(JSContext *ctx, JSValue *sp)
     uint32_t i, count32, pos;
 
     if (JS_VALUE_GET_TAG(sp[-2]) != JS_TAG_INT) {
-        JS_ThrowInternalError(ctx, "invalid index for append");
+        JS_ThrowPlainError(ctx, "invalid index for append");
         return -1;
     }
 
@@ -18217,7 +18215,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 if (type == JS_THROW_ERROR_ITERATOR_THROW)
                     JS_ThrowTypeError(ctx, "iterator does not have a throw method");
                 else
-                    JS_ThrowInternalError(ctx, "invalid throw var type %d", type);
+                    JS_ThrowPlainError(ctx, "invalid throw var type %d", type);
             }
             goto exception;
 
@@ -18785,7 +18783,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 pos = JS_VALUE_GET_INT(op1);
                 if (unlikely(pos >= b->byte_code_len)) {
                 ret_fail:
-                    JS_ThrowInternalError(ctx, "invalid ret value");
+                    JS_ThrowPlainError(ctx, "invalid ret value");
                     goto exception;
                 }
                 sp--;
@@ -18864,7 +18862,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     JS_FreeValue(ctx, *--sp);
                 }
                 if (unlikely(sp == stack_buf)) {
-                    JS_ThrowInternalError(ctx, "nip_catch");
+                    JS_ThrowPlainError(ctx, "nip_catch");
                     JS_FreeValue(ctx, ret_val);
                     goto exception;
                 }
@@ -20313,8 +20311,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             BREAK;
         CASE(OP_invalid):
         DEFAULT:
-            JS_ThrowInternalError(ctx, "invalid opcode: pc=%u opcode=0x%02x",
-                                  (int)(pc - b->byte_code_buf - 1), opcode);
+            JS_ThrowPlainError(ctx, "invalid opcode: pc=%u opcode=0x%02x",
+                               (int)(pc - b->byte_code_buf - 1), opcode);
             goto exception;
         }
     }
@@ -26022,7 +26020,7 @@ static int js_parse_destructuring_element(JSParseState *s, int tok,
             int prop_type;
             if (s->token.val == TOK_ELLIPSIS) {
                 if (!has_ellipsis) {
-                    JS_ThrowInternalError(s->ctx, "unexpected ellipsis token");
+                    JS_ThrowPlainError(s->ctx, "unexpected ellipsis token");
                     return -1;
                 }
                 if (next_token(s))
@@ -35837,25 +35835,25 @@ static __exception int ss_check(JSContext *ctx, StackSizeState *s,
                                 int pos, int op, int stack_len, int catch_pos)
 {
     if ((unsigned)pos >= s->bc_len) {
-        JS_ThrowInternalError(ctx, "bytecode buffer overflow (op=%d, pc=%d)", op, pos);
+        JS_ThrowPlainError(ctx, "bytecode buffer overflow (op=%d, pc=%d)", op, pos);
         return -1;
     }
     if (stack_len > s->stack_len_max) {
         s->stack_len_max = stack_len;
         if (s->stack_len_max > JS_STACK_SIZE_MAX) {
-            JS_ThrowInternalError(ctx, "stack overflow (op=%d, pc=%d)", op, pos);
+            JS_ThrowPlainError(ctx, "stack overflow (op=%d, pc=%d)", op, pos);
             return -1;
         }
     }
     if (s->stack_level_tab[pos] != 0xffff) {
         /* already explored: check that the stack size is consistent */
         if (s->stack_level_tab[pos] != stack_len) {
-            JS_ThrowInternalError(ctx, "inconsistent stack size: %d %d (pc=%d)",
-                                  s->stack_level_tab[pos], stack_len, pos);
+            JS_ThrowPlainError(ctx, "inconsistent stack size: %d %d (pc=%d)",
+                               s->stack_level_tab[pos], stack_len, pos);
             return -1;
         } else if (s->catch_pos_tab[pos] != catch_pos) {
-            JS_ThrowInternalError(ctx, "inconsistent catch position: %d %d (pc=%d)",
-                                  s->catch_pos_tab[pos], catch_pos, pos);
+            JS_ThrowPlainError(ctx, "inconsistent catch position: %d %d (pc=%d)",
+                               s->catch_pos_tab[pos], catch_pos, pos);
             return -1;
         } else {
             return 0;
@@ -35911,7 +35909,7 @@ static __exception int compute_stack_size(JSContext *ctx,
         catch_pos = s->catch_pos_tab[pos];
         op = bc_buf[pos];
         if (op == 0 || op >= OP_COUNT) {
-            JS_ThrowInternalError(ctx, "invalid opcode (op=%d, pc=%d)", op, pos);
+            JS_ThrowPlainError(ctx, "invalid opcode (op=%d, pc=%d)", op, pos);
             goto fail;
         }
         oi = &short_opcode_info(op);
@@ -35921,7 +35919,7 @@ static __exception int compute_stack_size(JSContext *ctx,
 #endif
         pos_next = pos + oi->size;
         if (pos_next > s->bc_len) {
-            JS_ThrowInternalError(ctx, "bytecode buffer overflow (op=%d, pc=%d)", op, pos);
+            JS_ThrowPlainError(ctx, "bytecode buffer overflow (op=%d, pc=%d)", op, pos);
             goto fail;
         }
         n_pop = oi->n_pop;
@@ -35933,14 +35931,14 @@ static __exception int compute_stack_size(JSContext *ctx,
         }
 
         if (stack_len < n_pop) {
-            JS_ThrowInternalError(ctx, "stack underflow (op=%d, pc=%d)", op, pos);
+            JS_ThrowPlainError(ctx, "stack underflow (op=%d, pc=%d)", op, pos);
             goto fail;
         }
         stack_len += oi->n_push - n_pop;
         if (stack_len > s->stack_len_max) {
             s->stack_len_max = stack_len;
             if (s->stack_len_max > JS_STACK_SIZE_MAX) {
-                JS_ThrowInternalError(ctx, "stack overflow (op=%d, pc=%d)", op, pos);
+                JS_ThrowPlainError(ctx, "stack overflow (op=%d, pc=%d)", op, pos);
                 goto fail;
             }
         }
@@ -36041,7 +36039,7 @@ static __exception int compute_stack_size(JSContext *ctx,
             break;
         case OP_nip_catch:
             if (catch_pos < 0) {
-                JS_ThrowInternalError(ctx, "nip_catch: no catch op (pc=%d)", pos);
+                JS_ThrowPlainError(ctx, "nip_catch: no catch op (pc=%d)", pos);
                 goto fail;
             }
             stack_len = s->stack_level_tab[catch_pos];
@@ -37475,7 +37473,7 @@ JSValue JS_EvalThis2(JSContext *ctx, JSValueConst this_obj,
     int eval_flags = 0;
     if (options) {
         if (options->version != JS_EVAL_OPTIONS_VERSION)
-            return JS_ThrowInternalError(ctx, "bad JSEvalOptions version");
+            return JS_ThrowPlainError(ctx, "bad JSEvalOptions version");
         if (options->filename)
             filename = options->filename;
         if (options->line_num != 0)
@@ -38372,7 +38370,7 @@ static int JS_WriteObjectRec(BCWriterState *s, JSValueConst obj)
         break;
     default:
     invalid_tag:
-        JS_ThrowInternalError(s->ctx, "unsupported tag (%d)", tag);
+        JS_ThrowPlainError(s->ctx, "unsupported tag (%d)", tag);
         goto fail;
     }
     return 0;
@@ -38701,7 +38699,7 @@ static JSString *JS_ReadString(BCReaderState *s)
     is_wide_char = len & 1;
     len >>= 1;
     if (len > JS_STRING_LEN_MAX) {
-        JS_ThrowInternalError(s->ctx, "string too long");
+        JS_ThrowRangeError(s->ctx, "string too long");
         return NULL;
     }
     p = js_alloc_string(s->ctx, len, is_wide_char);
@@ -39451,7 +39449,7 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
     if (bc->is_wide_char) {
         js_free_string(ctx->rt, pattern);
         js_free_string(ctx->rt, bc);
-        return JS_ThrowInternalError(ctx, "bad regexp bytecode");
+        return JS_ThrowPlainError(ctx, "bad regexp bytecode");
     }
 
     return js_regexp_constructor_internal(ctx, JS_UNDEFINED,
@@ -39672,8 +39670,8 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
     if (bc_get_leb128(s, &s->idx_to_atom_count))
         return -1;
     if (s->idx_to_atom_count > 1000*1000) {
-        JS_ThrowInternalError(s->ctx, "unreasonable atom count: %u",
-                              s->idx_to_atom_count);
+        JS_ThrowRangeError(s->ctx, "unreasonable atom count: %u",
+                           s->idx_to_atom_count);
         return -1;
     }
 
@@ -39693,12 +39691,12 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
             if (bc_get_u32(s, &atom))
                 return -1;
             if (!__JS_AtomIsConst(atom)) {
-                JS_ThrowInternalError(s->ctx, "out of range atom");
+                JS_ThrowPlainError(s->ctx, "out of range atom");
                 return -1;
             }
         } else {
             if (type < JS_ATOM_TYPE_STRING || type >= JS_ATOM_TYPE_PRIVATE) {
-                JS_ThrowInternalError(s->ctx, "invalid symbol type %d", type);
+                JS_ThrowPlainError(s->ctx, "invalid symbol type %d", type);
                 return -1;
             }
             p = JS_ReadString(s);
@@ -48577,10 +48575,10 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                 JS_ThrowInterrupted(ctx);
                 break;
             case LRE_RET_MEMORY_ERROR:
-                JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+                JS_ThrowRangeError(ctx, "out of memory in regexp execution");
                 break;
             case LRE_RET_BYTECODE_ERROR:
-                JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
+                JS_ThrowPlainError(ctx, "corrupted bytecode in regexp execution");
                 break;
             default:
                 abort();
@@ -48775,10 +48773,10 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValueConst this_val, JSValue ar
                     JS_ThrowInterrupted(ctx);
                     break;
                 case LRE_RET_MEMORY_ERROR:
-                    JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+                    JS_ThrowRangeError(ctx, "out of memory in regexp execution");
                     break;
                 case LRE_RET_BYTECODE_ERROR:
-                    JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
+                    JS_ThrowPlainError(ctx, "corrupted bytecode in regexp execution");
                     break;
                 default:
                     abort();
@@ -57325,8 +57323,7 @@ int JS_AddIntrinsicBigInt(JSContext *ctx)
 static const char * const native_error_name[JS_NATIVE_ERROR_COUNT] = {
     "EvalError", "RangeError", "ReferenceError",
     "SyntaxError", "TypeError", "URIError",
-    "InternalError", "AggregateError",
-    "SuppressedError",
+    "AggregateError", "SuppressedError",
 };
 
 /* Minimum amount of objects to be able to compile code and display
@@ -57732,9 +57729,9 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
     if (!alloc_flag && buf && max_len && free_func != js_array_buffer_free) {
         // not observable from JS land, only through C API misuse;
         // JS code cannot create externally managed buffers directly
-        return JS_ThrowInternalError(ctx,
-                                     "resizable ArrayBuffers not supported "
-                                     "for externally managed buffers");
+        return JS_ThrowPlainError(ctx,
+                                  "resizable ArrayBuffers not supported "
+                                  "for externally managed buffers");
     }
     obj = js_create_from_ctor(ctx, new_target, class_id);
     if (JS_IsException(obj))
