@@ -57748,6 +57748,13 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
         JS_ThrowRangeError(ctx, "invalid max array buffer length");
         goto fail;
     }
+    if (alloc_flag && class_id == JS_CLASS_SHARED_ARRAY_BUFFER && max_len &&
+        *max_len > len && !rt->sab_funcs.sab_alloc) {
+        JS_ThrowTypeError(ctx,
+                          "growable SharedArrayBuffer requires "
+                          "SAB allocator hooks");
+        goto fail;
+    }
     abuf = js_malloc(ctx, sizeof(*abuf));
     if (!abuf)
         goto fail;
