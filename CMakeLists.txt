@@ -421,6 +421,7 @@ endif()
 
 if(QJS_BUILD_CLI_WITH_MIMALLOC OR QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
     find_package(mimalloc REQUIRED)
+    target_compile_definitions(qjs_exe PRIVATE QJS_USE_MIMALLOC)
     # Upstream mimalloc doesn't provide a way to know if both libraries are supported.
     if(QJS_BUILD_CLI_WITH_STATIC_MIMALLOC)
         target_link_libraries(qjs_exe PRIVATE mimalloc-static)
