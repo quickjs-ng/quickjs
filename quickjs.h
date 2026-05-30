@@ -1185,6 +1185,47 @@ JS_EXTERN void JS_SetModuleLoaderFunc2(JSRuntime *rt,
 JS_EXTERN void JS_SetModuleNormalizeFunc2(JSRuntime *rt,
                                           JSModuleNormalizeFunc2 *module_normalize);
 
+/* Async loader for dynamic import(). Only import() routes here; static imports
+   still use JS_SetModuleLoaderFunc[2]. The loader receives a handle and settles
+   it later (e.g. after async I/O) with JS_FulfillAsyncModuleLoad or
+   JS_RejectAsyncModuleLoad. Settling more than once is a no-op, and a handle the
+   host never settles is freed by JS_FreeRuntime. Concurrent import()s of the
+   same normalized specifier share one load, and a cached module is settled
+   without calling the loader. */
+
+/* opaque handle the host receives for an async load */
+typedef struct JSAsyncModuleLoadOpaque JSAsyncModuleLoadOpaque;
+typedef JSAsyncModuleLoadOpaque *JSAsyncModuleLoadHandle;
+
+/* called when JS evaluates import(specifier); settle `handle` later */
+typedef void JSModuleLoaderFuncAsync(JSContext *ctx,
+                                     const char *module_name,
+                                     void *opaque,
+                                     JSValueConst attributes,
+                                     JSAsyncModuleLoadHandle handle);
+
+/* register an async dynamic-import loader; module_loader_async = NULL
+   unregisters. Coexists with the sync loader used for static imports. */
+JS_EXTERN void JS_SetModuleLoaderFuncAsync(JSRuntime *rt,
+                                           JSModuleNormalizeFunc *module_normalize,
+                                           JSModuleLoaderFuncAsync *module_loader_async,
+                                           JSModuleCheckSupportedImportAttributes *module_check_attrs,
+                                           void *opaque);
+
+/* settle the import() Promise with a loaded module. `module` is a compiled,
+   not yet linked/evaluated JSModuleDef (e.g. from JS_Eval with
+   JS_EVAL_FLAG_COMPILE_ONLY); this drives link + evaluate. NULL rejects with a
+   generic error. Further calls on the handle are ignored. */
+JS_EXTERN void JS_FulfillAsyncModuleLoad(JSContext *ctx,
+                                         JSAsyncModuleLoadHandle handle,
+                                         JSModuleDef *module);
+
+/* reject the import() Promise with `error` (ownership taken). Further calls on
+   the handle are ignored. */
+JS_EXTERN void JS_RejectAsyncModuleLoad(JSContext *ctx,
+                                        JSAsyncModuleLoadHandle handle,
+                                        JSValue error);
+
 /* return the import.meta object of a module */
 JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
 JS_EXTERN JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
