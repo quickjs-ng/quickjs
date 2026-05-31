@@ -28,15 +28,10 @@ DEF(invalid, 1) /* never used */
 DEF(char8, 2) /* 7 bits in fact */
 DEF(char16, 3)
 DEF(char32, 5)
-DEF(char8_ci, 2) /* case-insensitive: canonicalize the input before comparing */
-DEF(char16_ci, 3)
-DEF(char32_ci, 5)
 DEF(dot, 1)
 DEF(any, 1) /* same as dot but match any character including line terminator */
 DEF(line_start, 1) /* multiline ^: match at string start or after a line terminator */
 DEF(line_end, 1) /* multiline $: match at string end or before a line terminator */
-DEF(bol, 1) /* absolute ^: match only at the start of the string */
-DEF(eol, 1) /* absolute $: match only at the end of the string */
 DEF(goto, 5)
 DEF(split_goto_first, 5)
 DEF(split_next_first, 5)
@@ -51,17 +46,26 @@ DEF(word_boundary, 1)
 DEF(not_word_boundary, 1)
 DEF(back_reference, 2)
 DEF(backward_back_reference, 2) /* must come after back_reference */
-DEF(back_reference_ci, 2) /* case-insensitive back reference */
-DEF(backward_back_reference_ci, 2) /* must come after back_reference_ci */
 DEF(range, 3) /* variable length */
 DEF(range32, 3) /* variable length */
-DEF(range_ci, 3) /* case-insensitive range, variable length */
-DEF(range32_ci, 3) /* case-insensitive range32, variable length */
 DEF(lookahead, 5)
 DEF(negative_lookahead, 5)
 DEF(push_char_pos, 1) /* push the character position on the stack */
 DEF(check_advance, 1) /* pop one stack element and check that it is different from the character position */
 DEF(prev, 1) /* go to the previous char */
 DEF(simple_greedy_quant, 17)
+
+/* Opcodes added for ES2025 RegExp pattern modifiers. Appended at the end so the
+   numeric values of the opcodes above stay stable (e.g. hardcoded bytecode in
+   lre-test.c and the bytecode validator depend on them). */
+DEF(char8_ci, 2) /* case-insensitive: canonicalize the input before comparing */
+DEF(char16_ci, 3)
+DEF(char32_ci, 5)
+DEF(bol, 1) /* absolute ^: match only at the start of the string */
+DEF(eol, 1) /* absolute $: match only at the end of the string */
+DEF(back_reference_ci, 2) /* case-insensitive back reference */
+DEF(backward_back_reference_ci, 2) /* must come after back_reference_ci */
+DEF(range_ci, 3) /* case-insensitive range, variable length */
+DEF(range32_ci, 3) /* case-insensitive range32, variable length */
 
 #endif /* DEF */
