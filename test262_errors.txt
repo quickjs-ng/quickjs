@@ -25,6 +25,12 @@ test262/test/built-ins/RegExp/property-escapes/special-property-value-Script_Ext
 test262/test/built-ins/RegExp/property-escapes/special-property-value-Script_Extensions-Unknown.js:14: strict mode: SyntaxError: unknown unicode script
 test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
 test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: strict mode: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
+test262/test/built-ins/RegExp/regexp-modifiers/add-ignoreCase-affects-slash-lower-b.js:48: Test262Error: \b should match after ſ
+test262/test/built-ins/RegExp/regexp-modifiers/add-ignoreCase-affects-slash-lower-b.js:48: strict mode: Test262Error: \b should match after ſ
+test262/test/built-ins/RegExp/regexp-modifiers/add-ignoreCase-affects-slash-lower-p.js:48: Test262Error: \p{Lu} should match A
+test262/test/built-ins/RegExp/regexp-modifiers/add-ignoreCase-affects-slash-lower-p.js:48: strict mode: Test262Error: \p{Lu} should match A
+test262/test/built-ins/RegExp/regexp-modifiers/add-ignoreCase-affects-slash-upper-b.js:48: Test262Error: \B should match between Z and ſ
+test262/test/built-ins/RegExp/regexp-modifiers/add-ignoreCase-affects-slash-upper-b.js:48: strict mode: Test262Error: \B should match between Z and ſ
 test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
 test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: strict mode: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
 test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-17.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 👨🏻‍🐰‍👨🏼 (U+01F468 U+01F3FB U+00200D U+01F430 U+00200D U+01F468 U+01F3FC)
