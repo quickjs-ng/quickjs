@@ -141,6 +141,14 @@ DEF(      get_field, 5, 1, 1, atom)
 DEF(     get_field2, 5, 1, 2, atom)
 DEF(      put_field, 5, 2, 0, atom)
 
+/* Inline-cache (IC) variants of the field accessors. Layout: opcode (1) +
+   atom (4) + ic_index (u16). The atom occupies the same offset as the
+   non-IC variant so that bytecode (de)serialization atom relocation works
+   unchanged. ic_index selects a slot in JSFunctionBytecode.ic. These are
+   monomorphic read caches for own data properties only. */
+DEF(   get_field_ic, 7, 1, 1, atom_u16)
+DEF(  get_field2_ic, 7, 1, 2, atom_u16)
+
 DEF( get_private_field, 1, 2, 1, none) /* obj prop -> value */
 DEF( put_private_field, 1, 3, 0, none) /* obj value prop -> */
 DEF(define_private_field, 1, 3, 1, none) /* obj prop value -> obj */

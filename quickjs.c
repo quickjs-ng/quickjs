@@ -351,6 +351,11 @@ struct JSRuntime {
     int shape_hash_size;
     int shape_hash_count; /* number of hashed shapes */
     JSShape **shape_hash;
+    /* monotonically increasing serial assigned to every newly created shape
+       (including clones/reallocs). Used by inline caches to defeat ABA: a freed
+       shape's memory reused for a new shape gets a fresh serial, so a cached
+       (pointer, serial) pair will not falsely match. */
+    uint64_t shape_serial_counter;
     void *user_opaque;
     void *libc_opaque;
     JSRuntimeFinalizerState *finalizers;
@@ -776,6 +781,37 @@ typedef enum JSFunctionKindEnum {
     JS_FUNC_ASYNC_GENERATOR = (JS_FUNC_GENERATOR | JS_FUNC_ASYNC),
 } JSFunctionKindEnum;
 
+/* Monomorphic inline-cache slot for object property reads (OP_get_field_ic /
+   OP_get_field2_ic). After a property is resolved as an own data property on
+   an object, the (shape, property offset) pair is remembered here. On the next
+   execution of the same bytecode site, if the receiver's shape matches the
+   cached one, the value is read directly from the cached offset, skipping
+   find_own_property and prototype-chain walking.
+
+   Self-invalidation: a shape describes structure immutably -- any structural
+   change to an object either moves it to a different shape pointer or appends
+   properties in place (existing offsets are never moved or reused without a new
+   shape allocation; deletes only renumber via compact_properties, which makes a
+   new shape). So if obj->shape equals the cached shape, the cached offset still
+   refers to the same own data property.
+
+   ABA hazard: a freed shape's memory can be reused for an unrelated shape at the
+   same address, which a bare pointer compare would falsely accept. We do NOT
+   hold a reference on the cached shape (that would break the engine's
+   "ref_count == 1 means exclusively-owned, mutate in place" invariant). Instead
+   every shape carries a runtime-unique serial (JSShape.ic_serial), assigned
+   afresh whenever a shape's memory is (re)allocated. The cache stores that
+   serial and a hit requires BOTH obj->shape == shape AND
+   obj->shape->ic_serial == serial. Reused memory always has a different serial,
+   so ABA cannot produce a false hit. We never dereference the cached pointer
+   (only compare it); ic_serial is read from obj->shape, which is always a live
+   shape. Hence no references, no GC marking, and no UAF. */
+typedef struct JSInlineCache {
+    JSShape *shape;       /* cached shape pointer (compared, never deref'd) */
+    uint64_t serial;      /* cached shape->ic_serial at fill time */
+    uint32_t prop_offset; /* index into obj->prop[] for the cached property */
+} JSInlineCache;
+
 typedef struct JSFunctionBytecode {
     JSGCObjectHeader header; /* must come first */
     uint8_t is_strict_mode : 1;
@@ -812,6 +848,8 @@ typedef struct JSFunctionBytecode {
     int pc2line_len;
     uint8_t *pc2line_buf;
     char *source;
+    JSInlineCache *ic; /* inline-cache slots (separate allocation), or NULL */
+    int ic_count;      /* number of slots in ic[] */
 } JSFunctionBytecode;
 
 typedef struct JSBoundFunction {
@@ -1037,6 +1075,7 @@ struct JSShape {
     int deleted_prop_count;
     JSShape *shape_hash_next; /* in JSRuntime.shape_hash[h] list */
     JSObject *proto;
+    uint64_t ic_serial; /* unique serial for inline-cache ABA protection */
     JSShapeProperty prop[]; /* prop_size elements */
 };
 
@@ -5295,6 +5334,12 @@ static void js_shape_hash_unlink(JSRuntime *rt, JSShape *sh)
     rt->shape_hash_count--;
 }
 
+/* assign a fresh, runtime-unique serial to a shape (ABA protection for ICs) */
+static inline void js_shape_assign_serial(JSRuntime *rt, JSShape *sh)
+{
+    sh->ic_serial = ++rt->shape_serial_counter;
+}
+
 /* create a new empty shape with prototype 'proto'. It is not hashed */
 static inline JSShape *js_new_shape_nohash(JSContext *ctx, JSObject *proto,
                                            int hash_size, int prop_size)
@@ -5308,6 +5353,7 @@ static inline JSShape *js_new_shape_nohash(JSContext *ctx, JSObject *proto,
         return NULL;
     sh = get_shape_from_alloc(sh_alloc, hash_size);
     sh->header.ref_count = 1;
+    js_shape_assign_serial(rt, sh);
     add_gc_object(rt, &sh->header, JS_GC_OBJ_TYPE_SHAPE);
     if (proto)
         js_dup(JS_MKPTR(JS_TAG_OBJECT, proto));
@@ -5404,6 +5450,7 @@ static JSShape *js_clone_shape(JSContext *ctx, JSShape *sh1)
     memcpy(sh_alloc, sh_alloc1, size);
     sh = get_shape_from_alloc(sh_alloc, hash_size);
     sh->header.ref_count = 1;
+    js_shape_assign_serial(ctx->rt, sh);
     add_gc_object(ctx->rt, &sh->header, JS_GC_OBJ_TYPE_SHAPE);
     sh->is_hashed = false;
     if (sh->proto) {
@@ -5454,6 +5501,16 @@ static void js_free_shape_null(JSRuntime *rt, JSShape *sh)
         js_free_shape(rt, sh);
 }
 
+/* Refill an inline-cache slot with (shape, serial, prop_offset). No reference
+   is held on the shape; ABA is defeated by the serial. */
+static inline void ic_update(JSInlineCache *ic, JSShape *sh,
+                             uint32_t prop_offset)
+{
+    ic->shape = sh;
+    ic->serial = sh->ic_serial;
+    ic->prop_offset = prop_offset;
+}
+
 /* make space to hold at least 'count' properties */
 static no_inline int resize_properties(JSContext *ctx, JSShape **psh,
                                        JSObject *p, uint32_t count)
@@ -5490,6 +5547,10 @@ static no_inline int resize_properties(JSContext *ctx, JSShape **psh,
         /* copy all the fields and the properties */
         memcpy(sh, old_sh,
                sizeof(JSShape) + sizeof(sh->prop[0]) * old_sh->prop_count);
+        /* the shape moved (and old memory will be freed): assign a fresh
+           serial so any IC caching the old (pointer, serial) cannot match a
+           future shape reusing the old memory. */
+        js_shape_assign_serial(ctx->rt, sh);
         list_add_tail(&sh->header.link, &ctx->rt->gc_obj_list);
         new_hash_mask = new_hash_size - 1;
         sh->prop_hash_mask = new_hash_mask;
@@ -5514,6 +5575,9 @@ static no_inline int resize_properties(JSContext *ctx, JSShape **psh,
             return -1;
         }
         sh = get_shape_from_alloc(sh_alloc, new_hash_size);
+        /* the shape may have moved via realloc and the old memory freed:
+           assign a fresh serial for IC ABA protection. */
+        js_shape_assign_serial(ctx->rt, sh);
         list_add_tail(&sh->header.link, &ctx->rt->gc_obj_list);
     }
     *psh = sh;
@@ -5551,6 +5615,8 @@ static int compact_properties(JSContext *ctx, JSObject *p)
     sh = get_shape_from_alloc(sh_alloc, new_hash_size);
     list_del(&old_sh->header.link);
     memcpy(sh, old_sh, sizeof(JSShape));
+    /* new shape memory (old freed below): fresh serial for IC ABA protection */
+    js_shape_assign_serial(ctx->rt, sh);
     list_add_tail(&sh->header.link, &ctx->rt->gc_obj_list);
 
     memset(prop_hash_end(sh) - new_hash_size, 0,
@@ -6907,6 +6973,8 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
             for(i = 0; i < b->cpool_count; i++) {
                 JS_MarkValue(rt, b->cpool[i], mark_func);
             }
+            /* Inline caches do NOT hold references on cached shapes (ABA is
+               handled by JSShape.ic_serial), so nothing to mark here. */
             if (b->realm)
                 mark_func(rt, &b->realm->header);
         }
@@ -10727,6 +10795,12 @@ static int js_shape_prepare_update(JSContext *ctx, JSObject *p,
         } else {
             js_shape_hash_unlink(ctx->rt, sh);
             sh->is_hashed = false;
+            /* This shape is about to be mutated in place (property flags or
+               structure changing) while keeping the same pointer. Bump its
+               serial so any inline cache keyed on the old (pointer, serial)
+               pair misses and re-resolves, e.g. when a data property is
+               redefined as an accessor via Object.defineProperty. */
+            js_shape_assign_serial(ctx->rt, sh);
         }
     }
     return 0;
@@ -19137,6 +19211,126 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             }
             BREAK;
 
+        CASE(OP_get_field_ic):
+            {
+                JSValue val, obj;
+                JSAtom atom;
+                JSObject *p;
+                JSProperty *pr;
+                JSShapeProperty *prs;
+                JSInlineCache *ic;
+                uint32_t ic_idx;
+
+                atom = get_u32(pc);
+                ic_idx = get_u16(pc + 4);
+                pc += 6;
+                ic = &b->ic[ic_idx];
+
+                obj = sp[-1];
+                if (likely(JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT)) {
+                    p = JS_VALUE_GET_OBJ(obj);
+                    if (likely(p->shape == ic->shape &&
+                               p->shape->ic_serial == ic->serial)) {
+                        /* inline cache hit: own data property at cached offset */
+                        val = js_dup(p->prop[ic->prop_offset].u.value);
+                        goto get_field_ic_done;
+                    }
+                    for(;;) {
+                        prs = find_own_property(&pr, p, atom);
+                        if (prs) {
+                            if (unlikely(prs->flags & JS_PROP_TMASK))
+                                goto get_field_ic_slow_path;
+                            val = js_dup(pr->u.value);
+                            /* refill the cache: own data property found
+                               directly on the (non-exotic) receiver object */
+                            if (likely(p == JS_VALUE_GET_OBJ(obj) &&
+                                       !p->is_exotic)) {
+                                ic_update(ic, p->shape,
+                                          (uint32_t)(pr - p->prop));
+                            }
+                            break;
+                        }
+                        if (unlikely(p->is_exotic)) {
+                            obj = JS_MKPTR(JS_TAG_OBJECT, p);
+                            goto get_field_ic_slow_path;
+                        }
+                        p = p->shape->proto;
+                        if (!p) {
+                            val = JS_UNDEFINED;
+                            break;
+                        }
+                    }
+                } else {
+                get_field_ic_slow_path:
+                    sf->cur_pc = pc;
+                    val = JS_GetPropertyInternal(ctx, obj, atom, sp[-1], false);
+                    if (unlikely(JS_IsException(val)))
+                        goto exception;
+                }
+            get_field_ic_done:
+                JS_FreeValue(ctx, sp[-1]);
+                sp[-1] = val;
+            }
+            BREAK;
+
+        CASE(OP_get_field2_ic):
+            {
+                JSValue val, obj;
+                JSAtom atom;
+                JSObject *p;
+                JSProperty *pr;
+                JSShapeProperty *prs;
+                JSInlineCache *ic;
+                uint32_t ic_idx;
+
+                atom = get_u32(pc);
+                ic_idx = get_u16(pc + 4);
+                pc += 6;
+                ic = &b->ic[ic_idx];
+
+                obj = sp[-1];
+                if (likely(JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT)) {
+                    p = JS_VALUE_GET_OBJ(obj);
+                    if (likely(p->shape == ic->shape &&
+                               p->shape->ic_serial == ic->serial)) {
+                        val = js_dup(p->prop[ic->prop_offset].u.value);
+                        goto get_field2_ic_done;
+                    }
+                    for(;;) {
+                        prs = find_own_property(&pr, p, atom);
+                        if (prs) {
+                            if (unlikely(prs->flags & JS_PROP_TMASK))
+                                goto get_field2_ic_slow_path;
+                            val = js_dup(pr->u.value);
+                            if (likely(p == JS_VALUE_GET_OBJ(obj) &&
+                                       !p->is_exotic)) {
+                                ic_update(ic, p->shape,
+                                          (uint32_t)(pr - p->prop));
+                            }
+                            break;
+                        }
+                        if (unlikely(p->is_exotic)) {
+                            obj = JS_MKPTR(JS_TAG_OBJECT, p);
+                            goto get_field2_ic_slow_path;
+                        }
+                        p = p->shape->proto;
+                        if (!p) {
+                            val = JS_UNDEFINED;
+                            break;
+                        }
+                    }
+                } else {
+                get_field2_ic_slow_path:
+                    sf->cur_pc = pc;
+                    val = JS_GetPropertyInternal(ctx, obj, atom, sp[-1], false);
+                    if (unlikely(JS_IsException(val)))
+                        goto exception;
+                }
+            get_field2_ic_done:
+                *sp++ = val;
+            }
+            BREAK;
+
         CASE(OP_put_field):
             {
                 int ret;
@@ -21734,6 +21928,8 @@ typedef struct JSFunctionDef {
     JumpSlot *jump_slots;
     int jump_size;
     int jump_count;
+
+    int ic_count; /* number of inline-cache sites assigned in resolve_labels */
 
     SourceLocSlot *source_loc_slots;
     int source_loc_size;
@@ -35347,12 +35543,28 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
             goto no_change;
 
         case OP_get_field:
+        case OP_get_field2:
             {
                 JSAtom atom = get_u32(bc_buf + pos + 1);
-                if (atom == JS_ATOM_length) {
+                if (op == OP_get_field && atom == JS_ATOM_length) {
                     JS_FreeAtom(ctx, atom);
                     add_pc2line_info(s, bc_out.size, line_num, col_num);
                     dbuf_putc(&bc_out, OP_get_length);
+                    break;
+                }
+                /* Convert plain field reads into inline-cache variants, assigning
+                   a unique IC slot index per site. The atom keeps its position
+                   (offset +1); an extra u16 IC index is appended. The IC index
+                   must fit in a u16; if exhausted, fall back to the plain
+                   opcode. */
+                if (s->ic_count < 0x10000) {
+                    int ic_idx = s->ic_count++;
+                    add_pc2line_info(s, bc_out.size, line_num, col_num);
+                    dbuf_putc(&bc_out,
+                              op == OP_get_field ? OP_get_field_ic
+                                                 : OP_get_field2_ic);
+                    dbuf_put_u32(&bc_out, atom);
+                    dbuf_put_u16(&bc_out, ic_idx);
                     break;
                 }
             }
@@ -36210,6 +36422,16 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
         goto fail;
     b->header.ref_count = 1;
 
+    /* allocate the inline-cache slots (zeroed: empty slots) */
+    b->ic_count = fd->ic_count;
+    if (b->ic_count > 0) {
+        b->ic = js_mallocz(ctx, sizeof(*b->ic) * b->ic_count);
+        if (!b->ic) {
+            js_free(ctx, b);
+            goto fail;
+        }
+    }
+
     b->byte_code_buf = (void *)((uint8_t*)b + byte_code_offset);
     b->byte_code_len = fd->byte_code.size;
     memcpy(b->byte_code_buf, fd->byte_code.buf, fd->byte_code.size);
@@ -36327,6 +36549,10 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
     JS_FreeAtomRT(rt, b->filename);
     js_free_rt(rt, b->pc2line_buf);
     js_free_rt(rt, b->source);
+
+    /* free the inline-cache array (no shape references are held) */
+    js_free_rt(rt, b->ic);
+    b->ic = NULL;
 
     remove_gc_object(&b->header);
     if (rt->gc_phase == JS_GC_PHASE_REMOVE_CYCLES && b->header.ref_count != 0) {
@@ -37642,7 +37868,10 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 26
+/* Bumped from 26: inline-cache opcodes (OP_get_field_ic / OP_get_field2_ic)
+   were added, which renumbers the opcode space, so previously serialized
+   bytecode is incompatible and must be rejected rather than misparsed. */
+#define BC_VERSION 27
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -38844,6 +39073,40 @@ static int BC_add_object_ref(BCReaderState *s, JSValue obj)
     return BC_add_object_ref1(s, JS_VALUE_GET_OBJ(obj));
 }
 
+/* Scan deserialized bytecode for inline-cache opcodes and allocate the IC
+   array sized to (max IC index + 1). Returns -1 on allocation failure or if
+   the bytecode is malformed (IC opcode would read past the end). */
+static int bc_function_alloc_ic(JSContext *ctx, JSFunctionBytecode *b)
+{
+    const uint8_t *bc_buf = b->byte_code_buf;
+    int bc_len = b->byte_code_len;
+    int pos, len, op, max_idx = -1;
+    uint32_t ic_idx;
+
+    pos = 0;
+    while (pos < bc_len) {
+        op = bc_buf[pos];
+        len = short_opcode_info(op).size;
+        if (pos + len > bc_len)
+            return -1;
+        if (op == OP_get_field_ic || op == OP_get_field2_ic) {
+            ic_idx = get_u16(bc_buf + pos + 5);
+            if ((int)ic_idx > max_idx)
+                max_idx = (int)ic_idx;
+        }
+        pos += len;
+    }
+    if (max_idx < 0)
+        return 0;
+    b->ic_count = max_idx + 1;
+    b->ic = js_mallocz(ctx, sizeof(*b->ic) * b->ic_count);
+    if (!b->ic) {
+        b->ic_count = 0;
+        return -1;
+    }
+    return 0;
+}
+
 static JSValue JS_ReadFunctionTag(BCReaderState *s)
 {
     JSContext *ctx = s->ctx;
@@ -39030,6 +39293,10 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
             goto fail;
         bc_read_trace(s, "}\n");
     }
+    /* (re)build the inline-cache array for deserialized bytecode: scan for IC
+       opcodes and size the array to the largest IC index + 1. */
+    if (bc_function_alloc_ic(ctx, b))
+        goto fail;
     if (!has_debug_info)
         goto nodebug;
 
