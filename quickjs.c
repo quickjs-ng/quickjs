@@ -31099,13 +31099,14 @@ static void js_load_module_continue_n(JSContext *ctx, JSModuleDef *m,
     JS_FreeValue(ctx, evaluate_promise);
 }
 
-/* single-waiter wrapper (sync loader + cache-hit paths) */
+/* single-waiter wrapper (sync loader + cache-hit paths). The waiter only
+   borrows resolving_funcs (js_load_module_continue_n never frees them). */
 static void js_load_module_continue(JSContext *ctx, JSModuleDef *m,
                                     JSValueConst *resolving_funcs)
 {
     JSAsyncModuleWaiter w;
-    w.resolving_funcs[0] = resolving_funcs[0];
-    w.resolving_funcs[1] = resolving_funcs[1];
+    w.resolving_funcs[0] = unsafe_unconst(resolving_funcs[0]);
+    w.resolving_funcs[1] = unsafe_unconst(resolving_funcs[1]);
     js_load_module_continue_n(ctx, m, &w, 1);
 }
 
