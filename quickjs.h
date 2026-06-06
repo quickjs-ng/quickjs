@@ -68,7 +68,7 @@ extern "C" {
 #  define JS_EXTERN /* nothing */
 # endif
 #else
-# ifdef QUICKJS_NG_CC_GNULIKE
+# if defined(BUILDING_QJS_SHARED) && defined(QUICKJS_NG_CC_GNULIKE)
 #  define JS_EXTERN __attribute__((visibility("default")))
 # else
 #  define JS_EXTERN /* nothing */
@@ -109,7 +109,7 @@ extern "C" {
 #  define JS_MODULE_EXTERN __declspec(dllimport)
 # endif
 #else
-# ifdef QUICKJS_NG_CC_GNULIKE
+# if defined(QUICKJS_NG_MODULE_BUILD) && defined(QUICKJS_NG_CC_GNULIKE)
 #  define JS_MODULE_EXTERN __attribute__((visibility("default")))
 # else
 #  define JS_MODULE_EXTERN /* nothing */
