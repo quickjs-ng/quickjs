@@ -15324,6 +15324,11 @@ static no_inline __exception int js_binary_logic_slow(JSContext *ctx,
         JSBigInt *p1, *p2, *r;
         JSBigIntBuf buf1, buf2;
     slow_big_int:
+        /* buf2 is zero-initialized here (after the label, so it also runs on
+           the goto slow_big_int paths) to silence a -Wmaybe-uninitialized
+           false positive: GCC cannot prove buf2 is initialized through the
+           inlined js_bigint_get_si_sat() -> js_bigint_sign() read below. */
+        memset(&buf2, 0, sizeof(buf2));
         if (JS_VALUE_GET_TAG(op1) == JS_TAG_SHORT_BIG_INT)
             p1 = js_bigint_set_short(&buf1, op1);
         else
