@@ -6,7 +6,7 @@ project(
     'c_std=gnu11,c11',
     'warning_level=3',
   ],
-  license: 'MIT',
+  license: 'MIT AND Unicode-3.0',
   license_files: 'LICENSE',
   meson_version: '>=1.3.0',
 )
