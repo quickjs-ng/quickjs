@@ -6811,6 +6811,24 @@ void JS_FreeValue(JSContext *ctx, JSValue v)
     JS_FreeValueRT(ctx->rt, v);
 }
 
+void js_freevalue_rt_v(JSRuntime *rt, int num, ...)
+{
+    va_list va;
+    va_start(va, num);
+    while (num--)
+        JS_FreeValueRT(rt, va_arg(va, JSValue));
+    va_end(va);
+}
+
+void js_freevalue_v(JSContext *ctx, int num, ...)
+{
+    va_list va;
+    va_start(va, num);
+    while (num--)
+        JS_FreeValueRT(ctx->rt, va_arg(va, JSValue));
+    va_end(va);
+}
+
 /* garbage collection */
 
 static void add_gc_object(JSRuntime *rt, JSGCObjectHeader *h,
