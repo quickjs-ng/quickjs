@@ -599,6 +599,9 @@ JS_EXTERN JSAtom JS_DupAtom(JSContext *ctx, JSAtom v);
 JS_EXTERN JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v);
 JS_EXTERN void JS_FreeAtom(JSContext *ctx, JSAtom v);
 JS_EXTERN void JS_FreeAtomRT(JSRuntime *rt, JSAtom v);
+#define JS_FAV_NUMARGS(...) (sizeof((JSAtom[]){__VA_ARGS__}) / sizeof(JSAtom))
+#define JS_FreeAtoms(ctx, ...) js_freeatom_v(ctx, JS_FAV_NUMARGS(__VA_ARGS__), __VA_ARGS__)
+#define JS_FreeAtomsRT(rt, ...) js_freeatom_rt_v(rt, JS_FAV_NUMARGS(__VA_ARGS__), __VA_ARGS__)
 JS_EXTERN JSValue JS_AtomToValue(JSContext *ctx, JSAtom atom);
 JS_EXTERN JSValue JS_AtomToString(JSContext *ctx, JSAtom atom);
 JS_EXTERN const char *JS_AtomToCStringLen(JSContext *ctx, size_t *plen, JSAtom atom);
