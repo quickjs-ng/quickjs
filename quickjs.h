@@ -846,8 +846,8 @@ JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
 JS_EXTERN void js_freevalue_v(JSContext *ctx, int num, ...);
 JS_EXTERN void js_freevalue_rt_v(JSRuntime *ctx, int num, ...);
 #define JS_FVV_NUMARGS(...) (sizeof((JSValue[]){__VA_ARGS__}) / sizeof(JSValue))
-#define JS_FreeValue_V(ctx, ...) js_freevalue_v(ctx, JS_FVV_NUMARGS(__VA_ARGS__), __VA_ARGS__)
-#define JS_FreeValueRT_V(rt, ...) js_freevalue_rt_v(rt, JS_FVV_NUMARGS(__VA_ARGS__), __VA_ARGS__)
+#define JS_FreeValues(ctx, ...) js_freevalue_v(ctx, JS_FVV_NUMARGS(__VA_ARGS__), __VA_ARGS__)
+#define JS_FreeValuesRT(rt, ...) js_freevalue_rt_v(rt, JS_FVV_NUMARGS(__VA_ARGS__), __VA_ARGS__)
 JS_EXTERN JSValue JS_DupValue(JSContext *ctx, JSValueConst v);
 JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v);
 JS_EXTERN int JS_ToBool(JSContext *ctx, JSValueConst val); /* return -1 for JS_EXCEPTION */
