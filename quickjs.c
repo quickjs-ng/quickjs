@@ -58167,13 +58167,14 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (abuf->shared)
         return JS_ThrowTypeError(ctx, "cannot transfer a SharedArrayBuffer");
-    if (magic == JS_ARRAY_BUFFER_TRANSFER_TO_IMMUTABLE && abuf->immutable)
-        return JS_ThrowTypeErrorImmutableArrayBuffer(ctx);
+    // Spec (ArrayBufferCopyAndDetach): the newLength argument must be
+    // coerced (its valueOf observed) before the buffer's detachability /
+    // immutability is checked, so side effects of coercion are visible.
     if (argc < 1 || JS_IsUndefined(argv[0]))
         new_len = abuf->byte_length;
     else if (JS_ToIndex(ctx, &new_len, argv[0]))
         return JS_EXCEPTION;
-    if (magic != JS_ARRAY_BUFFER_TRANSFER_TO_IMMUTABLE && abuf->immutable)
+    if (abuf->immutable)
         return JS_ThrowTypeErrorImmutableArrayBuffer(ctx);
     if (abuf->detached)
         return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
@@ -58350,8 +58351,15 @@ static JSValue js_array_buffer_slice(JSContext *ctx,
         goto fail;
     }
     /* must test again because of side effects */
-    if (abuf->detached || abuf->byte_length < start + new_len) {
+    if (abuf->detached) {
         JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
+        goto fail;
+    }
+    if (abuf->byte_length < start + new_len) {
+        if (immutable)
+            JS_ThrowRangeError(ctx, "invalid array buffer length");
+        else
+            JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
         goto fail;
     }
     memcpy(new_abuf->data, abuf->data + start, new_len);
