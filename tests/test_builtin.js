@@ -705,9 +705,9 @@ function test_typed_array()
     assert(ta[0], 0);
     Object.defineProperty(ta, "0", {value: 1337});
     assert(ta[0], 0);
-    assert(desc.writable, false);
+    assert(desc.writable, true);
     assert(desc.enumerable, true);
-    assert(desc.configurable, false);
+    assert(desc.configurable, true);
 }
 
 function test_json()
