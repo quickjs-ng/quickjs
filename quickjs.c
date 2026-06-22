@@ -3659,24 +3659,6 @@ void JS_FreeAtomRT(JSRuntime *rt, JSAtom v)
         __JS_FreeAtom(rt, v);
 }
 
-void js_freeatom_v(JSContext *ctx, int num, ...)
-{
-    va_list va;
-    va_start(va, num);
-    while (num--)
-        JS_FreeAtom(ctx, va_arg(va, JSAtom));
-    va_end(va);
-}
-
-void js_freeatom_rt_v(JSRuntime *rt, int num, ...)
-{
-    va_list va;
-    va_start(va, num);
-    while (num--)
-        JS_FreeAtomRT(rt, va_arg(va, JSAtom));
-    va_end(va);
-}
-
 /* return true if 'v' is a symbol with a string description */
 static bool JS_AtomSymbolHasDescription(JSContext *ctx, JSAtom v)
 {
@@ -6827,24 +6809,6 @@ void JS_FreeValueRT(JSRuntime *rt, JSValue v)
 void JS_FreeValue(JSContext *ctx, JSValue v)
 {
     JS_FreeValueRT(ctx->rt, v);
-}
-
-void js_freevalue_rt_v(JSRuntime *rt, int num, ...)
-{
-    va_list va;
-    va_start(va, num);
-    while (num--)
-        JS_FreeValueRT(rt, va_arg(va, JSValue));
-    va_end(va);
-}
-
-void js_freevalue_v(JSContext *ctx, int num, ...)
-{
-    va_list va;
-    va_start(va, num);
-    while (num--)
-        JS_FreeValueRT(ctx->rt, va_arg(va, JSValue));
-    va_end(va);
 }
 
 /* garbage collection */
