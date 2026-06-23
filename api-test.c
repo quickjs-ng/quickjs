@@ -1131,6 +1131,43 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+static void bulk_free_macros(void) {
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    JSValue val0 = JS_NewObject(ctx);
+    JSValue val1 = JS_NewArray(ctx);
+    JSValue val2 = JS_NewDate(ctx, 0.0);
+    
+    JSMemoryUsage mem_usage;
+    JS_ComputeMemoryUsage(rt, &mem_usage);
+    int obj_count = mem_usage.obj_count;
+
+    JS_FreeValues(ctx, val0, val1);
+    JS_FreeValuesRT(rt, val2);
+
+    // silly atoms to ensure qjs doesn't find built-ins that match
+    JSAtom atom0 = JS_NewAtom(ctx, "ALL!!");
+    JSAtom atom1 = JS_NewAtom(ctx, "YOUR!!");
+    JSAtom atom2 = JS_NewAtom(ctx, "AROMS!!");
+    JSAtom atom3 = JS_NewAtom(ctx, "ARE!!");
+    JSAtom atom4 = JS_NewAtom(ctx, "BELONG!!");
+    JSAtom atom5 = JS_NewAtom(ctx, "TO US!!");
+
+    JS_ComputeMemoryUsage(rt, &mem_usage);
+    assert((obj_count - 3) == mem_usage.obj_count);
+    int atom_count = mem_usage.atom_count;
+
+    JS_FreeAtoms(ctx, atom1, atom3, atom4);
+    JS_FreeAtomsRT(rt, atom0, atom2, atom5);
+
+    JS_ComputeMemoryUsage(rt, &mem_usage);
+    assert((atom_count - 6) == mem_usage.atom_count);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1153,5 +1190,6 @@ int main(void)
     shared_array_buffer_growth();
     get_uint8array();
     new_symbol();
+    bulk_free_macros();
     return 0;
 }
