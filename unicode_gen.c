@@ -3081,8 +3081,19 @@ int main(int argc, char **argv)
 #endif
     } else
     {
-        FILE *fo = fopen(outfilename, "wb");
+        FILE *fo;
+        char license[8192] = {0};
 
+        snprintf(filename, sizeof(filename), "%s/license.txt", unicode_db_path);
+        fo = fopen(filename, "r");
+        if (!fo) {
+            perror(filename);
+            exit(1);
+        }
+        fread(license, 1, sizeof(license)-1, fo);
+        fclose(fo);
+
+        fo = fopen(outfilename, "wb");
         if (!fo) {
             perror(outfilename);
             exit(1);
@@ -3091,8 +3102,10 @@ int main(int argc, char **argv)
                 "/* Compressed unicode tables */\n"
                 "/* Automatically generated file - do not edit */\n"
                 "\n"
+                "/*\n%s*/\n"
+                "\n"
                 "#include <stdint.h>\n"
-                "\n");
+                "\n", license);
         dump_case_conv_table(fo);
         compute_internal_props();
         build_flags_tables(fo);
