@@ -1,7 +1,9 @@
 #!/bin/sh
 set -e
 
-url="https://www.unicode.org/Public/17.0.0/ucd"
+baseurl="https://www.unicode.org"
+license_url="${baseurl}/license.txt"
+url="${baseurl}/Public/17.0.0/ucd"
 emoji_url="${url}/emoji/emoji-data.txt"
 
 files="CaseFolding.txt DerivedNormalizationProps.txt PropList.txt \
@@ -17,3 +19,4 @@ for f in $files; do
 done
     
 wget $emoji_url -O unicode/emoji-data.txt
+wget $license_url -O unicode/license.txt
