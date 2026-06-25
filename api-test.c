@@ -1149,7 +1149,7 @@ static void bulk_free_macros(void) {
     // silly atoms to ensure qjs doesn't find built-ins that match
     JSAtom atom0 = JS_NewAtom(ctx, "ALL!!");
     JSAtom atom1 = JS_NewAtom(ctx, "YOUR!!");
-    JSAtom atom2 = JS_NewAtom(ctx, "AROMS!!");
+    JSAtom atom2 = JS_NewAtom(ctx, "ATOMS!!");
     JSAtom atom3 = JS_NewAtom(ctx, "ARE!!");
     JSAtom atom4 = JS_NewAtom(ctx, "BELONG!!");
     JSAtom atom5 = JS_NewAtom(ctx, "TO US!!");
