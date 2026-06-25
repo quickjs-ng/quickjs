@@ -526,8 +526,10 @@ struct JSContext {
 
     uint64_t random_state;
 
-    /* when the counter reaches zero, JSRutime.interrupt_handler is called */
+    /* when the counter reaches zero, JSRuntime.interrupt_handler is called */
     int interrupt_counter;
+    uint64_t interrupt_count;
+    uint64_t interrupt_limit; /* 0 = unlimited */
 
     struct list_head loaded_modules; /* list of JSModuleDef.link */
 
@@ -2123,6 +2125,21 @@ void JS_SetInterruptHandler(JSRuntime *rt, JSInterruptHandler *cb, void *opaque)
     rt->interrupt_opaque = opaque;
 }
 
+void JS_SetContextInterruptLimit(JSContext *ctx, uint64_t limit)
+{
+    ctx->interrupt_limit = limit;
+}
+
+uint64_t JS_GetContextInterruptCount(JSContext *ctx)
+{
+    return ctx->interrupt_count;
+}
+
+void JS_ResetContextInterruptCount(JSContext *ctx)
+{
+    ctx->interrupt_count = 0;
+}
+
 void JS_SetCanBlock(JSRuntime *rt, bool can_block)
 {
     rt->can_block = can_block;
@@ -2521,6 +2538,8 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->error_back_trace = JS_UNDEFINED;
     ctx->error_prepare_stack = JS_UNDEFINED;
     ctx->error_stack_trace_limit = js_int32(10);
+    ctx->interrupt_count = 0;
+    ctx->interrupt_limit = 0;
     init_list_head(&ctx->loaded_modules);
 
     if (JS_AddIntrinsicBasicObjects(ctx)) {
@@ -8251,6 +8270,11 @@ static no_inline __exception int __js_poll_interrupts(JSContext *ctx)
 {
     JSRuntime *rt = ctx->rt;
     ctx->interrupt_counter = JS_INTERRUPT_COUNTER_INIT;
+    ctx->interrupt_count++;
+    if (ctx->interrupt_limit > 0 && ctx->interrupt_count >= ctx->interrupt_limit) {
+        JS_ThrowInterrupted(ctx);
+        return -1;
+    }
     if (rt->interrupt_handler) {
         if (rt->interrupt_handler(rt, rt->interrupt_opaque)) {
             JS_ThrowInterrupted(ctx);
