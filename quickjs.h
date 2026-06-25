@@ -135,6 +135,25 @@ extern "C" {
 #endif
 #endif
 
+/*
+ * `JS_CALL_X` -- macro tree for calling a function with a variable number of arguments.
+ * This is used for bulk operations such as freeing values or atoms.
+ */
+#define JS_COUNT_ARGS_(_0, _8, _7, _6, _5, _4, _3, _2, _1, N, ...) N
+#define JS_COUNT_ARGS(...) JS_COUNT_ARGS_(0, __VA_ARGS__, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+
+#define JS_CALLX1(F,X,a)               do { F(X,a); } while (0)
+#define JS_CALLX2(F,X,a,b)             do { F(X,a); F(X,b); } while (0)
+#define JS_CALLX3(F,X,a,b,c)           do { F(X,a); F(X,b); F(X,c); } while (0)
+#define JS_CALLX4(F,X,a,b,c,d)         do { F(X,a); F(X,b); F(X,c); F(X,d); } while (0)
+#define JS_CALLX5(F,X,a,b,c,d,e)       do { F(X,a); F(X,b); F(X,c); F(X,d); F(X,e); } while (0)
+#define JS_CALLX6(F,X,a,b,c,d,e,f)     do { F(X,a); F(X,b); F(X,c); F(X,d); F(X,e); F(X,f); } while (0)
+#define JS_CALLX7(F,X,a,b,c,d,e,f,g)   do { F(X,a); F(X,b); F(X,c); F(X,d); F(X,e); F(X,f); F(X,g); } while (0)
+#define JS_CALLX8(F,X,a,b,c,d,e,f,g,h) do { F(X,a); F(X,b); F(X,c); F(X,d); F(X,e); F(X,f); F(X,g); F(X,h); } while (0)
+
+#define JS_CALLX__(F, X, N, ...) JS_CALLX##N(F, X, __VA_ARGS__)
+#define JS_CALLX_(F, X, N, ...) JS_CALLX__(F, X, N, __VA_ARGS__)
+
 #undef QUICKJS_NG_CC_GNULIKE
 #undef QUICKJS_NG_PLAT_WIN32
 
@@ -599,6 +618,8 @@ JS_EXTERN JSAtom JS_DupAtom(JSContext *ctx, JSAtom v);
 JS_EXTERN JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v);
 JS_EXTERN void JS_FreeAtom(JSContext *ctx, JSAtom v);
 JS_EXTERN void JS_FreeAtomRT(JSRuntime *rt, JSAtom v);
+#define JS_FreeAtoms(ctx, ...) JS_CALLX_(JS_FreeAtom, ctx, JS_COUNT_ARGS(__VA_ARGS__), __VA_ARGS__)
+#define JS_FreeAtomsRT(rt, ...) JS_CALLX_(JS_FreeAtomRT, rt, JS_COUNT_ARGS(__VA_ARGS__), __VA_ARGS__)
 JS_EXTERN JSValue JS_AtomToValue(JSContext *ctx, JSAtom atom);
 JS_EXTERN JSValue JS_AtomToString(JSContext *ctx, JSAtom atom);
 JS_EXTERN const char *JS_AtomToCStringLen(JSContext *ctx, size_t *plen, JSAtom atom);
@@ -843,6 +864,8 @@ JS_EXTERN JSValue JS_PRINTF_FORMAT_ATTR(3, 4) JS_ThrowDOMException(JSContext *ct
 JS_EXTERN JSValue JS_ThrowOutOfMemory(JSContext *ctx);
 JS_EXTERN void JS_FreeValue(JSContext *ctx, JSValue v);
 JS_EXTERN void JS_FreeValueRT(JSRuntime *rt, JSValue v);
+#define JS_FreeValues(ctx, ...) JS_CALLX_(JS_FreeValue, ctx, JS_COUNT_ARGS(__VA_ARGS__), __VA_ARGS__)
+#define JS_FreeValuesRT(rt, ...) JS_CALLX_(JS_FreeValueRT, rt, JS_COUNT_ARGS(__VA_ARGS__), __VA_ARGS__)
 JS_EXTERN JSValue JS_DupValue(JSContext *ctx, JSValueConst v);
 JS_EXTERN JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v);
 JS_EXTERN int JS_ToBool(JSContext *ctx, JSValueConst val); /* return -1 for JS_EXCEPTION */
