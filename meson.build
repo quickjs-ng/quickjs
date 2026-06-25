@@ -8,7 +8,7 @@ project(
     'buildtype=release',
     'b_ndebug=if-release',
   ],
-  license: 'MIT',
+  license: 'MIT AND Unicode-3.0',
   license_files: 'LICENSE',
   meson_version: '>=1.3.0',
 )
