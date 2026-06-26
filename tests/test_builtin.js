@@ -907,7 +907,7 @@ function test_regexp()
     } catch (_ex) {
         ex = _ex;
     }
-    assert(ex?.message, "invalid class range");
+    assert(ex?.message, "invalid character in class in regular expression");
 
     eval("/[\\-]/");
     eval("/[\\-]/u");
