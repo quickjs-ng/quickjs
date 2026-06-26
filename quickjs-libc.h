@@ -45,6 +45,7 @@ JS_LIBC_EXTERN JSModuleDef *js_init_module_os(JSContext *ctx,
 JS_LIBC_EXTERN JSModuleDef *js_init_module_bjson(JSContext *ctx,
                                                  const char *module_name);
 JS_LIBC_EXTERN void js_std_add_helpers(JSContext *ctx, int argc, char **argv);
+JS_LIBC_EXTERN void js_std_add_text_codecs(JSContext *ctx);
 JS_LIBC_EXTERN int js_std_loop(JSContext *ctx);
 JS_LIBC_EXTERN int js_std_loop_once(JSContext *ctx);
 JS_LIBC_EXTERN int js_std_poll_io(JSContext *ctx, int timeout_ms);
