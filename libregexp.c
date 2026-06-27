@@ -55,7 +55,7 @@ uint32_t const lre_id_continue_table_ascii[4] = {
     model.
 */
 
-#if defined(TEST) 
+#if defined(TEST)
 #define DUMP_REOP
 #endif
 //#define DUMP_REOP
@@ -166,7 +166,7 @@ static uint32_t re_string_hash(int len, const uint32_t *buf)
     h = 1;
     for(i = 0; i < len; i++)
         h = h * 263 + buf[i];
-    return h * 0x61C88647;
+    return hash32(h);
 }
 
 static void re_string_list_init(REParseState *s1, REStringList *s)
