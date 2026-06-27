@@ -391,6 +391,684 @@ static void module_serde(void)
     JS_FreeRuntime(rt);
 }
 
+/* Tests for the async dynamic-import loader (JS_SetModuleLoaderFuncAsync etc).
+   The loader simulates async I/O: it stashes the handle and enqueues a job that
+   settles it on a later tick; tests pump the queue and check import()'s result. */
+
+typedef enum {
+    DELIVER_FULFILL,      /* compile `deliver_src` as a module and fulfill */
+    DELIVER_FULFILL_NULL, /* fulfill with a NULL module (generic failure) */
+    DELIVER_REJECT,       /* reject with an Error whose message is `deliver_src` */
+    DELIVER_DOUBLE,       /* fulfill, then settle again to exercise the guard */
+    DELIVER_NEVER,        /* stash the handle but never settle it */
+} deliver_mode;
+
+typedef struct {
+    int loader_calls;       /* async loader invocations */
+    int sync_loader_calls;  /* sync loader invocations (transitive deps) */
+    int normalize_calls;    /* async normalizer invocations */
+    int attrs_calls;        /* async attribute-check invocations */
+    bool attrs_reject;      /* if set, the attribute check fails */
+    bool reentrant;         /* if set, the loader settles synchronously */
+    deliver_mode mode;
+    const char *deliver_src; /* module source, or reject message */
+    /* pending hand-off between the async loader and its deliver job */
+    JSAsyncModuleLoadHandle handle;
+    char *module_name;
+} async_test_state;
+
+static async_test_state *g_async;
+
+/* identity normalizer that counts calls, to prove the hook is wired in */
+static char *async_normalize(JSContext *ctx, const char *base_name,
+                             const char *name, void *opaque)
+{
+    (void)base_name; (void)opaque;
+    g_async->normalize_calls++;
+    return js_strdup(ctx, name);
+}
+
+/* Async attribute checker: counts calls and optionally fails. */
+static int async_check_attrs(JSContext *ctx, void *opaque, JSValueConst attributes)
+{
+    (void)opaque; (void)attributes;
+    g_async->attrs_calls++;
+    if (g_async->attrs_reject) {
+        JS_ThrowTypeError(ctx, "unsupported import attributes");
+        return -1;
+    }
+    return 0;
+}
+
+/* sync loader serving a tiny fixed table, for static/transitive imports */
+static JSModuleDef *sync_module_loader(JSContext *ctx, const char *module_name,
+                                       void *opaque)
+{
+    (void)opaque;
+    const char *src = NULL;
+    if (!strcmp(module_name, "base"))
+        src = "export const base = 41;";
+    else if (!strcmp(module_name, "cached"))
+        src = "export const v = 7;";
+    if (!src) {
+        JS_ThrowReferenceError(ctx, "sync loader: unknown module '%s'",
+                               module_name);
+        return NULL;
+    }
+    if (g_async)
+        g_async->sync_loader_calls++;
+    JSValue mod_val = JS_Eval(ctx, src, strlen(src), module_name,
+                              JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    if (JS_IsException(mod_val))
+        return NULL;
+    JSModuleDef *m = JS_VALUE_GET_PTR(mod_val);
+    JS_FreeValue(ctx, mod_val);
+    return m;
+}
+
+static JSValue async_loader_deliver_job(JSContext *ctx, int argc, JSValueConst *argv)
+{
+    (void)argc; (void)argv;
+    JSAsyncModuleLoadHandle handle = g_async->handle;
+    char *name = g_async->module_name;
+    g_async->handle = NULL;
+    g_async->module_name = NULL;
+    assert(handle);
+
+    if (g_async->mode == DELIVER_REJECT) {
+        JSValue err = JS_NewError(ctx);
+        JS_DefinePropertyValueStr(ctx, err, "message",
+                                  JS_NewString(ctx, g_async->deliver_src),
+                                  JS_PROP_C_W_E);
+        /* JS_RejectAsyncModuleLoad takes ownership of `err`. */
+        JS_RejectAsyncModuleLoad(ctx, handle, err);
+        free(name);
+        return JS_UNDEFINED;
+    }
+
+    if (g_async->mode == DELIVER_FULFILL_NULL) {
+        /* Fulfilling with NULL means "load failed"; the engine synthesizes a
+           generic rejection. */
+        JS_FulfillAsyncModuleLoad(ctx, handle, NULL);
+        free(name);
+        return JS_UNDEFINED;
+    }
+
+    JSValue mod_val = JS_Eval(ctx, g_async->deliver_src,
+                              strlen(g_async->deliver_src), name,
+                              JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(!JS_IsException(mod_val));
+    JSModuleDef *m = JS_VALUE_GET_PTR(mod_val);
+    assert(m);
+    /* The module def is owned by the runtime's module table; the JSValue
+       wrapper is just a handle, so free it. */
+    JS_FreeValue(ctx, mod_val);
+    free(name);
+
+    JS_FulfillAsyncModuleLoad(ctx, handle, m);
+    if (g_async->mode == DELIVER_DOUBLE) {
+        /* Second settle on the same handle must be a safe no-op. Try both a
+           repeat fulfill and a reject; neither should change the result or
+           crash. */
+        JS_FulfillAsyncModuleLoad(ctx, handle, m);
+        JS_RejectAsyncModuleLoad(ctx, handle, JS_NewString(ctx, "ignored"));
+    }
+    return JS_UNDEFINED;
+}
+
+static void async_loader(JSContext *ctx, const char *module_name,
+                         void *opaque, JSValueConst attributes,
+                         JSAsyncModuleLoadHandle handle)
+{
+    (void)opaque; (void)attributes;
+    g_async->loader_calls++;
+    assert(!g_async->handle); /* one outstanding at a time in these tests */
+    g_async->handle = handle;
+    g_async->module_name = strdup(module_name);
+    if (g_async->mode == DELIVER_NEVER)
+        return; /* leave the handle pending; JS_FreeRuntime must reclaim it */
+    if (g_async->reentrant) {
+        /* Settle synchronously, from inside the loader callback itself. */
+        async_loader_deliver_job(ctx, 0, NULL);
+        return;
+    }
+    int r = JS_EnqueueJob(ctx, async_loader_deliver_job, 0, NULL);
+    assert(r == 0);
+}
+
+/* Pump the job queue to quiescence (bounded, to catch run-away loops). */
+static void pump_jobs(JSRuntime *rt)
+{
+    int max_iters = 4096;
+    while (JS_IsJobPending(rt) && max_iters-- > 0) {
+        JSContext *job_ctx;
+        int r = JS_ExecutePendingJob(rt, &job_ctx);
+        assert(r >= 0);
+    }
+    assert(max_iters > 0);
+}
+
+static int32_t get_int_global(JSContext *ctx, const char *name)
+{
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue v = JS_GetPropertyStr(ctx, global, name);
+    assert(JS_IsNumber(v));
+    int32_t n = -1;
+    JS_ToInt32(ctx, &n, v);
+    JS_FreeValue(ctx, v);
+    JS_FreeValue(ctx, global);
+    return n;
+}
+
+static char *get_string_global(JSContext *ctx, const char *name)
+{
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue v = JS_GetPropertyStr(ctx, global, name);
+    assert(JS_IsString(v));
+    const char *s = JS_ToCString(ctx, v);
+    char *out = strdup(s);
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, v);
+    JS_FreeValue(ctx, global);
+    return out;
+}
+
+static void run_async_eval(JSContext *ctx, const char *code)
+{
+    JSValue ev = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
+    assert(!JS_IsException(ev));
+    JS_FreeValue(ctx, ev);
+}
+
+/* fulfill: import('hello') resolves to { v: 42 }. */
+static void async_module_loader(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL,
+                            .deliver_src = "export const v = 42;" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('hello').then(m => { globalThis.__result = m.v; });");
+    pump_jobs(rt);
+
+    assert(st.loader_calls == 1);
+    assert(!st.handle);
+    assert(get_int_global(ctx, "__result") == 42);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* reject: import('boom') is caught with our error message. */
+static void async_module_loader_reject(void)
+{
+    async_test_state st = { .mode = DELIVER_REJECT, .deliver_src = "kaboom" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('boom').then(() => { globalThis.__err = 'resolved?!'; },"
+        "                    e => { globalThis.__err = e.message; });");
+    pump_jobs(rt);
+
+    assert(st.loader_calls == 1);
+    char *err = get_string_global(ctx, "__err");
+    assert(!strcmp(err, "kaboom"));
+    free(err);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* transitive: an async-loaded module statically imports 'base'; that static
+   dependency must be resolved through the SYNC loader. */
+static void async_module_loader_transitive(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL,
+                            .deliver_src = "import { base } from 'base';"
+                                           "export const v = base + 1;" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFunc(rt, NULL, sync_module_loader, NULL);
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('combo').then(m => { globalThis.__result = m.v; });");
+    pump_jobs(rt);
+
+    assert(st.loader_calls == 1);      /* 'combo' went through the async loader */
+    assert(st.sync_loader_calls == 1); /* 'base' went through the sync loader  */
+    assert(get_int_global(ctx, "__result") == 42);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* cache hit: a specifier already in the module table (loaded via static
+   import through the sync loader) is settled from cache, NOT via the loader. */
+static void async_module_loader_cache_hit(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL,
+                            .deliver_src = "export const v = 999;" /* must NOT be used */ };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFunc(rt, NULL, sync_module_loader, NULL);
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    /* Statically import 'cached' so it's resolved + in the module table, then
+       dynamically import the same specifier. */
+    run_async_eval(ctx,
+        "import { v } from 'cached';"
+        "import('cached').then(m => { globalThis.__result = m.v; });");
+    pump_jobs(rt);
+
+    assert(st.sync_loader_calls == 1); /* only the static import hit the loader */
+    assert(st.loader_calls == 0);      /* the dynamic import was a cache hit    */
+    assert(!st.handle);
+    assert(get_int_global(ctx, "__result") == 7);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* double settle: a second fulfill/reject on the same handle is a no-op. */
+static void async_module_loader_double_settle(void)
+{
+    async_test_state st = { .mode = DELIVER_DOUBLE,
+                            .deliver_src = "export const v = 5;" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('twice').then(m => { globalThis.__result = m.v; },"
+        "                     () => { globalThis.__result = -1; });");
+    pump_jobs(rt);
+
+    assert(st.loader_calls == 1);
+    /* The first fulfill wins; the redundant fulfill/reject are ignored. */
+    assert(get_int_global(ctx, "__result") == 5);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* shutdown sweep: the host never settles the handle. JS_FreeRuntime must
+   reclaim it without leaking (new_runtime aborts on leaks) or crashing. */
+static void async_module_loader_shutdown_pending(void)
+{
+    async_test_state st = { .mode = DELIVER_NEVER, .deliver_src = NULL };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx, "import('never').then(() => {}, () => {});");
+    pump_jobs(rt);
+
+    assert(st.loader_calls == 1);
+    assert(st.handle);          /* still pending, deliberately never settled */
+    free(st.module_name);       /* the deliver job that would free it never ran */
+    st.module_name = NULL;
+
+    /* The pending handle (and the references it owns) must be reclaimed here. */
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* top-level await: the loaded module's top-level `await` must complete before
+   the import() Promise settles. */
+static void async_module_loader_tla(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL,
+                            .deliver_src = "export const v = await Promise.resolve(123);" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('tla').then(m => { globalThis.__result = m.v; },"
+        "                   e => { globalThis.__result = -1; });");
+    pump_jobs(rt);
+
+    assert(st.loader_calls == 1);
+    assert(get_int_global(ctx, "__result") == 123);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* re-entrant settle: the host may call JS_FulfillAsyncModuleLoad synchronously
+   from inside the loader callback (load already cached/available). */
+static void async_module_loader_reentrant(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL, .reentrant = true,
+                            .deliver_src = "export const v = 7;" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('re').then(m => { globalThis.__result = m.v; },"
+        "                  e => { globalThis.__result = -1; });");
+    pump_jobs(rt);
+
+    assert(st.loader_calls == 1);
+    assert(get_int_global(ctx, "__result") == 7);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* NULL module: fulfilling with a NULL JSModuleDef rejects the import() Promise
+   with a synthesized generic error. */
+static void async_module_loader_null_module(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL_NULL };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('n').then(() => { globalThis.__err = 'resolved?!'; },"
+        "                 e => { globalThis.__err = e.message; });");
+    pump_jobs(rt);
+
+    char *err = get_string_global(ctx, "__err");
+    assert(!strcmp(err, "async module load returned NULL"));
+    free(err);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* evaluation throw: a module that throws at top level rejects import() with
+   the thrown error (the loader/compile succeeded; evaluation failed). */
+static void async_module_loader_eval_throw(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL,
+                            .deliver_src = "throw new Error('boom-in-module');"
+                                           "export const v = 1;" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('t').then(() => { globalThis.__err = 'resolved?!'; },"
+        "                 e => { globalThis.__err = e.message; });");
+    pump_jobs(rt);
+
+    char *err = get_string_global(ctx, "__err");
+    assert(!strcmp(err, "boom-in-module"));
+    free(err);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* attribute check: a registered async attribute checker that rejects must
+   reject the import() BEFORE the loader is ever invoked. */
+static void async_module_loader_attrs_reject(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL, .attrs_reject = true,
+                            .deliver_src = "export const v = 1;" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, async_loader, async_check_attrs, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('x', { with: { type: 'json' } })"
+        "  .then(() => { globalThis.__err = 'resolved?!'; },"
+        "        e => { globalThis.__err = e.message; });");
+    pump_jobs(rt);
+
+    assert(st.attrs_calls == 1);
+    assert(st.loader_calls == 0); /* rejected before the loader ran */
+    char *err = get_string_global(ctx, "__err");
+    assert(!strcmp(err, "unsupported import attributes"));
+    free(err);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* normalizer: a registered async normalizer must be invoked to resolve the
+   specifier before the loader is called. */
+static void async_module_loader_normalize(void)
+{
+    async_test_state st = { .mode = DELIVER_FULFILL,
+                            .deliver_src = "export const v = 55;" };
+    g_async = &st;
+
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, async_normalize, async_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('norm').then(m => { globalThis.__result = m.v; },"
+        "                    e => { globalThis.__result = -1; });");
+    pump_jobs(rt);
+
+    assert(st.normalize_calls >= 1);
+    assert(st.loader_calls == 1);
+    assert(get_int_global(ctx, "__result") == 55);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    g_async = NULL;
+}
+
+/* nested dynamic import: an async-loaded module's own import() also routes
+   through the async loader (loader called for 'outer' then 'inner'). */
+#define NESTED_Q 8
+static JSAsyncModuleLoadHandle nested_hq[NESTED_Q];
+static char *nested_nq[NESTED_Q];
+static int nested_qn;
+static int nested_loader_calls;
+
+static JSValue nested_deliver_job(JSContext *ctx, int argc, JSValueConst *argv)
+{
+    (void)argc; (void)argv;
+    if (nested_qn == 0)
+        return JS_UNDEFINED;
+    JSAsyncModuleLoadHandle handle = nested_hq[0];
+    char *name = nested_nq[0];
+    for (int i = 1; i < nested_qn; i++) {
+        nested_hq[i-1] = nested_hq[i]; nested_nq[i-1] = nested_nq[i];
+    }
+    nested_qn--;
+    const char *src = !strcmp(name, "outer")
+        ? "const inner = await import('inner'); export const v = inner.w + 1;"
+        : "export const w = 40;";
+    JSValue mv = JS_Eval(ctx, src, strlen(src), name,
+                         JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(!JS_IsException(mv));
+    JSModuleDef *m = JS_VALUE_GET_PTR(mv);
+    JS_FreeValue(ctx, mv);
+    free(name);
+    JS_FulfillAsyncModuleLoad(ctx, handle, m);
+    return JS_UNDEFINED;
+}
+
+static void nested_loader(JSContext *ctx, const char *module_name, void *opaque,
+                          JSValueConst attributes, JSAsyncModuleLoadHandle handle)
+{
+    (void)opaque; (void)attributes;
+    nested_loader_calls++;
+    assert(nested_qn < NESTED_Q);
+    nested_hq[nested_qn] = handle;
+    nested_nq[nested_qn] = strdup(module_name);
+    nested_qn++;
+    int r = JS_EnqueueJob(ctx, nested_deliver_job, 0, NULL);
+    assert(r == 0);
+}
+
+static void async_module_loader_nested_dynamic(void)
+{
+    nested_qn = 0; nested_loader_calls = 0;
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, nested_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "import('outer').then(m => { globalThis.__result = m.v; },"
+        "                     e => { globalThis.__result = -1; });");
+    pump_jobs(rt);
+
+    assert(nested_loader_calls == 2); /* outer + inner both via the async loader */
+    assert(get_int_global(ctx, "__result") == 41);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+/* concurrency harness: many loads in flight at once. The loaded module bumps a
+   global eval counter so tests can detect double-evaluation (broken dedup). */
+#define ASYNC_Q 128
+static JSAsyncModuleLoadHandle cc_hq[ASYNC_Q];
+static char *cc_nq[ASYNC_Q];
+static int cc_qn;
+static int cc_loader_calls;
+static int cc_never; /* if set, never enqueue delivery (leave handles pending) */
+
+static JSValue cc_deliver(JSContext *ctx, int argc, JSValueConst *argv)
+{
+    (void)argc; (void)argv;
+    if (cc_qn == 0)
+        return JS_UNDEFINED;
+    JSAsyncModuleLoadHandle h = cc_hq[0];
+    char *name = cc_nq[0];
+    for (int i = 1; i < cc_qn; i++) { cc_hq[i-1] = cc_hq[i]; cc_nq[i-1] = cc_nq[i]; }
+    cc_qn--;
+    static const char src[] =
+        "globalThis.__evals = (globalThis.__evals||0) + 1; export const v = 9;";
+    JSValue mv = JS_Eval(ctx, src, strlen(src), name,
+                         JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(!JS_IsException(mv));
+    JSModuleDef *m = JS_VALUE_GET_PTR(mv);
+    JS_FreeValue(ctx, mv);
+    free(name);
+    JS_FulfillAsyncModuleLoad(ctx, h, m);
+    return JS_UNDEFINED;
+}
+
+static void cc_loader(JSContext *ctx, const char *module_name, void *opaque,
+                      JSValueConst attributes, JSAsyncModuleLoadHandle handle)
+{
+    (void)opaque; (void)attributes;
+    cc_loader_calls++;
+    assert(cc_qn < ASYNC_Q);
+    cc_hq[cc_qn] = handle;
+    cc_nq[cc_qn] = strdup(module_name);
+    cc_qn++;
+    if (cc_never)
+        return;
+    int r = JS_EnqueueJob(ctx, cc_deliver, 0, NULL);
+    assert(r == 0);
+}
+
+/* in-flight dedup: two concurrent import()s of the same specifier must invoke
+   the loader once, evaluate once, and resolve both to the same namespace. */
+static void async_module_loader_inflight_dedup(void)
+{
+    cc_qn = 0; cc_loader_calls = 0; cc_never = 0;
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, cc_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "globalThis.__evals = 0; globalThis.__same = 0;"
+        "Promise.all([import('dup'), import('dup')]).then(([a, b]) => {"
+        "  globalThis.__same = (a === b) ? 1 : 0; });");
+    pump_jobs(rt);
+
+    assert(cc_loader_calls == 1);                 /* loader invoked once */
+    assert(get_int_global(ctx, "__evals") == 1);  /* module evaluated once */
+    assert(get_int_global(ctx, "__same") == 1);   /* identical namespace */
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+/* the dual of dedup: many distinct specifiers in flight must each load and
+   evaluate exactly once (dedup must not be over-eager). */
+static void async_module_loader_concurrent_distinct(void)
+{
+    cc_qn = 0; cc_loader_calls = 0; cc_never = 0;
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, cc_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "globalThis.__evals = 0; globalThis.__n = 0;"
+        "{ const a = []; for (let i = 0; i < 64; i++)"
+        "    a.push(import('m' + i).then(m => { globalThis.__n += m.v; })); }");
+    pump_jobs(rt);
+
+    assert(cc_loader_calls == 64);
+    assert(get_int_global(ctx, "__evals") == 64);
+    assert(get_int_global(ctx, "__n") == 64 * 9);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+/* shutdown must reclaim a handle with multiple waiters: several concurrent
+   imports of one never-settled specifier share a handle JS_FreeRuntime frees. */
+static void async_module_loader_shutdown_multi_waiter(void)
+{
+    cc_qn = 0; cc_loader_calls = 0; cc_never = 1;
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFuncAsync(rt, NULL, cc_loader, NULL, NULL);
+    JSContext *ctx = JS_NewContext(rt);
+
+    run_async_eval(ctx,
+        "Promise.all([import('z'), import('z'), import('z')]).then(()=>{},()=>{});");
+    pump_jobs(rt);
+
+    assert(cc_loader_calls == 1); /* one handle, three waiters attached to it */
+    for (int i = 0; i < cc_qn; i++)
+        free(cc_nq[i]);           /* delivery never ran, so free the stashed names */
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void runtime_cstring_free(void)
 {
     JSRuntime *rt = new_runtime();
@@ -1177,6 +1855,22 @@ int main(void)
     raw_context_global_var();
     is_array();
     module_serde();
+    async_module_loader();
+    async_module_loader_reject();
+    async_module_loader_transitive();
+    async_module_loader_cache_hit();
+    async_module_loader_double_settle();
+    async_module_loader_shutdown_pending();
+    async_module_loader_tla();
+    async_module_loader_reentrant();
+    async_module_loader_null_module();
+    async_module_loader_eval_throw();
+    async_module_loader_attrs_reject();
+    async_module_loader_normalize();
+    async_module_loader_nested_dynamic();
+    async_module_loader_inflight_dedup();
+    async_module_loader_concurrent_distinct();
+    async_module_loader_shutdown_multi_waiter();
     runtime_cstring_free();
     utf16_string();
     weak_map_gc_check();
