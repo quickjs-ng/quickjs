@@ -37683,7 +37683,7 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 26
+#define BC_VERSION 27
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -39478,7 +39478,8 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         return JS_EXCEPTION;
     }
 
-    if (bc->is_wide_char) {
+    if (bc->is_wide_char ||
+        lre_check_bytecode(str8(bc), bc->len) != 0) {
         js_free_string(ctx->rt, pattern);
         js_free_string(ctx->rt, bc);
         return JS_ThrowInternalError(ctx, "bad regexp bytecode");
@@ -48133,7 +48134,10 @@ static JSValue js_compile_regexp(JSContext *ctx, JSValueConst pattern,
         if (re_flags & LRE_FLAG_UNICODE_SETS)
             return JS_ThrowSyntaxError(ctx, "invalid regular expression flags");
 
-    str = JS_ToCStringLen2(ctx, &len, pattern, !(re_flags & LRE_FLAG_UNICODE));
+    /* The v flag implies full Unicode, like u, so the pattern must be
+       UTF-8 (not CESU-8) for both. */
+    str = JS_ToCStringLen2(ctx, &len, pattern,
+                           !(re_flags & (LRE_FLAG_UNICODE | LRE_FLAG_UNICODE_SETS)));
     if (!str)
         return JS_EXCEPTION;
     re_bytecode_buf = lre_compile(&re_bytecode_len, error_msg,
@@ -48585,7 +48589,7 @@ static JSValue js_regexp_escape(JSContext *ctx, JSValueConst this_val,
 static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
-    int rc, capture_count, shift, index, i, re_flags, prop_flags;
+    int rc, capture_count, alloc_count, shift, index, i, re_flags, prop_flags;
     JSRegExp *re = js_get_regexp(ctx, this_val, true);
     JSString *str;
     JSValue t, ret, str_val, obj, val, groups;
@@ -48594,6 +48598,7 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
     uint8_t **capture, *str_buf;
     int64_t last_index;
     const char *group_name_ptr;
+    JSAtom group_name;
     JSProperty props[4]; // length, index, input, groups, in that order
 
     if (!re)
@@ -48608,6 +48613,7 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
     groups = JS_UNDEFINED;
     indices = JS_UNDEFINED;
     indices_groups = JS_UNDEFINED;
+    group_name = JS_ATOM_NULL;
     capture = NULL;
 
     val = JS_GetProperty(ctx, this_val, JS_ATOM_lastIndex);
@@ -48621,8 +48627,14 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
     }
     str = JS_VALUE_GET_STRING(str_val);
     capture_count = lre_get_capture_count(re_bytecode);
-    if (capture_count > 0) {
-        capture = js_malloc(ctx, sizeof(capture[0]) * capture_count * 2);
+    /* The register-based executor writes capture positions AND temporary
+       registers into the capture buffer; it must be sized by alloc_count
+       (= capture_count*2 + register_count), not capture_count*2. Sizing it
+       by capture_count*2 silently overflows the heap on any regexp that
+       uses registers (i.e. most non-trivial patterns). */
+    alloc_count = lre_get_alloc_count(re_bytecode);
+    if (alloc_count > 0) {
+        capture = js_malloc(ctx, sizeof(capture[0]) * alloc_count);
         if (!capture)
             goto fail;
     }
@@ -48692,14 +48704,19 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
             goto fail;
         prop_flags = JS_PROP_C_W_E | JS_PROP_THROW;
         for(i = 0; i < capture_count; i++) {
-            const char *name = NULL;
             uint8_t **match = &capture[2 * i];
             int start = -1;
             int end = -1;
 
             if (group_name_ptr && i > 0) {
-                if (*group_name_ptr) name = group_name_ptr;
-                group_name_ptr += strlen(group_name_ptr) + 1;
+                if (*group_name_ptr) {
+                    /* XXX: slow, should create a shape when the regexp is
+                       compiled */
+                    group_name = JS_NewAtom(ctx, group_name_ptr);
+                    if (group_name == JS_ATOM_NULL)
+                        goto fail;
+                }
+                group_name_ptr += strlen(group_name_ptr) + LRE_GROUP_NAME_TRAILER_LEN;
             }
 
             if (match[0] && match[1]) {
@@ -48726,12 +48743,19 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                         goto fail;
                     }
                 }
-                if (name && !JS_IsUndefined(indices_groups)) {
-                    val = js_dup(val);
-                    if (JS_DefinePropertyValueStr(ctx, indices_groups,
-                                                  name, val, prop_flags) < 0) {
-                        JS_FreeValue(ctx, val);
-                        goto fail;
+                if (group_name != JS_ATOM_NULL &&
+                    !JS_IsUndefined(indices_groups)) {
+                    /* For duplicate named groups, only the alternative that
+                       actually matched (non-undefined) wins; a later
+                       undefined alternative must not clobber it. */
+                    if (!JS_IsUndefined(val) ||
+                        !JS_HasProperty(ctx, indices_groups, group_name)) {
+                        if (JS_DefinePropertyValue(ctx, indices_groups,
+                                                   group_name, js_dup(val),
+                                                   prop_flags) < 0) {
+                            JS_FreeValue(ctx, val);
+                            goto fail;
+                        }
                     }
                 }
                 if (JS_DefinePropertyValueUint32(ctx, indices, i, val,
@@ -48747,13 +48771,18 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                     goto fail;
             }
 
-            if (name) {
-                if (JS_DefinePropertyValueStr(ctx, groups, name,
-                                              js_dup(val),
-                                              prop_flags) < 0) {
-                    JS_FreeValue(ctx, val);
-                    goto fail;
+            if (group_name != JS_ATOM_NULL) {
+                /* duplicate named groups: matched alternative wins (see above) */
+                if (!JS_IsUndefined(val) ||
+                    !JS_HasProperty(ctx, groups, group_name)) {
+                    if (JS_DefinePropertyValue(ctx, groups, group_name,
+                                               js_dup(val), prop_flags) < 0) {
+                        JS_FreeValue(ctx, val);
+                        goto fail;
+                    }
                 }
+                JS_FreeAtom(ctx, group_name);
+                group_name = JS_ATOM_NULL;
             }
 
             if (JS_DefinePropertyValueUint32(ctx, obj, i, val, prop_flags) < 0)
@@ -48776,6 +48805,7 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
     ret = obj;
     obj = JS_UNDEFINED;
 fail:
+    JS_FreeAtom(ctx, group_name);
     JS_FreeValue(ctx, indices_groups);
     JS_FreeValue(ctx, indices);
     JS_FreeValue(ctx, str_val);
@@ -48794,7 +48824,7 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValueConst this_val, JSValue ar
     uint8_t *re_bytecode;
     int ret;
     uint8_t **capture, *str_buf;
-    int capture_count, shift, re_flags;
+    int alloc_count, shift, re_flags;
     int next_src_pos, start, end;
     int64_t last_index;
     StringBuffer b_s, *b = &b_s;
@@ -48818,9 +48848,11 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValueConst this_val, JSValue ar
         if (JS_IsException(val) || JS_ToLengthFree(ctx, &last_index, val))
             goto fail;
     }
-    capture_count = lre_get_capture_count(re_bytecode);
-    if (capture_count > 0) {
-        capture = js_malloc(ctx, sizeof(capture[0]) * capture_count * 2);
+    /* size by alloc_count: the register executor uses capture[] beyond
+       the capture positions for its registers (see js_regexp_exec). */
+    alloc_count = lre_get_alloc_count(re_bytecode);
+    if (alloc_count > 0) {
+        capture = js_malloc(ctx, sizeof(capture[0]) * alloc_count);
         if (!capture)
             goto fail;
     }
@@ -48873,7 +48905,7 @@ static JSValue JS_RegExpDelete(JSContext *ctx, JSValueConst this_val, JSValue ar
             break;
         }
         if (end == start) {
-            if (!(re_flags & LRE_FLAG_UNICODE) || (unsigned)end >= str->len || !str->is_wide_char) {
+            if (!(re_flags & (LRE_FLAG_UNICODE | LRE_FLAG_UNICODE_SETS)) || (unsigned)end >= str->len || !str->is_wide_char) {
                 end++;
             } else {
                 string_getc(str, &end);
@@ -48956,14 +48988,13 @@ static JSValue js_regexp_Symbol_match(JSContext *ctx, JSValueConst this_val,
         goto exception;
     p = JS_VALUE_GET_STRING(flags);
 
-    // TODO(bnoordhuis) query 'u' flag the same way?
     global = (-1 != string_indexof_char(p, 'g', 0));
     if (!global) {
         A = JS_RegExpExec(ctx, rx, S);
     } else {
-        fullUnicode = JS_ToBoolFree(ctx, JS_GetProperty(ctx, rx, JS_ATOM_unicode));
-        if (fullUnicode < 0)
-            goto exception;
+        // 'v' flag implies full Unicode, like 'u'
+        fullUnicode = (string_indexof_char(p, 'u', 0) >= 0 ||
+                       string_indexof_char(p, 'v', 0) >= 0);
 
         if (JS_SetProperty(ctx, rx, JS_ATOM_lastIndex, js_int32(0)) < 0)
             goto exception;
@@ -49146,7 +49177,8 @@ static JSValue js_regexp_Symbol_matchAll(JSContext *ctx, JSValueConst this_val,
     it->iterated_string = S;
     strp = JS_VALUE_GET_STRING(flags);
     it->global = string_indexof_char(strp, 'g', 0) >= 0;
-    it->unicode = string_indexof_char(strp, 'u', 0) >= 0;
+    it->unicode = string_indexof_char(strp, 'u', 0) >= 0 ||
+                  string_indexof_char(strp, 'v', 0) >= 0;
     it->done = false;
     JS_SetOpaqueInternal(iter, it);
 
@@ -49293,13 +49325,12 @@ static JSValue js_regexp_Symbol_replace(JSContext *ctx, JSValueConst this_val,
         goto exception;
     p = JS_VALUE_GET_STRING(flags);
 
-    // TODO(bnoordhuis) query 'u' flag the same way?
     fullUnicode = 0;
     is_global = (-1 != string_indexof_char(p, 'g', 0));
     if (is_global) {
-        fullUnicode = JS_ToBoolFree(ctx, JS_GetProperty(ctx, rx, JS_ATOM_unicode));
-        if (fullUnicode < 0)
-            goto exception;
+        // 'v' flag implies full Unicode, like 'u'
+        fullUnicode = (string_indexof_char(p, 'u', 0) >= 0 ||
+                       string_indexof_char(p, 'v', 0) >= 0);
         if (JS_SetProperty(ctx, rx, JS_ATOM_lastIndex, js_int32(0)) < 0)
             goto exception;
     }
@@ -49525,7 +49556,8 @@ static JSValue js_regexp_Symbol_split(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(flags))
         goto exception;
     strp = JS_VALUE_GET_STRING(flags);
-    unicodeMatching = string_indexof_char(strp, 'u', 0) >= 0;
+    unicodeMatching = string_indexof_char(strp, 'u', 0) >= 0 ||
+                      string_indexof_char(strp, 'v', 0) >= 0;
     if (string_indexof_char(strp, 'y', 0) < 0) {
         flags = JS_ConcatString3(ctx, "", flags, "y");
         if (JS_IsException(flags))
