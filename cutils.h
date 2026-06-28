@@ -668,6 +668,7 @@ static inline int js_thread_join(js_thread_t thrd);
 // Note that `*&cw` in the asm constraints looks redundant but isn't.
 #if defined(__i386__) && !defined(_MSC_VER)
 #define JS_X87_FPCW_SAVE_AND_ADJUST(cw)                                     \
+    (void)0;                                                                \
     unsigned short cw;                                                      \
     __asm__ __volatile__("fnstcw %0" : "=m"(*&cw));                         \
     do {                                                                    \
