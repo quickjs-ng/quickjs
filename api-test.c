@@ -391,6 +391,45 @@ static void module_serde(void)
     JS_FreeRuntime(rt);
 }
 
+struct rejection_counts {
+    int reject_count;
+    int handle_count;
+};
+
+static void rejection_counter(JSContext *ctx, JSValueConst promise,
+                              JSValueConst reason, bool is_handled, void *opaque)
+{
+    struct rejection_counts * c = opaque;
+    if (is_handled)
+        c->handle_count++;
+    else
+        c->reject_count++;
+}
+
+// A synchronous module that throws at top level must surface exactly one unhandled rejection
+static void module_unhandled_rejection(void)
+{
+    struct rejection_counts c = {0, 0};
+    JSRuntime *rt = new_runtime();
+    JS_SetHostPromiseRejectionTracker(rt, rejection_counter, &c);
+    JSContext *ctx = JS_NewContext(rt);
+
+    static const char code[] = "throw new Error('Nuke the entire site from orbit. It's the only way to be sure.')";
+    JSValue v = JS_Eval(ctx, code, strlen(code), "<m>", JS_EVAL_TYPE_MODULE);
+    JS_FreeValue(ctx, v);
+
+    JSContext *c1;
+    while (JS_ExecutePendingJob(rt, &c1) > 0)
+        ;
+
+    // net unhandled rejections == (2 rejects - 1 handled)
+    assert(c.reject_count == 2);
+    assert(c.handle_count == 1);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void runtime_cstring_free(void)
 {
     JSRuntime *rt = new_runtime();
@@ -1177,6 +1216,7 @@ int main(void)
     raw_context_global_var();
     is_array();
     module_serde();
+    module_unhandled_rejection();
     runtime_cstring_free();
     utf16_string();
     weak_map_gc_check();
