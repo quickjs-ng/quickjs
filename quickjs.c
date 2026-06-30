@@ -31748,6 +31748,7 @@ static int exec_module_list_cmp(const void *p1, const void *p2, void *opaque)
 static int js_execute_async_module(JSContext *ctx, JSModuleDef *m);
 static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
                                   JSValue *pvalue);
+static void js_promise_set_handled(JSContext *ctx, JSValueConst promise);
 
 static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst this_val,
                                                   int argc, JSValueConst *argv, int magic,
@@ -31885,6 +31886,10 @@ static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
             JS_FreeValue(ctx, promise);
         } else if (state == JS_PROMISE_REJECTED) {
             *pvalue = JS_PromiseResult(ctx, promise);
+            /* the rejection is propagated to the module's evaluation promise;
+               mark this internal promise handled so it is not reported as an
+               unhandled rejection */
+            js_promise_set_handled(ctx, promise);
             JS_FreeValue(ctx, promise);
             return -1;
         } else {
@@ -54783,7 +54788,7 @@ typedef struct JSPromiseData {
     JSPromiseStateEnum promise_state;
     /* 0=fulfill, 1=reject, list of JSPromiseReactionData.link */
     struct list_head promise_reactions[2];
-    bool is_handled; /* Note: only useful to debug */
+    bool is_handled; /* gates host_promise_rejection_tracker */
     JSValue promise_result;
 } JSPromiseData;
 
@@ -54817,6 +54822,21 @@ JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise)
     if (!s)
         return JS_UNDEFINED;
     return js_dup(s->promise_result);
+}
+
+// Mark rejected promise as handled by the engine itself and let the host know that the promise is handled.
+static void js_promise_set_handled(JSContext *ctx, JSValueConst promise)
+{
+    JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
+    if (!s)
+        return;
+    if (s->promise_state == JS_PROMISE_REJECTED && !s->is_handled) {
+        JSRuntime *rt = ctx->rt;
+        if (rt->host_promise_rejection_tracker)
+            rt->host_promise_rejection_tracker(ctx, promise, s->promise_result,
+                                               true, rt->host_promise_rejection_tracker_opaque);
+    }
+    s->is_handled = true;
 }
 
 bool JS_IsPromise(JSValueConst val)
