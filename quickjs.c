@@ -44696,6 +44696,8 @@ static const JSCFunctionListEntry js_iterator_wrap_proto_funcs[] = {
     JS_ITERATOR_NEXT_DEF("return", 0, js_iterator_wrap_next, GEN_MAGIC_RETURN ),
 };
 
+static int check_iterator(JSContext *ctx, JSValueConst obj);
+
 static JSValue js_iterator_constructor_getset(JSContext *ctx,
                                               JSValueConst this_val,
                                               int argc, JSValueConst *argv,
@@ -44704,14 +44706,27 @@ static JSValue js_iterator_constructor_getset(JSContext *ctx,
 {
     int ret;
 
-    if (argc > 0) { // if setter
-        if (!JS_IsObject(argv[0]))
-            return JS_ThrowTypeErrorNotAnObject(ctx);
-        ret = JS_DefinePropertyValue(ctx, this_val, JS_ATOM_constructor,
-                                     js_dup(argv[0]),
-                                     JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+    if (magic) { // setter (the getter is registered with magic == 0)
+        // SetterThatIgnoresPrototypeProperties(%Iterator.prototype%, "constructor", v)
+        // argv[0] is the assigned value; it defaults to undefined because the
+        // setter is registered with length 1 (see JS_AddIntrinsicBaseObjects).
+        if (check_iterator(ctx, this_val) < 0)
+            return JS_EXCEPTION;
+        if (js_same_value(ctx, this_val, ctx->class_proto[JS_CLASS_ITERATOR]))
+            return JS_ThrowTypeError(ctx, "Cannot assign to read only property");
+        ret = JS_GetOwnProperty(ctx, NULL, this_val, JS_ATOM_constructor);
         if (ret < 0)
             return JS_EXCEPTION;
+        if (ret) {
+            if (JS_SetProperty(ctx, this_val, JS_ATOM_constructor, js_dup(argv[0])) < 0)
+                return JS_EXCEPTION;
+        } else {
+            if (JS_DefinePropertyValue(ctx, this_val, JS_ATOM_constructor,
+                                       js_dup(argv[0]),
+                                       JS_PROP_C_W_E | JS_PROP_THROW) < 0)
+                return JS_EXCEPTION;
+        }
+        return JS_UNDEFINED;
     }
     return js_dup(func_data[0]);
 }
@@ -58059,26 +58074,41 @@ int JS_AddIntrinsicBaseObjects(JSContext *ctx)
                               0);
     if (JS_IsException(obj2))
         return -1;
-    // quirk: Iterator.prototype.constructor is an accessor property
+    // quirk: Iterator.prototype.constructor is an accessor property. The getter
+    // (magic == 0) returns %Iterator%; the setter (magic == 1, length 1)
+    // implements SetterThatIgnoresPrototypeProperties. They must be separate
+    // function objects so that magic, not argc, distinguishes get from set.
     // TODO(bnoordhuis) mildly inefficient because JS_NewCConstructor
     // first creates a .constructor value property that we then replace with
     // an accessor
-    obj1 = JS_NewCFunctionData(ctx, js_iterator_constructor_getset,
-                               0, 0, 1, vc(&obj2));
-    if (JS_IsException(obj1)) {
-        JS_FreeValue(ctx, obj2);
-        return -1;
+    {
+        JSValue getter, setter;
+        getter = JS_NewCFunctionData(ctx, js_iterator_constructor_getset,
+                                     0, 0, 1, vc(&obj2));
+        if (JS_IsException(getter)) {
+            JS_FreeValue(ctx, obj2);
+            return -1;
+        }
+        setter = JS_NewCFunctionData(ctx, js_iterator_constructor_getset,
+                                     1, 1, 1, vc(&obj2));
+        if (JS_IsException(setter)) {
+            JS_FreeValue(ctx, getter);
+            JS_FreeValue(ctx, obj2);
+            return -1;
+        }
+        ctx->iterator_ctor_getset = js_dup(getter);
+        if (JS_DefineProperty(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
+                              JS_ATOM_constructor, JS_UNDEFINED,
+                              getter, setter,
+                              JS_PROP_HAS_GET | JS_PROP_HAS_SET | JS_PROP_CONFIGURABLE) < 0) {
+            JS_FreeValue(ctx, getter);
+            JS_FreeValue(ctx, setter);
+            JS_FreeValue(ctx, obj2);
+            return -1;
+        }
+        JS_FreeValue(ctx, getter);
+        JS_FreeValue(ctx, setter);
     }
-    ctx->iterator_ctor_getset = js_dup(obj1);
-    if (JS_DefineProperty(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
-                          JS_ATOM_constructor, JS_UNDEFINED,
-                          obj1, obj1,
-                          JS_PROP_HAS_GET | JS_PROP_HAS_SET | JS_PROP_CONFIGURABLE) < 0) {
-        JS_FreeValue(ctx, obj2);
-        JS_FreeValue(ctx, obj1);
-        return -1;
-    }
-    JS_FreeValue(ctx, obj1);
     ctx->iterator_ctor = obj2;
     JS_DefineAutoInitProperty(ctx, obj2, JS_ATOM_zip, JS_AUTOINIT_ID_BYTECODE,
                               (void *)(uintptr_t)JS_BUILTIN_ITERATOR_ZIP,
