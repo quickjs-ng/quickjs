@@ -1162,6 +1162,10 @@ JS_EXTERN void JS_SetHostPromiseRejectionTracker(JSRuntime *rt, JSHostPromiseRej
 /* return != 0 if the JS code needs to be interrupted */
 typedef int JSInterruptHandler(JSRuntime *rt, void *opaque);
 JS_EXTERN void JS_SetInterruptHandler(JSRuntime *rt, JSInterruptHandler *cb, void *opaque);
+/* count interrupt polls per context; use 0 to disable the limit */
+JS_EXTERN void JS_SetContextInterruptLimit(JSContext *ctx, uint64_t limit);
+JS_EXTERN uint64_t JS_GetContextInterruptCount(JSContext *ctx);
+JS_EXTERN void JS_ResetContextInterruptCount(JSContext *ctx);
 /* if can_block is true, Atomics.wait() can be used */
 JS_EXTERN void JS_SetCanBlock(JSRuntime *rt, bool can_block);
 /* set the [IsHTMLDDA] internal slot */
