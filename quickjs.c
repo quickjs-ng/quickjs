@@ -392,6 +392,14 @@ struct JSRuntime {
     } u;
     JSModuleCheckSupportedImportAttributes *module_check_attrs;
     void *module_loader_opaque;
+
+    /* async loader for dynamic import() (see JS_SetModuleLoaderFuncAsync) */
+    JSModuleNormalizeFunc *module_normalize_func_async; /* optional, may be NULL */
+    JSModuleLoaderFuncAsync *module_loader_func_async;  /* NULL => not registered */
+    JSModuleCheckSupportedImportAttributes *module_check_attrs_async;
+    void *module_loader_opaque_async;
+    struct list_head pending_async_loads; /* outstanding JSAsyncModuleLoadOpaque */
+
     /* timestamp for internal use in module evaluation */
     int64_t module_async_evaluation_next_timestamp;
 
@@ -409,6 +417,26 @@ struct JSRuntime {
     void *user_opaque;
     void *libc_opaque;
     JSRuntimeFinalizerState *finalizers;
+};
+
+/* one import() awaiting an in-flight async load */
+typedef struct JSAsyncModuleWaiter {
+    JSValue resolving_funcs[2];
+} JSAsyncModuleWaiter;
+
+/* one outstanding async load of `name` in `ctx`. Concurrent import()s of the
+   same specifier share a handle (extra waiters, no new loader call), so the
+   module is fetched and evaluated once. Owned by rt->pending_async_loads and
+   freed by the JS_FreeRuntime sweep; settling releases the waiters and sets
+   `settled` so a second fulfill/reject is a no-op. */
+struct JSAsyncModuleLoadOpaque {
+    struct list_head link;        /* in rt->pending_async_loads */
+    JSContext *ctx;
+    JSAtom name;                  /* normalized specifier; dedup key with ctx */
+    JSAsyncModuleWaiter *waiters; /* owned until settled */
+    int waiters_count;
+    int waiters_size;
+    bool settled;
 };
 
 struct JSClass {
@@ -2322,6 +2350,7 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     init_list_head(&rt->string_list);
 #endif
     init_list_head(&rt->job_list);
+    init_list_head(&rt->pending_async_loads);
 
     if (JS_InitAtoms(rt))
         goto fail;
@@ -2635,6 +2664,21 @@ void JS_FreeRuntime(JSRuntime *rt)
         js_free_rt(rt, e);
     }
     init_list_head(&rt->job_list);
+
+    /* free async loads still in flight; don't run their reject callbacks (no JS
+       during teardown), just release the references they hold */
+    list_for_each_safe(el, el1, &rt->pending_async_loads) {
+        JSAsyncModuleLoadOpaque *h =
+            list_entry(el, JSAsyncModuleLoadOpaque, link);
+        for (i = 0; i < h->waiters_count; i++) {
+            JS_FreeValueRT(rt, h->waiters[i].resolving_funcs[0]);
+            JS_FreeValueRT(rt, h->waiters[i].resolving_funcs[1]);
+        }
+        js_free_rt(rt, h->waiters);
+        JS_FreeAtomRT(rt, h->name);
+        js_free_rt(rt, h);
+    }
+    init_list_head(&rt->pending_async_loads);
 
     JS_RunGC(rt);
 
@@ -30390,6 +30434,19 @@ void JS_SetModuleNormalizeFunc2(JSRuntime *rt,
     rt->normalize_u.module_normalize_func2 = module_normalize;
 }
 
+/* async loader for dynamic import(); see JS_SetModuleLoaderFuncAsync in quickjs.h */
+void JS_SetModuleLoaderFuncAsync(JSRuntime *rt,
+                                 JSModuleNormalizeFunc *module_normalize,
+                                 JSModuleLoaderFuncAsync *module_loader_async,
+                                 JSModuleCheckSupportedImportAttributes *module_check_attrs,
+                                 void *opaque)
+{
+    rt->module_normalize_func_async = module_normalize;
+    rt->module_loader_func_async = module_loader_async;
+    rt->module_check_attrs_async = module_check_attrs;
+    rt->module_loader_opaque_async = opaque;
+}
+
 int JS_SetModulePrivateValue(JSContext *ctx, JSModuleDef *m, JSValue val)
 {
     set_value(ctx, &m->private_value, val);
@@ -31475,30 +31532,73 @@ static JSValue js_load_module_fulfilled(JSContext *ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
-                                  const char *filename,
-                                  JSValueConst *resolving_funcs,
-                                  JSValueConst attributes)
+/* link + evaluate `m` once, then settle each of the `count` waiters with the
+   same result. Waiters' resolving_funcs and `m` are borrowed (not freed). */
+static void js_load_module_continue_n(JSContext *ctx, JSModuleDef *m,
+                                      const JSAsyncModuleWaiter *waiters,
+                                      int count)
 {
     JSValue evaluate_promise;
-    JSModuleDef *m;
     JSValue ret, err, func_obj, evaluate_resolving_funcs[2];
     JSValueConst func_data[3];
-
-    m = js_host_resolve_imported_module(ctx, basename, filename, attributes);
-    if (!m)
-        goto fail;
+    int i;
 
     if (js_resolve_module(ctx, m) < 0) {
         js_free_modules(ctx, JS_FREE_MODULE_NOT_RESOLVED);
         goto fail;
     }
 
-    /* Evaluate the module code */
     func_obj = JS_NewModuleValue(ctx, m);
     evaluate_promise = JS_EvalFunction(ctx, func_obj);
     if (JS_IsException(evaluate_promise)) {
     fail:
+        err = JS_GetException(ctx);
+        for (i = 0; i < count; i++) {
+            ret = JS_Call(ctx, waiters[i].resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
+            JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
+        }
+        JS_FreeValue(ctx, err);
+        return;
+    }
+
+    /* fan the evaluation out: one then-handler pair per waiter */
+    for (i = 0; i < count; i++) {
+        func_obj = JS_NewModuleValue(ctx, m);
+        func_data[0] = waiters[i].resolving_funcs[0];
+        func_data[1] = waiters[i].resolving_funcs[1];
+        func_data[2] = func_obj;
+        evaluate_resolving_funcs[0] = JS_NewCFunctionData(ctx, js_load_module_fulfilled, 0, 0, 3, func_data);
+        evaluate_resolving_funcs[1] = JS_NewCFunctionData(ctx, js_load_module_rejected, 0, 0, 3, func_data);
+        JS_FreeValue(ctx, func_obj);
+        ret = js_promise_then(ctx, evaluate_promise, 2, vc(evaluate_resolving_funcs));
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, evaluate_resolving_funcs[0]);
+        JS_FreeValue(ctx, evaluate_resolving_funcs[1]);
+    }
+    JS_FreeValue(ctx, evaluate_promise);
+}
+
+/* single-waiter wrapper (sync loader + cache-hit paths). The waiter only
+   borrows resolving_funcs (js_load_module_continue_n never frees them). */
+static void js_load_module_continue(JSContext *ctx, JSModuleDef *m,
+                                    JSValueConst *resolving_funcs)
+{
+    JSAsyncModuleWaiter w;
+    w.resolving_funcs[0] = unsafe_unconst(resolving_funcs[0]);
+    w.resolving_funcs[1] = unsafe_unconst(resolving_funcs[1]);
+    js_load_module_continue_n(ctx, m, &w, 1);
+}
+
+static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
+                                  const char *filename,
+                                  JSValueConst *resolving_funcs,
+                                  JSValueConst attributes)
+{
+    JSModuleDef *m;
+    JSValue ret, err;
+
+    m = js_host_resolve_imported_module(ctx, basename, filename, attributes);
+    if (!m) {
         err = JS_GetException(ctx);
         ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
         JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
@@ -31506,18 +31606,7 @@ static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
         return;
     }
 
-    func_obj = JS_NewModuleValue(ctx, m);
-    func_data[0] = resolving_funcs[0];
-    func_data[1] = resolving_funcs[1];
-    func_data[2] = func_obj;
-    evaluate_resolving_funcs[0] = JS_NewCFunctionData(ctx, js_load_module_fulfilled, 0, 0, 3, func_data);
-    evaluate_resolving_funcs[1] = JS_NewCFunctionData(ctx, js_load_module_rejected, 0, 0, 3, func_data);
-    JS_FreeValue(ctx, func_obj);
-    ret = js_promise_then(ctx, evaluate_promise, 2, vc(evaluate_resolving_funcs));
-    JS_FreeValue(ctx, ret);
-    JS_FreeValue(ctx, evaluate_resolving_funcs[0]);
-    JS_FreeValue(ctx, evaluate_resolving_funcs[1]);
-    JS_FreeValue(ctx, evaluate_promise);
+    js_load_module_continue(ctx, m, resolving_funcs);
 }
 
 /* Return a promise or an exception in case of memory error. Used by
@@ -31536,6 +31625,69 @@ JSValue JS_LoadModule(JSContext *ctx, const char *basename,
     return promise;
 }
 
+/* add a waiter to an in-flight handle (dups resolving_funcs); -1 on OOM */
+static int js_async_module_add_waiter(JSContext *ctx, JSAsyncModuleLoadHandle h,
+                                      JSValueConst *resolving_funcs)
+{
+    if (h->waiters_count >= h->waiters_size) {
+        int new_size = h->waiters_size * 2;
+        JSAsyncModuleWaiter *w = js_realloc(ctx, h->waiters,
+                                            sizeof(*w) * new_size);
+        if (!w)
+            return -1;
+        h->waiters = w;
+        h->waiters_size = new_size;
+    }
+    h->waiters[h->waiters_count].resolving_funcs[0] = JS_DupValue(ctx, resolving_funcs[0]);
+    h->waiters[h->waiters_count].resolving_funcs[1] = JS_DupValue(ctx, resolving_funcs[1]);
+    h->waiters_count++;
+    return 0;
+}
+
+/* allocate a handle for the first import of `name`, seeded with one waiter,
+   linked into rt->pending_async_loads (dups name and resolving_funcs) */
+static JSAsyncModuleLoadHandle js_alloc_async_module_load(JSContext *ctx,
+                                                          JSAtom name,
+                                                          JSValueConst *resolving_funcs)
+{
+    JSAsyncModuleLoadHandle h = js_malloc(ctx, sizeof(*h));
+    if (!h)
+        return NULL;
+    h->waiters = js_malloc(ctx, sizeof(*h->waiters));
+    if (!h->waiters) {
+        js_free(ctx, h);
+        return NULL;
+    }
+    h->ctx = ctx;
+    h->name = JS_DupAtom(ctx, name);
+    h->waiters_size = 1;
+    h->waiters_count = 1;
+    h->waiters[0].resolving_funcs[0] = JS_DupValue(ctx, resolving_funcs[0]);
+    h->waiters[0].resolving_funcs[1] = JS_DupValue(ctx, resolving_funcs[1]);
+    h->settled = false;
+    list_add_tail(&h->link, &ctx->rt->pending_async_loads);
+    return h;
+}
+
+/* mark settled and release the waiters; the struct stays linked and is freed by
+   the JS_FreeRuntime sweep, so a second fulfill/reject is a safe no-op */
+static void js_settle_async_module_load(JSAsyncModuleLoadHandle h)
+{
+    JSContext *ctx = h->ctx;
+    int i;
+    h->settled = true;
+    for (i = 0; i < h->waiters_count; i++) {
+        JS_FreeValue(ctx, h->waiters[i].resolving_funcs[0]);
+        JS_FreeValue(ctx, h->waiters[i].resolving_funcs[1]);
+    }
+    js_free(ctx, h->waiters);
+    h->waiters = NULL;
+    h->waiters_count = 0;
+    h->waiters_size = 0;
+    JS_FreeAtom(ctx, h->name);
+    h->name = JS_ATOM_NULL;
+}
+
 static JSValue js_dynamic_import_job(JSContext *ctx,
                                      int argc, JSValueConst *argv)
 {
@@ -31543,8 +31695,9 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     JSValueConst basename_val = argv[2];
     JSValueConst specifier = argv[3];
     JSValueConst attributes = argv[4];
-    const char *basename = NULL, *filename;
+    const char *basename = NULL, *filename = NULL;
     JSValue ret, err;
+    JSRuntime *rt = ctx->rt;
 
     if (!JS_IsString(basename_val)) {
         JS_ThrowTypeError(ctx, "no function filename for import()");
@@ -31558,6 +31711,81 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     if (!filename)
         goto exception;
 
+    /* async loader: normalize, check attributes and short-circuit a cache hit
+       (mirroring js_host_resolve_imported_module), then hand off to the host */
+    if (rt->module_loader_func_async) {
+        JSAsyncModuleLoadHandle handle;
+        JSModuleDef *m;
+        JSAtom module_name;
+        char *cname;
+        struct list_head *el;
+
+        if (rt->module_normalize_func_async) {
+            cname = rt->module_normalize_func_async(ctx, basename, filename,
+                                                    rt->module_loader_opaque_async);
+        } else {
+            cname = js_default_module_normalize_name(ctx, basename, filename);
+        }
+        if (!cname)
+            goto exception;
+
+        if (rt->module_check_attrs_async &&
+            rt->module_check_attrs_async(ctx, rt->module_loader_opaque_async,
+                                         attributes) < 0) {
+            js_free(ctx, cname);
+            goto exception;
+        }
+
+        module_name = JS_NewAtom(ctx, cname);
+        if (module_name == JS_ATOM_NULL) {
+            js_free(ctx, cname);
+            goto exception;
+        }
+
+        /* already loaded (prior static or dynamic import): settle from cache */
+        m = js_find_loaded_module(ctx, module_name);
+        if (m) {
+            JS_FreeAtom(ctx, module_name);
+            js_free(ctx, cname);
+            js_load_module_continue(ctx, m, resolving_funcs);
+            JS_FreeCString(ctx, filename);
+            JS_FreeCString(ctx, basename);
+            return JS_UNDEFINED;
+        }
+
+        /* in-flight dedup: an unsettled load of this name is already pending in
+           this context, so wait on it instead of invoking the loader again */
+        list_for_each(el, &rt->pending_async_loads) {
+            handle = list_entry(el, JSAsyncModuleLoadOpaque, link);
+            if (!handle->settled && handle->ctx == ctx &&
+                handle->name == module_name) {
+                int r = js_async_module_add_waiter(ctx, handle, resolving_funcs);
+                JS_FreeAtom(ctx, module_name);
+                js_free(ctx, cname);
+                if (r < 0)
+                    goto exception;
+                JS_FreeCString(ctx, filename);
+                JS_FreeCString(ctx, basename);
+                return JS_UNDEFINED;
+            }
+        }
+
+        handle = js_alloc_async_module_load(ctx, module_name, resolving_funcs);
+        JS_FreeAtom(ctx, module_name);
+        if (!handle) {
+            js_free(ctx, cname);
+            goto exception;
+        }
+        /* hand off the normalized name; the runtime owns the handle now */
+        rt->module_loader_func_async(ctx, cname,
+                                     rt->module_loader_opaque_async,
+                                     attributes, handle);
+        js_free(ctx, cname);
+        JS_FreeCString(ctx, filename);
+        JS_FreeCString(ctx, basename);
+        return JS_UNDEFINED;
+    }
+
     JS_LoadModuleInternal(ctx, basename, filename, resolving_funcs, attributes);
     JS_FreeCString(ctx, filename);
     JS_FreeCString(ctx, basename);
@@ -31567,8 +31795,59 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
     JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
     JS_FreeValue(ctx, err);
+    JS_FreeCString(ctx, filename);
     JS_FreeCString(ctx, basename);
     return JS_UNDEFINED;
+}
+
+void JS_FulfillAsyncModuleLoad(JSContext *ctx,
+                               JSAsyncModuleLoadHandle handle,
+                               JSModuleDef *module)
+{
+    assert(ctx == handle->ctx);
+    if (handle->settled) /* second fulfill/reject is a no-op */
+        return;
+
+    if (!module) {
+        /* NULL means load failed: reject every waiter with a generic error */
+        int i;
+        JSValue err = JS_NewError(ctx);
+        JS_DefinePropertyValueStr(ctx, err, "message",
+                                  JS_NewString(ctx, "async module load returned NULL"),
+                                  JS_PROP_C_W_E);
+        for (i = 0; i < handle->waiters_count; i++) {
+            JSValue ret = JS_Call(ctx, handle->waiters[i].resolving_funcs[1],
+                                  JS_UNDEFINED, 1, vc(&err));
+            JS_FreeValue(ctx, ret);
+        }
+        JS_FreeValue(ctx, err);
+    } else {
+        js_load_module_continue_n(ctx, module, handle->waiters,
+                                  handle->waiters_count);
+    }
+
+    js_settle_async_module_load(handle);
+}
+
+void JS_RejectAsyncModuleLoad(JSContext *ctx,
+                              JSAsyncModuleLoadHandle handle,
+                              JSValue error)
+{
+    int i;
+
+    assert(ctx == handle->ctx);
+    if (handle->settled) { /* no-op, but we still own `error` */
+        JS_FreeValue(ctx, error);
+        return;
+    }
+    for (i = 0; i < handle->waiters_count; i++) {
+        JSValue ret = JS_Call(ctx, handle->waiters[i].resolving_funcs[1],
+                              JS_UNDEFINED, 1, vc(&error));
+        JS_FreeValue(ctx, ret);
+    }
+    JS_FreeValue(ctx, error);
+
+    js_settle_async_module_load(handle);
 }
 
 static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier,
