@@ -959,6 +959,16 @@ function test_symbol()
     assert(b.toString(), "Symbol(aaa)");
 }
 
+function float64_from_words(hi, lo)
+{
+    var buffer, view;
+    buffer = new ArrayBuffer(8);
+    view = new DataView(buffer);
+    view.setUint32(0, hi);
+    view.setUint32(4, lo);
+    return view.getFloat64(0);
+}
+
 function test_map()
 {
     var a, i, n, tab, o, v;
@@ -972,6 +982,42 @@ function test_map()
     assert(a.get(-2147483648), 1);
     assert(a.get(-2147483647 - 1), 1);
     assert(a.get(-2147483647.5 - 0.5), 1);
+
+    a = new Map();
+    tab = ["k", "\0k", "\0\0k"];
+    for(i = 0; i < tab.length; i++) {
+        a.set(tab[i], i);
+    }
+    assert(a.size, tab.length);
+    for(i = 0; i < tab.length; i++) {
+        assert(a.get(tab[i]), i);
+    }
+
+    a = new Map();
+    tab = [
+        [0, "zero"],
+        [float64_from_words(0x00000001, 0x00000001), "subnormal"],
+        [float64_from_words(0x3ff00000, 0x3ff00000), "normal1"],
+        [float64_from_words(0x40080000, 0x40080000), "normal2"],
+    ];
+    for(i = 0; i < tab.length; i++) {
+        a.set(tab[i][0], tab[i][1]);
+    }
+    assert(a.size, tab.length);
+    for(i = 0; i < tab.length; i++) {
+        assert(a.get(tab[i][0]), tab[i][1]);
+    }
+
+    a = new Map();
+    a.set(NaN, 1);
+    a.set(Number.NaN, 2);
+    assert(a.size, 1);
+    assert(a.get(NaN), 2);
+    a.set(-0, 3);
+    a.set(+0, 4);
+    assert(a.size, 2);
+    assert(a.get(-0), 4);
+    assert(a.get(+0), 4);
 
     a = new Map();
     tab = [];
@@ -1034,6 +1080,7 @@ function test_weak_map()
 
 function test_set()
 {
+    var i, set, tab;
     const iter = {
         a: [4, 5, 6],
         nextCalls: 0,
@@ -1101,6 +1148,31 @@ function test_set()
             keys() { return [].values() },
         })
     }
+
+    tab = ["k", "\0k", "\0\0k"];
+    set = new Set(tab);
+    assert(set.size, tab.length);
+    for(i = 0; i < tab.length; i++) {
+        assert(set.has(tab[i]));
+    }
+
+    tab = [
+        0,
+        float64_from_words(0x00000001, 0x00000001),
+        float64_from_words(0x3ff00000, 0x3ff00000),
+        float64_from_words(0x40080000, 0x40080000),
+    ];
+    set = new Set(tab);
+    assert(set.size, tab.length);
+    for(i = 0; i < tab.length; i++) {
+        assert(set.has(tab[i]));
+    }
+
+    set = new Set([NaN, Number.NaN, -0, +0]);
+    assert(set.size, 2);
+    assert(set.has(NaN));
+    assert(set.has(-0));
+    assert(set.has(+0));
 }
 
 function test_weak_set()

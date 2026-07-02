@@ -52678,10 +52678,10 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         h = JS_VALUE_GET_INT(key);
         break;
     case JS_TAG_STRING:
-        h = hash_string(JS_VALUE_GET_STRING(key), 0);
+        h = hash_string(JS_VALUE_GET_STRING(key), JS_VALUE_GET_STRING(key)->len);
         break;
     case JS_TAG_STRING_ROPE:
-        h = hash_string_rope(key, 0);
+        h = hash_string_rope(key, JS_VALUE_GET_STRING_ROPE(key)->len);
         break;
     case JS_TAG_OBJECT:
     case JS_TAG_SYMBOL:
@@ -52704,7 +52704,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
             d = NAN;
     hash_float64:
         u.d = d;
-        h = (u.u32[0] ^ u.u32[1]) * 3163;
+        h = (u.u32[0] * 3163 + u.u32[1] * 82589933) * 3163;
         return h ^= JS_TAG_FLOAT64;
     default:
         h = 0;
