@@ -52665,6 +52665,16 @@ static JSValueConst map_normalize_key_const(JSContext *ctx, JSValueConst key)
 }
 
 /* XXX: better hash ? */
+static uint32_t map_hash_u64(uint64_t h)
+{
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    h *= 0xc4ceb9fe1a85ec53ULL;
+    h ^= h >> 33;
+    return (uint32_t)(h ^ (h >> 32));
+}
+
 static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
 {
     uint32_t tag = JS_VALUE_GET_NORM_TAG(key);
@@ -52704,7 +52714,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
             d = NAN;
     hash_float64:
         u.d = d;
-        h = (u.u32[0] * 3163 + u.u32[1] * 82589933) * 3163;
+        h = map_hash_u64(u.u64);
         return h ^= JS_TAG_FLOAT64;
     default:
         h = 0;

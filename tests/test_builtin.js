@@ -969,6 +969,13 @@ function float64_from_words(hi, lo)
     return view.getFloat64(0);
 }
 
+function float64_map_hash_regression_value(i)
+{
+    var word;
+    word = (0x3ff00000 + (i << 10)) >>> 0;
+    return float64_from_words(word, word);
+}
+
 function test_map()
 {
     var a, i, n, tab, o, v;
@@ -1006,6 +1013,18 @@ function test_map()
     assert(a.size, tab.length);
     for(i = 0; i < tab.length; i++) {
         assert(a.get(tab[i][0]), tab[i][1]);
+    }
+
+    a = new Map();
+    n = 4096;
+    for(i = 0; i < n; i++) {
+        v = float64_map_hash_regression_value(i);
+        a.set(v, i);
+    }
+    assert(a.size, n);
+    for(i = 0; i < n; i++) {
+        v = float64_map_hash_regression_value(i);
+        assert(a.get(v), i);
     }
 
     a = new Map();
@@ -1162,6 +1181,16 @@ function test_set()
         float64_from_words(0x3ff00000, 0x3ff00000),
         float64_from_words(0x40080000, 0x40080000),
     ];
+    set = new Set(tab);
+    assert(set.size, tab.length);
+    for(i = 0; i < tab.length; i++) {
+        assert(set.has(tab[i]));
+    }
+
+    tab = [];
+    for(i = 0; i < 4096; i++) {
+        tab.push(float64_map_hash_regression_value(i));
+    }
     set = new Set(tab);
     assert(set.size, tab.length);
     for(i = 0; i < tab.length; i++) {
