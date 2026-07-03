@@ -45553,6 +45553,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
             selected = JS_Call(ctx, it->func, JS_UNDEFINED, countof(args), args);
             JS_FreeValue(ctx, index_val);
             if (JS_IsException(selected)) {
+                JS_FreeValue(ctx, item);
                 JS_FreeValue(ctx, method);
                 goto fail;
             }
@@ -45561,6 +45562,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                 ret = item;
                 goto done;
             }
+            JS_FreeValue(ctx, item);
             goto filter_again;
         }
         break;
