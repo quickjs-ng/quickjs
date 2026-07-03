@@ -45493,13 +45493,9 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
     case JS_ITERATOR_HELPER_KIND_DROP:
         {
             JSValue item, method;
-            if (magic == GEN_MAGIC_NEXT) {
-                method = js_dup(it->next);
-            } else {
-                method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
-                if (JS_IsException(method))
-                    goto fail;
-            }
+            if (magic == GEN_MAGIC_RETURN)
+                goto close;
+            method = js_dup(it->next);
             while (it->count > 0) {
                 it->count--;
                 item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
@@ -45508,8 +45504,6 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                     goto fail;
                 }
                 JS_FreeValue(ctx, item);
-                if (magic == GEN_MAGIC_RETURN)
-                    *pdone = true;
                 if (*pdone) {
                     JS_FreeValue(ctx, method);
                     ret = JS_UNDEFINED;
@@ -45529,20 +45523,16 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
         {
             JSValue item, method, selected, index_val;
             JSValueConst args[2];
-            if (magic == GEN_MAGIC_NEXT) {
-                method = js_dup(it->next);
-            } else {
-                method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
-                if (JS_IsException(method))
-                    goto fail;
-            }
+            if (magic == GEN_MAGIC_RETURN)
+                goto close;
+            method = js_dup(it->next);
         filter_again:
             item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
             if (JS_IsException(item)) {
                 JS_FreeValue(ctx, method);
                 goto fail;
             }
-            if (*pdone || magic == GEN_MAGIC_RETURN) {
+            if (*pdone) {
                 JS_FreeValue(ctx, method);
                 ret = item;
                 goto done;
@@ -45570,20 +45560,16 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
         {
             JSValue item, method, index_val, iter;
             JSValueConst args[2];
+            if (magic == GEN_MAGIC_RETURN)
+                goto close;
         flat_map_again:
             if (JS_IsUndefined(it->inner)) {
-                if (magic == GEN_MAGIC_NEXT) {
-                    method = js_dup(it->next);
-                } else {
-                    method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
-                    if (JS_IsException(method))
-                        goto fail;
-                }
+                method = js_dup(it->next);
                 item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
                 JS_FreeValue(ctx, method);
                 if (JS_IsException(item))
                     goto fail;
-                if (*pdone || magic == GEN_MAGIC_RETURN) {
+                if (*pdone) {
                     ret = item;
                     goto done;
                 }
@@ -45619,10 +45605,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                 it->inner = iter;
             }
 
-            if (magic == GEN_MAGIC_NEXT)
-                method = JS_GetProperty(ctx, it->inner, JS_ATOM_next);
-            else
-                method = JS_GetProperty(ctx, it->inner, JS_ATOM_return);
+            method = JS_GetProperty(ctx, it->inner, JS_ATOM_next);
             if (JS_IsException(method)) {
             inner_fail:
                 JS_IteratorClose(ctx, it->inner, false);
@@ -45630,16 +45613,11 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                 it->inner = JS_UNDEFINED;
                 goto fail;
             }
-            if (magic == GEN_MAGIC_RETURN && (JS_IsUndefined(method) || JS_IsNull(method))) {
-                goto inner_end;
-            } else {
-                item = JS_IteratorNext(ctx, it->inner, method, 0, NULL, pdone);
-                JS_FreeValue(ctx, method);
-                if (JS_IsException(item))
-                    goto inner_fail;
-            }
+            item = JS_IteratorNext(ctx, it->inner, method, 0, NULL, pdone);
+            JS_FreeValue(ctx, method);
+            if (JS_IsException(item))
+                goto inner_fail;
             if (*pdone) {
-            inner_end:
                 *pdone = false; // The outer iterator must continue.
                 JS_IteratorClose(ctx, it->inner, false);
                 JS_FreeValue(ctx, it->inner);
@@ -45654,18 +45632,14 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
         {
             JSValue item, method, index_val;
             JSValueConst args[2];
-            if (magic == GEN_MAGIC_NEXT) {
-                method = js_dup(it->next);
-            } else {
-                method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
-                if (JS_IsException(method))
-                    goto fail;
-            }
+            if (magic == GEN_MAGIC_RETURN)
+                goto close;
+            method = js_dup(it->next);
             item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
             JS_FreeValue(ctx, method);
             if (JS_IsException(item))
                 goto fail;
-            if (*pdone || magic == GEN_MAGIC_RETURN) {
+            if (*pdone) {
                 ret = item;
                 goto done;
             }
@@ -45683,34 +45657,41 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
     case JS_ITERATOR_HELPER_KIND_TAKE:
         {
             JSValue item, method;
-            if (it->count > 0) {
-                if (magic == GEN_MAGIC_NEXT) {
-                    method = js_dup(it->next);
-                } else {
-                    method = JS_GetProperty(ctx, it->obj, JS_ATOM_return);
-                    if (JS_IsException(method))
-                        goto fail;
-                }
-                it->count--;
-                item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
-                JS_FreeValue(ctx, method);
-                if (JS_IsException(item))
-                    goto fail;
-                ret = item;
-                goto done;
-            }
-
-            *pdone = true;
-            if (JS_IteratorClose(ctx, it->obj, false))
-                ret = JS_EXCEPTION;
-            else
-                ret = JS_UNDEFINED;
+            if (magic == GEN_MAGIC_RETURN || it->count == 0)
+                goto close;
+            method = js_dup(it->next);
+            it->count--;
+            item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
+            JS_FreeValue(ctx, method);
+            if (JS_IsException(item))
+                goto fail;
+            ret = item;
             goto done;
         }
         break;
     default:
         abort();
     }
+
+close:
+    /* Close the underlying iterator(s) and report completion. Used both when
+       the helper's own `return` is invoked and when a `take` reaches its
+       limit. JS_IteratorClose is a no-op when the iterator has no `return`
+       method, so this must not assume one exists. */
+    *pdone = true;
+    ret = JS_UNDEFINED;
+    if (!JS_IsUndefined(it->inner)) {
+        // flatMap: close the active inner iterator first.
+        if (JS_IteratorClose(ctx, it->inner, false))
+            ret = JS_EXCEPTION;
+        JS_FreeValue(ctx, it->inner);
+        it->inner = JS_UNDEFINED;
+    }
+    if (JS_IsException(ret))
+        JS_IteratorClose(ctx, it->obj, true); // preserve the pending exception
+    else if (JS_IteratorClose(ctx, it->obj, false))
+        ret = JS_EXCEPTION;
+    goto done;
 
 done:
     it->done = magic == GEN_MAGIC_NEXT ? *pdone : 1;
