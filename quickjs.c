@@ -45667,7 +45667,6 @@ close:
     }
     if (JS_IteratorClose(ctx, it->obj, JS_IsException(ret)))
         ret = JS_EXCEPTION;
-    goto done;
 
 done:
     it->done = magic == GEN_MAGIC_NEXT ? *pdone : 1;
