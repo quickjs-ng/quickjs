@@ -45492,27 +45492,22 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
     switch (it->kind) {
     case JS_ITERATOR_HELPER_KIND_DROP:
         {
-            JSValue item, method;
+            JSValue item;
             if (magic == GEN_MAGIC_RETURN)
                 goto close;
-            method = js_dup(it->next);
             while (it->count > 0) {
                 it->count--;
-                item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
-                if (JS_IsException(item)) {
-                    JS_FreeValue(ctx, method);
+                item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
+                if (JS_IsException(item))
                     goto fail;
-                }
                 JS_FreeValue(ctx, item);
                 if (*pdone) {
-                    JS_FreeValue(ctx, method);
                     ret = JS_UNDEFINED;
                     goto done;
                 }
             }
 
-            item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
-            JS_FreeValue(ctx, method);
+            item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
             if (JS_IsException(item))
                 goto fail;
             ret = item;
@@ -45521,19 +45516,15 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
         break;
     case JS_ITERATOR_HELPER_KIND_FILTER:
         {
-            JSValue item, method, selected, index_val;
+            JSValue item, selected, index_val;
             JSValueConst args[2];
             if (magic == GEN_MAGIC_RETURN)
                 goto close;
-            method = js_dup(it->next);
         filter_again:
-            item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
-            if (JS_IsException(item)) {
-                JS_FreeValue(ctx, method);
+            item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
+            if (JS_IsException(item))
                 goto fail;
-            }
             if (*pdone) {
-                JS_FreeValue(ctx, method);
                 ret = item;
                 goto done;
             }
@@ -45544,11 +45535,9 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
             JS_FreeValue(ctx, index_val);
             if (JS_IsException(selected)) {
                 JS_FreeValue(ctx, item);
-                JS_FreeValue(ctx, method);
                 goto fail;
             }
             if (JS_ToBoolFree(ctx, selected)) {
-                JS_FreeValue(ctx, method);
                 ret = item;
                 goto done;
             }
@@ -45564,9 +45553,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                 goto close;
         flat_map_again:
             if (JS_IsUndefined(it->inner)) {
-                method = js_dup(it->next);
-                item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
-                JS_FreeValue(ctx, method);
+                item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
                 if (JS_IsException(item))
                     goto fail;
                 if (*pdone) {
@@ -45630,13 +45617,11 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
         break;
     case JS_ITERATOR_HELPER_KIND_MAP:
         {
-            JSValue item, method, index_val;
+            JSValue item, index_val;
             JSValueConst args[2];
             if (magic == GEN_MAGIC_RETURN)
                 goto close;
-            method = js_dup(it->next);
-            item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
-            JS_FreeValue(ctx, method);
+            item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
             if (JS_IsException(item))
                 goto fail;
             if (*pdone) {
@@ -45656,13 +45641,11 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
         break;
     case JS_ITERATOR_HELPER_KIND_TAKE:
         {
-            JSValue item, method;
+            JSValue item;
             if (magic == GEN_MAGIC_RETURN || it->count == 0)
                 goto close;
-            method = js_dup(it->next);
             it->count--;
-            item = JS_IteratorNext(ctx, it->obj, method, 0, NULL, pdone);
-            JS_FreeValue(ctx, method);
+            item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
             if (JS_IsException(item))
                 goto fail;
             ret = item;
@@ -45674,22 +45657,15 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
     }
 
 close:
-    /* Close the underlying iterator(s) and report completion. Used both when
-       the helper's own `return` is invoked and when a `take` reaches its
-       limit. JS_IteratorClose is a no-op when the iterator has no `return`
-       method, so this must not assume one exists. */
     *pdone = true;
     ret = JS_UNDEFINED;
     if (!JS_IsUndefined(it->inner)) {
-        // flatMap: close the active inner iterator first.
         if (JS_IteratorClose(ctx, it->inner, false))
             ret = JS_EXCEPTION;
         JS_FreeValue(ctx, it->inner);
         it->inner = JS_UNDEFINED;
     }
-    if (JS_IsException(ret))
-        JS_IteratorClose(ctx, it->obj, true); // preserve the pending exception
-    else if (JS_IteratorClose(ctx, it->obj, false))
+    if (JS_IteratorClose(ctx, it->obj, JS_IsException(ret)))
         ret = JS_EXCEPTION;
     goto done;
 
