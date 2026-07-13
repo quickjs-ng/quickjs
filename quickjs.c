@@ -43788,7 +43788,8 @@ static JSValue js_array_push(JSContext *ctx, JSValueConst this_val,
                        (get_shape_prop(p->shape)->flags & JS_PROP_WRITABLE))) {
                 array_len = JS_VALUE_GET_INT(p->prop[0].u.value);
                 new_len = array_len + argc;
-                if (likely(new_len >= array_len && new_len <= (uint32_t)INT32_MAX)) { /* no overflow and within fast-array bounds */
+                if (likely(array_len == p->u.array.count &&
+                           new_len >= array_len && new_len <= (uint32_t)INT32_MAX)) { /* no overflow and within fast-array bounds */
                     if (unlikely(new_len > p->u.array.u1.size)) {
                         if (expand_fast_array(ctx, p, new_len))
                             return JS_EXCEPTION;
