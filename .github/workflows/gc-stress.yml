@@ -1,0 +1,61 @@
+name: gc-stress
+
+on:
+  pull_request:
+    paths:
+      - '**'
+      - '!.gitignore'
+      - '!LICENSE'
+      - '!README.md'
+      - '!docs/**'
+      - '!examples/**'
+      - '.github/workflows/gc-stress.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - '**'
+      - '!.gitignore'
+      - '!LICENSE'
+      - '!README.md'
+      - '!docs/**'
+      - '!examples/**'
+      - '.github/workflows/gc-stress.yml'
+
+jobs:
+  gc-stress:
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: ${{ matrix.os == 'windows-latest' && 'msys2 {0}' || 'bash' }}
+    env:
+      ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, asan: 'ON' }
+          - { os: macos-latest, asan: 'ON' }
+          - { os: windows-latest, asan: 'OFF' }
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup MSYS2
+        if: matrix.os == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          install: >-
+            git
+            make
+          pacboy: >-
+            cmake:p
+            ninja:p
+            toolchain:p
+      - name: build & test
+        run: >-
+          make test
+          BUILD_TYPE=RelWithDebInfo
+          QJS_ENABLE_GC_STRESS=ON
+          QJS_ENABLE_ASAN=${{ matrix.asan }}
+          RUN262='build/run-test262 -x gc-stress-skip.txt'

@@ -269,8 +269,11 @@ typedef struct JSMallocState {
 #define JS_ARENA_MAX_SMALL_SIZE    512
 #define JS_ARENA_FREE_NIL          0xffff
 
-#if defined(__SANITIZE_ADDRESS__)
-/* route every allocation through the backing malloc so ASan sees each block */
+#if defined(__SANITIZE_ADDRESS__) || defined(FORCE_GC_AT_MALLOC)
+/* Route every allocation through the backing malloc so each block is seen
+   individually: ASan can then poison a freed block, and a GC-stress build
+   (FORCE_GC_AT_MALLOC) exposes prematurely-freed objects instead of the pool
+   silently recycling them. */
 #define JS_ARENA_LARGE_BLOCKS_ONLY 1
 #else
 #define JS_ARENA_LARGE_BLOCKS_ONLY 0
