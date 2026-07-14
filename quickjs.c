@@ -54147,6 +54147,7 @@ static int js_dispose_resources(JSContext *ctx, JSDisposableStack *ds,
         if (JS_IsUndefined(res->method)) {
             /* null/undefined resource, skip */
             JS_FreeValue(ctx, res->value);
+            res->value = JS_UNDEFINED;
             continue;
         }
         switch (res->hint) {
@@ -54162,6 +54163,8 @@ static int js_dispose_resources(JSContext *ctx, JSDisposableStack *ds,
         }
         JS_FreeValue(ctx, res->value);
         JS_FreeValue(ctx, res->method);
+        res->value = JS_UNDEFINED;
+        res->method = JS_UNDEFINED;
         if (JS_IsException(ret)) {
             JSValue new_error = JS_GetException(ctx);
             if (has_error) {
