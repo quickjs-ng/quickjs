@@ -31748,6 +31748,7 @@ static int exec_module_list_cmp(const void *p1, const void *p2, void *opaque)
 static int js_execute_async_module(JSContext *ctx, JSModuleDef *m);
 static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
                                   JSValue *pvalue);
+static void js_promise_set_handled(JSContext *ctx, JSValueConst promise);
 
 static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst this_val,
                                                   int argc, JSValueConst *argv, int magic,
@@ -31885,6 +31886,9 @@ static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
             JS_FreeValue(ctx, promise);
         } else if (state == JS_PROMISE_REJECTED) {
             *pvalue = JS_PromiseResult(ctx, promise);
+            // rejection is propagated to module's evaluation promise; mark this internal
+            // promise as handled so it's not also surfaced as an unhandled rejection
+            js_promise_set_handled(ctx, promise);
             JS_FreeValue(ctx, promise);
             return -1;
         } else {
@@ -54741,7 +54745,7 @@ typedef struct JSPromiseData {
     JSPromiseStateEnum promise_state;
     /* 0=fulfill, 1=reject, list of JSPromiseReactionData.link */
     struct list_head promise_reactions[2];
-    bool is_handled; /* Note: only useful to debug */
+    bool is_handled;
     JSValue promise_result;
 } JSPromiseData;
 
@@ -54775,6 +54779,29 @@ JSValue JS_PromiseResult(JSContext *ctx, JSValueConst promise)
     if (!s)
         return JS_UNDEFINED;
     return js_dup(s->promise_result);
+}
+
+// Notify the host tracker of an unreported rejection's state
+static void call_promise_rejection_tracker(JSContext *ctx, JSValueConst promise,
+                                         bool is_handled)
+{
+    JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
+    JSRuntime *rt = ctx->rt;
+    if (s && s->promise_state == JS_PROMISE_REJECTED && !s->is_handled &&
+        rt->host_promise_rejection_tracker) {
+        rt->host_promise_rejection_tracker(ctx, promise, s->promise_result,
+                                           is_handled, rt->host_promise_rejection_tracker_opaque);
+    }
+}
+
+// Mark rejected promise as handled by the engine itself and let the host know that the promise is handled
+static void js_promise_set_handled(JSContext *ctx, JSValueConst promise)
+{
+    JSPromiseData *s = JS_GetOpaque(promise, JS_CLASS_PROMISE);
+    if (!s)
+        return;
+    call_promise_rejection_tracker(ctx, promise, true);
+    s->is_handled = true;
 }
 
 bool JS_IsPromise(JSValueConst val)
@@ -54892,12 +54919,7 @@ static void fulfill_or_reject_promise(JSContext *ctx, JSValueConst promise,
         }
     }
 
-    if (s->promise_state == JS_PROMISE_REJECTED && !s->is_handled) {
-        JSRuntime *rt = ctx->rt;
-        if (rt->host_promise_rejection_tracker)
-            rt->host_promise_rejection_tracker(ctx, promise, value, false,
-                                               rt->host_promise_rejection_tracker_opaque);
-    }
+    call_promise_rejection_tracker(ctx, promise, false);
 
     list_for_each_safe(el, el1, &s->promise_reactions[is_reject]) {
         rd = list_entry(el, JSPromiseReactionData, link);
@@ -55686,12 +55708,7 @@ static __exception int perform_promise_then(JSContext *ctx,
             list_add_tail(&rd_array[i]->link, &s->promise_reactions[i]);
     } else {
         JSValueConst args[5];
-        if (s->promise_state == JS_PROMISE_REJECTED && !s->is_handled) {
-            JSRuntime *rt = ctx->rt;
-            if (rt->host_promise_rejection_tracker)
-                rt->host_promise_rejection_tracker(ctx, promise, s->promise_result,
-                                                   true, rt->host_promise_rejection_tracker_opaque);
-        }
+        call_promise_rejection_tracker(ctx, promise, true);
         i = s->promise_state - JS_PROMISE_FULFILLED;
         rd = rd_array[i];
         args[0] = rd->resolving_funcs[0];
