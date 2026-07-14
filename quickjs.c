@@ -53646,6 +53646,7 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
             } else if (map_find_record(ctx, t, item)) {
                 JS_FreeValue(ctx, item); // no duplicates
             } else if ((mr = map_add_record(ctx, t, item))) {
+                JS_FreeValue(ctx, item);
                 mr->value = JS_UNDEFINED;
             } else {
                 JS_FreeValue(ctx, item);
@@ -53673,6 +53674,7 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
                 if (map_find_record(ctx, t, item)) {
                     JS_FreeValue(ctx, item); // no duplicates
                 } else if ((mr = map_add_record(ctx, t, item))) {
+                    JS_FreeValue(ctx, item);
                     mr->value = JS_UNDEFINED;
                 } else {
                     JS_FreeValue(ctx, item);
@@ -53761,6 +53763,7 @@ static JSValue js_set_difference(JSContext *ctx, JSValueConst this_val,
                 if (map_find_record(ctx, t, item)) {
                     JS_FreeValue(ctx, item); // no duplicates
                 } else if ((mr = map_add_record(ctx, t, item))) {
+                    JS_FreeValue(ctx, item);
                     mr->value = JS_UNDEFINED;
                 } else {
                     JS_FreeValue(ctx, item);
@@ -53816,7 +53819,7 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
         mr = list_entry(el, JSMapRecord, link);
         if (mr->empty)
             continue;
-        mr = map_add_record(ctx, t, js_dup(mr->key));
+        mr = map_add_record(ctx, t, mr->key);
         if (!mr)
             goto exception;
         mr->value = JS_UNDEFINED;
@@ -53852,10 +53855,9 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
             JS_FreeValue(ctx, item);
         } else {
             mr = map_add_record(ctx, t, item);
-            if (!mr) {
-                JS_FreeValue(ctx, item);
+            JS_FreeValue(ctx, item);
+            if (!mr)
                 goto exception;
-            }
             mr->value = JS_UNDEFINED;
         }
     }
@@ -53899,7 +53901,7 @@ static JSValue js_set_union(JSContext *ctx, JSValueConst this_val,
         mr = list_entry(el, JSMapRecord, link);
         if (mr->empty)
             continue;
-        mr = map_add_record(ctx, t, js_dup(mr->key));
+        mr = map_add_record(ctx, t, mr->key);
         if (!mr)
             goto exception;
         mr->value = JS_UNDEFINED;
