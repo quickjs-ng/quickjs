@@ -48971,13 +48971,21 @@ static JSValue js_regexp_escape(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
     StringBuffer b_s, *b = &b_s;
+    JSValue str, ret;
     JSString *p;
     uint32_t c, i;
     char s[16];
 
     if (!JS_IsString(argv[0]))
         return JS_ThrowTypeError(ctx, "not a string");
-    p = JS_VALUE_GET_STRING(argv[0]);
+    if (JS_VALUE_GET_TAG(argv[0]) == JS_TAG_STRING_ROPE) {
+        str = js_linearize_string_rope(ctx, argv[0]);
+        if (JS_IsException(str))
+            return JS_EXCEPTION;
+    } else {
+        str = js_dup(argv[0]);
+    }
+    p = JS_VALUE_GET_STRING(str);
     string_buffer_init2(ctx, b, 0, p->is_wide_char);
     for (i = 0; i < p->len; i++) {
         c = p->is_wide_char ? (uint32_t)str16(p)[i] : (uint32_t)str8(p)[i];
@@ -49011,7 +49019,9 @@ static JSValue js_regexp_escape(JSContext *ctx, JSValueConst this_val,
             string_buffer_putc16(b, c);
         }
     }
-    return string_buffer_end(b);
+    ret = string_buffer_end(b);
+    JS_FreeValue(ctx, str);
+    return ret;
 }
 
 static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
