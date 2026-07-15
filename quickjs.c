@@ -45184,6 +45184,7 @@ static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
                     }
                     break;
                 }
+                JS_FreeValue(ctx, item);
                 index_val = JS_UNDEFINED;
                 ret = JS_UNDEFINED;
                 item = JS_UNDEFINED;
