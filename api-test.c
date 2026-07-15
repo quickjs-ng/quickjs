@@ -1069,6 +1069,45 @@ static void async_module_loader_shutdown_multi_waiter(void)
     JS_FreeRuntime(rt);
 }
 
+struct rejection_counts {
+    int reject_count;
+    int handle_count;
+};
+
+static void rejection_counter(JSContext *ctx, JSValueConst promise,
+                              JSValueConst reason, bool is_handled, void *opaque)
+{
+    struct rejection_counts *c = opaque;
+    if (is_handled)
+        c->handle_count++;
+    else
+        c->reject_count++;
+}
+
+// A synchronous module that throws at top level must surface exactly one unhandled rejection
+static void module_unhandled_rejection(void)
+{
+    struct rejection_counts c = {0, 0};
+    JSRuntime *rt = new_runtime();
+    JS_SetHostPromiseRejectionTracker(rt, rejection_counter, &c);
+    JSContext *ctx = JS_NewContext(rt);
+
+    static const char code[] = "throw new Error('Nuke the entire site from orbit. It\\'s the only way to be sure.')";
+    JSValue v = JS_Eval(ctx, code, strlen(code), "<m>", JS_EVAL_TYPE_MODULE);
+    JS_FreeValue(ctx, v);
+
+    JSContext *c1;
+    while (JS_ExecutePendingJob(rt, &c1) > 0)
+        ;
+
+    // net unhandled rejections == (2 rejects - 1 handled)
+    assert(c.reject_count == 2);
+    assert(c.handle_count == 1);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void runtime_cstring_free(void)
 {
     JSRuntime *rt = new_runtime();
@@ -1634,6 +1673,68 @@ static void immutable_array_buffer(void)
     JS_FreeRuntime(rt);
 }
 
+static void *sab_test_alloc(void *opaque, size_t size)
+{
+    return malloc(size);
+}
+
+static void sab_test_free(void *opaque, void *ptr)
+{
+    free(ptr);
+}
+
+static void shared_array_buffer_growth(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue ret, exception;
+
+    ret = eval(ctx, "new SharedArrayBuffer(16)");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+
+    ret = eval(ctx,
+               "const sab = new SharedArrayBuffer(16, { maxByteLength: 16 });"
+               "sab.grow(16);"
+               "sab.byteLength === 16 && sab.maxByteLength === 16");
+    assert(!JS_IsException(ret));
+    assert(JS_IsBool(ret));
+    assert(JS_VALUE_GET_BOOL(ret));
+    JS_FreeValue(ctx, ret);
+
+    ret = eval(ctx, "new SharedArrayBuffer(16, { maxByteLength: 16384 })");
+    assert(JS_IsException(ret));
+    assert(JS_HasException(ctx));
+    exception = JS_GetException(ctx);
+    assert(JS_IsError(exception));
+    JS_FreeValue(ctx, exception);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    JSSharedArrayBufferFunctions funcs = {
+        .sab_alloc = sab_test_alloc,
+        .sab_free = sab_test_free,
+        .sab_dup = NULL,
+        .sab_opaque = NULL,
+    };
+
+    rt = new_runtime();
+    JS_SetSharedArrayBufferFunctions(rt, &funcs);
+    ctx = JS_NewContext(rt);
+    ret = eval(ctx,
+               "const sab = new SharedArrayBuffer(16, { maxByteLength: 16384 });"
+               "const u8 = new Uint8Array(sab);"
+               "sab.grow(16384);"
+               "u8[1024] === 0 && u8.byteLength === 16384");
+    assert(!JS_IsException(ret));
+    assert(JS_IsBool(ret));
+    assert(JS_VALUE_GET_BOOL(ret));
+    JS_FreeValue(ctx, ret);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void get_uint8array(void)
 {
     JSRuntime *rt = new_runtime();
@@ -1747,6 +1848,43 @@ static void new_symbol(void)
     JS_FreeRuntime(rt);
 }
 
+static void bulk_free_macros(void) {
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    JSValue val0 = JS_NewObject(ctx);
+    JSValue val1 = JS_NewArray(ctx);
+    JSValue val2 = JS_NewDate(ctx, 0.0);
+    
+    JSMemoryUsage mem_usage;
+    JS_ComputeMemoryUsage(rt, &mem_usage);
+    int obj_count = mem_usage.obj_count;
+
+    JS_FreeValues(ctx, val0, val1);
+    JS_FreeValuesRT(rt, val2);
+
+    // silly atoms to ensure qjs doesn't find built-ins that match
+    JSAtom atom0 = JS_NewAtom(ctx, "ALL!!");
+    JSAtom atom1 = JS_NewAtom(ctx, "YOUR!!");
+    JSAtom atom2 = JS_NewAtom(ctx, "ATOMS!!");
+    JSAtom atom3 = JS_NewAtom(ctx, "ARE!!");
+    JSAtom atom4 = JS_NewAtom(ctx, "BELONG!!");
+    JSAtom atom5 = JS_NewAtom(ctx, "TO US!!");
+
+    JS_ComputeMemoryUsage(rt, &mem_usage);
+    assert((obj_count - 3) == mem_usage.obj_count);
+    int atom_count = mem_usage.atom_count;
+
+    JS_FreeAtoms(ctx, atom1, atom3, atom4);
+    JS_FreeAtomsRT(rt, atom0, atom2, atom5);
+
+    JS_ComputeMemoryUsage(rt, &mem_usage);
+    assert((atom_count - 6) == mem_usage.atom_count);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1772,6 +1910,7 @@ int main(void)
     async_module_loader_inflight_dedup();
     async_module_loader_concurrent_distinct();
     async_module_loader_shutdown_multi_waiter();
+    module_unhandled_rejection();
     runtime_cstring_free();
     utf16_string();
     weak_map_gc_check();
@@ -1782,7 +1921,9 @@ int main(void)
     global_object_prototype();
     slice_string_tocstring();
     immutable_array_buffer();
+    shared_array_buffer_growth();
     get_uint8array();
     new_symbol();
+    bulk_free_macros();
     return 0;
 }

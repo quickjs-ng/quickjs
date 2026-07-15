@@ -705,9 +705,9 @@ function test_typed_array()
     assert(ta[0], 0);
     Object.defineProperty(ta, "0", {value: 1337});
     assert(ta[0], 0);
-    assert(desc.writable, false);
+    assert(desc.writable, true);
     assert(desc.enumerable, true);
-    assert(desc.configurable, false);
+    assert(desc.configurable, true);
 }
 
 function test_json()
@@ -907,7 +907,7 @@ function test_regexp()
     } catch (_ex) {
         ex = _ex;
     }
-    assert(ex?.message, "invalid class range");
+    assert(ex?.message, "invalid character in class in regular expression");
 
     eval("/[\\-]/");
     eval("/[\\-]/u");

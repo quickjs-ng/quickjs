@@ -17,36 +17,14 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Unknown.js:16: SyntaxError: unknown unicode script
-test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Unknown.js:16: strict mode: SyntaxError: unknown unicode script
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Unknown.js:16: SyntaxError: unknown unicode script
-test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Unknown.js:16: strict mode: SyntaxError: unknown unicode script
-test262/test/built-ins/RegExp/property-escapes/special-property-value-Script_Extensions-Unknown.js:14: SyntaxError: unknown unicode script
-test262/test/built-ins/RegExp/property-escapes/special-property-value-Script_Extensions-Unknown.js:14: strict mode: SyntaxError: unknown unicode script
-test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
-test262/test/built-ins/RegExp/prototype/exec/regexp-builtin-exec-v-u-flag.js:45: strict mode: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
-test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
-test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-16.0.js:16: strict mode: Test262Error: `\p{RGI_Emoji}` should match 🇨🇶 (U+01F1E8 U+01F1F6)
-test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-17.0.js:16: Test262Error: `\p{RGI_Emoji}` should match 👨🏻‍🐰‍👨🏼 (U+01F468 U+01F3FB U+00200D U+01F430 U+00200D U+01F468 U+01F3FC)
-test262/test/built-ins/RegExp/unicodeSets/generated/rgi-emoji-17.0.js:16: strict mode: Test262Error: `\p{RGI_Emoji}` should match 👨🏻‍🐰‍👨🏼 (U+01F468 U+01F3FB U+00200D U+01F430 U+00200D U+01F468 U+01F3FC)
-test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
-test262/test/built-ins/String/prototype/match/regexp-prototype-match-v-u-flag.js:10: strict mode: Test262Error: Actual argument [null] shouldn't be primitive. Unicode property escapes with v flag
-test262/test/built-ins/String/prototype/matchAll/regexp-prototype-matchAll-v-u-flag.js:73: Test262Error: Actual [] and expected [𠮷, 𠮷, 𠮷, 0, 3, 6] should have the same contents. 
-test262/test/built-ins/String/prototype/matchAll/regexp-prototype-matchAll-v-u-flag.js:73: strict mode: Test262Error: Actual [] and expected [𠮷, 𠮷, 𠮷, 0, 3, 6] should have the same contents. 
-test262/test/built-ins/String/prototype/replace/regexp-prototype-replace-v-u-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«"𠮷a𠮷b𠮷"», «"XaXbX"») to be true
-test262/test/built-ins/String/prototype/replace/regexp-prototype-replace-v-u-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«"𠮷a𠮷b𠮷"», «"XaXbX"») to be true
-test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
-test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
-test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-u-flag.js:9: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
-test262/test/built-ins/String/prototype/search/regexp-prototype-search-v-u-flag.js:9: strict mode: Test262Error: Unicode property escapes with v flag Expected SameValue(«-1», «0») to be true
 test262/test/built-ins/TypedArray/prototype/lastIndexOf/negative-index-and-resize-to-smaller.js:23: Test262Error: For index -1 Expected SameValue(«-1», «2») to be true (Testing with Float64Array and makePassthrough.)
 test262/test/built-ins/TypedArray/prototype/lastIndexOf/negative-index-and-resize-to-smaller.js:23: strict mode: Test262Error: For index -1 Expected SameValue(«-1», «2») to be true (Testing with Float64Array and makePassthrough.)
 test262/test/built-ins/TypedArray/prototype/slice/speciesctor-return-same-buffer-with-offset.js:24: Test262Error: Actual [20, 30, 40, 60] and expected [20, 20, 20, 60] should have the same contents.  (Testing with Float64Array and makePassthrough.)
 test262/test/built-ins/TypedArray/prototype/slice/speciesctor-return-same-buffer-with-offset.js:24: strict mode: Test262Error: Actual [20, 30, 40, 60] and expected [20, 20, 20, 60] should have the same contents.  (Testing with Float64Array and makePassthrough.)
 test262/test/built-ins/TypedArray/prototype/subarray/BigInt/speciesctor-get-species-custom-ctor-invocation.js:43: Test262Error: Actual [[object ArrayBuffer], 8, undefined] and expected [[object ArrayBuffer], 8] should have the same contents. Constructor called with arguments (Testing with BigInt64Array and makeResizableArrayBuffer.)
 test262/test/built-ins/TypedArray/prototype/subarray/BigInt/speciesctor-get-species-custom-ctor-invocation.js:43: strict mode: Test262Error: Actual [[object ArrayBuffer], 8, undefined] and expected [[object ArrayBuffer], 8] should have the same contents. Constructor called with arguments (Testing with BigInt64Array and makeResizableArrayBuffer.)
-test262/test/built-ins/TypedArray/prototype/subarray/byteoffset-with-detached-buffer.js:44: RangeError: invalid offset (Testing with Float64Array and makePassthrough.)
-test262/test/built-ins/TypedArray/prototype/subarray/byteoffset-with-detached-buffer.js:44: strict mode: RangeError: invalid offset (Testing with Float64Array and makePassthrough.)
+test262/test/built-ins/TypedArray/prototype/subarray/byteoffset-with-detached-buffer.js:44: RangeError: invalid offset (Testing with Float64Array and makeArrayBuffer.)
+test262/test/built-ins/TypedArray/prototype/subarray/byteoffset-with-detached-buffer.js:44: strict mode: RangeError: invalid offset (Testing with Float64Array and makeArrayBuffer.)
 test262/test/built-ins/TypedArray/prototype/subarray/speciesctor-get-species-custom-ctor-invocation.js:43: Test262Error: Actual [[object ArrayBuffer], 8, undefined] and expected [[object ArrayBuffer], 8] should have the same contents. Constructor called with arguments (Testing with Float64Array and makeResizableArrayBuffer.)
 test262/test/built-ins/TypedArray/prototype/subarray/speciesctor-get-species-custom-ctor-invocation.js:43: strict mode: Test262Error: Actual [[object ArrayBuffer], 8, undefined] and expected [[object ArrayBuffer], 8] should have the same contents. Constructor called with arguments (Testing with Float64Array and makeResizableArrayBuffer.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true

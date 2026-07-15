@@ -1,0 +1,3 @@
+# tests too allocation-heavy to run under FORCE_GC_AT_MALLOC (a full GC per
+# object allocation makes them take way too long)
+tests/test_builtin.js

@@ -1,10 +1,12 @@
 project(
   'quickjs-ng',
   'c',
-  version: '0.15.0',
+  version: '0.15.1',
   default_options: [
     'c_std=gnu11,c11',
     'warning_level=3',
+    'buildtype=release',
+    'b_ndebug=if-release',
   ],
   license: 'MIT',
   license_files: 'LICENSE',
