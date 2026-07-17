@@ -1207,6 +1207,39 @@ static void bulk_free_macros(void) {
     JS_FreeRuntime(rt);
 }
 
+static int detach_free_count;
+
+static void detach_free_func(JSRuntime *rt, void *opaque, void *ptr)
+{
+    detach_free_count++;
+    free(ptr);
+}
+
+static void detach_array_buffer_free_once(void)
+{
+    JSValue obj;
+    uint8_t *buf;
+
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    detach_free_count = 0;
+    buf = malloc(8);
+    obj = JS_NewArrayBuffer(ctx, buf, 8, detach_free_func, NULL, false);
+    assert(JS_IsArrayBuffer(obj));
+
+    /* detaching releases the backing store exactly once */
+    JS_DetachArrayBuffer(ctx, obj);
+    assert(detach_free_count == 1);
+
+    /* finalizing the detached buffer must not release it a second time */
+    JS_FreeValue(ctx, obj);
+    assert(detach_free_count == 1);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1231,5 +1264,6 @@ int main(void)
     get_uint8array();
     new_symbol();
     bulk_free_macros();
+    detach_array_buffer_free_once();
     return 0;
 }
