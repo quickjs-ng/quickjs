@@ -22452,8 +22452,18 @@ int JS_PRINTF_FORMAT_ATTR(2, 3) js_parse_error(JSParseState *s, JS_PRINTF_FORMAT
     backtrace_flags = 0;
     if (s->cur_func && s->cur_func->backtrace_barrier)
         backtrace_flags = JS_BACKTRACE_FLAG_SINGLE_LEVEL;
+    /* s->col_num is not advanced during token scanning, so derive the column
+       as the 1-based offset of the token from the start of its line. */
+    int err_col_num = s->token.col_num;
+    if (s->token.ptr && s->token.ptr >= s->buf_start) {
+        const uint8_t *line_start = s->token.ptr;
+        while (line_start > s->buf_start &&
+               line_start[-1] != '\n' && line_start[-1] != '\r')
+            line_start--;
+        err_col_num = (int)(s->token.ptr - line_start) + 1;
+    }
     build_backtrace(ctx, ctx->rt->current_exception, JS_UNDEFINED, s->filename,
-                    s->line_num, s->col_num, backtrace_flags);
+                    s->token.line_num, err_col_num, backtrace_flags);
     return -1;
 }
 
