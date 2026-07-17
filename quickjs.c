@@ -27076,6 +27076,14 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
     case TOK_IDENT:
         {
             JSAtom name;
+            int identifier_line_num = s->token.line_num;
+            const uint8_t *identifier_line_start = s->token.ptr;
+            while (identifier_line_start > s->buf_start &&
+                   identifier_line_start[-1] != '\n' &&
+                   identifier_line_start[-1] != '\r')
+                identifier_line_start--;
+            int identifier_col_num =
+                (int)(s->token.ptr - identifier_line_start) + 1;
             if (s->token.u.ident.is_reserved) {
                 return js_parse_error_reserved_identifier(s);
             }
@@ -27113,6 +27121,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                     return -1;
                 }
             do_get_var:
+                emit_source_loc_at(s, identifier_line_num, identifier_col_num);
                 emit_op(s, OP_scope_get_var);
                 emit_u32(s, name);
                 emit_u16(s, s->cur_func->scope_level);
