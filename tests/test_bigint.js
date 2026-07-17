@@ -102,6 +102,36 @@ function test_bigint_map()
     assert(m.size, 0);
 }
 
+function test_bigint_asintn()
+{
+    /* BigInt.asIntN */
+    assert(BigInt.asIntN(0, -1n), 0n);
+    assert(BigInt.asIntN(1, -1n), -1n);
+    assert(BigInt.asIntN(8, 128n), -128n);
+    assert(BigInt.asIntN(8, 127n), 127n);
+    assert(BigInt.asIntN(64, -1n), -1n);
+    assert(BigInt.asIntN(64, 0x8000000000000000n), -0x8000000000000000n);
+    assert(BigInt.asIntN(128, -1n), -1n);
+
+    /* BigInt.asUintN: wrapping a negative value when the requested width is a
+       multiple of the internal limb size used to return the value unchanged. */
+    assert(BigInt.asUintN(0, -1n), 0n);
+    assert(BigInt.asUintN(1, -1n), 1n);
+    assert(BigInt.asUintN(8, -1n), 0xffn);
+    assert(BigInt.asUintN(64, -1n), 0xffffffffffffffffn);
+    assert(BigInt.asUintN(64, -2n), 0xfffffffffffffffen);
+    assert(BigInt.asUintN(64, 0x8000000000000000n), 0x8000000000000000n);
+    assert(BigInt.asUintN(128, -1n), (1n << 128n) - 1n);
+    assert(BigInt.asUintN(192, -1n), (1n << 192n) - 1n);
+    assert(BigInt.asUintN(64, -(1n << 64n)), 0n);
+    assert(BigInt.asUintN(64, 1n << 64n), 0n);
+
+    /* non-negative values are returned unchanged */
+    assert(BigInt.asUintN(64, 123n), 123n);
+    assert(BigInt.asIntN(64, 123n), 123n);
+}
+
 test_bigint1();
 test_bigint2();
 test_bigint_map();
+test_bigint_asintn();

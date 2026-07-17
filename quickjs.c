@@ -57810,28 +57810,62 @@ static JSValue js_bigint_asUintN(JSContext *ctx,
         res = __JS_NewShortBigInt(ctx, 0);
     } else if (JS_VALUE_GET_TAG(a) == JS_TAG_SHORT_BIG_INT) {
         /* fast case */
-        if (bits >= JS_SHORT_BIG_INT_BITS) {
+        js_slimb_t sv = JS_VALUE_GET_SHORT_BIG_INT(a);
+        if (bits >= JS_SHORT_BIG_INT_BITS && (asIntN || sv >= 0)) {
             res = a;
-        } else {
+        } else if (bits < JS_SHORT_BIG_INT_BITS) {
             uint64_t v;
             int shift;
             shift = 64 - bits;
-            v = JS_VALUE_GET_SHORT_BIG_INT(a);
+            v = sv;
             v = v << shift;
             if (asIntN)
                 v = (int64_t)v >> shift;
             else
                 v = v >> shift;
             res = __JS_NewShortBigInt(ctx, v);
+        } else {
+            JSBigInt *r;
+            uint64_t len64 = (bits + JS_LIMB_BITS - 1) / JS_LIMB_BITS;
+            int len, shift, i;
+
+            if (len64 > JS_BIGINT_MAX_SIZE) {
+                JS_FreeValue(ctx, a);
+                return JS_ThrowRangeError(ctx, "BigInt is too large to allocate");
+            }
+            len = len64;
+            r = js_bigint_new(ctx, len);
+            if (!r) {
+                JS_FreeValue(ctx, a);
+                return JS_EXCEPTION;
+            }
+            r->len = len;
+            r->tab[0] = sv;
+            for(i = 1; i < len; i++)
+                r->tab[i] = -1;
+            shift = (-bits) & (JS_LIMB_BITS - 1);
+            r->tab[len - 1] = (r->tab[len - 1] << shift) >> shift;
+            r = js_bigint_extend(ctx, r, 0);
+            JS_FreeValue(ctx, a);
+            if (!r)
+                return JS_EXCEPTION;
+            res = JS_CompactBigInt(ctx, r);
         }
     } else {
         JSBigInt *r, *p = JS_VALUE_GET_PTR(a);
-        if (bits >= p->len * JS_LIMB_BITS) {
+        int is_neg = js_bigint_sign(p);
+        if (bits >= (uint64_t)p->len * JS_LIMB_BITS &&
+            (asIntN || !is_neg)) {
             res = a;
         } else {
+            uint64_t len64 = (bits + JS_LIMB_BITS - 1) / JS_LIMB_BITS;
             int len, shift, i;
             js_limb_t v;
-            len = (bits + JS_LIMB_BITS - 1) / JS_LIMB_BITS;
+            if (len64 > JS_BIGINT_MAX_SIZE) {
+                JS_FreeValue(ctx, a);
+                return JS_ThrowRangeError(ctx, "BigInt is too large to allocate");
+            }
+            len = len64;
             r = js_bigint_new(ctx, len);
             if (!r) {
                 JS_FreeValue(ctx, a);
@@ -57839,15 +57873,21 @@ static JSValue js_bigint_asUintN(JSContext *ctx,
             }
             r->len = len;
             for(i = 0; i < len - 1; i++)
-                r->tab[i] = p->tab[i];
+                r->tab[i] = i < p->len ? p->tab[i] : -is_neg;
             shift = (-bits) & (JS_LIMB_BITS - 1);
             /* 0 <= shift <= JS_LIMB_BITS - 1 */
-            v = p->tab[len - 1] << shift;
+            v = (len - 1 < p->len ? p->tab[len - 1] : -is_neg) << shift;
             if (asIntN)
                 v = (js_slimb_t)v >> shift;
             else
                 v = v >> shift;
             r->tab[len - 1] = v;
+            if (!asIntN)
+                r = js_bigint_extend(ctx, r, 0);
+            if (!r) {
+                JS_FreeValue(ctx, a);
+                return JS_EXCEPTION;
+            }
             r = js_bigint_normalize(ctx, r);
             JS_FreeValue(ctx, a);
             res = JS_CompactBigInt(ctx, r);
