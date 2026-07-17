@@ -435,6 +435,7 @@ typedef struct JSStackFrame {
     uint16_t var_ref_count; /* number of var refs */
     uint16_t arg_count;
     bool is_strict_mode;
+    bool is_constructor; /* true if invoked as a constructor (new) */
     /* only used in generators. Current stack pointer value. NULL if
        the function is running. */
     JSValue *cur_sp;
@@ -1183,6 +1184,7 @@ typedef struct JSCallSiteData {
     JSValue func;
     JSValue func_name;
     bool native;
+    bool constructor;
     int line_num;
     int col_num;
 } JSCallSiteData;
@@ -6623,6 +6625,7 @@ static JSValue js_call_c_function_data(JSContext *ctx, JSValueConst func_obj,
     rt->current_stack_frame = sf;
     // TODO(bnoordhuis) switch realms like js_call_c_function does
     sf->is_strict_mode = false;
+    sf->is_constructor = (flags & JS_CALL_FLAG_CONSTRUCTOR) != 0;
     sf->cur_func = unsafe_unconst(func_obj);
     sf->arg_count = argc;
     ret = s->func(ctx, this_val, argc, arg_buf, s->magic, vc(s->data));
@@ -6748,6 +6751,7 @@ static JSValue js_call_c_closure(JSContext *ctx, JSValueConst func_obj,
     rt->current_stack_frame = sf;
     // TODO(bnoordhuis) switch realms like js_call_c_function does
     sf->is_strict_mode = false;
+    sf->is_constructor = (flags & JS_CALL_FLAG_CONSTRUCTOR) != 0;
     sf->cur_func = unsafe_unconst(func_obj);
     sf->arg_count = argc;
     ret = s->func(ctx, this_val, argc, arg_buf, s->magic, s->opaque);
@@ -17789,6 +17793,7 @@ static JSValue js_call_c_function(JSContext *ctx, JSValueConst func_obj,
     ctx = p->u.cfunc.realm; /* change the current realm */
 
     sf->is_strict_mode = false;
+    sf->is_constructor = (flags & JS_CALL_FLAG_CONSTRUCTOR) != 0;
     sf->cur_func = unsafe_unconst(func_obj);
     sf->arg_count = argc;
     arg_buf = argv;
@@ -18047,6 +18052,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         return JS_ThrowStackOverflow(caller_ctx);
 
     sf->is_strict_mode = b->is_strict_mode;
+    sf->is_constructor = (flags & JS_CALL_FLAG_CONSTRUCTOR) != 0;
     arg_buf = (JSValue *)argv;
     sf->arg_count = argc;
     sf->cur_func = unsafe_unconst(func_obj);
@@ -21054,6 +21060,7 @@ static __exception int async_func_init(JSContext *ctx, JSAsyncFunctionState *s,
     p = JS_VALUE_GET_OBJ(func_obj);
     b = p->u.func.function_bytecode;
     sf->is_strict_mode = b->is_strict_mode;
+    sf->is_constructor = false;
     sf->cur_pc = b->byte_code_buf;
     arg_buf_len = max_int(b->arg_count, argc);
     local_count = arg_buf_len + b->var_count + b->stack_size;
@@ -62728,6 +62735,7 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
     const char *func_name_str;
     JSObject *p;
 
+    csd->constructor = sf->is_constructor;
     csd->func = js_dup(sf->cur_func);
     /* func_name_str is UTF-8 encoded if needed */
     func_name_str = get_func_name(ctx, sf->cur_func);
@@ -62767,6 +62775,7 @@ static void js_new_callsite_data2(JSContext *ctx, JSCallSiteData *csd, const cha
     csd->func = JS_NULL;
     csd->func_name = JS_NULL;
     csd->native = false;
+    csd->constructor = false;
     csd->line_num = line_num;
     csd->col_num = col_num;
     /* filename is UTF-8 encoded if needed (original argument to __JS_EvalInternal()) */
@@ -62794,6 +62803,14 @@ static JSValue js_callsite_isnative(JSContext *ctx, JSValueConst this_val, int a
     return js_bool(csd->native);
 }
 
+static JSValue js_callsite_isconstructor(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+    JSCallSiteData *csd = JS_GetOpaque2(ctx, this_val, JS_CLASS_CALL_SITE);
+    if (!csd)
+        return JS_EXCEPTION;
+    return js_bool(csd->constructor);
+}
+
 static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv, int magic)
 {
     JSCallSiteData *csd = JS_GetOpaque2(ctx, this_val, JS_CLASS_CALL_SITE);
@@ -62805,6 +62822,7 @@ static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int 
 
 static const JSCFunctionListEntry js_callsite_proto_funcs[] = {
     JS_CFUNC_DEF("isNative", 0, js_callsite_isnative),
+    JS_CFUNC_DEF("isConstructor", 0, js_callsite_isconstructor),
     JS_CFUNC_MAGIC_DEF("getFileName", 0, js_callsite_getfield, offsetof(JSCallSiteData, filename)),
     JS_CFUNC_MAGIC_DEF("getFunction", 0, js_callsite_getfield, offsetof(JSCallSiteData, func)),
     JS_CFUNC_MAGIC_DEF("getFunctionName", 0, js_callsite_getfield, offsetof(JSCallSiteData, func_name)),
