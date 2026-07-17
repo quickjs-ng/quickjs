@@ -30763,6 +30763,62 @@ static JSResolveResultEnum js_resolve_export(JSContext *ctx,
     return ret;
 }
 
+static JSVarRef *js_get_local_export_var_ref1(JSContext *ctx, JSModuleDef *m,
+                                              JSExportEntry *me,
+                                              JSResolveState *s)
+{
+    JSVarRef *var_ref = me->u.local.var_ref;
+    int i;
+
+    if (!var_ref) {
+        JSObject *p = JS_VALUE_GET_OBJ(m->func_obj);
+        var_ref = p->u.func.var_refs[me->u.local.var_idx];
+    }
+    if (var_ref)
+        return var_ref;
+    /* the slot is a re-exported import whose source is not linked yet: follow
+       the import alias, guarding against re-export cycles like js_resolve_export1 */
+    for(i = 0; i < m->import_entries_count; i++) {
+        JSImportEntry *mi = &m->import_entries[i];
+        JSModuleDef *m1, *res_m;
+        JSExportEntry *res_me;
+
+        if (mi->var_idx != me->u.local.var_idx)
+            continue;
+        if (find_resolve_entry(s, m, mi->import_name) >= 0)
+            return NULL;
+        if (add_resolve_entry(ctx, s, m, mi->import_name) < 0)
+            return NULL;
+        m1 = m->req_module_entries[mi->req_module_idx].module;
+        if (js_resolve_export1(ctx, &res_m, &res_me, m1, mi->import_name, s) ==
+                JS_RESOLVE_RES_FOUND &&
+            res_me->local_name != JS_ATOM__star_)
+            return js_get_local_export_var_ref1(ctx, res_m, res_me, s);
+        break;
+    }
+    return NULL;
+}
+
+/* var_ref of a local export. For a re-exported import the slot is NULL until
+   the source is linked, so follow the import alias; returns NULL if
+   unresolvable (e.g. a re-export cycle with no concrete binding). */
+static JSVarRef *js_get_local_export_var_ref(JSContext *ctx, JSModuleDef *m,
+                                             JSExportEntry *me)
+{
+    JSResolveState ss, *s = &ss;
+    JSVarRef *var_ref;
+    int i;
+
+    s->array = NULL;
+    s->size = 0;
+    s->count = 0;
+    var_ref = js_get_local_export_var_ref1(ctx, m, me, s);
+    for(i = 0; i < s->count; i++)
+        JS_FreeAtom(ctx, s->array[i].name);
+    js_free(ctx, s->array);
+    return var_ref;
+}
+
 static void js_resolve_export_throw_error(JSContext *ctx,
                                           JSResolveResultEnum res,
                                           JSModuleDef *m, JSAtom export_name)
@@ -30963,13 +31019,9 @@ static JSValue js_build_module_ns(JSContext *ctx, JSModuleDef *m)
                 en->u.module = res_m->req_module_entries[res_me->u.req_module_idx].module;
             } else {
                 en->export_type = EXPORTED_NAME_NORMAL;
-                if (res_me->u.local.var_ref) {
-                    en->u.var_ref = res_me->u.local.var_ref;
-                } else {
-                    JSObject *p1 = JS_VALUE_GET_OBJ(res_m->func_obj);
-                    p1 = JS_VALUE_GET_OBJ(res_m->func_obj);
-                    en->u.var_ref = p1->u.func.var_refs[res_me->u.local.var_idx];
-                }
+                /* follow the import alias when the slot is NULL (cyclic
+                   re-export of an imported binding) */
+                en->u.var_ref = js_get_local_export_var_ref(ctx, res_m, res_me);
             }
         }
     }
@@ -31310,7 +31362,6 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
                 JSResolveResultEnum ret;
                 JSExportEntry *res_me;
                 JSModuleDef *res_m;
-                JSObject *p1;
 
                 ret = js_resolve_export(ctx, &res_m,
                                         &res_me, m1, mi->import_name);
@@ -31337,10 +31388,17 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
                     module_trace(ctx, "namespace from\n");
 
                 } else {
-                    var_ref = res_me->u.local.var_ref;
+                    /* follow the import alias when the slot is NULL (cyclic
+                       re-export of an imported binding) */
+                    var_ref = js_get_local_export_var_ref(ctx, res_m, res_me);
                     if (!var_ref) {
-                        p1 = JS_VALUE_GET_OBJ(res_m->func_obj);
-                        var_ref = p1->u.func.var_refs[res_me->u.local.var_idx];
+                        char buf2[ATOM_GET_STR_BUF_SIZE];
+                        char buf3[ATOM_GET_STR_BUF_SIZE];
+                        JS_ThrowSyntaxError(ctx,
+                            "circular import: binding '%s' is not resolvable in module '%s'",
+                            JS_AtomGetStr(ctx, buf2, sizeof(buf2), mi->import_name),
+                            JS_AtomGetStr(ctx, buf3, sizeof(buf3), res_m->module_name));
+                        goto fail;
                     }
                     JS_REF_COUNT(var_ref)++;
                     var_refs[mi->var_idx] = var_ref;
