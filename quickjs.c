@@ -31009,7 +31009,17 @@ static JSValue js_build_module_ns(JSContext *ctx, JSModuleDef *m)
         }
         if (res != JS_RESOLVE_RES_FOUND) {
             if (res != JS_RESOLVE_RES_AMBIGUOUS) {
-                js_resolve_export_throw_error(ctx, res, m, en->export_name);
+                /* for a re-export the binding is missing from the target
+                   module, not from m; report the target and the looked-up name */
+                JSExportEntry *me = find_export_entry(ctx, m, en->export_name);
+                if (me && me->export_type == JS_EXPORT_TYPE_INDIRECT &&
+                    me->local_name != JS_ATOM__star_) {
+                    JSModuleDef *m1 =
+                        m->req_module_entries[me->u.req_module_idx].module;
+                    js_resolve_export_throw_error(ctx, res, m1, me->local_name);
+                } else {
+                    js_resolve_export_throw_error(ctx, res, m, en->export_name);
+                }
                 goto fail;
             }
             en->export_type = EXPORTED_NAME_AMBIGUOUS;
@@ -31314,7 +31324,10 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
             m1 = m->req_module_entries[me->u.req_module_idx].module;
             ret = js_resolve_export(ctx, &res_m, &res_me, m1, me->local_name);
             if (ret != JS_RESOLVE_RES_FOUND) {
-                js_resolve_export_throw_error(ctx, ret, m, me->export_name);
+                /* the binding is missing from the re-exported module m1, not
+                   from the re-exporting module m; report m1 and the name being
+                   looked up there, matching the direct-import diagnostic */
+                js_resolve_export_throw_error(ctx, ret, m1, me->local_name);
                 goto fail;
             }
         }
