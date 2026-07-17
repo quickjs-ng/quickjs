@@ -13,7 +13,7 @@
                 let value = arrayLike[i]
                 if (sync) value = await value
                 if (mapFn) value = await mapFn.call(thisArg, value, i)
-                Object·defineProperty(result, i++, {value, configurable: true, writable: true})
+                Object·defineProperty(result, i++, {value, configurable: true, writable: true, enumerable: true})
             }
         } else {
             const iter = method.call(arrayLike)
@@ -24,7 +24,7 @@
                     if (done) break
                     if (sync) value = await value
                     if (mapFn) value = await mapFn.call(thisArg, value, i)
-                    Object·defineProperty(result, i++, {value, configurable: true, writable: true})
+                    Object·defineProperty(result, i++, {value, configurable: true, writable: true, enumerable: true})
                 }
             } finally {
                 if (iter.return) iter.return()
