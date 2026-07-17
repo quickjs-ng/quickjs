@@ -17188,6 +17188,16 @@ static __exception int js_iterator_get_value_done(JSContext *ctx, JSValue *sp)
     JS_FreeValue(ctx, obj);
     sp[-1] = value;
     sp[0] = js_bool(done);
+    if (done) {
+        /* Iterator exhausted via {done:true}: drop the iterator object (stack
+           layout at the for-await `next` call is iter_obj,next,catch_offset,result
+           so iter_obj is sp[-4]) so the trailing OP_iterator_close skips calling
+           return(). Mirrors js_for_of_next, which nulls the iterator on done.
+           Per spec AsyncIteratorClose must NOT run on normal completion. This op
+           is emitted only by the for-await-of loop, so the layout is fixed. */
+        JS_FreeValue(ctx, sp[-4]);
+        sp[-4] = JS_UNDEFINED;
+    }
     return 0;
 }
 
