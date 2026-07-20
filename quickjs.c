@@ -52792,10 +52792,10 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         h = JS_VALUE_GET_INT(key);
         break;
     case JS_TAG_STRING:
-        h = hash_string(JS_VALUE_GET_STRING(key), ctx->hash_seed);
+        h = hash_string(JS_VALUE_GET_STRING(key), 0);
         break;
     case JS_TAG_STRING_ROPE:
-        h = hash_string_rope(key, ctx->hash_seed);
+        h = hash_string_rope(key, 0);
         break;
     case JS_TAG_OBJECT:
     case JS_TAG_SYMBOL:
@@ -52809,8 +52809,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         goto hash_float64;
     case JS_TAG_BIG_INT:
         r = JS_VALUE_GET_PTR(key);
-        h = hash_string8((void *)r->tab, r->len * sizeof(*r->tab),
-                         ctx->hash_seed);
+        h = hash_string8((void *)r->tab, r->len * sizeof(*r->tab), 0);
         break;
     case JS_TAG_FLOAT64:
         d = JS_VALUE_GET_FLOAT64(key);
@@ -52820,13 +52819,13 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     hash_float64:
         u.d = d;
         h = (u.u32[0] ^ u.u32[1]) * 3163;
-        return h ^= JS_TAG_FLOAT64;
+        tag = JS_TAG_FLOAT64;
+        break;
     default:
         h = 0;
         break;
     }
-    h ^= tag;
-    return h;
+    return h ^ ctx->hash_seed ^ hash32(tag);
 }
 
 static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,
