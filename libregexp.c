@@ -70,6 +70,7 @@ typedef enum {
 
 #define CAPTURE_COUNT_MAX 255
 #define REGISTER_COUNT_MAX 255
+#define GROUP_NAME_SCOPE_MAX 255
 /* must be large enough to have a negligible runtime cost and small
    enough to call the interrupt callback often. */
 #define INTERRUPT_COUNTER_INIT 10000
@@ -2437,8 +2438,11 @@ static int re_parse_disjunction(REParseState *s, bool is_backward_dir)
 
         pos = re_emit_op_u32(s, REOP_goto, 0);
 
+        if (re_has_named_captures(s) && s->group_name_scope == GROUP_NAME_SCOPE_MAX)
+            return re_parse_error(s, "too many named groups");
+
         s->group_name_scope++;
-        
+
         if (re_parse_alternative(s, is_backward_dir))
             return -1;
 
