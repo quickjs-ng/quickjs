@@ -528,8 +528,12 @@ static int get_bool_option(JSContext *ctx, bool *pbool,
     return 0;
 }
 
-static void free_buf(JSRuntime *rt, void *opaque, void *ptr) {
-    js_free_rt(rt, ptr);
+// js_realloc_array_buffer to avoid a name conflict with
+// js_array_buffer_realloc from quickjs.c in the amalgamation build
+static void *js_realloc_array_buffer(JSRuntime *rt, void *opaque, void *ptr,
+                                     size_t size)
+{
+    return js_realloc_rt(rt, ptr, size);
 }
 
 /* load a file as a UTF-8 encoded string or Uint8Array */
@@ -558,7 +562,8 @@ static JSValue js_std_loadFile(JSContext *ctx, JSValueConst this_val,
     if (!buf)
         return JS_NULL;
     if (binary) {
-        ret = JS_NewUint8Array(ctx, buf, buf_len, free_buf, NULL, false);
+        ret = JS_NewUint8Array(ctx, buf, buf_len, js_realloc_array_buffer,
+                               NULL, false);
     } else {
         ret = JS_NewStringLen(ctx, (char *)buf, buf_len);
         js_free(ctx, buf);
@@ -829,13 +834,6 @@ int js_module_check_attributes(JSContext *ctx, void *opaque,
     return ret;
 }
 
-// js_free_array_buffer to avoid a name conflict with js_array_buffer_free
-// from quickjs.c in the amalgamation build
-static void js_free_array_buffer(JSRuntime *rt, void *opaque, void *ptr)
-{
-    js_free_rt(rt, ptr);
-}
-
 enum {
     JS_IMPORT_TYPE_JS,
     JS_IMPORT_TYPE_JSON,
@@ -916,7 +914,8 @@ JSModuleDef *js_module_load(JSContext *ctx, const char *module_name,
         break;
     case JS_IMPORT_TYPE_BYTES:
         val = JS_NewUint8Array(ctx, (uint8_t *)buf, buf_len,
-                               js_free_array_buffer, NULL, /*is_shared*/false);
+                               js_realloc_array_buffer, NULL,
+                               /*is_shared*/false);
         if (!JS_IsException(val)) {
             JSValue abuf = JS_GetTypedArrayBuffer(ctx, val, NULL, NULL, NULL);
             JS_SetImmutableArrayBuffer(abuf, /*immutable*/true);
