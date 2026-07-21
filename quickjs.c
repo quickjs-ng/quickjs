@@ -58565,6 +58565,11 @@ static void js_array_buffer_free(JSRuntime *rt, void *opaque, void *ptr)
     js_free_rt(rt, ptr);
 }
 
+JSFreeArrayBufferDataFunc *JS_GetDefaultArrayBufferFreeFunc(void)
+{
+    return js_array_buffer_free;
+}
+
 static JSValue js_array_buffer_constructor2(JSContext *ctx,
                                             JSValueConst new_target,
                                             uint64_t len, uint64_t *max_len,
@@ -58918,6 +58923,8 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
     JSArrayBuffer *abuf;
     uint64_t new_len, old_len, max_len, *pmax_len;
     uint8_t *bs, *new_bs;
+    JSFreeArrayBufferDataFunc *free_func;
+    void *opaque;
     JSValue ret;
 
     abuf = JS_GetOpaque2(ctx, this_val, JS_CLASS_ARRAY_BUFFER);
@@ -58942,9 +58949,7 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
             max_len = abuf->max_byte_length;
             if (new_len > max_len)
                 return JS_ThrowTypeError(ctx, "invalid array buffer length");
-            // TODO(bnoordhuis) support externally managed RABs
-            if (abuf->free_func == js_array_buffer_free)
-                pmax_len = &max_len;
+            pmax_len = &max_len;
         }
     }
     /* create an empty AB */
@@ -58956,8 +58961,13 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
     }
     bs = abuf->data;
     old_len = abuf->byte_length;
+    free_func = abuf->free_func;
+    opaque = abuf->opaque;
     /* if length mismatch, realloc. Otherwise, use the same backing buffer. */
     if (new_len != old_len) {
+        // TODO(bnoordhuis) support externally managed ABs.
+        if (free_func != js_array_buffer_free)
+            return JS_ThrowTypeError(ctx, "external array buffer is not resizable");
         new_bs = js_realloc(ctx, bs, new_len);
         if (!new_bs)
             return JS_EXCEPTION;
@@ -58965,14 +58975,16 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
         if (new_len > old_len)
             memset(bs + old_len, 0, new_len - old_len);
     }
-    /* neuter the backing buffer */
+    /* neuter the source */
     abuf->data = NULL;
     abuf->byte_length = 0;
     abuf->detached = true;
+    abuf->free_func = NULL;
+    abuf->opaque = NULL;
     js_array_buffer_update_typed_arrays(abuf);
     ret = js_array_buffer_constructor3(ctx, JS_UNDEFINED, new_len, pmax_len,
                                        JS_CLASS_ARRAY_BUFFER, bs,
-                                       abuf->free_func, NULL,
+                                       free_func, opaque,
                                        /*alloc_flag*/false);
 fini:
     if (magic == JS_ARRAY_BUFFER_TRANSFER_TO_IMMUTABLE) {

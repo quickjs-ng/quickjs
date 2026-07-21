@@ -1071,6 +1071,7 @@ JS_EXTERN JSValue JS_JSONStringify(JSContext *ctx, JSValueConst obj,
                                    JSValueConst replacer, JSValueConst space0);
 
 typedef void JSFreeArrayBufferDataFunc(JSRuntime *rt, void *opaque, void *ptr);
+JS_EXTERN JSFreeArrayBufferDataFunc *JS_GetDefaultArrayBufferFreeFunc(void);
 JS_EXTERN JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
                                     JSFreeArrayBufferDataFunc *free_func, void *opaque,
                                     bool is_shared);
