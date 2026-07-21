@@ -943,7 +943,7 @@ typedef struct JSArrayBuffer {
     uint8_t *data; /* NULL if detached */
     struct list_head array_list;
     void *opaque;
-    JSFreeArrayBufferDataFunc *free_func;
+    JSReallocArrayBufferDataFunc *realloc_func;
 } JSArrayBuffer;
 
 typedef struct JSTypedArray {
@@ -1431,9 +1431,10 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
                                             uint64_t len, uint64_t *max_len,
                                             JSClassID class_id,
                                             uint8_t *buf,
-                                            JSFreeArrayBufferDataFunc *free_func,
+                                            JSReallocArrayBufferDataFunc *realloc_func,
                                             void *opaque, bool alloc_flag);
-static void js_array_buffer_free(JSRuntime *rt, void *opaque, void *ptr);
+static void *js_array_buffer_realloc(JSRuntime *rt, void *opaque, void *ptr,
+                                     size_t size);
 static JSArrayBuffer *js_get_array_buffer(JSContext *ctx, JSValueConst obj);
 static bool array_buffer_is_resizable(const JSArrayBuffer *abuf);
 static JSValue js_typed_array_constructor(JSContext *ctx,
@@ -40214,7 +40215,7 @@ static JSValue JS_ReadArrayBuffer(BCReaderState *s)
                                        byte_length, pmax_byte_length,
                                        JS_CLASS_ARRAY_BUFFER,
                                        (uint8_t*)s->ptr,
-                                       js_array_buffer_free, NULL,
+                                       js_array_buffer_realloc, NULL,
                                        /*alloc_flag*/true);
     if (JS_IsException(obj))
         goto fail;
@@ -58739,7 +58740,7 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
                                             uint64_t len, uint64_t *max_len,
                                             JSClassID class_id,
                                             uint8_t *buf,
-                                            JSFreeArrayBufferDataFunc *free_func,
+                                            JSReallocArrayBufferDataFunc *realloc_func,
                                             void *opaque, bool alloc_flag)
 {
     JSRuntime *rt = ctx->rt;
@@ -58747,12 +58748,15 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
     JSArrayBuffer *abuf = NULL;
     uint64_t sab_alloc_len;
 
-    if (!alloc_flag && buf && max_len && free_func != js_array_buffer_free) {
-        // not observable from JS land, only through C API misuse;
-        // JS code cannot create externally managed buffers directly
+    // SABs commit their maximum size upfront and are therefore never
+    // reallocated; everything else needs a way to resize the backing memory.
+    // Not observable from JS land, only through C API misuse; JS code cannot
+    // create externally managed buffers directly.
+    if (!alloc_flag && buf && max_len && !realloc_func &&
+        class_id != JS_CLASS_SHARED_ARRAY_BUFFER) {
         return JS_ThrowInternalError(ctx,
-                                     "resizable ArrayBuffers not supported "
-                                     "for externally managed buffers");
+                                     "resizable ArrayBuffers require a "
+                                     "realloc function");
     }
     obj = js_create_from_ctor(ctx, new_target, class_id);
     if (JS_IsException(obj))
@@ -58806,7 +58810,7 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
             abuf->data = js_mallocz(ctx, 1);
             if (!abuf->data)
                 goto fail;
-            free_func = js_array_buffer_free;
+            realloc_func = js_array_buffer_realloc;
         }
     }
     init_list_head(&abuf->array_list);
@@ -58814,7 +58818,7 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
     abuf->immutable = false;
     abuf->shared = (class_id == JS_CLASS_SHARED_ARRAY_BUFFER);
     abuf->opaque = opaque;
-    abuf->free_func = free_func;
+    abuf->realloc_func = realloc_func;
     if (alloc_flag && buf)
         memcpy(abuf->data, buf, len);
     JS_SetOpaqueInternal(obj, abuf);
@@ -58825,9 +58829,10 @@ static JSValue js_array_buffer_constructor3(JSContext *ctx,
     return JS_EXCEPTION;
 }
 
-static void js_array_buffer_free(JSRuntime *rt, void *opaque, void *ptr)
+static void *js_array_buffer_realloc(JSRuntime *rt, void *opaque, void *ptr,
+                                     size_t size)
 {
-    js_free_rt(rt, ptr);
+    return js_realloc_rt(rt, ptr, size);
 }
 
 static JSValue js_array_buffer_constructor2(JSContext *ctx,
@@ -58836,8 +58841,8 @@ static JSValue js_array_buffer_constructor2(JSContext *ctx,
                                             JSClassID class_id)
 {
     return js_array_buffer_constructor3(ctx, new_target, len, max_len,
-                                        class_id, NULL, js_array_buffer_free,
-                                        NULL, true);
+                                        class_id, NULL,
+                                        js_array_buffer_realloc, NULL, true);
 }
 
 static JSValue js_array_buffer_constructor1(JSContext *ctx,
@@ -58849,13 +58854,23 @@ static JSValue js_array_buffer_constructor1(JSContext *ctx,
 }
 
 JSValue JS_NewArrayBuffer(JSContext *ctx, uint8_t *buf, size_t len,
-                          JSFreeArrayBufferDataFunc *free_func, void *opaque,
-                          bool is_shared)
+                          size_t max_len,
+                          JSReallocArrayBufferDataFunc *realloc_func,
+                          void *opaque, bool is_shared)
 {
     JSClassID class_id =
         is_shared ? JS_CLASS_SHARED_ARRAY_BUFFER : JS_CLASS_ARRAY_BUFFER;
-    return js_array_buffer_constructor3(ctx, JS_UNDEFINED, len, NULL, class_id,
-                                        buf, free_func, opaque, false);
+    uint64_t max_len64 = max_len, *pmax_len = NULL;
+
+    /* a zero 'max_len' means the ArrayBuffer is not resizable */
+    if (max_len > 0) {
+        if (max_len < len)
+            return JS_ThrowRangeError(ctx, "invalid max array buffer length");
+        pmax_len = &max_len64;
+    }
+    return js_array_buffer_constructor3(ctx, JS_UNDEFINED, len, pmax_len,
+                                        class_id, buf, realloc_func, opaque,
+                                        false);
 }
 
 bool JS_IsArrayBuffer(JSValueConst obj) {
@@ -58868,7 +58883,7 @@ JSValue JS_NewArrayBufferCopy(JSContext *ctx, const uint8_t *buf, size_t len)
     return js_array_buffer_constructor3(ctx, JS_UNDEFINED, len, NULL,
                                         JS_CLASS_ARRAY_BUFFER,
                                         (uint8_t *)buf,
-                                        js_array_buffer_free, NULL,
+                                        js_array_buffer_realloc, NULL,
                                         true);
 }
 
@@ -58950,8 +58965,8 @@ static void js_array_buffer_finalizer(JSRuntime *rt, JSValueConst val)
         if (abuf->shared && rt->sab_funcs.sab_free) {
             rt->sab_funcs.sab_free(rt->sab_funcs.sab_opaque, abuf->data);
         } else {
-            if (abuf->free_func)
-                abuf->free_func(rt, abuf->opaque, abuf->data);
+            if (abuf->realloc_func)
+                abuf->realloc_func(rt, abuf->opaque, abuf->data, 0);
         }
         js_free_rt(rt, abuf);
     }
@@ -59052,11 +59067,11 @@ void JS_DetachArrayBuffer(JSContext *ctx, JSValueConst obj)
 
     if (!abuf || abuf->detached)
         return;
-    if (abuf->free_func) {
-        abuf->free_func(ctx->rt, abuf->opaque, abuf->data);
+    if (abuf->realloc_func) {
+        abuf->realloc_func(ctx->rt, abuf->opaque, abuf->data, 0);
         /* The backing data has been released. Do not release it again when
            the detached ArrayBuffer object is later finalized. */
-        abuf->free_func = NULL;
+        abuf->realloc_func = NULL;
         abuf->opaque = NULL;
     }
     abuf->data = NULL;
@@ -59183,6 +59198,8 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
     JSArrayBuffer *abuf;
     uint64_t new_len, old_len, max_len, *pmax_len;
     uint8_t *bs, *new_bs;
+    JSReallocArrayBufferDataFunc *realloc_func;
+    void *opaque;
     JSValue ret;
 
     abuf = JS_GetOpaque2(ctx, this_val, JS_CLASS_ARRAY_BUFFER);
@@ -59207,9 +59224,7 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
             max_len = abuf->max_byte_length;
             if (new_len > max_len)
                 return JS_ThrowTypeError(ctx, "invalid array buffer length");
-            // TODO(bnoordhuis) support externally managed RABs
-            if (abuf->free_func == js_array_buffer_free)
-                pmax_len = &max_len;
+            pmax_len = &max_len;
         }
     }
     /* create an empty AB */
@@ -59221,23 +59236,33 @@ static JSValue js_array_buffer_transfer(JSContext *ctx, JSValueConst this_val,
     }
     bs = abuf->data;
     old_len = abuf->byte_length;
+    realloc_func = abuf->realloc_func;
+    opaque = abuf->opaque;
     /* if length mismatch, realloc. Otherwise, use the same backing buffer. */
     if (new_len != old_len) {
-        new_bs = js_realloc(ctx, bs, new_len);
+        if (!realloc_func)
+            return JS_ThrowTypeError(ctx, "array buffer is not resizable");
+        /* XXX: we are currently limited to 2 GB; check before reallocating,
+           new_len does not necessarily fit in a size_t */
+        if (new_len > INT32_MAX)
+            return JS_ThrowRangeError(ctx, "invalid array buffer length");
+        new_bs = realloc_func(ctx->rt, opaque, bs, new_len);
         if (!new_bs)
-            return JS_EXCEPTION;
+            return JS_ThrowOutOfMemory(ctx);
         bs = new_bs;
         if (new_len > old_len)
             memset(bs + old_len, 0, new_len - old_len);
     }
-    /* neuter the backing buffer */
+    /* neuter the source */
     abuf->data = NULL;
     abuf->byte_length = 0;
     abuf->detached = true;
+    abuf->realloc_func = NULL;
+    abuf->opaque = NULL;
     js_array_buffer_update_typed_arrays(abuf);
     ret = js_array_buffer_constructor3(ctx, JS_UNDEFINED, new_len, pmax_len,
                                        JS_CLASS_ARRAY_BUFFER, bs,
-                                       abuf->free_func, NULL,
+                                       realloc_func, opaque,
                                        /*alloc_flag*/false);
 fini:
     if (magic == JS_ARRAY_BUFFER_TRANSFER_TO_IMMUTABLE) {
@@ -59269,9 +59294,6 @@ static JSValue js_array_buffer_resize(JSContext *ctx, JSValueConst this_val,
         return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
     if (!array_buffer_is_resizable(abuf))
         return JS_ThrowTypeError(ctx, "array buffer is not resizable");
-    // TODO(bnoordhuis) support externally managed RABs
-    if (abuf->free_func != js_array_buffer_free)
-        return JS_ThrowTypeError(ctx, "external array buffer is not resizable");
     if (len < 0 || len > abuf->max_byte_length) {
     bad_length:
         return JS_ThrowRangeError(ctx, "invalid array buffer length");
@@ -59291,9 +59313,13 @@ static JSValue js_array_buffer_resize(JSContext *ctx, JSValueConst this_val,
         // 2 bytes big in A, and 1 byte big in B
         abuf->byte_length = len;
     } else {
-        data = js_realloc(ctx, abuf->data, max_int(len, 1));
+        // the ArrayBuffer cannot be resizable without a way to resize it,
+        // js_array_buffer_constructor3 rejects that combination
+        assert(abuf->realloc_func);
+        data = abuf->realloc_func(ctx->rt, abuf->opaque, abuf->data,
+                                  max_int(len, 1));
         if (!data)
-            return JS_EXCEPTION;
+            return JS_ThrowOutOfMemory(ctx);
         if (len > abuf->byte_length)
             memset(&data[abuf->byte_length], 0, len - abuf->byte_length);
         abuf->byte_length = len;
@@ -61951,13 +61977,13 @@ static JSValue js_new_uint8array(JSContext *ctx, JSValue buffer)
 }
 
 JSValue JS_NewUint8Array(JSContext *ctx, uint8_t *buf, size_t len,
-                         JSFreeArrayBufferDataFunc *free_func, void *opaque,
-                         bool is_shared)
+                         JSReallocArrayBufferDataFunc *realloc_func,
+                         void *opaque, bool is_shared)
 {
     JSClassID class_id =
         is_shared ? JS_CLASS_SHARED_ARRAY_BUFFER : JS_CLASS_ARRAY_BUFFER;
     JSValue buffer = js_array_buffer_constructor3(ctx, JS_UNDEFINED, len, NULL,
-                                                  class_id, buf, free_func,
+                                                  class_id, buf, realloc_func,
                                                   opaque, false);
     return js_new_uint8array(ctx, buffer);
 }
@@ -61967,7 +61993,7 @@ JSValue JS_NewUint8ArrayCopy(JSContext *ctx, const uint8_t *buf, size_t len)
     JSValue buffer = js_array_buffer_constructor3(ctx, JS_UNDEFINED, len, NULL,
                                                   JS_CLASS_ARRAY_BUFFER,
                                                   (uint8_t *)buf,
-                                                  js_array_buffer_free, NULL,
+                                                  js_array_buffer_realloc, NULL,
                                                   true);
     return js_new_uint8array(ctx, buffer);
 }
