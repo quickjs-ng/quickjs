@@ -24108,7 +24108,8 @@ static int find_var_htab(JSFunctionDef *fd, JSAtom var_name)
         p = &fd->vars_htab[i & m];
         if (*p == UINT32_MAX)
             return -1;
-        if (fd->vars[*p].var_name == var_name)
+        if (fd->vars[*p].var_name == var_name &&
+            fd->vars[*p].scope_level == 0)
             return *p;
         i += j;
         j += 1; // quadratic probing
@@ -24135,11 +24136,9 @@ static int find_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
 
     if (fd->vars_htab) {
         i = find_var_htab(fd, name);
-        if (i == -1)
-            goto not_found;
-        vd = &fd->vars[i];
-        if (vd->scope_level == 0)
+        if (i >= 0)
             return i;
+        goto not_found;
     }
     for(i = fd->var_count; i-- > 0;) {
         vd = &fd->vars[i];
