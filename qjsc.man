@@ -1,0 +1,78 @@
+.TH QJSC 1 "2026-07-22"
+.SH NAME
+qjsc - QuickJS-NG bytecode compiler
+
+.SH SYNOPSIS
+.SY qjsc
+.RI [ OPTION ].\|.\|.\&
+.RI [ FILE ].\|.\|.
+.YS
+
+.SH DESCRIPTION
+QuickJS-NG is a small and embeddable JavaScript engine.
+It aims to support the latest ECMAScript specification.
+.PP
+The \fBqjsc\fR executable runs the JavaScript compiler.
+It can generate bytecode from source files which can then be embedded in an executable,
+or it can generate the necessary scaffolding to build a C application which embeds QuickJS.
+
+.SH OPTIONS
+.TP
+.B \-b
+Output raw bytecode instead of C code.
+
+.TP
+.B \-C
+Compile as classic JavaScript script.
+By default, \fBqjsc\fR will try to detect if each \fIFILE\fR is a JS script or an ES module.
+
+.TP
+.BI \-D " MODULE_NAME"
+Compile a dynamically loaded module or worker.
+
+.TP
+.B \-e
+Output \fBmain()\fR and bytecode in a C file.
+
+.TP
+.B \-m
+Compile as ECMAScript module.
+By default, \fBqjsc\fR will try to detect if each \fIFILE\fR is a JS script or an ES module.
+
+.TP
+\fB\-M\fR \fIMODULE_NAME\fR[,\fICNAME\fR]
+Add initialization code for an external C module.
+
+.TP
+.BI \-n " SCRIPT_NAME"
+Set the script name (as used in stack traces).
+
+.TP
+.BI \-N " CNAME"
+Set the C name of the generated data.
+
+.TP
+.BI \-o " OUTPUT"
+Set the output filename.
+
+.TP
+.BI \-p " PREFIX"
+Add a prefix to generated C names.
+
+.TP
+.B \-P
+Do not add default system modules.
+
+.TP
+.B \-s
+Strip the source code. Specify this option twice to also strip debug info.
+
+.TP
+.BI \-S " N"
+Set the maximum stack size to \fIN\fR bytes (default is 1 048 576).
+
+.SH SEE ALSO
+.SS "Man pages"
+.BR qjs (1)
+.SS "Online documentation"
+Detailed documentation about the project can be found at: https://quickjs-ng.github.io/quickjs/
