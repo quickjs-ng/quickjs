@@ -1,0 +1,90 @@
+.TH QJS 1 "2026-07-22"
+.SH NAME
+qjs - QuickJS-NG JavaScript interpreter
+
+.SH SYNOPSIS
+.SY qjs
+.RI [ OPTION ].\|.\|.\&
+.RI [ FILE " [" ARGUMENT ].\|.\|.]
+.YS
+
+.SH DESCRIPTION
+QuickJS-NG is a small and embeddable JavaScript engine.
+It aims to support the latest ECMAScript specification.
+.PP
+The \fBqjs\fR executable runs the JavaScript interpreter.
+It includes a simple standard library and REPL.
+
+.SH OPTIONS
+.TP
+.B \-c\fR,\fP \-\-compile
+Compile \fIFILE\fR into a standalone executable, bundling the interpreter and the script.
+
+.TP
+.B \-C\fR,\fP \-\-script
+Load \fIFILE\fR as a classic JavaScript script.
+By default, \fBqjs\fR will try to detect if \fIFILE\fR is a JS script or an ES module.
+
+.TP
+.B \-d\fR,\fP \-\-dump
+Dump memory usage statistics.
+
+.TP
+\fB\-D \fIFLAGS\fR, \fB\-\-dump-flags\fR=\fIFLAGS\fR
+Specify debug dump flags.
+These can also be set through the \fBQJS_DUMP_FLAGS\fR environment variable.
+
+.TP
+\fB\-e\fR \fIEXPR\fR, \fB\-\-eval\fR \fIEXPR\fR
+Evaluate \fIEXPR\fR and exit.
+
+.TP
+.B \-h\fR,\fP \-\-help
+Print a help message and exit.
+
+.TP
+.B \-i\fR,\fP \-\-interactive
+Enter interactive mode. This is the default if no \fIFILE\fR is provided.
+
+.TP
+\fB\-I\fR \fIIFILE\fR, \fB\-\-include\fR \fIIFILE\fR
+Include an additional file.
+
+.TP
+.BI \-\-memory\-limit " N"
+Limit memory usage to \fIN\fR Kbytes.
+
+.TP
+.B \-m\fR,\fP \-\-module
+Load \fIFILE\fR as an ECMAScript module.
+By default, \fBqjs\fR will try to detect if \fIFILE\fR is a JS script or an ES module.
+
+.TP
+\fB\-\-o\fR \fIOUTPUT\fR, \fB\-\-out\fR \fIOUTPUT\fR
+Output file name when creating a standalone executable with \fB\-c\fR.
+
+.TP
+.BI \-\-stack\-size " N"
+Limit the stack size to \fIN\fR Kbytes.
+
+.TP
+.B \-\-std
+Make \fI'std'\fR, \fI'os'\fR and \fI'bjson'\fR available to the script.
+
+.TP
+.B \-T\fR,\fP \-\-trace
+Trace memory allocation.
+
+.TP
+.B \-v\fR,\fP \-\-version
+Print version string and exit.
+
+.TP
+.B \-q\fR,\fP \-\-quit
+Instantiate the interpreter and immediately exit.
+
+.SH SEE ALSO
+.SS "Man pages"
+.BR qjsc (1)
+.SS "Online documentation"
+Detailed documentation about the project can be found at: https://quickjs-ng.github.io/quickjs/
