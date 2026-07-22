@@ -1114,6 +1114,34 @@ static void get_uint8array(void)
     JS_FreeRuntime(rt);
 }
 
+static void context_interrupt_limit(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx1 = JS_NewContext(rt);
+    JSContext *ctx2 = JS_NewContext(rt);
+    JSValue ret;
+
+    assert(JS_GetContextInterruptCount(ctx1) == 0);
+    JS_SetContextInterruptLimit(ctx1, 1);
+
+    ret = eval(ctx1, "for (;;) {}\n");
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx1, JS_GetException(ctx1));
+    assert(JS_GetContextInterruptCount(ctx1) >= 1);
+
+    JS_ResetContextInterruptCount(ctx1);
+    assert(JS_GetContextInterruptCount(ctx1) == 0);
+
+    ret = eval(ctx2, "1 + 1");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx2, ret);
+    assert(JS_GetContextInterruptCount(ctx2) >= 1);
+
+    JS_FreeContext(ctx2);
+    JS_FreeContext(ctx1);
+    JS_FreeRuntime(rt);
+}
+
 static void new_symbol(void)
 {
     JSRuntime *rt = new_runtime();
@@ -1262,6 +1290,7 @@ int main(void)
     immutable_array_buffer();
     shared_array_buffer_growth();
     get_uint8array();
+    context_interrupt_limit();
     new_symbol();
     bulk_free_macros();
     detach_array_buffer_free_once();
