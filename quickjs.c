@@ -582,6 +582,7 @@ struct JSContext {
     double time_origin;
 
     uint64_t random_state;
+    uint32_t hash_seed;
 
     /* when the counter reaches zero, JSRutime.interrupt_handler is called */
     int interrupt_counter;
@@ -1365,6 +1366,7 @@ static JSValue js_error_constructor(JSContext *ctx, JSValueConst new_target,
                                     int argc, JSValueConst *argv, int magic);
 static JSValue js_object_defineProperty(JSContext *ctx, JSValueConst this_val,
                                         int argc, JSValueConst *argv, int magic);
+static uint64_t xorshift64star(uint64_t *pstate);
 
 typedef enum JSStrictEqModeEnum {
     JS_EQ_STRICT,
@@ -2863,6 +2865,12 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->error_prepare_stack = JS_UNDEFINED;
     ctx->error_stack_trace_limit = js_int32(10);
     init_list_head(&ctx->loaded_modules);
+    // TODO(bnoordhuis) use getrandom() etc.
+    ctx->random_state = js__gettimeofday_us();
+    // the state must be non zero
+    if (ctx->random_state == 0)
+        ctx->random_state = 1;
+    ctx->hash_seed = xorshift64star(&ctx->random_state);
 
     if (JS_AddIntrinsicBasicObjects(ctx)) {
         JS_FreeContext(ctx);
@@ -3204,7 +3212,7 @@ static inline uint32_t hash_string8(const uint8_t *str, size_t len, uint32_t h)
 
     for(i = 0; i < len; i++)
         h = h * 263 + str[i];
-    return h;
+    return h ^ hash32(len);
 }
 
 static inline uint32_t hash_string16(const uint16_t *str,
@@ -3214,7 +3222,7 @@ static inline uint32_t hash_string16(const uint16_t *str,
 
     for(i = 0; i < len; i++)
         h = h * 263 + str[i];
-    return h;
+    return h ^ hash32(len);
 }
 
 static uint32_t hash_string(JSString *str, uint32_t h)
@@ -48470,14 +48478,6 @@ static uint64_t xorshift64star(uint64_t *pstate)
     return x * 0x2545F4914F6CDD1D;
 }
 
-static void js_random_init(JSContext *ctx)
-{
-    ctx->random_state = js__gettimeofday_us();
-    /* the state must be non zero */
-    if (ctx->random_state == 0)
-        ctx->random_state = 1;
-}
-
 static JSValue js_math_random(JSContext *ctx, JSValueConst this_val,
                               int argc, JSValueConst *argv)
 {
@@ -52819,13 +52819,13 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     hash_float64:
         u.d = d;
         h = (u.u32[0] ^ u.u32[1]) * 3163;
-        return h ^= JS_TAG_FLOAT64;
+        tag = JS_TAG_FLOAT64;
+        break;
     default:
         h = 0;
         break;
     }
-    h ^= tag;
-    return h;
+    return h ^ ctx->hash_seed ^ hash32(tag);
 }
 
 static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,
@@ -58392,7 +58392,6 @@ int JS_AddIntrinsicBaseObjects(JSContext *ctx)
         return -1;
 
     /* Math: create as autoinit object */
-    js_random_init(ctx);
     if (JS_SetPropertyFunctionList(ctx, ctx->global_obj, js_math_obj, countof(js_math_obj)))
         return -1;
 
