@@ -1240,6 +1240,190 @@ static void detach_array_buffer_free_once(void)
     JS_FreeRuntime(rt);
 }
 
+static int transfer_free_count;
+
+static void transfer_free_func(JSRuntime *rt, void *opaque, void *ptr)
+{
+    transfer_free_count++;
+    free(ptr);
+}
+
+static JSValue make_external_ab(JSContext *ctx, uint8_t **pbuf, size_t len)
+{
+    uint8_t *buf = malloc(len);
+    memset(buf, 0xAB, len);
+    JSValue obj = JS_NewArrayBuffer(ctx, buf, len, transfer_free_func, NULL,
+                                    /*is_shared*/false);
+    assert(JS_IsArrayBuffer(obj));
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "ab", JS_DupValue(ctx, obj));
+    JS_FreeValue(ctx, global);
+    *pbuf = buf;
+    return obj;
+}
+
+static void transfer_external_array_buffer(void)
+{
+    JSValue obj, ret, exc, det;
+    const char *s;
+    uint8_t *buf, *p;
+    size_t i, size;
+
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    // same-length transfer succeeds and reuses the backing store; each variant
+    // detaches the source, so use a fresh buffer per iteration
+    {
+        static const char *const exprs[] = {
+            "ab.transfer()", "ab.transfer(8)", "ab.transferToFixedLength()",
+            "ab.transferToFixedLength(8)", "ab.transferToImmutable()",
+        };
+        for (i = 0; i < countof(exprs); i++) {
+            transfer_free_count = 0;
+            obj = make_external_ab(ctx, &buf, 8);
+
+            ret = eval(ctx, exprs[i]);
+            assert(!JS_IsException(ret));
+            assert(JS_IsArrayBuffer(ret));
+            p = JS_GetArrayBuffer(ctx, &size, ret);
+            assert(p == buf);
+            assert(size == 8);
+            assert(p[0] == 0xAB && p[7] == 0xAB);
+            det = eval(ctx, "ab.detached");
+            assert(JS_IsBool(det) && JS_VALUE_GET_BOOL(det));
+            JS_FreeValue(ctx, det);
+            assert(transfer_free_count == 0);
+            JS_FreeValue(ctx, ret);
+            assert(transfer_free_count == 1);
+
+            ret = eval(ctx, "globalThis.ab = undefined");
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, obj);
+            assert(transfer_free_count == 1);
+        }
+    }
+
+    // length-changing transfer must throw and leave the buffer untouched
+    {
+        static const char *const codes[] = {
+            "ab.transfer(4)",
+            "ab.transfer(16)",
+            "ab.transferToFixedLength(4)",
+            "ab.transferToImmutable(16)",
+        };
+        for (i = 0; i < countof(codes); i++) {
+            transfer_free_count = 0;
+            obj = make_external_ab(ctx, &buf, 8);
+
+            ret = eval(ctx, codes[i]);
+            assert(JS_IsException(ret));
+            JS_FreeValue(ctx, ret);
+            exc = JS_GetException(ctx);
+            assert(JS_IsError(exc));
+            s = JS_ToCString(ctx, exc);
+            assert(s);
+            assert(strstr(s, "external array buffer is not resizable"));
+            JS_FreeCString(ctx, s);
+            JS_FreeValue(ctx, exc);
+
+            det = eval(ctx, "ab.detached");
+            assert(JS_IsBool(det) && !JS_VALUE_GET_BOOL(det));
+            JS_FreeValue(ctx, det);
+            p = JS_GetArrayBuffer(ctx, &size, obj);
+            assert(p == buf && size == 8 && p[0] == 0xAB);
+            assert(transfer_free_count == 0);
+
+            ret = eval(ctx, "globalThis.ab = undefined");
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, obj);
+            assert(transfer_free_count == 1);
+        }
+    }
+
+    // transfer(0) changes the length but doesn't realloc: it detaches the source
+    // (freeing the external store via its free_func) and yields a fresh empty AB
+    {
+        transfer_free_count = 0;
+        obj = make_external_ab(ctx, &buf, 8);
+
+        ret = eval(ctx, "ab.transfer(0)");
+        assert(!JS_IsException(ret));
+        assert(JS_IsArrayBuffer(ret));
+        p = JS_GetArrayBuffer(ctx, &size, ret);
+        assert(size == 0);
+        assert(transfer_free_count == 1);
+        JS_FreeValue(ctx, ret);
+
+        det = eval(ctx, "ab.detached");
+        assert(JS_IsBool(det) && JS_VALUE_GET_BOOL(det));
+        JS_FreeValue(ctx, det);
+
+        ret = eval(ctx, "globalThis.ab = undefined");
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, obj);
+        assert(transfer_free_count == 1);
+    }
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void transfer_default_managed_array_buffer(void)
+{
+    JSValue obj, global, ret, det;
+    uint8_t *buf, *p;
+    size_t size;
+
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    buf = js_malloc(ctx, 8);
+    memset(buf, 0xAB, 8);
+    obj = JS_NewArrayBuffer(ctx, buf, 8, JS_GetDefaultArrayBufferFreeFunc(),
+                            NULL, false);
+    assert(JS_IsArrayBuffer(obj));
+    global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "ab", JS_DupValue(ctx, obj));
+    JS_FreeValue(ctx, global);
+
+    ret = eval(ctx, "ab.transfer(16)");
+    assert(!JS_IsException(ret));
+    assert(JS_IsArrayBuffer(ret));
+    p = JS_GetArrayBuffer(ctx, &size, ret);
+    assert(size == 16);
+    assert(p[0] == 0xAB && p[7] == 0xAB);
+    assert(p[8] == 0 && p[15] == 0);
+    det = eval(ctx, "ab.detached");
+    assert(JS_IsBool(det) && JS_VALUE_GET_BOOL(det));
+    JS_FreeValue(ctx, det);
+    JS_FreeValue(ctx, ret);
+    ret = eval(ctx, "globalThis.ab = undefined");
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, obj);
+
+    buf = js_malloc(ctx, 8);
+    memset(buf, 0xCD, 8);
+    obj = JS_NewArrayBuffer(ctx, buf, 8, JS_GetDefaultArrayBufferFreeFunc(),
+                            NULL, false);
+    global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "ab", JS_DupValue(ctx, obj));
+    JS_FreeValue(ctx, global);
+
+    ret = eval(ctx, "ab.transferToFixedLength(4)");
+    assert(!JS_IsException(ret));
+    p = JS_GetArrayBuffer(ctx, &size, ret);
+    assert(size == 4);
+    assert(p[0] == 0xCD && p[3] == 0xCD);
+    JS_FreeValue(ctx, ret);
+    ret = eval(ctx, "globalThis.ab = undefined");
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, obj);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1265,5 +1449,7 @@ int main(void)
     new_symbol();
     bulk_free_macros();
     detach_array_buffer_free_once();
+    transfer_external_array_buffer();
+    transfer_default_managed_array_buffer();
     return 0;
 }
