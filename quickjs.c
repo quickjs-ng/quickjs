@@ -438,6 +438,12 @@ typedef struct JSStackFrame {
     /* only used in generators. Current stack pointer value. NULL if
        the function is running. */
     JSValue *cur_sp;
+    /* only set for coroutine frames (async function / generator /
+       async generator): the GC object owning this heap-allocated frame,
+       NULL for ordinary C-stack frames. Lets a var_ref capturing one of
+       the coroutine's locals keep the (suspended) coroutine reachable by
+       the cycle collector. */
+    struct JSGCObjectHeader *cur_gc_obj;
 } JSStackFrame;
 
 typedef enum {
@@ -464,6 +470,20 @@ typedef struct JSVarRef {
     uint8_t is_detached;
     uint8_t is_lexical; /* only used with global variables */
     uint8_t is_const; /* only used with global variables */
+    /* Set at creation for an open var_ref that captures a local of a
+       coroutine (async function / generator / async generator): such a
+       var_ref holds a counted reference to that coroutine's GC object and
+       is itself a GC object, so the cycle collector can see the closure ->
+       var_ref -> coroutine edge and keep the suspended coroutine (hence the
+       captured variable it points into) alive. The coroutine is recovered
+       as stack_frame->cur_gc_obj (valid while open). This is a *snapshot* of
+       cur_gc_obj != NULL taken at creation, NOT rederived at read time:
+       cur_gc_obj transitions NULL -> owner (it is set only after a
+       generator's initial resume), so var_refs created during the prologue
+       (e.g. mapped `arguments`) must stay non-coro even though cur_gc_obj is
+       later set. Fits existing padding, so JSVarRef does not grow. Cleared
+       when the var_ref is detached; the ref is released on detach/free. */
+    uint8_t is_coro;
     JSValue *pvalue; /* pointer to the value, either on the stack or
                         to 'value' */
     union {
@@ -1445,6 +1465,8 @@ static JSValue js_import_meta(JSContext *ctx);
 static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier,
                                  JSValueConst options);
 static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref);
+static void js_async_function_free(JSRuntime *rt, JSAsyncFunctionData *s);
+static void js_release_coro(JSRuntime *rt, JSGCObjectHeader *coro);
 static JSValue js_new_promise_capability(JSContext *ctx,
                                          JSValue *resolving_funcs,
                                          JSValueConst ctor);
@@ -6853,6 +6875,17 @@ static inline JSShapeProperty *find_own_property(JSProperty **ppr,
     return NULL;
 }
 
+/* Release a counted reference an open var_ref held on the coroutine
+   (async function / generator / async generator) owning the frame it
+   points into. */
+static void js_release_coro(JSRuntime *rt, JSGCObjectHeader *coro)
+{
+    if (JS_GC_TYPE(coro) == JS_GC_OBJ_TYPE_ASYNC_FUNCTION)
+        js_async_function_free(rt, (JSAsyncFunctionData *)coro);
+    else /* generator / async generator: a plain JS object */
+        JS_FreeValueRT(rt, JS_MKPTR(JS_TAG_OBJECT, (JSObject *)coro));
+}
+
 static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
 {
     if (var_ref) {
@@ -6865,6 +6898,12 @@ static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
                 JSStackFrame *sf = var_ref->stack_frame;
                 assert(sf->var_refs[var_ref->var_ref_idx] == var_ref);
                 sf->var_refs[var_ref->var_ref_idx] = NULL;
+                /* an open coroutine var_ref is itself a GC object and holds
+                   a counted ref to its coroutine (sf->cur_gc_obj) */
+                if (var_ref->is_coro) {
+                    js_release_coro(rt, sf->cur_gc_obj);
+                    remove_gc_object(&var_ref->header);
+                }
             }
             js_free_rt(rt, var_ref);
         }
@@ -6963,7 +7002,10 @@ static void js_bytecode_function_mark(JSRuntime *rt, JSValueConst val,
         if (var_refs) {
             for(i = 0; i < b->closure_var_count; i++) {
                 JSVarRef *var_ref = var_refs[i];
-                if (var_ref && var_ref->is_detached) {
+                /* Detached var_refs are GC objects; open var_refs are GC
+                   objects only when they capture a coroutine local (see
+                   get_var_ref). Only those may be marked. */
+                if (var_ref && (var_ref->is_detached || var_ref->is_coro)) {
                     mark_func(rt, &var_ref->header);
                 }
             }
@@ -7246,7 +7288,8 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
                             if (pr->u.getset.setter)
                                 mark_func(rt, &pr->u.getset.setter->header);
                         } else if ((prs->flags & JS_PROP_TMASK) == JS_PROP_VARREF) {
-                            if (pr->u.var_ref->is_detached) {
+                            if (pr->u.var_ref->is_detached ||
+                                pr->u.var_ref->is_coro) {
                                 /* Note: the tag does not matter
                                    provided it is a GC object */
                                 mark_func(rt, &pr->u.var_ref->header);
@@ -7288,9 +7331,17 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
     case JS_GC_OBJ_TYPE_VAR_REF:
         {
             JSVarRef *var_ref = (JSVarRef *)gp;
-            /* only detached variable referenced are taken into account */
-            assert(var_ref->is_detached);
-            JS_MarkValue(rt, *var_ref->pvalue, mark_func);
+            if (var_ref->is_detached) {
+                /* the var_ref owns its value */
+                JS_MarkValue(rt, *var_ref->pvalue, mark_func);
+            } else {
+                /* open var_ref: the value lives in the coroutine's frame
+                   and is marked by the coroutine itself; only keep that
+                   coroutine reachable. (Open var_refs are GC objects only
+                   when they capture a coroutine local.) */
+                assert(var_ref->is_coro);
+                mark_func(rt, var_ref->stack_frame->cur_gc_obj);
+            }
         }
         break;
     case JS_GC_OBJ_TYPE_ASYNC_FUNCTION:
@@ -16633,8 +16684,12 @@ static void js_mapped_arguments_mark(JSRuntime *rt, JSValueConst val,
         int i;
         if (var_refs) {
             for(i = 0; i < p->u.array.count; i++) {
-                if (var_refs[i] && var_refs[i]->is_detached)
-                    mark_func(rt, &var_refs[i]->header);
+                /* mapped arguments hold a counted ref to each var_ref; the
+                   ones that are GC objects (detached, or open capturing a
+                   coroutine local) must be marked, like the other holders */
+                JSVarRef *vr = var_refs[i];
+                if (vr && (vr->is_detached || vr->is_coro))
+                    mark_func(rt, &vr->header);
             }
         }
     }
@@ -17422,6 +17477,7 @@ static JSVarRef *js_create_var_ref(JSContext *ctx, bool is_gc_object)
         return NULL;
     JS_REF_COUNT(var_ref) = 1;
     var_ref->is_detached = true;
+    var_ref->is_coro = false;
     var_ref->value = JS_UNDEFINED;
     var_ref->pvalue = &var_ref->value;
     if (is_gc_object)
@@ -17472,6 +17528,19 @@ static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf, int var_idx,
         var_ref->stack_frame = sf;
         sf->var_refs[var_ref_idx] = var_ref;
         var_ref->pvalue = pvalue;
+        /* If this local belongs to a coroutine (async function, generator or
+           async generator), keep the coroutine reachable for as long as a
+           closure references the variable: make the open var_ref a GC object
+           holding a counted reference to the coroutine (sf->cur_gc_obj).
+           Otherwise (ordinary C-stack frame, cur_gc_obj == NULL) the running
+           function is a GC root and no extra bookkeeping is needed. Snapshot
+           the decision in is_coro now (cur_gc_obj may become non-NULL later);
+           the coroutine itself is recovered via stack_frame->cur_gc_obj. */
+        var_ref->is_coro = (sf->cur_gc_obj != NULL);
+        if (sf->cur_gc_obj) {
+            JS_REF_COUNT(sf->cur_gc_obj)++;
+            add_gc_object(ctx->rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
+        }
         return var_ref;
     } else {
         /* Variable is not captured (e.g., from eval closures on uncaptured vars).
@@ -17481,6 +17550,7 @@ static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf, int var_idx,
             return NULL;
         JS_REF_COUNT(var_ref) = 1;
         var_ref->is_detached = true;
+        var_ref->is_coro = false;
         var_ref->value = js_dup(*pvalue);
         var_ref->pvalue = &var_ref->value;
         add_gc_object(ctx->rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
@@ -17716,11 +17786,27 @@ static int js_op_define_class(JSContext *ctx, JSValue *sp,
 
 static void close_var_ref(JSRuntime *rt, JSVarRef *var_ref)
 {
+    JSGCObjectHeader *coro;
+    /* Already closed. This can happen during reentrant coroutine teardown:
+       closing one var_ref can drop the coroutine's refcount to zero and
+       re-enter close_var_refs on the same frame. Once detached, the union
+       holds 'value' rather than stack_frame, so we must not touch it. */
+    if (var_ref->is_detached)
+        return;
+    /* Read the coroutine (if any) before js_dup() overwrites the union
+       member that aliases stack_frame with 'value'. */
+    coro = var_ref->is_coro ? var_ref->stack_frame->cur_gc_obj : NULL;
     var_ref->value = js_dup(*var_ref->pvalue);
     var_ref->pvalue = &var_ref->value;
     /* the reference is no longer to a local variable */
     var_ref->is_detached = true;
-    add_gc_object(rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
+    var_ref->is_coro = false;
+    /* an open coroutine var_ref is already a GC object and holds a
+       reference to its coroutine; drop it now that it is detached. */
+    if (coro)
+        js_release_coro(rt, coro);
+    else
+        add_gc_object(rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
 }
 
 static void close_var_refs(JSRuntime *rt, JSStackFrame *sf)
@@ -18064,6 +18150,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     sf->var_ref_count = b->var_ref_count;
     for(i = 0; i < b->var_ref_count; i++)
         sf->var_refs[i] = NULL;
+    /* ordinary C-stack frame: not owned by a coroutine GC object */
+    sf->cur_gc_obj = NULL;
     sp = stack_buf;
     pc = b->byte_code_buf;
     /* sf->cur_pc must we set to pc before any recursive calls to JS_CallInternal. */
@@ -21058,6 +21146,8 @@ static __exception int async_func_init(JSContext *ctx, JSAsyncFunctionState *s,
     sf->arg_count = arg_buf_len;
     sf->var_buf = sf->arg_buf + arg_buf_len;
     sf->cur_sp = sf->var_buf + b->var_count;
+    /* set by the caller once the owning coroutine GC object exists */
+    sf->cur_gc_obj = NULL;
     sf->var_refs = (JSVarRef **)(sf->cur_sp + b->stack_size);
     sf->var_ref_count = b->var_ref_count;
     for(i = 0; i < b->var_ref_count; i++)
@@ -21295,6 +21385,10 @@ static JSValue js_call_generator_function(JSContext *ctx, JSValueConst func_obj,
     if (JS_IsException(obj))
         goto fail;
     JS_SetOpaqueInternal(obj, s);
+    /* the body only starts running on the first next(); root captured
+       locals against the generator object from now on (the initial resume
+       above only reaches OP_initial_yield, before any user code) */
+    s->func_state.frame.cur_gc_obj = &JS_VALUE_GET_OBJ(obj)->header;
     return obj;
  fail:
     free_generator_stack_rt(ctx->rt, s);
@@ -21494,6 +21588,9 @@ static JSValue js_async_function_call(JSContext *ctx, JSValueConst func_obj,
         return JS_EXCEPTION;
     }
     s->is_active = true;
+    /* the body runs immediately (up to the first await), so the frame must
+       already know its owning coroutine to root captured locals */
+    s->func_state.frame.cur_gc_obj = &s->header;
 
     if (!js_async_function_resume(ctx, s))
         goto fail;
@@ -21940,6 +22037,9 @@ static JSValue js_async_generator_function_call(JSContext *ctx,
     if (JS_IsException(obj))
         goto fail;
     s->generator = JS_VALUE_GET_OBJ(obj);
+    /* root captured locals against the async generator object (the initial
+       resume above only reaches OP_initial_yield, before any user code) */
+    s->func_state.frame.cur_gc_obj = &s->generator->header;
     JS_SetOpaqueInternal(obj, s);
     return obj;
  fail:
@@ -31035,6 +31135,7 @@ static JSVarRef *js_create_module_var(JSContext *ctx, bool is_lexical)
         var_ref->value = JS_UNDEFINED;
     var_ref->pvalue = &var_ref->value;
     var_ref->is_detached = true;
+    var_ref->is_coro = false;
     add_gc_object(ctx->rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
     return var_ref;
 }
