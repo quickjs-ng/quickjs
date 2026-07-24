@@ -10593,17 +10593,28 @@ retry:
                         if (ret < 0)
                             goto fail;
                     typed_array_oob:
-                        // per spec: evaluate value for side effects
-                        if (p1->class_id == JS_CLASS_BIG_INT64_ARRAY ||
-                            p1->class_id == JS_CLASS_BIG_UINT64_ARRAY) {
-                            int64_t v;
-                            if (JS_ToBigInt64Free(ctx, &v, val))
-                                return -1;
+                        /* [[Set]] (10.4.5.5): an out-of-bounds or non-canonical
+                           integer index only coerces the value (step i, via
+                           TypedArraySetElement) when the receiver is the typed
+                           array itself. With any other receiver the invalid
+                           index is dropped (step ii) without evaluating the
+                           value. p is the receiver object (NULL for a primitive
+                           receiver), p1 is the typed array. */
+                        if (p == p1) {
+                            // evaluate value for side effects
+                            if (p1->class_id == JS_CLASS_BIG_INT64_ARRAY ||
+                                p1->class_id == JS_CLASS_BIG_UINT64_ARRAY) {
+                                int64_t v;
+                                if (JS_ToBigInt64Free(ctx, &v, val))
+                                    return -1;
+                            } else {
+                                val = JS_ToNumberFree(ctx, val);
+                                JS_FreeValue(ctx, val);
+                                if (JS_IsException(val))
+                                    return -1;
+                            }
                         } else {
-                            val = JS_ToNumberFree(ctx, val);
                             JS_FreeValue(ctx, val);
-                            if (JS_IsException(val))
-                                return -1;
                         }
                         return true;
                     }
