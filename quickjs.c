@@ -62896,6 +62896,9 @@ static JSValue js_callsite_getnumber(JSContext *ctx, JSValueConst this_val, int 
     if (!csd)
         return JS_EXCEPTION;
     int *field = (void *)((char *)csd + magic);
+    /* V8 returns null when the frame has no source position (native frames) */
+    if (*field < 0)
+        return JS_NULL;
     return js_int32(*field);
 }
 
