@@ -892,7 +892,9 @@ JSModuleDef *js_module_load(JSContext *ctx, const char *module_name,
     type = js_module_import_type(ctx, attributes);
     if (type < 0)
         return NULL;
-    if (type != JS_IMPORT_TYPE_BYTES)
+    /* the .json suffix only selects the JSON type when no type attribute
+       was given, so that e.g. 'with { type: "text" }' is honored */
+    if (type == JS_IMPORT_TYPE_JS)
         if (js__has_suffix(module_name, ".json"))
             type = JS_IMPORT_TYPE_JSON;
     buf = (char *)load_file(ctx, &buf_len, module_name);
