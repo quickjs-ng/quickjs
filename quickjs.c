@@ -55560,6 +55560,43 @@ JSValue JS_NewPromiseCapability(JSContext *ctx, JSValue *resolving_funcs)
     return js_new_promise_capability(ctx, resolving_funcs, JS_UNDEFINED);
 }
 
+JSValue JS_PromiseThen(JSContext *ctx, JSValueConst promise,
+                       JSValueConst on_fulfilled,
+                       JSValueConst on_rejected)
+{
+    JSValue result_promise, resolving_funcs[2];
+    JSValueConst handlers[2] = { on_fulfilled, on_rejected };
+    JSRuntime *rt = ctx->rt;
+    JSValueLink link;
+    bool have_promise_hook;
+    int i, ret;
+
+    if (!JS_GetOpaque2(ctx, promise, JS_CLASS_PROMISE))
+        return JS_EXCEPTION;
+
+    /* Match the embedding API: create an intrinsic promise and do not consult
+       Promise.prototype.then or Symbol.species. */
+    have_promise_hook = (rt->promise_hook != NULL);
+    if (have_promise_hook) {
+        link = (JSValueLink){rt->parent_promise, promise};
+        rt->parent_promise = &link;
+    }
+    result_promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+    if (have_promise_hook)
+        rt->parent_promise = link.next;
+    if (JS_IsException(result_promise))
+        return result_promise;
+
+    ret = perform_promise_then(ctx, promise, handlers, vc(resolving_funcs));
+    for (i = 0; i < 2; i++)
+        JS_FreeValue(ctx, resolving_funcs[i]);
+    if (ret) {
+        JS_FreeValue(ctx, result_promise);
+        return JS_EXCEPTION;
+    }
+    return result_promise;
+}
+
 static JSValue js_promise_resolve(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv, int magic)
 {
