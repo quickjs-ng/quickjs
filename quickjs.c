@@ -378,6 +378,9 @@ struct JSRuntime {
     // to js_promise_constructor
     JSValueLink *parent_promise;
 
+    // AddToKeptObjects list, dropped at job boundaries
+    JSValueLink *kept_objects;
+
     JSHostPromiseRejectionTracker *host_promise_rejection_tracker;
     void *host_promise_rejection_tracker_opaque;
 
@@ -2527,6 +2530,10 @@ int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx)
     JSValue res;
     int i, ret;
 
+    /* job boundary: the host calling us means the previous script or job
+       finished */
+    JS_ClearKeptObjects(rt);
+
     if (list_empty(&rt->job_list)) {
         *pctx = NULL;
         return 0;
@@ -2641,6 +2648,7 @@ void JS_FreeRuntime(JSRuntime *rt)
 
     rt->in_free = true;
     JS_FreeValueRT(rt, rt->current_exception);
+    JS_ClearKeptObjects(rt);
 
     list_for_each_safe(el, el1, &rt->job_list) {
         JSJobEntry *e = list_entry(el, JSJobEntry, link);
@@ -62499,6 +62507,29 @@ typedef struct JSWeakRefData {
 
 static JSWeakRefData js_weakref_sentinel;
 
+static int js_add_to_kept_objects(JSContext *ctx, JSValueConst value)
+{
+    JSValueLink *link = js_malloc(ctx, sizeof(*link));
+    if (!link)
+        return -1;
+    link->value = js_dup(value);
+    link->next = ctx->rt->kept_objects;
+    ctx->rt->kept_objects = link;
+    return 0;
+}
+
+void JS_ClearKeptObjects(JSRuntime *rt)
+{
+    JSValueLink *link = rt->kept_objects;
+    rt->kept_objects = NULL;
+    while (link) {
+        JSValueLink *next = link->next;
+        JS_FreeValueRT(rt, unsafe_unconst(link->value));
+        js_free_rt(rt, link);
+        link = next;
+    }
+}
+
 static void js_weakref_finalizer(JSRuntime *rt, JSValueConst val)
 {
     JSWeakRefData *wrd = JS_GetOpaque(val, JS_CLASS_WEAK_REF);
@@ -62551,6 +62582,10 @@ static JSValue js_weakref_constructor(JSContext *ctx, JSValueConst new_target,
     insert_weakref_record(arg, wr);
 
     JS_SetOpaqueInternal(obj, wrd);
+    if (js_add_to_kept_objects(ctx, arg)) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
     return obj;
 }
 
@@ -62561,6 +62596,8 @@ static JSValue js_weakref_deref(JSContext *ctx, JSValueConst this_val, int argc,
         return JS_EXCEPTION;
     if (wrd == &js_weakref_sentinel)
         return JS_UNDEFINED;
+    if (js_add_to_kept_objects(ctx, wrd->target))
+        return JS_EXCEPTION;
     return js_dup(wrd->target);
 }
 
