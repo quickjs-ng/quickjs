@@ -473,6 +473,76 @@ static void promise_mark_as_handled(void)
     JS_FreeRuntime(rt);
 }
 
+static void promise_then(void)
+{
+    const char *s;
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSContext *c1;
+    JSValue got = JS_UNDEFINED;
+    JS_SetContextOpaque(ctx, &got);
+
+    // the result promise is intrinsic: neither an overridden then() nor
+    // Symbol.species is consulted
+    static const char code[] =
+        "class P extends Promise {"
+        "  static get [Symbol.species]() { throw new Error('species'); }"
+        "  then() { throw new Error('then'); }"
+        "}"
+        "P.resolve('ok')";
+    JSValue promise = eval(ctx, code);
+    assert(JS_IsPromise(promise));
+    JSValue on_fulfilled = JS_NewCFunction(ctx, save_value, "onFulfilled", 1);
+    JSValue result = JS_PromiseThen(ctx, promise, on_fulfilled, JS_UNDEFINED);
+    assert(JS_IsPromise(result));
+    while (JS_ExecutePendingJob(rt, &c1) > 0)
+        ;
+    s = JS_ToCString(ctx, got);
+    assert(s);
+    assert(!strcmp(s, "ok"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, got);
+    assert(JS_PromiseState(ctx, result) == JS_PROMISE_FULFILLED);
+    JS_FreeValue(ctx, result);
+    JS_FreeValue(ctx, on_fulfilled);
+    JS_FreeValue(ctx, promise);
+
+    // rejection handler receives the reason when the promise rejects later
+    JSValue resolving_funcs[2];
+    JSValue promise2 = JS_NewPromiseCapability(ctx, resolving_funcs);
+    JSValue on_rejected = JS_NewCFunction(ctx, save_value, "onRejected", 1);
+    JSValue result2 = JS_PromiseThen(ctx, promise2, JS_UNDEFINED, on_rejected);
+    assert(JS_IsPromise(result2));
+    got = JS_UNDEFINED;
+    JSValue reason = JS_NewString(ctx, "boom");
+    JSValue ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1,
+                          (JSValueConst *)&reason);
+    while (JS_ExecutePendingJob(rt, &c1) > 0)
+        ;
+    s = JS_ToCString(ctx, got);
+    assert(s);
+    assert(!strcmp(s, "boom"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, got);
+    assert(JS_PromiseState(ctx, result2) == JS_PROMISE_FULFILLED);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, reason);
+    JS_FreeValue(ctx, result2);
+    JS_FreeValue(ctx, on_rejected);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+    JS_FreeValue(ctx, promise2);
+
+    // a non-promise argument is a TypeError
+    JSValue bad = JS_PromiseThen(ctx, JS_UNDEFINED, JS_UNDEFINED, JS_UNDEFINED);
+    assert(JS_IsException(bad));
+    JSValue exc = JS_GetException(ctx);
+    JS_FreeValue(ctx, exc);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void runtime_cstring_free(void)
 {
     JSRuntime *rt = new_runtime();
@@ -1294,6 +1364,7 @@ int main(void)
     module_serde();
     module_unhandled_rejection();
     promise_mark_as_handled();
+    promise_then();
     runtime_cstring_free();
     utf16_string();
     weak_map_gc_check();
