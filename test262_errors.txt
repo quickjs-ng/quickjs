@@ -17,8 +17,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/TypedArray/prototype/lastIndexOf/negative-index-and-resize-to-smaller.js:23: Test262Error: For index -1 Expected SameValue(«-1», «2») to be true (Testing with Float64Array and makePassthrough.)
-test262/test/built-ins/TypedArray/prototype/lastIndexOf/negative-index-and-resize-to-smaller.js:23: strict mode: Test262Error: For index -1 Expected SameValue(«-1», «2») to be true (Testing with Float64Array and makePassthrough.)
 test262/test/built-ins/TypedArray/prototype/slice/speciesctor-return-same-buffer-with-offset.js:24: Test262Error: Actual [20, 30, 40, 60] and expected [20, 20, 20, 60] should have the same contents.  (Testing with Float64Array and makePassthrough.)
 test262/test/built-ins/TypedArray/prototype/slice/speciesctor-return-same-buffer-with-offset.js:24: strict mode: Test262Error: Actual [20, 30, 40, 60] and expected [20, 20, 20, 60] should have the same contents.  (Testing with Float64Array and makePassthrough.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
