@@ -1015,6 +1015,11 @@ struct JSModuleDef {
     int import_entries_count;
     int import_entries_size;
 
+    /* import attributes the module was requested with, JS_UNDEFINED if
+       none; the same module name can be loaded with different attributes
+       (e.g. as both a JS module and a text module) */
+    JSValue attributes;
+
     JSValue module_ns;
     JSValue func_obj; /* only used for JS modules */
     JSModuleInitFunc *init_func; /* only used for C modules */
@@ -1443,6 +1448,8 @@ static JSValue JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
                                const char *input, size_t input_len,
                                const char *filename, int line, int flags, int scope_idx);
 static void js_free_module_def(JSContext *ctx, JSModuleDef *m);
+static int js_module_attributes_equal(JSContext *ctx, JSValueConst attr1,
+                                      JSValueConst attr2);
 static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
                                JS_MarkFunc *mark_func);
 static JSValue js_import_meta(JSContext *ctx);
@@ -30205,6 +30212,7 @@ static JSModuleDef *js_new_module_def(JSContext *ctx, JSAtom name)
     m->resolving_funcs[0] = JS_UNDEFINED;
     m->resolving_funcs[1] = JS_UNDEFINED;
     m->private_value = JS_UNDEFINED;
+    m->attributes = JS_UNDEFINED;
     list_add_tail(&m->link, &ctx->loaded_modules);
     return m;
 }
@@ -30235,6 +30243,7 @@ static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
     JS_MarkValue(rt, m->resolving_funcs[0], mark_func);
     JS_MarkValue(rt, m->resolving_funcs[1], mark_func);
     JS_MarkValue(rt, m->private_value, mark_func);
+    JS_MarkValue(rt, m->attributes, mark_func);
 }
 
 static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
@@ -30276,6 +30285,7 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
     JS_FreeValue(ctx, m->resolving_funcs[0]);
     JS_FreeValue(ctx, m->resolving_funcs[1]);
     JS_FreeValue(ctx, m->private_value);
+    JS_FreeValue(ctx, m->attributes);
     list_del(&m->link);
     js_free(ctx, m);
 }
@@ -30283,16 +30293,22 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
 #ifndef QJS_DISABLE_PARSER
 
 static int add_req_module_entry(JSContext *ctx, JSModuleDef *m,
-                                JSAtom module_name)
+                                JSAtom module_name, JSValueConst attributes)
 {
     JSReqModuleEntry *rme;
-    int i;
+    int i, eq;
 
-    /* no need to add the module request if it is already present */
+    /* no need to add the module request if an equivalent one (same
+       specifier and same import attributes) is already present */
     for(i = 0; i < m->req_module_entries_count; i++) {
         rme = &m->req_module_entries[i];
-        if (rme->module_name == module_name)
-            return i;
+        if (rme->module_name == module_name) {
+            eq = js_module_attributes_equal(ctx, rme->attributes, attributes);
+            if (eq < 0)
+                return -1;
+            if (eq)
+                return i;
+        }
     }
 
     if (js_resize_array(ctx, (void **)&m->req_module_entries,
@@ -30303,7 +30319,7 @@ static int add_req_module_entry(JSContext *ctx, JSModuleDef *m,
     rme = &m->req_module_entries[m->req_module_entries_count++];
     rme->module_name = JS_DupAtom(ctx, module_name);
     rme->module = NULL;
-    rme->attributes = JS_UNDEFINED;
+    rme->attributes = js_dup(attributes);
     return i;
 }
 
@@ -30538,12 +30554,101 @@ static char *js_default_module_normalize_name(JSContext *ctx,
     return filename;
 }
 
-static JSModuleDef *js_find_loaded_module(JSContext *ctx, JSAtom name)
+/* Two sets of import attributes are equal if they have the same
+   key/value pairs; absent attributes are equivalent to an empty set
+   (ModuleRequestsEqual). Returns 1, 0 or -1 in case of exception. */
+static int js_module_attributes_equal(JSContext *ctx, JSValueConst attr1,
+                                      JSValueConst attr2)
+{
+    JSPropertyEnum *tab = NULL;
+    uint32_t len = 0, len2 = 0, i;
+    JSValue v1, v2;
+    JSAtom a1, a2;
+    int res;
+
+    if (JS_IsObject(attr1)) {
+        if (JS_GetOwnPropertyNames(ctx, &tab, &len, attr1,
+                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
+            return -1;
+    }
+    if (JS_IsObject(attr2)) {
+        JSPropertyEnum *tab2 = NULL;
+        if (JS_GetOwnPropertyNames(ctx, &tab2, &len2, attr2,
+                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0) {
+            res = -1;
+            goto done;
+        }
+        js_free_prop_enum(ctx, tab2, len2);
+    }
+    res = 0;
+    if (len != len2)
+        goto done;
+    for (i = 0; i < len; i++) {
+        v1 = JS_GetProperty(ctx, attr1, tab[i].atom);
+        if (JS_IsException(v1)) {
+            res = -1;
+            goto done;
+        }
+        v2 = JS_GetProperty(ctx, attr2, tab[i].atom);
+        if (JS_IsException(v2)) {
+            JS_FreeValue(ctx, v1);
+            res = -1;
+            goto done;
+        }
+        if (JS_IsUndefined(v2)) {
+            /* attribute values are strings, undefined means the key is
+               not present */
+            JS_FreeValue(ctx, v1);
+            goto done;
+        }
+        a1 = JS_ValueToAtom(ctx, v1);
+        a2 = JS_ValueToAtom(ctx, v2);
+        JS_FreeValue(ctx, v1);
+        JS_FreeValue(ctx, v2);
+        if (a1 == JS_ATOM_NULL || a2 == JS_ATOM_NULL) {
+            JS_FreeAtom(ctx, a1);
+            JS_FreeAtom(ctx, a2);
+            res = -1;
+            goto done;
+        }
+        res = (a1 == a2);
+        JS_FreeAtom(ctx, a1);
+        JS_FreeAtom(ctx, a2);
+        if (!res)
+            goto done;
+    }
+    res = 1;
+done:
+    js_free_prop_enum(ctx, tab, len);
+    return res;
+}
+
+static JSModuleDef *js_find_loaded_module(JSContext *ctx, JSAtom name,
+                                          JSValueConst attributes)
+{
+    struct list_head *el;
+    JSModuleDef *m;
+    int eq;
+
+    /* first look at the loaded modules */
+    list_for_each(el, &ctx->loaded_modules) {
+        m = list_entry(el, JSModuleDef, link);
+        if (m->module_name == name) {
+            eq = js_module_attributes_equal(ctx, m->attributes, attributes);
+            if (eq < 0)
+                return NULL; /* exception */
+            if (eq)
+                return m;
+        }
+    }
+    return NULL;
+}
+
+static JSModuleDef *js_find_loaded_module_by_name(JSContext *ctx, JSAtom name)
 {
     struct list_head *el;
     JSModuleDef *m;
 
-    /* first look at the loaded modules */
     list_for_each(el, &ctx->loaded_modules) {
         m = list_entry(el, JSModuleDef, link);
         if (m->module_name == name)
@@ -30584,11 +30689,16 @@ static JSModuleDef *js_host_resolve_imported_module(JSContext *ctx,
     }
 
     /* first look at the loaded modules */
-    m = js_find_loaded_module(ctx, module_name);
+    m = js_find_loaded_module(ctx, module_name, attributes);
     if (m) {
         js_free(ctx, cname);
         JS_FreeAtom(ctx, module_name);
         return m;
+    }
+    if (JS_HasException(ctx)) {
+        js_free(ctx, cname);
+        JS_FreeAtom(ctx, module_name);
+        return NULL;
     }
 
     JS_FreeAtom(ctx, module_name);
@@ -30608,6 +30718,11 @@ static JSModuleDef *js_host_resolve_imported_module(JSContext *ctx,
     } else {
         m = rt->u.module_loader_func(ctx, cname, rt->module_loader_opaque);
     }
+    /* remember the attributes the module was requested with so that
+       js_find_loaded_module() can tell apart e.g. a text module and a
+       JS module with the same name */
+    if (m && JS_IsObject(attributes) && JS_IsUndefined(m->attributes))
+        m->attributes = js_dup(attributes);
     js_free(ctx, cname);
     return m;
 }
@@ -31569,7 +31684,7 @@ static JSValue js_import_meta(JSContext *ctx)
 
     /* XXX: inefficient, need to add a module or script pointer in
        JSFunctionBytecode */
-    m = js_find_loaded_module(ctx, filename);
+    m = js_find_loaded_module_by_name(ctx, filename);
     JS_FreeAtom(ctx, filename);
     if (!m) {
     fail:
@@ -32223,23 +32338,17 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
 #ifndef QJS_DISABLE_PARSER
 
 /* Parse 'with { key: "value", ... }' clause for import attributes.
-   rme->attributes is set to JS_UNDEFINED if no 'with' clause or an object
-   containing the attributes as key/value pairs. If rme->attributes is already
-   set (from a previous import of the same module), we still parse the tokens
-   but skip adding to the object since they should be the same. */
-static __exception int js_parse_with_clause(JSParseState *s, JSReqModuleEntry *rme)
+   *pattributes is set to JS_UNDEFINED if no 'with' clause or to an object
+   containing the attributes as key/value pairs. */
+static __exception int js_parse_with_clause(JSParseState *s, JSValue *pattributes)
 {
     JSContext *ctx = s->ctx;
     JSAtom key;
     int ret;
-    bool already_set;
 
+    *pattributes = JS_UNDEFINED;
     if (s->token.val != TOK_WITH)
         return 0; /* no 'with' clause */
-
-    /* If attributes already set from previous import of same module,
-       just parse to consume tokens but don't modify the object. */
-    already_set = !JS_IsUndefined(rme->attributes);
 
     if (next_token(s))
         return -1;
@@ -32270,33 +32379,31 @@ static __exception int js_parse_with_clause(JSParseState *s, JSReqModuleEntry *r
             JS_FreeAtom(ctx, key);
             return -1;
         }
-        if (!already_set) {
-            if (JS_IsUndefined(rme->attributes)) {
-                JSValue attributes = JS_NewObjectProto(ctx, JS_NULL);
-                if (JS_IsException(attributes)) {
-                    JS_FreeAtom(ctx, key);
-                    return -1;
-                }
-                rme->attributes = attributes;
-            }
-            /* check for duplicate keys */
-            ret = JS_HasProperty(ctx, rme->attributes, key);
-            if (ret != 0) {
-                if (ret < 0) {
-                    JS_FreeAtom(ctx, key);
-                    return -1;
-                } else {
-                    js_parse_error(s, "duplicate with key");
-                    JS_FreeAtom(ctx, key);
-                    return -1;
-                }
-            }
-            ret = JS_DefinePropertyValue(ctx, rme->attributes, key,
-                                         js_dup(s->token.u.str.str), JS_PROP_C_W_E);
-            if (ret < 0) {
+        if (JS_IsUndefined(*pattributes)) {
+            JSValue attributes = JS_NewObjectProto(ctx, JS_NULL);
+            if (JS_IsException(attributes)) {
                 JS_FreeAtom(ctx, key);
                 return -1;
             }
+            *pattributes = attributes;
+        }
+        /* check for duplicate keys */
+        ret = JS_HasProperty(ctx, *pattributes, key);
+        if (ret != 0) {
+            if (ret < 0) {
+                JS_FreeAtom(ctx, key);
+                return -1;
+            } else {
+                js_parse_error(s, "duplicate with key");
+                JS_FreeAtom(ctx, key);
+                return -1;
+            }
+        }
+        ret = JS_DefinePropertyValue(ctx, *pattributes, key,
+                                     js_dup(s->token.u.str.str), JS_PROP_C_W_E);
+        if (ret < 0) {
+            JS_FreeAtom(ctx, key);
+            return -1;
         }
         JS_FreeAtom(ctx, key);
         if (next_token(s))
@@ -32307,9 +32414,9 @@ static __exception int js_parse_with_clause(JSParseState *s, JSReqModuleEntry *r
         }
     }
     /* check attributes validity if checker function provided */
-    if (!already_set && !JS_IsUndefined(rme->attributes) &&
+    if (!JS_IsUndefined(*pattributes) &&
         ctx->rt->module_check_attrs &&
-        ctx->rt->module_check_attrs(ctx, ctx->rt->module_loader_opaque, rme->attributes) < 0) {
+        ctx->rt->module_check_attrs(ctx, ctx->rt->module_loader_opaque, *pattributes) < 0) {
         return -1;
     }
     return js_parse_expect(s, '}');
@@ -32319,6 +32426,7 @@ static __exception int js_parse_with_clause(JSParseState *s, JSReqModuleEntry *r
 static __exception int js_parse_from_clause(JSParseState *s, JSModuleDef *m)
 {
     JSAtom module_name;
+    JSValue attributes;
     int idx;
 
     if (!token_is_pseudo_keyword(s, JS_ATOM_from)) {
@@ -32339,14 +32447,14 @@ static __exception int js_parse_from_clause(JSParseState *s, JSModuleDef *m)
         return -1;
     }
 
-    idx = add_req_module_entry(s->ctx, m, module_name);
-    JS_FreeAtom(s->ctx, module_name);
-    if (idx < 0)
+    if (js_parse_with_clause(s, &attributes)) {
+        JS_FreeValue(s->ctx, attributes);
+        JS_FreeAtom(s->ctx, module_name);
         return -1;
-    if (s->token.val == TOK_WITH) {
-        if (js_parse_with_clause(s, &m->req_module_entries[idx]))
-            return -1;
     }
+    idx = add_req_module_entry(s->ctx, m, module_name, attributes);
+    JS_FreeValue(s->ctx, attributes);
+    JS_FreeAtom(s->ctx, module_name);
     return idx;
 }
 
@@ -32602,6 +32710,8 @@ static __exception int js_parse_import(JSParseState *s)
 
     first_import = m->import_entries_count;
     if (s->token.val == TOK_STRING) {
+        JSValue attributes;
+
         module_name = JS_ValueToAtom(ctx, s->token.u.str.str);
         if (module_name == JS_ATOM_NULL)
             return -1;
@@ -32609,14 +32719,16 @@ static __exception int js_parse_import(JSParseState *s)
             JS_FreeAtom(ctx, module_name);
             return -1;
         }
-        idx = add_req_module_entry(ctx, m, module_name);
+        if (js_parse_with_clause(s, &attributes)) {
+            JS_FreeValue(ctx, attributes);
+            JS_FreeAtom(ctx, module_name);
+            return -1;
+        }
+        idx = add_req_module_entry(ctx, m, module_name, attributes);
+        JS_FreeValue(ctx, attributes);
         JS_FreeAtom(ctx, module_name);
         if (idx < 0)
             return -1;
-        if (s->token.val == TOK_WITH) {
-            if (js_parse_with_clause(s, &m->req_module_entries[idx]))
-                return -1;
-        }
     } else {
         if (s->token.val == TOK_IDENT) {
             if (s->token.u.ident.is_reserved) {
@@ -39757,6 +39869,7 @@ static JSValue JS_ReadModule(BCReaderState *s)
         for(i = 0; i < m->req_module_entries_count; i++) {
             JSReqModuleEntry *rme = &m->req_module_entries[i];
             JSModuleDef **pm = &rme->module;
+            rme->attributes = JS_UNDEFINED;
             if (bc_get_atom(s, &rme->module_name))
                 goto fail;
             // Resolves a module either from the cache or by requesting
