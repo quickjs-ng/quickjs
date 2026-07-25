@@ -430,6 +430,49 @@ static void module_unhandled_rejection(void)
     JS_FreeRuntime(rt);
 }
 
+static void promise_mark_as_handled(void)
+{
+    struct rejection_counts c = {0, 0};
+    JSRuntime *rt = new_runtime();
+    JS_SetHostPromiseRejectionTracker(rt, rejection_counter, &c);
+    JSContext *ctx = JS_NewContext(rt);
+    JSContext *c1;
+
+    // marking an already-rejected promise notifies the tracker exactly once
+    static const char code[] = "Promise.reject('kaboom')";
+    JSValue promise = JS_Eval(ctx, code, strlen(code), "<t>", JS_EVAL_TYPE_GLOBAL);
+    assert(JS_IsPromise(promise));
+    while (JS_ExecutePendingJob(rt, &c1) > 0)
+        ;
+    assert(c.reject_count == 1);
+    assert(c.handle_count == 0);
+    JS_PromiseMarkAsHandled(ctx, promise);
+    assert(c.handle_count == 1);
+    JS_PromiseMarkAsHandled(ctx, promise);
+    assert(c.handle_count == 1);
+    JS_FreeValue(ctx, promise);
+
+    // marking a pending promise suppresses the report when it later rejects
+    JSValue resolving_funcs[2];
+    JSValue promise2 = JS_NewPromiseCapability(ctx, resolving_funcs);
+    JS_PromiseMarkAsHandled(ctx, promise2);
+    JSValue reason = JS_NewString(ctx, "unseen");
+    JSValue ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1,
+                          (JSValueConst *)&reason);
+    while (JS_ExecutePendingJob(rt, &c1) > 0)
+        ;
+    assert(c.reject_count == 1);
+    assert(c.handle_count == 1);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, reason);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+    JS_FreeValue(ctx, promise2);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void runtime_cstring_free(void)
 {
     JSRuntime *rt = new_runtime();
@@ -1250,6 +1293,7 @@ int main(void)
     is_array();
     module_serde();
     module_unhandled_rejection();
+    promise_mark_as_handled();
     runtime_cstring_free();
     utf16_string();
     weak_map_gc_check();
