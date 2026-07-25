@@ -60508,12 +60508,11 @@ static JSValue js_typed_array_slice(JSContext *ctx, JSValueConst this_val,
 static JSValue js_typed_array_subarray(JSContext *ctx, JSValueConst this_val,
                                        int argc, JSValueConst *argv)
 {
-    JSArrayBuffer *abuf;
     JSTypedArray *ta;
     JSValueConst args[4];
-    JSValue arr, byteOffset, ta_buffer;
+    JSValue arr, ta_buffer;
     JSObject *p;
-    int len, start, final, count, shift, offset;
+    int len, start, final, count, shift, offset, nargs;
 
     p = get_typed_array(ctx, this_val);
     if (!p)
@@ -60527,21 +60526,13 @@ static JSValue js_typed_array_subarray(JSContext *ctx, JSValueConst this_val,
             goto exception;
     }
     count = max_int(final - start, 0);
-    byteOffset = js_typed_array_get_byteOffset(ctx, this_val);
-    if (JS_IsException(byteOffset))
-        goto exception;
     ta = p->u.typed_array;
-    abuf = ta->buffer->u.array_buffer;
-    if (ta->offset > abuf->byte_length)
-        goto range_error;
-    if (ta->offset == abuf->byte_length && count > 0) {
-    range_error:
-        JS_ThrowRangeError(ctx, "invalid offset");
-        goto exception;
-    }
     shift = typed_array_size_log2(p->class_id);
-    offset = JS_VALUE_GET_INT(byteOffset) + (start << shift);
-    JS_FreeValue(ctx, byteOffset);
+    /* per spec, read the [[ByteOffset]] slot directly: it keeps its value
+       even when the buffer was detached or resized by the argument
+       coercions above; validation is left to the constructor called by
+       TypedArraySpeciesCreate */
+    offset = ta->offset + (start << shift);
     ta_buffer = js_typed_array_get_buffer(ctx, this_val);
     if (JS_IsException(ta_buffer))
         goto exception;
@@ -60549,10 +60540,13 @@ static JSValue js_typed_array_subarray(JSContext *ctx, JSValueConst this_val,
     args[1] = safe_const(ta_buffer);
     args[2] = safe_const(js_int32(offset));
     args[3] = safe_const(js_int32(count));
-    // result is length-tracking if source TA is and no explicit count is given
+    // result is length-tracking if source TA is and no explicit end is given;
+    // the constructor is then called without a length argument
     if (ta->track_rab && JS_IsUndefined(argv[1]))
-        args[3] = JS_UNDEFINED;
-    arr = js_typed_array___speciesCreate(ctx, JS_UNDEFINED, 4, args, false);
+        nargs = 3;
+    else
+        nargs = 4;
+    arr = js_typed_array___speciesCreate(ctx, JS_UNDEFINED, nargs, args, false);
     JS_FreeValue(ctx, ta_buffer);
     return arr;
  exception:
