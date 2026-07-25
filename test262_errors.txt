@@ -17,8 +17,6 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
-test262/test/built-ins/TypedArray/prototype/slice/speciesctor-return-same-buffer-with-offset.js:40: TypeError: ArrayBuffer is immutable (Testing with Float64Array and makeImmutableArrayBuffer.)
-test262/test/built-ins/TypedArray/prototype/slice/speciesctor-return-same-buffer-with-offset.js:40: strict mode: TypeError: ArrayBuffer is immutable (Testing with Float64Array and makeImmutableArrayBuffer.)
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-prototype-chain-set.js:35: strict mode: Test262Error: value should not be coerced Expected SameValue(«22», «0») to be true
 test262/test/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-canonical-invalid-index-reflect-set.js:35: Test262Error: value should not be coerced Expected SameValue(«32», «0») to be true
@@ -54,10 +52,13 @@ test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguou
 test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguous-if-import-star-as-and-export.js:74: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/nam' is ambiguous
 test262/test/language/module-code/top-level-await/module-graphs-does-not-hang.js:10: TypeError: $DONE() not called
 test262/test/language/module-code/top-level-await/rejection-order.js:20: TypeError: $DONE() not called
+test262/test/language/statements/await-using/initializer-Symbol.asyncDispose-disposed-at-end-of-imported-module.js:11: SyntaxError: exported variable 'resource' does not exist
+test262/test/language/statements/await-using/initializer-Symbol.dispose-disposed-at-end-of-imported-module.js:11: SyntaxError: exported variable 'resource' does not exist
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: SyntaxError: invalid property name
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: strict mode: SyntaxError: invalid property name
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-set-followed-by-generator-asi.js:40: SyntaxError: invalid property name
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-set-followed-by-generator-asi.js:40: strict mode: SyntaxError: invalid property name
+test262/test/language/statements/using/initializer-disposed-at-end-of-imported-module.js:11: SyntaxError: exported variable 'resource' does not exist
 test262/test/language/statements/with/get-binding-value-call-with-proxy-env.js:39: Test262Error: Actual [has:Object, get:Symbol(Symbol.unscopables), get:Object] and expected [has:Object, get:Symbol(Symbol.unscopables), has:Object, get:Object] should have the same contents. 
 test262/test/language/statements/with/get-binding-value-idref-with-proxy-env.js:39: Test262Error: Actual [has:Object, get:Symbol(Symbol.unscopables), get:Object] and expected [has:Object, get:Symbol(Symbol.unscopables), has:Object, get:Object] should have the same contents. 
 test262/test/language/statements/with/get-mutable-binding-binding-deleted-in-get-unscopables-strict-mode.js:21: Test262Error: Expected a ReferenceError to be thrown but no exception was thrown at all
