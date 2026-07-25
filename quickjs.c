@@ -60489,10 +60489,22 @@ static JSValue js_typed_array_slice(JSContext *ctx, JSValueConst this_val,
         if (p1 != NULL && p->class_id == p1->class_id &&
             typed_array_length(p1) >= count &&
             typed_array_length(p) >= start + count) {
+            uint8_t *src, *dst;
+            int nbytes;
             shift = typed_array_size_log2(p->class_id);
-            memmove(p1->u.array.u.uint8_ptr,
-                    p->u.array.u.uint8_ptr + (start << shift),
-                    count << shift);
+            src = p->u.array.u.uint8_ptr + (start << shift);
+            dst = p1->u.array.u.uint8_ptr;
+            nbytes = count << shift;
+            if (dst > src && dst < src + nbytes) {
+                /* per spec (step 14.g) the copy is performed byte by byte
+                   in increasing order, observable when the species
+                   constructor returns a view over the same buffer that
+                   overlaps the source ahead of it */
+                for (n = 0; n < nbytes; n++)
+                    dst[n] = src[n];
+            } else {
+                memmove(dst, src, nbytes);
+            }
         } else {
         slow_path:
             space = max_int(0, p->u.array.count - start);
