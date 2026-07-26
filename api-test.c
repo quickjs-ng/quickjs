@@ -473,6 +473,26 @@ static void promise_mark_as_handled(void)
     JS_FreeRuntime(rt);
 }
 
+static void clear_kept_objects(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    JSValue w = eval(ctx, "let o = {x:1}; const w = new WeakRef(o); o = null; w");
+    assert(JS_IsObject(w));
+    JSValue got = eval(ctx, "w.deref()");
+    assert(JS_IsObject(got));
+    JS_FreeValue(ctx, got);
+
+    JS_ClearKeptObjects(rt);
+    got = eval(ctx, "w.deref()");
+    assert(JS_IsUndefined(got));
+
+    JS_FreeValue(ctx, w);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void runtime_cstring_free(void)
 {
     JSRuntime *rt = new_runtime();
@@ -1294,6 +1314,7 @@ int main(void)
     module_serde();
     module_unhandled_rejection();
     promise_mark_as_handled();
+    clear_kept_objects();
     runtime_cstring_free();
     utf16_string();
     weak_map_gc_check();

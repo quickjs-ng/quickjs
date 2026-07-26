@@ -557,6 +557,7 @@ JS_EXTERN int JS_AddIntrinsicTypedArrays(JSContext *ctx);
 JS_EXTERN int JS_AddIntrinsicPromise(JSContext *ctx);
 JS_EXTERN int JS_AddIntrinsicBigInt(JSContext *ctx);
 JS_EXTERN int JS_AddIntrinsicWeakRef(JSContext *ctx);
+JS_EXTERN void JS_ClearKeptObjects(JSRuntime *rt);
 JS_EXTERN int JS_AddPerformance(JSContext *ctx);
 JS_EXTERN int JS_AddIntrinsicDOMException(JSContext *ctx);
 JS_EXTERN int JS_AddIntrinsicAToB(JSContext *ctx);
