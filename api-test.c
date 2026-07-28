@@ -928,6 +928,43 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+static void backtrace_oom_callsite_array(void)
+{
+    static const char setup_code[] =
+        "Error.prepareStackTrace = (e, frames) => frames;\n"
+        "globalThis.f = () => new Error();\n";
+    JSValue global_object, func, ret;
+    JSMemoryUsage stats;
+    uint32_t headroom;
+    JSRuntime *rt;
+    JSContext *ctx;
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    global_object = JS_GetGlobalObject(ctx);
+
+    ret = eval(ctx, setup_code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+
+    func = JS_GetPropertyStr(ctx, global_object, "f");
+    assert(JS_IsFunction(ctx, func));
+
+    for (headroom = 0; headroom < 2048; headroom++) {
+        JS_ComputeMemoryUsage(rt, &stats);
+        JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + headroom);
+        ret = JS_Call(ctx, func, JS_UNDEFINED, 0, NULL);
+        JS_SetMemoryLimit(rt, 0);
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+
+    JS_FreeValue(ctx, func);
+    JS_FreeValue(ctx, global_object);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void backtrace_oom_current_exception(void)
 {
     static const char setup_code[] =
@@ -1372,6 +1409,7 @@ int main(void)
     dump_memory_usage();
     new_errors();
     backtrace_oom_current_exception();
+    backtrace_oom_callsite_array();
     global_object_prototype();
     slice_string_tocstring();
     immutable_array_buffer();

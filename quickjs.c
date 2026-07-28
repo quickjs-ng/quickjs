@@ -8377,10 +8377,8 @@ static void build_backtrace(JSContext *ctx, JSValueConst error_val,
                 JSValue v = js_new_callsite(ctx, &csd[j]);
                 if (JS_IsException(v))
                     break;
-                if (JS_DefinePropertyValueUint32(ctx, stack, j, v, JS_PROP_C_W_E) < 0) {
-                    JS_FreeValue(ctx, v);
+                if (JS_DefinePropertyValueUint32(ctx, stack, j, v, JS_PROP_C_W_E) < 0)
                     break;
-                }
             }
         }
         // Clear the csd's we didn't use in case of error.
@@ -63090,7 +63088,12 @@ static JSValue js_new_callsite(JSContext *ctx, JSCallSiteData *csd) {
         return JS_EXCEPTION;
     }
 
+    /* The new object takes ownership of the values in |csd|; clear them so
+       the caller doesn't free them a second time. */
     memcpy(csd1, csd, sizeof(*csd));
+    csd->filename = JS_UNDEFINED;
+    csd->func = JS_UNDEFINED;
+    csd->func_name = JS_UNDEFINED;
 
     JS_SetOpaqueInternal(obj, csd1);
 
