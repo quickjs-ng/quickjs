@@ -1331,6 +1331,10 @@ static int re_emit_string_list(REParseState *s, const REStringList *sl)
             }
             if (!is_last) {
                 last_match_pos = re_emit_op_u32(s, REOP_goto, last_match_pos);
+                /* the positions to patch are only valid if all the byte code
+                   could be emitted */
+                if (dbuf_error(&s->byte_code))
+                    goto out_of_memory;
                 put_u32(s->byte_code.buf + split_pos, s->byte_code.size - (split_pos + 4));
             }
         }
@@ -1342,15 +1346,18 @@ static int re_emit_string_list(REParseState *s, const REStringList *sl)
                 split_pos = re_emit_op_u32(s, REOP_split_next_first, 0);
             else
                 split_pos = 0; /* not used */
-            if (re_emit_range(s, &sl->cr)) {
-                lre_realloc(s->opaque, tab, 0);
-                return -1;
-            }
-            if (!is_last)
+            if (re_emit_range(s, &sl->cr))
+                goto fail;
+            if (!is_last) {
+                if (dbuf_error(&s->byte_code))
+                    goto out_of_memory;
                 put_u32(s->byte_code.buf + split_pos, s->byte_code.size - (split_pos + 4));
+            }
         }
 
         /* patch the 'goto match' */
+        if (dbuf_error(&s->byte_code))
+            goto out_of_memory;
         while (last_match_pos != -1) {
             int next_pos = get_u32(s->byte_code.buf + last_match_pos);
             put_u32(s->byte_code.buf + last_match_pos, s->byte_code.size - (last_match_pos + 4));
@@ -1360,6 +1367,11 @@ static int re_emit_string_list(REParseState *s, const REStringList *sl)
         lre_realloc(s->opaque, tab, 0);
     }
     return 0;
+ out_of_memory:
+    re_parse_out_of_memory(s);
+ fail:
+    lre_realloc(s->opaque, tab, 0);
+    return -1;
 }
 
 static int re_parse_nested_class(REParseState *s, REStringList *cr, const uint8_t **pp);
@@ -1860,6 +1872,11 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
     bool greedy, is_neg, is_backward_lookahead;
     REStringList cr_s, *cr = &cr_s;
 
+    /* after a failed allocation the byte code is incomplete and 'buf' may
+       still be NULL: stop before computing positions inside it */
+    if (dbuf_error(&s->byte_code))
+        return re_parse_out_of_memory(s);
+
     last_atom_start = -1;
     last_capture_count = 0;
     p = s->buf_ptr;
@@ -1988,7 +2005,7 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                 re_emit_op(s, REOP_lookahead_match + is_neg);
                 /* jump after the 'match' after the lookahead is successful */
                 if (dbuf_error(&s->byte_code))
-                    return -1;
+                    return re_parse_out_of_memory(s);
                 put_u32(s->byte_code.buf + pos, s->byte_code.size - (pos + 4));
             } else if (p[2] == '<') {
                 p += 3;
@@ -2403,7 +2420,7 @@ static int re_parse_alternative(REParseState *s, bool is_backward_dir)
             end = s->byte_code.size;
             term_size = end - term_start;
             if (dbuf_claim(&s->byte_code, term_size))
-                return -1;
+                return re_parse_out_of_memory(s);
             memmove(s->byte_code.buf + start + term_size,
                     s->byte_code.buf + start,
                     end - start);
@@ -2446,7 +2463,10 @@ static int re_parse_disjunction(REParseState *s, bool is_backward_dir)
         if (re_parse_alternative(s, is_backward_dir))
             return -1;
 
-        /* patch the goto */
+        /* patch the goto ('pos' is only valid if the placeholder for the
+           offset could be emitted) */
+        if (dbuf_error(&s->byte_code))
+            return re_parse_out_of_memory(s);
         len = s->byte_code.size - (pos + 4);
         put_u32(s->byte_code.buf + pos, len);
     }
@@ -2612,7 +2632,10 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
 
     /* add the named groups if needed */
     if (s->group_names.size > (s->capture_count - 1) * LRE_GROUP_NAME_TRAILER_LEN) {
-        dbuf_put(&s->byte_code, s->group_names.buf, s->group_names.size);
+        if (dbuf_put(&s->byte_code, s->group_names.buf, s->group_names.size)) {
+            re_parse_out_of_memory(s);
+            goto error;
+        }
         put_u16(s->byte_code.buf + RE_HEADER_FLAGS,
                 lre_get_flags(s->byte_code.buf) | LRE_FLAG_NAMED_GROUPS);
     }
