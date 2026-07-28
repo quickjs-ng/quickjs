@@ -61100,7 +61100,7 @@ static JSValue js_typed_array_sort(JSContext *ctx, JSValueConst this_val,
             size_t i, j;
 
             /* XXX: a stable sort would use less memory */
-            array_idx = js_malloc(ctx, len * sizeof(array_idx[0]));
+            array_idx = js_calloc(ctx, len, sizeof(array_idx[0]));
             if (!array_idx)
                 return JS_EXCEPTION;
             for(i = 0; i < len; i++)

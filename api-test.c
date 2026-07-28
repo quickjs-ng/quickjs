@@ -1353,6 +1353,48 @@ static void detach_array_buffer_free_once(void)
     JS_FreeRuntime(rt);
 }
 
+static void free_array_buffer_data(JSRuntime *rt, void *opaque, void *ptr)
+{
+    free(ptr);
+}
+
+static void typed_array_sort_index_overflow(void)
+{
+    const size_t len = 0x40000010; /* 2**30 + 16 */
+    JSMemoryUsage stats;
+    JSValue global, buffer, ret;
+    JSRuntime *rt;
+    JSContext *ctx;
+    uint8_t *buf;
+
+    /* the data is never read, but keep it real memory so a regression
+       corrupts the heap in a way ASan can see rather than segfaulting */
+    buf = calloc(1, len);
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+
+    buffer = JS_NewArrayBuffer(ctx, buf, len, free_array_buffer_data, NULL,
+                               false);
+    assert(JS_IsArrayBuffer(buffer));
+    global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "buf", buffer);
+    JS_FreeValue(ctx, global);
+
+    /* Cap memory so that the correctly computed 4 GB index array also
+       fails to allocate on 64 bit platforms; the undersized allocation a
+       32 bit platform computes fits well within the cap. */
+    JS_ComputeMemoryUsage(rt, &stats);
+    JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + 1024 * 1024);
+
+    ret = eval(ctx, "new Uint8Array(buf).sort((a, b) => a - b)");
+    assert(JS_IsException(ret));
+    assert(JS_HasException(ctx));
+    JS_FreeValue(ctx, ret);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1380,5 +1422,6 @@ int main(void)
     new_symbol();
     bulk_free_macros();
     detach_array_buffer_free_once();
+    typed_array_sort_index_overflow();
     return 0;
 }
