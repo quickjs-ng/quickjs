@@ -62224,6 +62224,7 @@ static JSValue js_atomics_store(JSContext *ctx,
         }
         /* check if an evil .valueOf has resized or detached the array */
         if (idx >= p->u.array.count) {
+            JS_FreeValue(ctx, ret);
             return JS_ThrowRangeError(ctx, "out-of-bound access");
         }
         ptr = p->u.array.u.uint8_ptr + ((uintptr_t)idx << size_log2);
@@ -62240,6 +62241,7 @@ static JSValue js_atomics_store(JSContext *ctx,
         }
         /* check if an evil .valueOf has resized or detached the array */
         if (idx >= p->u.array.count) {
+            JS_FreeValue(ctx, ret);
             return JS_ThrowRangeError(ctx, "out-of-bound access");
         }
         ptr = p->u.array.u.uint8_ptr + ((uintptr_t)idx << size_log2);
