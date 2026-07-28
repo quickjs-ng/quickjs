@@ -21503,6 +21503,8 @@ static int js_async_function_resolve_create(JSContext *ctx,
         if (JS_IsException(resolving_funcs[i])) {
             if (i == 1)
                 JS_FreeValue(ctx, resolving_funcs[0]);
+            resolving_funcs[0] = JS_UNDEFINED;
+            resolving_funcs[1] = JS_UNDEFINED;
             return -1;
         }
         p = JS_VALUE_GET_OBJ(resolving_funcs[i]);
@@ -21745,6 +21747,8 @@ static int js_async_generator_resolve_function_create(JSContext *ctx,
         if (JS_IsException(func)) {
             if (i == 1)
                 JS_FreeValue(ctx, resolving_funcs[0]);
+            resolving_funcs[0] = JS_UNDEFINED;
+            resolving_funcs[1] = JS_UNDEFINED;
             return -1;
         }
         resolving_funcs[i] = func;
@@ -55384,6 +55388,8 @@ static int js_create_resolving_functions(JSContext *ctx,
     JSPromiseFunctionDataResolved *sr;
     int i, ret;
 
+    resolving_funcs[0] = JS_UNDEFINED;
+    resolving_funcs[1] = JS_UNDEFINED;
     sr = js_malloc(ctx, sizeof(*sr));
     if (!sr)
         return -1;
@@ -55399,9 +55405,8 @@ static int js_create_resolving_functions(JSContext *ctx,
         if (!s) {
             JS_FreeValue(ctx, obj);
         fail:
-
-            if (i != 0)
-                JS_FreeValue(ctx, resolving_funcs[0]);
+            JS_FreeValue(ctx, resolving_funcs[0]);
+            resolving_funcs[0] = JS_UNDEFINED;
             ret = -1;
             break;
         }
