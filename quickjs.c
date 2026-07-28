@@ -2140,22 +2140,6 @@ void *js_realloc(JSContext *ctx, void *ptr, size_t size)
     return ret;
 }
 
-/* store extra allocated size in *pslack if successful */
-void *js_realloc2(JSContext *ctx, void *ptr, size_t size, size_t *pslack)
-{
-    void *ret;
-    ret = js_realloc_rt(ctx->rt, ptr, size);
-    if (unlikely(!ret && size != 0)) {
-        JS_ThrowOutOfMemory(ctx);
-        return NULL;
-    }
-    if (pslack) {
-        size_t new_size = js_malloc_usable_size_rt(ctx->rt, ret);
-        *pslack = (new_size > size) ? new_size - size : 0;
-    }
-    return ret;
-}
-
 size_t js_malloc_usable_size(JSContext *ctx, const void *ptr)
 {
     return js_malloc_usable_size_rt(ctx->rt, ptr);
@@ -2182,15 +2166,13 @@ static no_inline int js_realloc_array(JSContext *ctx, void **parray,
                                       int elem_size, int *psize, int req_size)
 {
     int new_size;
-    size_t slack;
     void *new_array;
     /* XXX: potential arithmetic overflow */
     new_size = max_int(req_size, *psize * 3 / 2);
     assert(elem_size > 0 && new_size > 0);
-    new_array = js_realloc2(ctx, *parray, (size_t)new_size * (size_t)elem_size, &slack);
+    new_array = js_realloc(ctx, *parray, (size_t)new_size * (size_t)elem_size);
     if (!new_array)
         return -1;
-    new_size += slack / elem_size;
     *psize = new_size;
     *parray = new_array;
     return 0;
@@ -3528,7 +3510,6 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
         new_size = max_int(711, rt->atom_size * 3 / 2);
         if (new_size > JS_ATOM_MAX)
             goto fail;
-        /* XXX: should use realloc2 to use slack space */
         new_array = js_realloc_rt(rt, rt->atom_array, sizeof(*new_array) * new_size);
         if (!new_array)
             goto fail;
@@ -4428,16 +4409,14 @@ static int string_buffer_set_error(StringBuffer *s)
 static no_inline int string_buffer_widen(StringBuffer *s, int size)
 {
     JSString *str;
-    size_t slack;
     int i;
 
     if (s->error_status)
         return -1;
 
-    str = js_realloc2(s->ctx, s->str, sizeof(JSString) + (size << 1), &slack);
+    str = js_realloc(s->ctx, s->str, sizeof(JSString) + (size << 1));
     if (!str)
         return string_buffer_set_error(s);
-    size += slack >> 1;
     for(i = s->len; i-- > 0;) {
         str16(str)[i] = str8(str)[i];
     }
@@ -4451,7 +4430,7 @@ static no_inline int string_buffer_realloc(StringBuffer *s, int new_len, int c)
 {
     JSString *new_str;
     int new_size;
-    size_t new_size_bytes, slack;
+    size_t new_size_bytes;
 
     if (s->error_status)
         return -1;
@@ -4465,10 +4444,9 @@ static no_inline int string_buffer_realloc(StringBuffer *s, int new_len, int c)
         return string_buffer_widen(s, new_size);
     }
     new_size_bytes = sizeof(JSString) + (new_size << s->is_wide_char) + 1 - s->is_wide_char;
-    new_str = js_realloc2(s->ctx, s->str, new_size_bytes, &slack);
+    new_str = js_realloc(s->ctx, s->str, new_size_bytes);
     if (!new_str)
         return string_buffer_set_error(s);
-    new_size = min_int(new_size + (slack >> s->is_wide_char), JS_STRING_LEN_MAX);
     s->size = new_size;
     s->str = new_str;
     return 0;
@@ -10476,7 +10454,6 @@ static int set_array_length(JSContext *ctx, JSObject *p, JSValue val,
 static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
 {
     uint32_t old_size, new_size;
-    size_t slack;
     JSValue *new_array_prop;
 
     if (unlikely(new_len > (uint32_t)INT32_MAX)) {
@@ -10491,10 +10468,9 @@ static int expand_fast_array(JSContext *ctx, JSObject *p, uint32_t new_len)
         return -1;
     }
     new_size = max_uint32(new_len, new_size);
-    new_array_prop = js_realloc2(ctx, p->u.array.u.values, sizeof(JSValue) * new_size, &slack);
+    new_array_prop = js_realloc(ctx, p->u.array.u.values, sizeof(JSValue) * new_size);
     if (!new_array_prop)
         return -1;
-    new_size += slack / sizeof(*new_array_prop);
     p->u.array.u.values = new_array_prop;
     p->u.array.u1.size = new_size;
     return 0;
@@ -24378,21 +24354,19 @@ static int push_scope(JSParseState *s) {
         /* XXX: should check for scope overflow */
         if ((fd->scope_count + 1) > fd->scope_size) {
             int new_size;
-            size_t slack;
             JSVarScope *new_buf;
             /* XXX: potential arithmetic overflow */
             new_size = max_int(fd->scope_count + 1, fd->scope_size * 3 / 2);
             if (fd->scopes == fd->def_scope_array) {
-                new_buf = js_realloc2(s->ctx, NULL, new_size * sizeof(*fd->scopes), &slack);
+                new_buf = js_realloc(s->ctx, NULL, new_size * sizeof(*fd->scopes));
                 if (!new_buf)
                     return -1;
                 memcpy(new_buf, fd->scopes, fd->scope_count * sizeof(*fd->scopes));
             } else {
-                new_buf = js_realloc2(s->ctx, fd->scopes, new_size * sizeof(*fd->scopes), &slack);
+                new_buf = js_realloc(s->ctx, fd->scopes, new_size * sizeof(*fd->scopes));
                 if (!new_buf)
                     return -1;
             }
-            new_size += slack / sizeof(*new_buf);
             fd->scopes = new_buf;
             fd->scope_size = new_size;
         }
@@ -44762,13 +44736,12 @@ static JSValue js_array_sort(JSContext *ctx, JSValueConst this_val,
     /* XXX: should special case fast arrays */
     for (i = 0; i < len; i++) {
         if (pos >= array_size) {
-            size_t new_size, slack;
+            size_t new_size;
             ValueSlot *new_array;
             new_size = (array_size + (array_size >> 1) + 31) & ~15;
-            new_array = js_realloc2(ctx, array, new_size * sizeof(*array), &slack);
+            new_array = js_realloc(ctx, array, new_size * sizeof(*array));
             if (new_array == NULL)
                 goto exception;
-            new_size += slack / sizeof(*new_array);
             array = new_array;
             array_size = new_size;
         }
@@ -50041,15 +50014,14 @@ static int value_buffer_append(ValueBuffer *b, JSValue val)
 
     if (b->len >= b->size) {
         int new_size = (b->len + (b->len >> 1) + 31) & ~16;
-        size_t slack;
         JSValue *new_arr;
 
         if (b->arr == b->def) {
-            new_arr = js_realloc2(b->ctx, NULL, sizeof(*b->arr) * new_size, &slack);
+            new_arr = js_realloc(b->ctx, NULL, sizeof(*b->arr) * new_size);
             if (new_arr)
                 memcpy(new_arr, b->def, sizeof b->def);
         } else {
-            new_arr = js_realloc2(b->ctx, b->arr, sizeof(*b->arr) * new_size, &slack);
+            new_arr = js_realloc(b->ctx, b->arr, sizeof(*b->arr) * new_size);
         }
         if (!new_arr) {
             value_buffer_free(b);
@@ -50057,7 +50029,6 @@ static int value_buffer_append(ValueBuffer *b, JSValue val)
             b->error_status = -1;
             return -1;
         }
-        new_size += slack / sizeof(*new_arr);
         b->arr = new_arr;
         b->size = new_size;
     }

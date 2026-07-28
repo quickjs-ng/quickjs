@@ -584,7 +584,6 @@ JS_EXTERN void *js_malloc(JSContext *ctx, size_t size);
 JS_EXTERN void js_free(JSContext *ctx, void *ptr);
 JS_EXTERN void *js_realloc(JSContext *ctx, void *ptr, size_t size);
 JS_EXTERN size_t js_malloc_usable_size(JSContext *ctx, const void *ptr);
-JS_EXTERN void *js_realloc2(JSContext *ctx, void *ptr, size_t size, size_t *pslack);
 JS_EXTERN void *js_mallocz(JSContext *ctx, size_t size);
 JS_EXTERN char *js_strdup(JSContext *ctx, const char *str);
 JS_EXTERN char *js_strndup(JSContext *ctx, const char *s, size_t n);
