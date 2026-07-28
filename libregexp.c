@@ -239,6 +239,8 @@ static __maybe_unused void re_string_list_dump(const char *str, const REStringLi
 }
 #endif /* DUMP_REOP */
 
+/* 'buf' is NULL if 'len' is zero: the empty string is a valid member of a
+   string set, e.g. /[\q{}]/v */
 static int re_string_find2(REStringList *s, int len, const uint32_t *buf,
                            uint32_t h0, bool add_flag)
 {
@@ -248,7 +250,8 @@ static int re_string_find2(REStringList *s, int len, const uint32_t *buf,
         h = h0 >> (32 - s->hash_bits);
         for(p = s->hash_table[h]; p != NULL; p = p->next) {
             if (p->hash == h0 && p->len == len &&
-                !memcmp(p->buf, buf, len * sizeof(buf[0]))) {
+                (len == 0 ||
+                 !memcmp(p->buf, buf, len * sizeof(buf[0])))) {
                 return 1;
             }
         }
@@ -291,7 +294,8 @@ static int re_string_find2(REStringList *s, int len, const uint32_t *buf,
     s->n_strings++;
     p->hash = h0;
     p->len = len;
-    memcpy(p->buf, buf, sizeof(buf[0]) * len);
+    if (len != 0)
+        memcpy(p->buf, buf, sizeof(buf[0]) * len);
     return 1;
 }
 
