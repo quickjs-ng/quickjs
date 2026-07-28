@@ -15572,7 +15572,10 @@ static no_inline __exception int js_binary_arith_slow(JSContext *ctx, JSValue *s
         }
         if (JS_ToFloat64Free(ctx, &d2, op2))
             goto exception;
-    handle_float64:
+    handle_float64: ;
+        /* The empty statement is load-bearing: on i386
+           JS_X87_FPCW_SAVE_AND_ADJUST expands to a declaration, and a label
+           may not be followed directly by a declaration before C23. */
         JS_X87_FPCW_SAVE_AND_ADJUST(fpcw);
         switch(op) {
         case OP_sub:
