@@ -736,6 +736,18 @@ function test_json()
   3
  ]
 ]`);
+
+    /* the space argument can be a rope, which is not a JSString: it must be
+       linearized before its characters are read, else the gap is filled with
+       the raw bytes of the rope's internal JSValues */
+    var rope = "a".repeat(600) + "b".repeat(600);
+    var expected = '{\n' + "a".repeat(10) + '"x": 1\n}';
+    assert(JSON.stringify({x:1}, null, rope), expected);
+    assert(JSON.stringify({x:1}, null, new String(rope)), expected);
+    /* wide char rope */
+    var wide = "é".repeat(600) + "è".repeat(600);
+    assert(JSON.stringify({x:1}, null, wide),
+           '{\n' + "é".repeat(10) + '"x": 1\n}');
 }
 
 function test_date()
