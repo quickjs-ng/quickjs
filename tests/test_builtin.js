@@ -1209,6 +1209,31 @@ function test_proxy_iter()
     assert(a[1], "y");
 }
 
+function test_proxy_own_keys_huge_length()
+{
+    for (const length of [0x20000000, 0x40000000, 0xfffffffe, 0xffffffff]) {
+        const p = new Proxy({}, { ownKeys() { return {length}; } });
+        /* index 0 is undefined, so this must fail on the very first entry */
+        assertThrows(TypeError, function() { Object.keys(p); });
+        assertThrows(TypeError, function() { Object.getOwnPropertyNames(p); });
+    }
+
+    const keys = ["a", "b", Symbol("c")];
+    const p = new Proxy({}, {
+        ownKeys() {
+            return new Proxy({length: 0xffffffff}, {
+                get(t, k) {
+                    if (k === "length") return 0xffffffff;
+                    const i = Number(k);
+                    if (i < keys.length) return keys[i];
+                    throw new RangeError("stop at " + i);
+                },
+            });
+        },
+    });
+    assertThrows(RangeError, function() { Object.getOwnPropertyNames(p); });
+}
+
 /* CVE-2023-31922 */
 function test_proxy_is_array()
 {
@@ -1318,6 +1343,7 @@ test_set();
 test_weak_set();
 test_generator();
 test_proxy_iter();
+test_proxy_own_keys_huge_length();
 test_proxy_is_array();
 test_finalization_registry();
 test_exception_source_pos();
