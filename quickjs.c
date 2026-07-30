@@ -45227,22 +45227,24 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
                                          int argc, JSValueConst *argv)
 {
     JSIteratorConcatData *it;
-    JSValue ret, *pval;
+    JSValue *pval;
+    int res;
 
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_CONCAT);
     if (!it)
         return JS_EXCEPTION;
     if (it->running)
         return JS_ThrowTypeError(ctx, "already running");
-    ret = JS_UNDEFINED;
+    res = 0;
     if (!JS_IsUndefined(it->iter)) {
-        ret = JS_GetProperty(ctx, it->iter, JS_ATOM_return);
-        if (JS_IsException(ret))
-            return JS_EXCEPTION;
+        /* IteratorClose: leaves the iterator alone when it has no .return
+           method and rejects a result that is not an object */
         it->running = true;
-        ret = JS_CallFree(ctx, ret, it->iter, 0, NULL);
+        res = JS_IteratorClose(ctx, it->iter, /*is_exception_pending*/false);
         it->running = false;
     }
+    /* the iterator is closed either way, the remaining iterables are never
+       opened */
     while (it->index < it->count) {
         pval = &it->values[it->index++];
         JS_FreeValue(ctx, *pval);
@@ -45252,12 +45254,14 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, it->next);
     it->iter = JS_UNDEFINED;
     it->next = JS_UNDEFINED;
-    return ret;
+    if (res < 0)
+        return JS_EXCEPTION;
+    return js_create_iterator_result(ctx, JS_UNDEFINED, /*done*/true);
 }
 
 static const JSCFunctionListEntry js_iterator_concat_proto_funcs[] = {
     JS_ITERATOR_NEXT_DEF("next", 1, js_iterator_concat_next, 0 ),
-    JS_CFUNC_DEF("return", 1, js_iterator_concat_return ),
+    JS_CFUNC_DEF("return", 0, js_iterator_concat_return ),
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Iterator Concat", JS_PROP_CONFIGURABLE ),
 };
 
