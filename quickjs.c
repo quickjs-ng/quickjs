@@ -904,6 +904,7 @@ typedef enum JSIteratorKindEnum {
 } JSIteratorKindEnum;
 
 typedef enum JSIteratorHelperKindEnum {
+    JS_ITERATOR_HELPER_KIND_CHUNKS,
     JS_ITERATOR_HELPER_KIND_DROP,
     JS_ITERATOR_HELPER_KIND_EVERY,
     JS_ITERATOR_HELPER_KIND_FILTER,
@@ -913,6 +914,7 @@ typedef enum JSIteratorHelperKindEnum {
     JS_ITERATOR_HELPER_KIND_MAP,
     JS_ITERATOR_HELPER_KIND_SOME,
     JS_ITERATOR_HELPER_KIND_TAKE,
+    JS_ITERATOR_HELPER_KIND_WINDOWS,
 } JSIteratorHelperKindEnum;
 
 typedef struct JSForInIterator {
@@ -45360,10 +45362,15 @@ typedef struct JSIteratorHelperData {
     JSValue next;
     JSValue func; // predicate (filter) or mapper (flatMap, map)
     JSValue inner; // innerValue (flatMap)
-    int64_t count; // limit (drop, take) or counter (filter, map, flatMap)
+    JSValue *buf; // buffered values (chunks, windows)
+    int64_t count; // limit (drop, take), counter (filter, map, flatMap) or
+                   // chunk/window size (chunks, windows)
+    int buf_count; // number of values in |buf|
+    int buf_size; // allocated size of |buf|
     JSIteratorHelperKindEnum kind : 8;
     uint8_t executing : 1;
     uint8_t done : 1;
+    uint8_t allow_partial : 1; // yield a partial final window (windows)
 } JSIteratorHelperData;
 
 static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
@@ -45372,14 +45379,56 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
     JSValueConst func;
     JSValue obj, method;
     int64_t count;
+    bool allow_partial;
     JSIteratorHelperData *it;
 
     if (check_iterator(ctx, this_val) < 0)
         return JS_EXCEPTION;
     func = JS_UNDEFINED;
     count = 0;
+    allow_partial = false;
 
     switch(magic) {
+    case JS_ITERATOR_HELPER_KIND_CHUNKS:
+    case JS_ITERATOR_HELPER_KIND_WINDOWS:
+        {
+            const char *name;
+            double d;
+            bool ok;
+
+            name = magic == JS_ITERATOR_HELPER_KIND_CHUNKS ? "chunkSize"
+                                                           : "windowSize";
+            // note: no coercion, the argument must be an integral number
+            d = NAN;
+            if (JS_IsNumber(argv[0]) && JS_ToFloat64(ctx, &d, argv[0]))
+                goto fail;
+            if (!isfinite(d) || trunc(d) != d) {
+                JS_ThrowTypeError(ctx, "%s is not an integral number", name);
+                goto fail;
+            }
+            if (d < 1 || d > UINT32_MAX) {
+                JS_ThrowRangeError(ctx, "%s out of range", name);
+                goto fail;
+            }
+            count = (int64_t)d;
+            if (magic == JS_ITERATOR_HELPER_KIND_WINDOWS && argc > 1 &&
+                !JS_IsUndefined(argv[1])) {
+                ok = false;
+                if (JS_IsString(argv[1])) {
+                    const char *str = JS_ToCString(ctx, argv[1]);
+                    if (!str)
+                        goto fail;
+                    allow_partial = !strcmp(str, "allow-partial");
+                    ok = allow_partial || !strcmp(str, "only-full");
+                    JS_FreeCString(ctx, str);
+                }
+                if (!ok) {
+                    JS_ThrowTypeError(ctx, "bad undersized option");
+                    goto fail;
+                }
+            }
+        }
+        break;
     case JS_ITERATOR_HELPER_KIND_DROP:
     case JS_ITERATOR_HELPER_KIND_TAKE:
         {
@@ -45433,9 +45482,13 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
     it->func = js_dup(func);
     it->next = method;
     it->inner = JS_UNDEFINED;
+    it->buf = NULL;
     it->count = count;
+    it->buf_count = 0;
+    it->buf_size = 0;
     it->executing = 0;
     it->done = 0;
+    it->allow_partial = allow_partial;
     JS_SetOpaqueInternal(obj, it);
     return obj;
 range_error:
@@ -45927,6 +45980,9 @@ static void js_iterator_helper_finalizer(JSRuntime *rt, JSValueConst val)
         JS_FreeValueRT(rt, it->func);
         JS_FreeValueRT(rt, it->next);
         JS_FreeValueRT(rt, it->inner);
+        while (it->buf_count > 0)
+            JS_FreeValueRT(rt, it->buf[--it->buf_count]);
+        js_free_rt(rt, it->buf);
         js_free_rt(rt, it);
     }
 }
@@ -45941,6 +45997,8 @@ static void js_iterator_helper_mark(JSRuntime *rt, JSValueConst val,
         JS_MarkValue(rt, it->func, mark_func);
         JS_MarkValue(rt, it->next, mark_func);
         JS_MarkValue(rt, it->inner, mark_func);
+        for (int i = 0; i < it->buf_count; i++)
+            JS_MarkValue(rt, it->buf[i], mark_func);
     }
 }
 
@@ -45949,9 +46007,11 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                                       int *pdone, int magic)
 {
     JSIteratorHelperData *it;
+    bool exhausted;
     JSValue ret;
 
     *pdone = false;
+    exhausted = false;
 
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_HELPER);
     if (!it)
@@ -45966,6 +46026,67 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
     it->executing = 1;
 
     switch (it->kind) {
+    case JS_ITERATOR_HELPER_KIND_CHUNKS:
+    case JS_ITERATOR_HELPER_KIND_WINDOWS:
+        {
+            bool windows = it->kind == JS_ITERATOR_HELPER_KIND_WINDOWS;
+            JSValue item;
+
+            if (magic == GEN_MAGIC_RETURN)
+                goto close;
+            for (;;) {
+                item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
+                if (JS_IsException(item))
+                    goto buf_fail;
+                if (*pdone) {
+                    JS_FreeValue(ctx, item);
+                    /* the underlying iterator is done: yield what's left in
+                       the buffer, if anything, then stop */
+                    exhausted = true;
+                    ret = JS_UNDEFINED;
+                    if (it->buf_count < 1)
+                        goto done;
+                    if (windows) {
+                        /* a full window was already yielded */
+                        if (!it->allow_partial || it->buf_count >= it->count)
+                            goto done;
+                        ret = js_create_array(ctx, it->buf_count, vc(it->buf));
+                    } else {
+                        ret = JS_NewArrayFrom(ctx, it->buf_count, it->buf);
+                        it->buf_count = 0; // ownership transferred
+                    }
+                    if (JS_IsException(ret))
+                        goto buf_fail;
+                    *pdone = false;
+                    goto done;
+                }
+                if (windows && it->buf_count == it->count) {
+                    /* slide the window */
+                    JS_FreeValue(ctx, it->buf[0]);
+                    it->buf_count--;
+                    memmove(it->buf, &it->buf[1],
+                            it->buf_count * sizeof(*it->buf));
+                }
+                if (js_resize_array(ctx, (void **)&it->buf, sizeof(*it->buf),
+                                    &it->buf_size, it->buf_count + 1)) {
+                    JS_FreeValue(ctx, item);
+                    goto buf_fail;
+                }
+                it->buf[it->buf_count++] = item;
+                if (it->buf_count == it->count) {
+                    if (windows) {
+                        ret = js_create_array(ctx, it->buf_count, vc(it->buf));
+                    } else {
+                        ret = JS_NewArrayFrom(ctx, it->buf_count, it->buf);
+                        it->buf_count = 0; // ownership transferred
+                    }
+                    if (JS_IsException(ret))
+                        goto buf_fail;
+                    goto done;
+                }
+            }
+        }
+        break;
     case JS_ITERATOR_HELPER_KIND_DROP:
         {
             JSValue item;
@@ -46145,9 +46266,23 @@ close:
         ret = JS_EXCEPTION;
 
 done:
-    it->done = magic == GEN_MAGIC_NEXT ? *pdone : 1;
+    it->done = exhausted || (magic == GEN_MAGIC_NEXT ? *pdone : 1);
     it->executing = 0;
+    if (it->done && it->buf) {
+        while (it->buf_count > 0)
+            JS_FreeValue(ctx, it->buf[--it->buf_count]);
+        js_free(ctx, it->buf);
+        it->buf = NULL;
+        it->buf_size = 0;
+    }
     return ret;
+buf_fail:
+    /* an abrupt completion finishes the helper (chunks, windows) without
+       closing the iterator object: IteratorStepValue only marks the iterator
+       record done when stepping it throws, it does not close it */
+    exhausted = true;
+    ret = JS_EXCEPTION;
+    goto done;
 fail:
     /* close the iterator object, preserving pending exception */
     JS_IteratorClose(ctx, it->obj, true);
@@ -46161,11 +46296,13 @@ static const JSCFunctionListEntry js_iterator_funcs[] = {
 };
 
 static const JSCFunctionListEntry js_iterator_proto_funcs[] = {
+    JS_CFUNC_MAGIC_DEF("chunks", 1, js_create_iterator_helper, JS_ITERATOR_HELPER_KIND_CHUNKS ),
     JS_CFUNC_MAGIC_DEF("drop", 1, js_create_iterator_helper, JS_ITERATOR_HELPER_KIND_DROP ),
     JS_CFUNC_MAGIC_DEF("filter", 1, js_create_iterator_helper, JS_ITERATOR_HELPER_KIND_FILTER ),
     JS_CFUNC_MAGIC_DEF("flatMap", 1, js_create_iterator_helper, JS_ITERATOR_HELPER_KIND_FLAT_MAP ),
     JS_CFUNC_MAGIC_DEF("map", 1, js_create_iterator_helper, JS_ITERATOR_HELPER_KIND_MAP ),
     JS_CFUNC_MAGIC_DEF("take", 1, js_create_iterator_helper, JS_ITERATOR_HELPER_KIND_TAKE ),
+    JS_CFUNC_MAGIC_DEF("windows", 1, js_create_iterator_helper, JS_ITERATOR_HELPER_KIND_WINDOWS ),
     JS_CFUNC_MAGIC_DEF("every", 1, js_iterator_proto_func, JS_ITERATOR_HELPER_KIND_EVERY ),
     JS_CFUNC_MAGIC_DEF("find", 1, js_iterator_proto_func, JS_ITERATOR_HELPER_KIND_FIND),
     JS_CFUNC_MAGIC_DEF("forEach", 1, js_iterator_proto_func, JS_ITERATOR_HELPER_KIND_FOR_EACH ),
