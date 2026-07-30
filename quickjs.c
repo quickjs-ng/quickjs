@@ -45387,30 +45387,16 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
             v = JS_ToNumber(ctx, argv[0]);
             if (JS_IsException(v))
                 goto fail;
-            // Check for Infinity.
-            if (JS_ToFloat64(ctx, &dlimit, v)) {
-                JS_FreeValue(ctx, v);
-                goto fail;
-            }
-            if (isnan(dlimit)) {
-                JS_FreeValue(ctx, v);
+            JS_ToFloat64Free(ctx, &dlimit, v);
+            if (isnan(dlimit))
                 goto range_error;
-            }
-            if (!isfinite(dlimit)) {
-                JS_FreeValue(ctx, v);
-                if (dlimit < 0)
-                    goto range_error;
-                else
-                    count = MAX_SAFE_INTEGER;
-            } else {
-                v = JS_ToIntegerFree(ctx, v);
-                if (JS_IsException(v))
-                    goto fail;
-                if (JS_ToInt64Free(ctx, &count, v))
-                    goto fail;
-            }
-            if (count < 0)
+            if (isfinite(dlimit) && dlimit > MAX_SAFE_INTEGER)
                 goto range_error;
+            dlimit = trunc(dlimit);
+            if (dlimit < 0)
+                goto range_error;
+            // +Infinity means "no limit"; use MAX_SAFE_INTEGER
+            count = isfinite(dlimit) ? (int64_t)dlimit : MAX_SAFE_INTEGER;
         }
         break;
     case JS_ITERATOR_HELPER_KIND_FILTER:
