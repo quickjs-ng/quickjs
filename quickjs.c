@@ -45110,7 +45110,7 @@ static JSValue js_iterator_constructor(JSContext *ctx, JSValueConst new_target,
 
 typedef struct JSIteratorConcatData {
     uint32_t index : 31; // elements (not pairs!) in values[] array
-    uint32_t unused : 1;
+    uint32_t done : 1;
     uint32_t count : 31;
     uint32_t running : 1;
     JSValue iter, next, values[]; // array of (object, method) pairs
@@ -45155,6 +45155,10 @@ static JSValue js_iterator_concat_next(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (it->running)
         return JS_ThrowTypeError(ctx, "already running");
+    if (it->done) {
+        *pdone = true;
+        return JS_UNDEFINED;
+    }
     it->running = true;
 next:
     if (it->index >= it->count) {
@@ -45213,6 +45217,8 @@ done:
     it->running = false;
     return val;
 fail:
+    /* an abrupt completion finishes the iterator */
+    it->done = true;
     val = JS_EXCEPTION;
     goto done;
 }
@@ -45265,6 +45271,7 @@ static JSValue js_iterator_concat(JSContext *ctx, JSValueConst this_val,
     if (!it)
         return JS_EXCEPTION;
     it->running = false;
+    it->done = false;
     it->index = 0;
     it->count = 0;
     it->iter = JS_UNDEFINED;
@@ -45463,9 +45470,11 @@ static JSValue js_create_iterator_helper(JSContext *ctx, JSValueConst this_val,
         break;
     }
 
+    /* GetIteratorDirect: an exception here propagates as is, the iterator
+       object is only closed for a bad argument */
     method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
     if (JS_IsException(method))
-        goto fail;
+        return JS_EXCEPTION;
     obj = JS_NewObjectClass(ctx, JS_CLASS_ITERATOR_HELPER);
     if (JS_IsException(obj)) {
         JS_FreeValue(ctx, method);
@@ -45513,9 +45522,10 @@ static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
     if (check_function(ctx, argv[0]))
         goto fail;
     func = js_dup(argv[0]);
+    /* GetIteratorDirect: propagates as is, no IteratorClose */
     method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
     if (JS_IsException(method))
-        goto fail;
+        goto step_fail;
 
     r = JS_UNDEFINED;
 
@@ -45526,7 +45536,7 @@ static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
             for (idx = 0; /*empty*/; idx++) {
                 item = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
                 if (JS_IsException(item))
-                    goto fail;
+                    goto step_fail;
                 if (done)
                     break;
                 index_val = js_int64(idx);
@@ -45555,7 +45565,7 @@ static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
             for (idx = 0; /*empty*/; idx++) {
                 item = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
                 if (JS_IsException(item))
-                    goto fail;
+                    goto step_fail;
                 if (done)
                     break;
                 index_val = js_int64(idx);
@@ -45588,7 +45598,7 @@ static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
             for (idx = 0; /*empty*/; idx++) {
                 item = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
                 if (JS_IsException(item))
-                    goto fail;
+                    goto step_fail;
                 if (done)
                     break;
                 index_val = js_int64(idx);
@@ -45612,7 +45622,7 @@ static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
             for (idx = 0; /*empty*/; idx++) {
                 item = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
                 if (JS_IsException(item))
-                    goto fail;
+                    goto step_fail;
                 if (done)
                     break;
                 index_val = js_int64(idx);
@@ -45645,7 +45655,11 @@ static JSValue js_iterator_proto_func(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, method);
     return r;
 fail:
+    /* an abrupt completion from the callback closes the iterator
+       (IfAbruptCloseIterator) */
     JS_IteratorClose(ctx, this_val, true);
+step_fail:
+    /* GetIteratorDirect and IteratorStepValue leave the iterator alone */
     JS_FreeValue(ctx, func);
     JS_FreeValue(ctx, method);
     return JS_EXCEPTION;
@@ -45732,26 +45746,28 @@ static JSValue js_iterator_proto_reduce(JSContext *ctx, JSValueConst this_val,
     if (check_function(ctx, argv[0]))
         goto exception;
     func = js_dup(argv[0]);
+    /* GetIteratorDirect: propagates as is, no IteratorClose */
     method = JS_GetProperty(ctx, this_val, JS_ATOM_next);
     if (JS_IsException(method))
-        goto exception;
+        goto step_exception;
     if (argc > 1) {
         acc = js_dup(argv[1]);
         idx = 0;
     } else {
         acc = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
         if (JS_IsException(acc))
-            goto exception;
+            goto step_exception;
         if (done) {
+            /* the iterator is already done, don't close it */
             JS_ThrowTypeError(ctx, "empty iterator");
-            goto exception;
+            goto step_exception;
         }
         idx = 1;
     }
     for (/* empty */; /*empty*/; idx++) {
         item = JS_IteratorNext(ctx, this_val, method, 0, NULL, &done);
         if (JS_IsException(item))
-            goto exception;
+            goto step_exception;
         if (done)
             break;
         index_val = js_int64(idx);
@@ -45773,7 +45789,11 @@ static JSValue js_iterator_proto_reduce(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, method);
     return acc;
 exception:
+    /* an abrupt completion from the reducer closes the iterator
+       (IfAbruptCloseIterator) */
     JS_IteratorClose(ctx, this_val, true);
+step_exception:
+    /* GetIteratorDirect and IteratorStepValue leave the iterator alone */
     JS_FreeValue(ctx, acc);
     JS_FreeValue(ctx, func);
     JS_FreeValue(ctx, method);
@@ -46007,11 +46027,11 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                                       int *pdone, int magic)
 {
     JSIteratorHelperData *it;
-    bool exhausted;
+    bool finished;
     JSValue ret;
 
     *pdone = false;
-    exhausted = false;
+    finished = false;
 
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_HELPER);
     if (!it)
@@ -46037,12 +46057,12 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
             for (;;) {
                 item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
                 if (JS_IsException(item))
-                    goto buf_fail;
+                    goto step_fail;
                 if (*pdone) {
                     JS_FreeValue(ctx, item);
                     /* the underlying iterator is done: yield what's left in
                        the buffer, if anything, then stop */
-                    exhausted = true;
+                    finished = true;
                     ret = JS_UNDEFINED;
                     if (it->buf_count < 1)
                         goto done;
@@ -46056,7 +46076,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                         it->buf_count = 0; // ownership transferred
                     }
                     if (JS_IsException(ret))
-                        goto buf_fail;
+                        goto step_fail;
                     *pdone = false;
                     goto done;
                 }
@@ -46070,7 +46090,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                 if (js_resize_array(ctx, (void **)&it->buf, sizeof(*it->buf),
                                     &it->buf_size, it->buf_count + 1)) {
                     JS_FreeValue(ctx, item);
-                    goto buf_fail;
+                    goto step_fail;
                 }
                 it->buf[it->buf_count++] = item;
                 if (it->buf_count == it->count) {
@@ -46081,7 +46101,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                         it->buf_count = 0; // ownership transferred
                     }
                     if (JS_IsException(ret))
-                        goto buf_fail;
+                        goto step_fail;
                     goto done;
                 }
             }
@@ -46096,7 +46116,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                 it->count--;
                 item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
                 if (JS_IsException(item))
-                    goto fail;
+                    goto step_fail;
                 JS_FreeValue(ctx, item);
                 if (*pdone) {
                     ret = JS_UNDEFINED;
@@ -46106,7 +46126,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
 
             item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
             if (JS_IsException(item))
-                goto fail;
+                goto step_fail;
             ret = item;
             goto done;
         }
@@ -46120,7 +46140,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
         filter_again:
             item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
             if (JS_IsException(item))
-                goto fail;
+                goto step_fail;
             if (*pdone) {
                 ret = item;
                 goto done;
@@ -46152,7 +46172,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
             if (JS_IsUndefined(it->inner)) {
                 item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
                 if (JS_IsException(item))
-                    goto fail;
+                    goto step_fail;
                 if (*pdone) {
                     ret = item;
                     goto done;
@@ -46192,7 +46212,8 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
             method = JS_GetProperty(ctx, it->inner, JS_ATOM_next);
             if (JS_IsException(method)) {
             inner_fail:
-                JS_IteratorClose(ctx, it->inner, false);
+                /* the inner iterator is only marked done, the outer one is
+                   closed by the |fail| label */
                 JS_FreeValue(ctx, it->inner);
                 it->inner = JS_UNDEFINED;
                 goto fail;
@@ -46220,7 +46241,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                 goto close;
             item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
             if (JS_IsException(item))
-                goto fail;
+                goto step_fail;
             if (*pdone) {
                 ret = item;
                 goto done;
@@ -46244,7 +46265,7 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
             it->count--;
             item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
             if (JS_IsException(item))
-                goto fail;
+                goto step_fail;
             ret = item;
             goto done;
         }
@@ -46266,7 +46287,7 @@ close:
         ret = JS_EXCEPTION;
 
 done:
-    it->done = exhausted || (magic == GEN_MAGIC_NEXT ? *pdone : 1);
+    it->done = finished || (magic == GEN_MAGIC_NEXT ? *pdone : 1);
     it->executing = 0;
     if (it->done && it->buf) {
         while (it->buf_count > 0)
@@ -46276,15 +46297,17 @@ done:
         it->buf_size = 0;
     }
     return ret;
-buf_fail:
-    /* an abrupt completion finishes the helper (chunks, windows) without
-       closing the iterator object: IteratorStepValue only marks the iterator
-       record done when stepping it throws, it does not close it */
-    exhausted = true;
+step_fail:
+    /* an abrupt completion from stepping the iterator object, or from the body
+       of the closure, does not close it: IteratorStepValue only marks the
+       iterator record done */
+    finished = true;
     ret = JS_EXCEPTION;
     goto done;
 fail:
-    /* close the iterator object, preserving pending exception */
+    /* an abrupt completion from the callback closes the iterator object
+       (IfAbruptCloseIterator), preserving the pending exception */
+    finished = true;
     JS_IteratorClose(ctx, it->obj, true);
     ret = JS_EXCEPTION;
     goto done;
