@@ -45224,7 +45224,8 @@ fail:
 }
 
 static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
-                                         int argc, JSValueConst *argv)
+                                         int argc, JSValueConst *argv,
+                                         int *pdone, int magic)
 {
     JSIteratorConcatData *it;
     JSValue *pval;
@@ -45254,16 +45255,11 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, it->next);
     it->iter = JS_UNDEFINED;
     it->next = JS_UNDEFINED;
+    *pdone = true;
     if (res < 0)
         return JS_EXCEPTION;
-    return js_create_iterator_result(ctx, JS_UNDEFINED, /*done*/true);
+    return JS_UNDEFINED;
 }
-
-static const JSCFunctionListEntry js_iterator_concat_proto_funcs[] = {
-    JS_ITERATOR_NEXT_DEF("next", 1, js_iterator_concat_next, 0 ),
-    JS_CFUNC_DEF("return", 0, js_iterator_concat_return ),
-    JS_PROP_STRING_DEF("[Symbol.toStringTag]", "Iterator Concat", JS_PROP_CONFIGURABLE ),
-};
 
 static JSValue js_iterator_concat(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv)
@@ -46036,6 +46032,16 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
 
     *pdone = false;
     finished = false;
+
+    /* Iterator.concat() also hands out Iterator Helper objects, sharing this
+       prototype but keeping their own state */
+    if (JS_VALUE_GET_TAG(this_val) == JS_TAG_OBJECT &&
+        JS_VALUE_GET_OBJ(this_val)->class_id == JS_CLASS_ITERATOR_CONCAT) {
+        if (magic == GEN_MAGIC_RETURN)
+            return js_iterator_concat_return(ctx, this_val, argc, argv, pdone,
+                                             magic);
+        return js_iterator_concat_next(ctx, this_val, argc, argv, pdone, magic);
+    }
 
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_HELPER);
     if (!it)
@@ -58836,19 +58842,16 @@ int JS_AddIntrinsicBaseObjects(JSContext *ctx)
                               (void *)(uintptr_t)JS_BUILTIN_ITERATOR_ZIP_KEYED,
                               JS_PROP_WRITABLE|JS_PROP_CONFIGURABLE);
 
-    ctx->class_proto[JS_CLASS_ITERATOR_CONCAT] =
-        JS_NewObjectProtoList(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
-                              js_iterator_concat_proto_funcs,
-                              countof(js_iterator_concat_proto_funcs));
-    if (JS_IsException(ctx->class_proto[JS_CLASS_ITERATOR_CONCAT]))
-        return -1;
-
     ctx->class_proto[JS_CLASS_ITERATOR_HELPER] =
         JS_NewObjectProtoList(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
                               js_iterator_helper_proto_funcs,
                               countof(js_iterator_helper_proto_funcs));
     if (JS_IsException(ctx->class_proto[JS_CLASS_ITERATOR_HELPER]))
         return -1;
+
+    /* Iterator.concat() returns an Iterator Helper */
+    ctx->class_proto[JS_CLASS_ITERATOR_CONCAT] =
+        js_dup(ctx->class_proto[JS_CLASS_ITERATOR_HELPER]);
 
     ctx->class_proto[JS_CLASS_ITERATOR_WRAP] =
         JS_NewObjectProtoList(ctx, ctx->class_proto[JS_CLASS_ITERATOR],
