@@ -45238,6 +45238,11 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
     if (it->running)
         return JS_ThrowTypeError(ctx, "already running");
+    if (it->done) {
+        /* a completed generator does not run IteratorClose */
+        *pdone = true;
+        return JS_UNDEFINED;
+    }
     res = 0;
     if (!JS_IsUndefined(it->iter)) {
         /* IteratorClose: leaves the iterator alone when it has no .return
@@ -45257,6 +45262,7 @@ static JSValue js_iterator_concat_return(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, it->next);
     it->iter = JS_UNDEFINED;
     it->next = JS_UNDEFINED;
+    it->done = true;
     *pdone = true;
     if (res < 0)
         return JS_EXCEPTION;
