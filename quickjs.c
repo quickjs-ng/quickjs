@@ -45212,6 +45212,8 @@ next:
     }
     val = JS_GetProperty(ctx, item, JS_ATOM_value);
     JS_FreeValue(ctx, item);
+    if (JS_IsException(val))
+        goto fail;
     *pdone = false;
 done:
     it->running = false;
