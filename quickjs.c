@@ -22416,6 +22416,7 @@ typedef struct JSParseState {
     const uint8_t *buf_start;
     const uint8_t *buf_ptr;
     const uint8_t *buf_end;
+    const uint8_t *line_start; /* first character of the current line */
     const uint8_t *eol;  // most recently seen end-of-line character
     const uint8_t *mark; // first token character, invariant: eol < mark
 
@@ -22682,6 +22683,7 @@ static __exception int js_parse_template_part(JSParseState *s,
         }
         if (c == '\n') {
             s->line_num++;
+            s->line_start = p;
             s->eol = &p[-1];
             s->mark = p;
         } else if (c >= 0x80) {
@@ -22775,6 +22777,7 @@ static __exception int js_parse_string(JSParseState *s, int sep,
                 p++;
                 if (sep != '`') {
                     s->line_num++;
+                    s->line_start = p;
                     s->eol = &p[-1];
                     s->mark = p;
                 }
@@ -23129,6 +23132,7 @@ static __exception int next_token(JSParseState *s)
     case '\n':
         p++;
     line_terminator:
+        s->line_start = p;
         s->eol = &p[-1];
         s->mark = p;
         s->got_lf = true;
@@ -23157,10 +23161,12 @@ static __exception int next_token(JSParseState *s)
                     s->line_num++;
                     s->got_lf = true; /* considered as LF for ASI */
                     s->eol = p++;
+                    s->line_start = p;
                     s->mark = p;
                 } else if (*p == '\r') {
                     s->got_lf = true; /* considered as LF for ASI */
                     p++;
+                    s->line_start = p;
                 } else if (*p >= 0x80) {
                     c = utf8_decode(p, &p);
                     /* ignore invalid UTF-8 in comments */
@@ -23773,6 +23779,7 @@ static __exception int json_next_token(JSParseState *s)
     case '\n':
         s->line_num++;
         s->eol = p++;
+        s->line_start = p;
         s->mark = p;
         goto redo;
     case '\f':
@@ -25005,6 +25012,7 @@ typedef struct JSParsePos {
     int col_num;
     bool got_lf;
     const uint8_t *ptr;
+    const uint8_t *line_start;
     const uint8_t *eol;
     const uint8_t *mark;
 } JSParsePos;
@@ -25016,6 +25024,7 @@ static int js_parse_get_pos(JSParseState *s, JSParsePos *sp)
     sp->line_num = s->token.line_num;
     sp->col_num = s->token.col_num;
     sp->ptr = s->token.ptr;
+    sp->line_start = s->line_start;
     sp->eol = s->eol;
     sp->mark = s->mark;
     sp->got_lf = s->got_lf;
@@ -25029,6 +25038,7 @@ static __exception int js_parse_seek_token(JSParseState *s, const JSParsePos *sp
     s->line_num = sp->line_num;
     s->col_num = sp->col_num;
     s->buf_ptr = sp->ptr;
+    s->line_start = sp->line_start;
     s->eol = sp->eol;
     s->mark = sp->mark;
     s->got_lf = sp->got_lf;
@@ -27189,13 +27199,8 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
         {
             JSAtom name;
             int identifier_line_num = s->token.line_num;
-            const uint8_t *identifier_line_start = s->token.ptr;
-            while (identifier_line_start > s->buf_start &&
-                   identifier_line_start[-1] != '\n' &&
-                   identifier_line_start[-1] != '\r')
-                identifier_line_start--;
             int identifier_col_num =
-                (int)(s->token.ptr - identifier_line_start) + 1;
+                (int)(s->token.ptr - s->line_start) + 1;
             if (s->token.u.ident.is_reserved) {
                 return js_parse_error_reserved_identifier(s);
             }
@@ -38094,6 +38099,7 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->col_num = 1;
     s->buf_start = s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
+    s->line_start = s->buf_ptr;
     s->mark = s->buf_ptr + min_int(1, input_len);
     s->eol = s->buf_ptr;
     s->token.val = ' ';
