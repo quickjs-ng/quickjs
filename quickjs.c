@@ -52411,7 +52411,8 @@ static int js_proxy_get_own_property(JSContext *ctx, JSPropertyDescriptor *pdesc
 {
     JSProxyData *s;
     JSValue method, trap_result_obj, prop_val;
-    int res, target_desc_ret, ret;
+    int res, ret;
+    int target_desc_ret = false;
     JSObject *p;
     JSValueConst args[2];
     JSPropertyDescriptor result_desc, target_desc;
@@ -52443,12 +52444,10 @@ static int js_proxy_get_own_property(JSContext *ctx, JSPropertyDescriptor *pdesc
         JS_FreeValue(ctx, trap_result_obj);
         return -1;
     }
-    if (target_desc_ret)
-        js_free_desc(ctx, &target_desc);
     if (JS_IsUndefined(trap_result_obj)) {
         if (target_desc_ret) {
             if (!(target_desc.flags & JS_PROP_CONFIGURABLE) || !p->extensible)
-                goto fail;
+                goto fail_free_target;
         }
         ret = false;
     } else {
@@ -52456,24 +52455,39 @@ static int js_proxy_get_own_property(JSContext *ctx, JSPropertyDescriptor *pdesc
         extensible_target = JS_IsExtensible(ctx, s->target);
         if (extensible_target < 0) {
             JS_FreeValue(ctx, trap_result_obj);
-            return -1;
+            goto exception;
         }
         res = js_obj_to_desc(ctx, &result_desc, trap_result_obj);
         JS_FreeValue(ctx, trap_result_obj);
         if (res < 0)
-            return -1;
+            goto exception;
 
+        /* IsCompatiblePropertyDescriptor(): the descriptor returned by
+           the trap is completed first, i.e. the missing fields take
+           their default value (undefined for the value and the
+           accessors, false for the attributes) */
         if (target_desc_ret) {
             /* convert result_desc.flags to defineProperty flags */
             flags1 = result_desc.flags | JS_PROP_HAS_CONFIGURABLE | JS_PROP_HAS_ENUMERABLE;
-            if (result_desc.flags & JS_PROP_GETSET)
+            if (result_desc.flags & (JS_PROP_HAS_GET | JS_PROP_HAS_SET))
                 flags1 |= JS_PROP_HAS_GET | JS_PROP_HAS_SET;
             else
                 flags1 |= JS_PROP_HAS_VALUE | JS_PROP_HAS_WRITABLE;
-            /* XXX: not complete check: need to compare value &
-               getter/setter as in defineproperty */
             if (!check_define_prop_flags(target_desc.flags, flags1))
                 goto fail1;
+            /* a non-configurable property cannot be reported with
+               different accessors, nor with a different value if it is
+               not writable either */
+            if (!(target_desc.flags & JS_PROP_CONFIGURABLE)) {
+                if ((target_desc.flags & JS_PROP_TMASK) == JS_PROP_GETSET) {
+                    if (!js_same_value(ctx, result_desc.getter, target_desc.getter) ||
+                        !js_same_value(ctx, result_desc.setter, target_desc.setter))
+                        goto fail1;
+                } else if (!(target_desc.flags & JS_PROP_WRITABLE)) {
+                    if (!js_same_value(ctx, result_desc.value, target_desc.value))
+                        goto fail1;
+                }
+            }
         } else {
             if (!extensible_target)
                 goto fail1;
@@ -52481,26 +52495,42 @@ static int js_proxy_get_own_property(JSContext *ctx, JSPropertyDescriptor *pdesc
         if (!(result_desc.flags & JS_PROP_CONFIGURABLE)) {
             if (!target_desc_ret || (target_desc.flags & JS_PROP_CONFIGURABLE))
                 goto fail1;
-            if ((result_desc.flags &
-                 (JS_PROP_GETSET | JS_PROP_WRITABLE)) == 0 &&
-                target_desc_ret &&
-                (target_desc.flags & JS_PROP_WRITABLE) != 0) {
-                /* proxy-missing-checks */
-            fail1:
-                js_free_desc(ctx, &result_desc);
-            fail:
-                JS_ThrowTypeError(ctx, "proxy: inconsistent getOwnPropertyDescriptor");
-                return -1;
-            }
+            /* a writable property of the target cannot be reported as
+               non-configurable and non-writable */
+            if ((result_desc.flags & (JS_PROP_HAS_GET | JS_PROP_HAS_SET)) == 0 &&
+                !(result_desc.flags & JS_PROP_WRITABLE) &&
+                (target_desc.flags & JS_PROP_WRITABLE))
+                goto fail1;
         }
         ret = true;
         if (pdesc) {
+            /* the returned descriptor must use the same flags
+               convention as JS_GetOwnPropertyInternal(), not the
+               JS_PROP_HAS_xxx one used by js_obj_to_desc() */
+            if (result_desc.flags & (JS_PROP_HAS_GET | JS_PROP_HAS_SET))
+                result_desc.flags = (result_desc.flags & JS_PROP_C_W_E) | JS_PROP_GETSET;
+            else
+                result_desc.flags &= JS_PROP_C_W_E;
             *pdesc = result_desc;
         } else {
             js_free_desc(ctx, &result_desc);
         }
     }
+    if (target_desc_ret)
+        js_free_desc(ctx, &target_desc);
     return ret;
+ fail1:
+    js_free_desc(ctx, &result_desc);
+ fail_free_target:
+    if (target_desc_ret)
+        js_free_desc(ctx, &target_desc);
+ fail:
+    JS_ThrowTypeError(ctx, "proxy: inconsistent getOwnPropertyDescriptor");
+    return -1;
+ exception:
+    if (target_desc_ret)
+        js_free_desc(ctx, &target_desc);
+    return -1;
 }
 
 static int js_proxy_define_own_property(JSContext *ctx, JSValueConst obj,
