@@ -22383,6 +22383,7 @@ typedef struct JSToken {
     int line_num;   /* line number of token start */
     int col_num;    /* column number of token start */
     const uint8_t *ptr;
+    const uint8_t *line_start; /* first character of the line of token start */
     union {
         struct {
             JSValue str;
@@ -22577,13 +22578,8 @@ int JS_PRINTF_FORMAT_ATTR(2, 3) js_parse_error(JSParseState *s, JS_PRINTF_FORMAT
     /* s->col_num is not advanced during token scanning, so derive the column
        as the 1-based offset of the token from the start of its line. */
     int err_col_num = s->token.col_num;
-    if (s->token.ptr && s->token.ptr >= s->buf_start) {
-        const uint8_t *line_start = s->token.ptr;
-        while (line_start > s->buf_start &&
-               line_start[-1] != '\n' && line_start[-1] != '\r')
-            line_start--;
-        err_col_num = (int)(s->token.ptr - line_start) + 1;
-    }
+    if (s->token.ptr && s->token.ptr >= s->token.line_start)
+        err_col_num = (int)(s->token.ptr - s->token.line_start) + 1;
     build_backtrace(ctx, ctx->rt->current_exception, JS_UNDEFINED, s->filename,
                     s->token.line_num, err_col_num, backtrace_flags);
     return -1;
@@ -23105,6 +23101,7 @@ static __exception int next_token(JSParseState *s)
     s->token.line_num = s->line_num;
     s->token.col_num = s->col_num;
     s->token.ptr = p;
+    s->token.line_start = s->line_start;
     c = *p;
     switch(c) {
     case 0:
@@ -23754,6 +23751,7 @@ static __exception int json_next_token(JSParseState *s)
     s->token.line_num = s->line_num;
     s->token.col_num = s->col_num;
     s->token.ptr = p;
+    s->token.line_start = s->line_start;
     c = *p;
     switch(c) {
     case 0:
