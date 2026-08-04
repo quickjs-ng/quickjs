@@ -3,6 +3,7 @@
 *.so
 .obj/
 build/
+build-*/
 unicode/
 .idea
 cmake-*
