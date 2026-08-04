@@ -24,3 +24,23 @@ assert(errorLocation("a b").col, 3);
     assert(loc.line, 2);
     assert(loc.col, 9);
 }
+
+/* the offending token starts after a multi-line template literal */
+{
+    const loc = errorLocation("`line1\nline2\nline3`; let y = @");
+    assert(loc.line, 3);
+    assert(loc.col, 17);
+}
+
+/* the error is raised while scanning a multi-line token: the location is
+   the token's start, not where scanning stopped */
+{
+    const loc = errorLocation("let x = `abc\ndef");
+    assert(loc.line, 1);
+    assert(loc.col, 9);
+}
+{
+    const loc = errorLocation("let s = 'ab\\\ncd");
+    assert(loc.line, 1);
+    assert(loc.col, 9);
+}
