@@ -41155,8 +41155,9 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
     if (present) {
         flags |= JS_PROP_HAS_GET;
         getter = JS_GetProperty(ctx, desc, JS_ATOM_get);
-        if (JS_IsException(getter) ||
-            !(JS_IsUndefined(getter) || JS_IsFunction(ctx, getter))) {
+        if (JS_IsException(getter))
+            goto fail;
+        if (!(JS_IsUndefined(getter) || JS_IsFunction(ctx, getter))) {
             JS_ThrowTypeError(ctx, "Getter must be a function");
             goto fail;
         }
@@ -41167,8 +41168,9 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
     if (present) {
         flags |= JS_PROP_HAS_SET;
         setter = JS_GetProperty(ctx, desc, JS_ATOM_set);
-        if (JS_IsException(setter) ||
-            !(JS_IsUndefined(setter) || JS_IsFunction(ctx, setter))) {
+        if (JS_IsException(setter))
+            goto fail;
+        if (!(JS_IsUndefined(setter) || JS_IsFunction(ctx, setter))) {
             JS_ThrowTypeError(ctx, "Setter must be a function");
             goto fail;
         }
