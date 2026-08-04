@@ -467,8 +467,9 @@ target_compile_definitions(lre-test PRIVATE ${qjs_defines})
 # Unicode generator
 #
 
+# Note: do not link libunicode.c here, it needs the generated libunicode-table.h,
+# which would make it impossible to regenerate the table from scratch.
 add_executable(unicode_gen EXCLUDE_FROM_ALL
-    libunicode.c
     unicode_gen.c
 )
 target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})

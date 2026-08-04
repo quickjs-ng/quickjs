@@ -239,6 +239,11 @@ DEF(XID_Continue1, "")
 DEF(Changes_When_Titlecased1, "")
 DEF(Changes_When_Casefolded1, "")
 DEF(Changes_When_NFKC_Casefolded1, "")
+/* RGI emoji sequence support (see UNICODE_SEQUENCE_PROP_LIST below) */
+DEF(Basic_Emoji1, "")
+DEF(Basic_Emoji2, "")
+DEF(RGI_Emoji_Flag_Sequence, "")
+DEF(Emoji_Keycap_Sequence, "")
 
 /* Prop list exported to JS */
 DEF(ASCII_Hex_Digit, "AHex")
@@ -307,4 +312,15 @@ DEF(Cased1, "")
 /* unused by us */
 DEF(InCB, "")
 
+#endif
+
+/* Unicode "properties of strings" (used by the regexp v flag) */
+#ifdef UNICODE_SEQUENCE_PROP_LIST
+DEF(Basic_Emoji)
+DEF(Emoji_Keycap_Sequence)
+DEF(RGI_Emoji_Modifier_Sequence)
+DEF(RGI_Emoji_Flag_Sequence)
+DEF(RGI_Emoji_Tag_Sequence)
+DEF(RGI_Emoji_ZWJ_Sequence)
+DEF(RGI_Emoji)
 #endif
