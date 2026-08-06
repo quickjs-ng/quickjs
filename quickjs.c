@@ -21071,17 +21071,15 @@ static JSValue JS_CallConstructorInternal(JSContext *ctx,
         return JS_EXCEPTION;
     flags |= JS_CALL_FLAG_CONSTRUCTOR;
     if (unlikely(JS_VALUE_GET_TAG(func_obj) != JS_TAG_OBJECT))
-        goto not_a_function;
+        return JS_ThrowTypeErrorNotAConstructor(ctx, func_obj);
     p = JS_VALUE_GET_OBJ(func_obj);
     if (unlikely(!p->is_constructor))
         return JS_ThrowTypeErrorNotAConstructor(ctx, func_obj);
     if (unlikely(p->class_id != JS_CLASS_BYTECODE_FUNCTION)) {
         JSClassCall *call_func;
         call_func = ctx->rt->class_array[p->class_id].call;
-        if (!call_func) {
-        not_a_function:
-            return JS_ThrowTypeErrorNotAFunction(ctx);
-        }
+        if (!call_func)
+            return JS_ThrowTypeErrorNotAConstructor(ctx, func_obj);
         return call_func(ctx, func_obj, new_target, argc,
                          argv, flags);
     }
