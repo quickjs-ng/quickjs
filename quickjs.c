@@ -25321,6 +25321,11 @@ static __exception int js_parse_object_literal(JSParseState *s)
         } else {
             if (js_parse_expect(s, ':'))
                 goto fail;
+            if (name == JS_ATOM_NULL) {
+                /* a computed property key runs through ToPropertyKey before
+                   the value expression is evaluated */
+                emit_op(s, OP_to_propkey);
+            }
             if (js_parse_assign_expr(s))
                 goto fail;
             if (name == JS_ATOM_NULL) {
