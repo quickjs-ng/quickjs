@@ -30895,6 +30895,24 @@ typedef enum JSResolveResultEnum {
     JS_RESOLVE_RES_AMBIGUOUS,
 } JSResolveResultEnum;
 
+/* Canonical (Module Record, BindingName) of a resolved export entry. For
+   `export * as ns from` the binding is the imported module's namespace
+   (marked by JS_ATOM__star_) and does not depend on which module re-exported
+   it, so the same namespace reached through different modules compares
+   equal. */
+static void js_resolved_export_binding(JSModuleDef *m, JSExportEntry *me,
+                                       JSModuleDef **pbinding_m,
+                                       JSAtom *pbinding_name)
+{
+    if (me->local_name == JS_ATOM__star_) {
+        *pbinding_m = m->req_module_entries[me->u.req_module_idx].module;
+        *pbinding_name = JS_ATOM__star_;
+    } else {
+        *pbinding_m = m;
+        *pbinding_name = me->local_name;
+    }
+}
+
 static JSResolveResultEnum js_resolve_export1(JSContext *ctx,
                                               JSModuleDef **pmodule,
                                               JSExportEntry **pme,
@@ -30950,8 +30968,13 @@ static JSResolveResultEnum js_resolve_export1(JSContext *ctx,
                     return ret;
                 } else if (ret == JS_RESOLVE_RES_FOUND) {
                     if (*pme != NULL) {
-                        if (*pmodule != res_m ||
-                            res_me->local_name != (*pme)->local_name) {
+                        JSModuleDef *cur_m, *new_m;
+                        JSAtom cur_name, new_name;
+                        js_resolved_export_binding(*pmodule, *pme,
+                                                   &cur_m, &cur_name);
+                        js_resolved_export_binding(res_m, res_me,
+                                                   &new_m, &new_name);
+                        if (cur_m != new_m || cur_name != new_name) {
                             *pmodule = NULL;
                             *pme = NULL;
                             return JS_RESOLVE_RES_AMBIGUOUS;
