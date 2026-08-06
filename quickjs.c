@@ -4178,7 +4178,7 @@ bool JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id)
 JSAtom JS_GetClassName(JSRuntime *rt, JSClassID class_id)
 {
     if (JS_IsRegisteredClass(rt, class_id)) {
-        return JS_DupAtomRT(rt, rt->class_array[class_id].class_id);
+        return JS_DupAtomRT(rt, rt->class_array[class_id].class_name);
     } else {
         return JS_ATOM_NULL;
     }
