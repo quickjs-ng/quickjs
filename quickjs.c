@@ -36916,7 +36916,7 @@ static __exception int compute_stack_size(JSContext *ctx,
 
 static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
 {
-    int i, idx;
+    int i, j, idx;
     JSModuleDef *m = fd->module;
     JSExportEntry *me;
     JSGlobalVar *hf;
@@ -36943,7 +36943,27 @@ static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
                                         me->local_name);
                 return -1;
             }
-            me->u.local.var_idx = idx;
+            /* ParseModule: an entry of localExportEntries whose local name
+               is an imported bound name is not a binding of this module.
+               Rewrite it into an indirect export through the module the
+               name was imported from, exactly like
+               `export {ie.[[ImportName]]} from "m"` (or, for a namespace
+               import, like `export * as x from "m"`), so that ResolveExport
+               reaches the shared binding instead of a second, spuriously
+               distinct local one. */
+            for(j = 0; j < m->import_entries_count; j++) {
+                JSImportEntry *mi = &m->import_entries[j];
+                if (mi->var_idx == idx) {
+                    JSAtom import_name = JS_DupAtom(ctx, mi->import_name);
+                    JS_FreeAtom(ctx, me->local_name);
+                    me->local_name = import_name;
+                    me->export_type = JS_EXPORT_TYPE_INDIRECT;
+                    me->u.req_module_idx = mi->req_module_idx;
+                    break;
+                }
+            }
+            if (me->export_type == JS_EXPORT_TYPE_LOCAL)
+                me->u.local.var_idx = idx;
         }
     }
     return 0;
