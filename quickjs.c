@@ -60617,8 +60617,13 @@ static JSValue js_typed_array_indexOf(JSContext *ctx, JSValueConst this_val,
     }
 
     /* if the array was detached, no need to go further (but no
-       exception is raised) */
-    if (typed_array_is_oob(p) || len > p->u.array.count) {
+       exception is raised). "includes" alone also bails out here (rather
+       than scanning the clamped range below) when the buffer has merely
+       shrunk: it scans up to the *original* length and reads "undefined"
+       for any now out-of-bounds index, which the clamped scan cannot
+       express. */
+    if (typed_array_is_oob(p) ||
+        (special == special_includes && len > p->u.array.count)) {
         /* "includes" scans all the properties, so "undefined" can match */
         if (special == special_includes) {
             if (JS_IsUndefined(argv[0]))
