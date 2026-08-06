@@ -56659,6 +56659,27 @@ static JSValue js_async_from_sync_iterator_unwrap_func_create(JSContext *ctx,
                                1, 0, 1, func_data);
 }
 
+static JSValue js_async_from_sync_iterator_close_on_reject(
+    JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv,
+    int magic, JSValueConst *func_data)
+{
+    /* IteratorClose(syncIterator, ThrowCompletion(reason)): close the sync
+       iterator, then reject with the original reason whatever return() does */
+    JS_Throw(ctx, js_dup(argv[0]));
+    JS_IteratorClose(ctx, func_data[0], true);
+    return JS_EXCEPTION;
+}
+
+static JSValue js_async_from_sync_iterator_close_func_create(JSContext *ctx,
+                                                             JSValueConst sync_iter)
+{
+    JSValueConst func_data[1];
+
+    func_data[0] = sync_iter;
+    return JS_NewCFunctionData(ctx, js_async_from_sync_iterator_close_on_reject,
+                               1, 0, 1, func_data);
+}
+
 /* AsyncIteratorPrototype */
 
 static const JSCFunctionListEntry js_async_iterator_proto_funcs[] = {
@@ -56798,6 +56819,10 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
                                                    1, vc(&value), 0);
         if (JS_IsException(value_wrapper_promise)) {
             JS_FreeValue(ctx, value);
+            /* an abrupt PromiseResolve closes the sync iterator too when
+               closeOnRejection is true and the result is not done */
+            if (magic != GEN_MAGIC_RETURN && !done)
+                JS_IteratorClose(ctx, s->sync_iter, true);
             goto reject;
         }
 
@@ -56807,13 +56832,27 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
             JS_FreeValue(ctx, value_wrapper_promise);
             goto fail;
         }
+        /* closeOnRejection is true for .next and .throw and false for
+           .return: when the result is not done, a rejected value promise
+           has to close the sync iterator */
+        if (magic != GEN_MAGIC_RETURN && !done) {
+            resolve_reject[1] =
+                js_async_from_sync_iterator_close_func_create(ctx, s->sync_iter);
+            if (JS_IsException(resolve_reject[1])) {
+                JS_FreeValue(ctx, resolve_reject[0]);
+                JS_FreeValue(ctx, value_wrapper_promise);
+                goto fail;
+            }
+        } else {
+            resolve_reject[1] = JS_UNDEFINED;
+        }
         JS_FreeValue(ctx, value);
-        resolve_reject[1] = JS_UNDEFINED;
 
         res = perform_promise_then(ctx, value_wrapper_promise,
                                    vc(resolve_reject),
                                    vc(resolving_funcs));
         JS_FreeValue(ctx, resolve_reject[0]);
+        JS_FreeValue(ctx, resolve_reject[1]);
         JS_FreeValue(ctx, value_wrapper_promise);
         JS_FreeValue(ctx, resolving_funcs[0]);
         JS_FreeValue(ctx, resolving_funcs[1]);
