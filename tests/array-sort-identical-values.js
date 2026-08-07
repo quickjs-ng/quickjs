@@ -131,3 +131,129 @@ import { assert } from "./assert.js";
     new BigInt64Array([1n, 1n, 1n]).sort(() => { n++; return 0; });
     assert(n, 2, "BigInt64Array");
 }
+
+/* now that identical values reach the comparator too, there are more calls
+   from which user code can reach back into the array being sorted */
+{
+    /* shrinking the array from the comparator */
+    {
+        const a = [3, 1, 3, 1, 3, 1, 3, 1];
+        let calls = 0;
+        a.sort((x, y) => {
+            calls++;
+            if (calls === 2) a.length = 3;
+            return x - y;
+        });
+        assert(calls > 0, true);
+        /* sort collects the elements before it compares any of them, so the
+           truncation is undone when the sorted list is written back */
+        assert(a.length, 8);
+        assert(a.join(","), "1,1,1,1,3,3,3,3");
+    }
+
+    /* growing it */
+    {
+        const a = [2, 2, 2, 2];
+        let calls = 0;
+        a.sort((x, y) => {
+            if (++calls === 1) a.push(1, 1);
+            return x - y;
+        });
+        assert(a.length, 6);
+        assert(a.every(v => v === 1 || v === 2), true);
+    }
+
+    /* deleting elements, which turns them into holes that sort to the end */
+    {
+        const a = [1, 1, 1, 1, 1];
+        a.sort((x, y) => {
+            delete a[4];
+            return x - y;
+        });
+        assert(a.length, 5);
+    }
+
+    /* reversing it under the sort's feet */
+    {
+        const a = [1, 1, 2, 2, 3, 3];
+        let calls = 0;
+        const out = a.sort((x, y) => {
+            if (++calls === 3) a.reverse();
+            return x - y;
+        });
+        assert(out, a);
+        assert(a.length, 6);
+    }
+
+    /* a comparator that sorts the same array again */
+    {
+        const a = [2, 2, 1, 1];
+        let depth = 0;
+        a.sort(function cmp(x, y) {
+            if (depth === 0) {
+                depth++;
+                a.slice().sort(cmp);
+                depth--;
+            }
+            return x - y;
+        });
+        assert(a.join(","), "1,1,2,2");
+    }
+}
+
+/* the comparator's return value is coerced with ToNumber, and anything that
+   is not less than or greater than zero leaves the order alone */
+{
+    const mk = () => [{ i: 0 }, { i: 1 }, { i: 2 }, { i: 3 }];
+    const order = a => a.map(v => v.i).join(",");
+
+    assert(order(mk().sort(() => NaN)), "0,1,2,3");
+    assert(order(mk().sort(() => undefined)), "0,1,2,3");
+    assert(order(mk().sort(() => "")), "0,1,2,3");
+    assert(order(mk().sort(() => null)), "0,1,2,3");
+    assert(order(mk().sort(() => -0)), "0,1,2,3");
+    assert(order(mk().sort(() => "0")), "0,1,2,3");
+    assert(order(mk().sort(() => false)), "0,1,2,3");
+    assert(order(mk().sort(() => 0.5)), "3,2,1,0");
+    assert(order(mk().sort(() => "-1")), "0,1,2,3");
+
+    /* a comparator that is not callable is a TypeError before any call */
+    for (const bad of [null, 1, "x", true, {}, Symbol()]) {
+        let threw = false;
+        try {
+            mk().sort(bad);
+        } catch (e) {
+            threw = e instanceof TypeError;
+        }
+        assert(threw, true, String(bad));
+    }
+    /* undefined means the default comparator, and is not an error */
+    assert(mk().sort(undefined).length, 4);
+}
+
+/* a long run of values the shortcut used to skip entirely still sorts, is
+   still stable, and calls the comparator for every comparison it makes */
+{
+    const n = 2000;
+    const a = [];
+    for (let i = 0; i < n; i++)
+        a.push({ key: i % 3, i });
+    let calls = 0;
+    a.sort((x, y) => { calls++; return x.key - y.key; });
+    assert(calls > 0, true);
+    assert(a.length, n);
+    for (let i = 1; i < n; i++) {
+        assert(a[i - 1].key <= a[i].key, true, `order at ${i}`);
+        if (a[i - 1].key === a[i].key)
+            assert(a[i - 1].i < a[i].i, true, `stability at ${i}`);
+    }
+
+    /* the same array where every element is the identical object */
+    const same = {};
+    const b = new Array(n).fill(same);
+    let same_calls = 0;
+    b.sort(() => { same_calls++; return 0; });
+    assert(same_calls > 0, true);
+    assert(b.length, n);
+    assert(b.every(v => v === same), true);
+}
