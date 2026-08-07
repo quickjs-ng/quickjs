@@ -372,6 +372,11 @@ DEF(        is_null, 1, 1, 1, none)
 DEF(typeof_is_undefined, 1, 1, 1, none)
 DEF( typeof_is_function, 1, 1, 1, none)
 
+/* appended at the end so as not to renumber any opcode embedded in the
+   precompiled bytecode blobs (builtin-array-fromasync.h and friends) */
+DEF(for_await_of_dup, 1, 5, 6, none) /* iter_obj next catch iter_obj_c next_c -> undefined next catch iter_obj iter_obj_c next_c */
+DEF(for_await_of_restore, 1, 6, 5, none) /* undefined next catch iter_obj value done -> iter_obj next catch value done */
+
 #undef DEF
 #undef def
 #endif  /* DEF */

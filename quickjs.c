@@ -17258,14 +17258,13 @@ static __exception int js_iterator_get_value_done(JSContext *ctx, JSValue *sp)
     sp[-1] = value;
     sp[0] = js_bool(done);
     if (done) {
-        /* Iterator exhausted via {done:true}: drop the iterator object (stack
-           layout at the for-await `next` call is iter_obj,next,catch_offset,result
-           so iter_obj is sp[-4]) so the trailing OP_iterator_close skips calling
-           return(). Mirrors js_for_of_next, which nulls the iterator on done.
-           Per spec AsyncIteratorClose must NOT run on normal completion. This op
-           is emitted only by the for-await-of loop, so the layout is fixed. */
-        JS_FreeValue(ctx, sp[-4]);
-        sp[-4] = JS_UNDEFINED;
+        /* Iterator exhausted via {done:true}: drop the saved iterator object
+           so that OP_for_await_of_restore makes the trailing
+           OP_iterator_close skip return(). Mirrors js_for_of_next, which
+           nulls the iterator on done. Per spec AsyncIteratorClose must NOT
+           run on normal completion. */
+        JS_FreeValue(ctx, sp[-2]);
+        sp[-2] = JS_UNDEFINED;
     }
     return 0;
 }
@@ -19343,6 +19342,43 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             if (js_iterator_get_value_done(ctx, sp))
                 goto exception;
             sp += 1;
+            BREAK;
+        CASE(OP_for_await_of_dup):
+            {
+                /* stack: iter_obj next catch iter_obj_c next_c ->
+                   undefined next catch iter_obj iter_obj_c next_c
+                   Clearing the live iter_obj slot for the duration of the
+                   next()+await means that if it throws (the awaited value
+                   rejects, say), unwinding to the loop's catch offset sees an
+                   undefined iterator and skips the close: per
+                   ForIn/OfBodyEvaluation an abrupt next() result must not
+                   close the iterator. */
+                JSValue iter_obj = sp[-5];
+                JSValue iter_obj_c = sp[-2];
+                JSValue next_c = sp[-1];
+                sp[-5] = JS_UNDEFINED;
+                sp[-2] = iter_obj;
+                sp[-1] = iter_obj_c;
+                sp[0] = next_c;
+                sp += 1;
+            }
+            BREAK;
+        CASE(OP_for_await_of_restore):
+            {
+                /* stack: undefined next catch iter_obj value done ->
+                   iter_obj next catch value done
+                   Reached only once next()'s result has been obtained without
+                   throwing: restore the live iterator so the loop body and any
+                   later close see it again. */
+                JSValue iter_obj = sp[-3];
+                JSValue value = sp[-2];
+                JSValue done = sp[-1];
+                JS_FreeValue(ctx, sp[-6]);
+                sp[-6] = iter_obj;
+                sp[-3] = value;
+                sp[-2] = done;
+                sp -= 1;
+            }
             BREAK;
         CASE(OP_check_object):
             if (unlikely(!JS_IsObject(sp[-1]))) {
@@ -29340,12 +29376,17 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
             /* stack: iter_obj next catch_offset */
             emit_op(s, OP_dup3);
             emit_op(s, OP_drop);
+            /* clear the live iter_obj while next() is pending: an abrupt
+               next()/await must not close the iterator */
+            emit_op(s, OP_for_await_of_dup);
             emit_op(s, OP_call_method);
             emit_u16(s, 0);
             /* get the result of the promise */
             emit_op(s, OP_await);
             /* unwrap the value and done values */
             emit_op(s, OP_iterator_get_value_done);
+            /* next() succeeded: restore the live iter_obj */
+            emit_op(s, OP_for_await_of_restore);
         } else {
             emit_op(s, OP_for_of_next);
             emit_u8(s, 0);
@@ -56618,6 +56659,27 @@ static JSValue js_async_from_sync_iterator_unwrap_func_create(JSContext *ctx,
                                1, 0, 1, func_data);
 }
 
+static JSValue js_async_from_sync_iterator_close_on_reject(
+    JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv,
+    int magic, JSValueConst *func_data)
+{
+    /* IteratorClose(syncIterator, ThrowCompletion(reason)): close the sync
+       iterator, then reject with the original reason whatever return() does */
+    JS_Throw(ctx, js_dup(argv[0]));
+    JS_IteratorClose(ctx, func_data[0], true);
+    return JS_EXCEPTION;
+}
+
+static JSValue js_async_from_sync_iterator_close_func_create(JSContext *ctx,
+                                                             JSValueConst sync_iter)
+{
+    JSValueConst func_data[1];
+
+    func_data[0] = sync_iter;
+    return JS_NewCFunctionData(ctx, js_async_from_sync_iterator_close_on_reject,
+                               1, 0, 1, func_data);
+}
+
 /* AsyncIteratorPrototype */
 
 static const JSCFunctionListEntry js_async_iterator_proto_funcs[] = {
@@ -56757,6 +56819,10 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
                                                    1, vc(&value), 0);
         if (JS_IsException(value_wrapper_promise)) {
             JS_FreeValue(ctx, value);
+            /* an abrupt PromiseResolve closes the sync iterator too when
+               closeOnRejection is true and the result is not done */
+            if (magic != GEN_MAGIC_RETURN && !done)
+                JS_IteratorClose(ctx, s->sync_iter, true);
             goto reject;
         }
 
@@ -56766,13 +56832,27 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
             JS_FreeValue(ctx, value_wrapper_promise);
             goto fail;
         }
+        /* closeOnRejection is true for .next and .throw and false for
+           .return: when the result is not done, a rejected value promise
+           has to close the sync iterator */
+        if (magic != GEN_MAGIC_RETURN && !done) {
+            resolve_reject[1] =
+                js_async_from_sync_iterator_close_func_create(ctx, s->sync_iter);
+            if (JS_IsException(resolve_reject[1])) {
+                JS_FreeValue(ctx, resolve_reject[0]);
+                JS_FreeValue(ctx, value_wrapper_promise);
+                goto fail;
+            }
+        } else {
+            resolve_reject[1] = JS_UNDEFINED;
+        }
         JS_FreeValue(ctx, value);
-        resolve_reject[1] = JS_UNDEFINED;
 
         res = perform_promise_then(ctx, value_wrapper_promise,
                                    vc(resolve_reject),
                                    vc(resolving_funcs));
         JS_FreeValue(ctx, resolve_reject[0]);
+        JS_FreeValue(ctx, resolve_reject[1]);
         JS_FreeValue(ctx, value_wrapper_promise);
         JS_FreeValue(ctx, resolving_funcs[0]);
         JS_FreeValue(ctx, resolving_funcs[1]);
