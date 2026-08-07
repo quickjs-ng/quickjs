@@ -55,7 +55,9 @@ function evaluate(src) {
 
     /* a private name 'in' check is not a head either */
     assert(syntaxError("var a; class C { #p; m(o) { #p in [a] = [1]; } }"),
-           true, "#p in");
+           true, "#p in [a] =");
+    assert(syntaxError("class C { #p; constructor() { #p in {} = 0; } }"),
+           true, "#p in {} =");
 }
 
 /* -------------------------------------------------------------------------
