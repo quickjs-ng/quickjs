@@ -30895,6 +30895,24 @@ typedef enum JSResolveResultEnum {
     JS_RESOLVE_RES_AMBIGUOUS,
 } JSResolveResultEnum;
 
+/* Canonical (Module Record, BindingName) of a resolved export entry. For
+   `export * as ns from` the binding is the imported module's namespace
+   (marked by JS_ATOM__star_) and does not depend on which module re-exported
+   it, so the same namespace reached through different modules compares
+   equal. */
+static void js_resolved_export_binding(JSModuleDef *m, JSExportEntry *me,
+                                       JSModuleDef **pbinding_m,
+                                       JSAtom *pbinding_name)
+{
+    if (me->local_name == JS_ATOM__star_) {
+        *pbinding_m = m->req_module_entries[me->u.req_module_idx].module;
+        *pbinding_name = JS_ATOM__star_;
+    } else {
+        *pbinding_m = m;
+        *pbinding_name = me->local_name;
+    }
+}
+
 static JSResolveResultEnum js_resolve_export1(JSContext *ctx,
                                               JSModuleDef **pmodule,
                                               JSExportEntry **pme,
@@ -30950,8 +30968,13 @@ static JSResolveResultEnum js_resolve_export1(JSContext *ctx,
                     return ret;
                 } else if (ret == JS_RESOLVE_RES_FOUND) {
                     if (*pme != NULL) {
-                        if (*pmodule != res_m ||
-                            res_me->local_name != (*pme)->local_name) {
+                        JSModuleDef *cur_m, *new_m;
+                        JSAtom cur_name, new_name;
+                        js_resolved_export_binding(*pmodule, *pme,
+                                                   &cur_m, &cur_name);
+                        js_resolved_export_binding(res_m, res_me,
+                                                   &new_m, &new_name);
+                        if (cur_m != new_m || cur_name != new_name) {
                             *pmodule = NULL;
                             *pme = NULL;
                             return JS_RESOLVE_RES_AMBIGUOUS;
@@ -36916,7 +36939,7 @@ static __exception int compute_stack_size(JSContext *ctx,
 
 static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
 {
-    int i, idx;
+    int i, j, idx;
     JSModuleDef *m = fd->module;
     JSExportEntry *me;
     JSGlobalVar *hf;
@@ -36943,7 +36966,27 @@ static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
                                         me->local_name);
                 return -1;
             }
-            me->u.local.var_idx = idx;
+            /* ParseModule: an entry of localExportEntries whose local name
+               is an imported bound name is not a binding of this module.
+               Rewrite it into an indirect export through the module the
+               name was imported from, exactly like
+               `export {ie.[[ImportName]]} from "m"` (or, for a namespace
+               import, like `export * as x from "m"`), so that ResolveExport
+               reaches the shared binding instead of a second, spuriously
+               distinct local one. */
+            for(j = 0; j < m->import_entries_count; j++) {
+                JSImportEntry *mi = &m->import_entries[j];
+                if (mi->var_idx == idx) {
+                    JSAtom import_name = JS_DupAtom(ctx, mi->import_name);
+                    JS_FreeAtom(ctx, me->local_name);
+                    me->local_name = import_name;
+                    me->export_type = JS_EXPORT_TYPE_INDIRECT;
+                    me->u.req_module_idx = mi->req_module_idx;
+                    break;
+                }
+            }
+            if (me->export_type == JS_EXPORT_TYPE_LOCAL)
+                me->u.local.var_idx = idx;
         }
     }
     return 0;
