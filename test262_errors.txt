@@ -17,6 +17,7 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
+test262/test/language/destructuring/binding/keyed-destructuring-property-reference-target-evaluation-order-with-bindings.js:73: Test262Error: Actual [binding::source, binding::sourceKey, sourceKey, get source, binding::defaultValue, binding::varTarget] and expected [binding::source, binding::sourceKey, sourceKey, binding::varTarget, get source, binding::defaultValue] should have the same contents. 
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/module-code/ambiguous-export-bindings/import-and-export-propagates-binding.js:75: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/imp' is ambiguous
