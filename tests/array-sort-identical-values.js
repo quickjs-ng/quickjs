@@ -61,3 +61,73 @@ import { assert } from "./assert.js";
     assert(r.length, 100);
     assert(r.every(v => v === o), true);
 }
+
+/* the shortcut compared the two values bit for bit, so it caught every type
+   whose JSValue is the value itself or a shared pointer, not just objects */
+{
+    function calls(arr) {
+        let n = 0;
+        Array.prototype.sort.call(arr, () => { n++; return 0; });
+        return n;
+    }
+
+    const s = "abc";
+    const sym = Symbol("s");
+    const o = {};
+    assert(calls([s, s]), 1, "same string");
+    assert(calls([NaN, NaN]), 1, "same NaN");
+    assert(calls([1n, 1n]), 1, "same bigint");
+    assert(calls([sym, sym]), 1, "same symbol");
+    assert(calls([true, true]), 1, "same boolean");
+    assert(calls([null, null]), 1, "same null");
+    assert(calls([o, o]), 1, "same object");
+    assert(calls([o, o, o]), 2, "three identical objects");
+
+    /* an array-like sorted through .call() takes the same path */
+    assert(calls({ length: 2, 0: o, 1: o }), 1, "array-like");
+}
+
+/* undefined and holes are still sorted to the end without ever reaching the
+   comparator: that is SortCompare's own rule, not the shortcut */
+{
+    let n = 0;
+    const cmp = () => { n++; return 0; };
+
+    n = 0;
+    assert([undefined, undefined].sort(cmp).length, 2);
+    assert(n, 0, "two undefined");
+
+    n = 0;
+    const mixed = [undefined, 1].sort(cmp);
+    assert(n, 0, "undefined and a value");
+    assert(mixed[0], 1);
+    assert(mixed[1], undefined);
+
+    n = 0;
+    const holes = new Array(3);
+    holes[0] = 1;
+    holes.sort(cmp);
+    assert(n, 0, "holes");
+    assert(holes[0], 1);
+    assert(1 in holes, false);
+}
+
+/* typed arrays sort through a different comparison function that never had
+   the shortcut; it must keep calling the comparator too */
+{
+    for (const Ctor of [Int8Array, Uint8Array, Int32Array, Float64Array]) {
+        let n = 0;
+        const t = new Ctor([1, 1, 1]);
+        t.sort(() => { n++; return 0; });
+        assert(n, 2, Ctor.name);
+
+        n = 0;
+        new Ctor([1, 1, 1]).toSorted(() => { n++; return 0; });
+        assert(n, 2, Ctor.name + " toSorted");
+    }
+
+    /* including a bigint typed array */
+    let n = 0;
+    new BigInt64Array([1n, 1n, 1n]).sort(() => { n++; return 0; });
+    assert(n, 2, "BigInt64Array");
+}
