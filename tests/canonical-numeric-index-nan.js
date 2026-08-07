@@ -152,3 +152,41 @@ const ordinary = ["-NaN", "nan", "NAN", "Nan", "NaN ", " NaN", "+NaN", "NaNa",
     b.NaN = 5;
     assert(b.NaN, 5);
 }
+
+/* A canonical numeric index is not a property, so a store that requires the
+   property to already exist has nothing to write to. That is what a `with`
+   binding deleted between the reference being taken and the store looks
+   like: SetMutableBinding throws a ReferenceError rather than letting the
+   integer-indexed path swallow the write. `with` needs sloppy mode, which a
+   module is not, so the scenario is built through an indirect eval. */
+{
+    function vanishing(name) {
+        const key = JSON.stringify(name);
+        return (0, eval)(`(function() {
+            var env = Object.create(new Int32Array(10));
+            Object.defineProperty(env, ${key}, { configurable: true, value: 100 });
+            var caught = null;
+            with (env) {
+                try {
+                    (function() {
+                        "use strict";
+                        ${name} = (delete env[${key}], 0);
+                    })();
+                } catch (e) { caught = e; }
+            }
+            return [caught, Object.getOwnPropertyDescriptor(env, ${key})];
+        })()`);
+    }
+
+    for (const name of ["NaN", "Infinity"]) {
+        const [caught, desc] = vanishing(name);
+        assert(caught instanceof ReferenceError, true, name);
+        assert(desc, undefined, name);
+    }
+
+    /* an ordinary property name reaches the same ReferenceError by the
+       ordinary route, so the two agree */
+    const [caught, desc] = vanishing("ordinary");
+    assert(caught instanceof ReferenceError, true, "ordinary");
+    assert(desc, undefined, "ordinary");
+}

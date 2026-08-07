@@ -10636,6 +10636,17 @@ retry:
                         if (ret < 0)
                             goto fail;
                     typed_array_oob:
+                        /* An integer index that is out of bounds is not a
+                           property, so a store that requires the property to
+                           exist already has nothing to write to. This is a
+                           `with` binding that vanished between the reference
+                           being taken and the store: SetMutableBinding throws
+                           a ReferenceError (step 3) before reaching [[Set]],
+                           so the value is not coerced either. */
+                        if (unlikely(flags & JS_PROP_NO_ADD)) {
+                            JS_ThrowReferenceErrorNotDefined(ctx, prop);
+                            goto fail;
+                        }
                         /* [[Set]] (10.4.5.5): an out-of-bounds or non-canonical
                            integer index only coerces the value (step i, via
                            TypedArraySetElement) when the receiver is the typed
