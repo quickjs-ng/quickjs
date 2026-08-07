@@ -2,6 +2,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
@@ -935,7 +936,7 @@ static void eval_options_col_num(void)
 {
     // returns "line:col" of the first frame of the exception raised by `code`
     // evaluated under `options`, or NULL if it did not throw
-    char buf[64];
+    char buf[64], buf2[64];
     JSValue ret, exc, stack;
     const char *s, *p;
     JSEvalOptions options;
@@ -1030,6 +1031,55 @@ static void eval_options_col_num(void)
     assert(!JS_IsException(ret));
     assert(JS_VALUE_GET_INT(ret) == 2);
     JS_FreeValue(ctx, ret);
+
+    // a negative offset is not an offset at all
+    options.col_num = -1;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+    options.col_num = -100000;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+
+    // neither is one so large that the columns of the source could not be
+    // numbered from it without overflowing
+    options.col_num = INT_MAX;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+    options.col_num = INT_MAX - 1;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+    options.col_num = INT_MAX - 7;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+
+    // the largest offset that does still fit is used as given: "   nope" is
+    // seven bytes, so the last column the parser can reach is col + 7
+    options.col_num = INT_MAX - 8;
+    snprintf(buf2, sizeof(buf2), "1:%d", INT_MAX - 5);
+    assert(!strcmp(EVAL_LOC("   nope", &options), buf2));
+
+    // every frame of a multi-frame stack is numbered from the same origin
+    options.col_num = 10;
+    options.line_num = 1;
+    assert(!strcmp(EVAL_LOC("function f() { nope }\n  f()", &options), "1:25"));
+    assert(!strcmp(EVAL_LOC("(function () { nope })()", &options), "1:25"));
+
+    // a module is offset the same way a script is
+    options.eval_flags = JS_EVAL_TYPE_MODULE;
+    assert(!strcmp(EVAL_LOC("  let x = ;", &options), "1:20"));
+    assert(!strcmp(EVAL_LOC("1;\nlet x = ;", &options), "2:9"));
+    options.eval_flags = 0;
+
+    // a source whose first line is empty is back to column 1 immediately
+    assert(!strcmp(EVAL_LOC("\n nope", &options), "2:2"));
+
+    // JSON parsing shares the tokenizer but has no column origin of its own
+    ret = JS_ParseJSON(ctx, "{\"a\":1}", 7, "j.json");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    ret = JS_ParseJSON(ctx, "{\"a\":}", 6, "j.json");
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    exc = JS_GetException(ctx);
+    s = JS_ToCString(ctx, exc);
+    assert(s);
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, exc);
 
 #undef EVAL_LOC
 

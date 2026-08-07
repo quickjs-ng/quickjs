@@ -38098,7 +38098,11 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->ctx = ctx;
     s->filename = filename;
     s->line_num = line;
-    s->col_num = col > 0 ? col : 1;
+    /* number the first line from `col`, but only while every column of the
+       source still fits an int; anything else is numbered from 1 */
+    s->col_num = 1;
+    if (col > 0 && input_len < (size_t)(INT32_MAX - col))
+        s->col_num = col;
     s->buf_start = s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
     /* the first line starts at column `col` of the enclosing document, so
