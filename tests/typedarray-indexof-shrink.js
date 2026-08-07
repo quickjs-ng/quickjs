@@ -174,3 +174,130 @@ import { assert } from "./assert.js";
     };
     assert(ta.includes(undefined, evil), false);
 }
+
+/* lastIndexOf scans downward and clamps its start to the surviving prefix,
+   so the same shrink lands it in a different place than indexOf */
+{
+    function shrunk(ret) {
+        const rab = new ArrayBuffer(8, { maxByteLength: 8 });
+        const ta = new Int8Array(rab);
+        for (let i = 0; i < 8; i++)
+            ta[i] = i;
+        return [ta, { valueOf() { rab.resize(4); return ret; } }];
+    }
+
+    /* fromIndex 7 is clamped to the new last index */
+    {
+        const [ta, evil] = shrunk(7);
+        assert(ta.lastIndexOf(3, evil), 3);
+    }
+    {
+        const [ta, evil] = shrunk(7);
+        assert(ta.lastIndexOf(6, evil), -1); /* vanished with the tail */
+    }
+    /* fromIndex 0 only ever looks at index 0 */
+    {
+        const [ta, evil] = shrunk(0);
+        assert(ta.lastIndexOf(0, evil), 0);
+    }
+    {
+        const [ta, evil] = shrunk(0);
+        assert(ta.lastIndexOf(2, evil), -1);
+    }
+    /* a negative fromIndex resolves against the original length */
+    {
+        const [ta, evil] = shrunk(-6);
+        assert(ta.lastIndexOf(2, evil), 2);
+    }
+    {
+        const [ta, evil] = shrunk(-8);
+        assert(ta.lastIndexOf(1, evil), -1);
+    }
+}
+
+/* indexOf uses strict equality and includes uses SameValueZero, which is
+   only visible for NaN and -0 */
+{
+    const t = new Float64Array([NaN, 0, 1]);
+    assert(t.indexOf(NaN), -1);
+    assert(t.includes(NaN), true);
+    assert(t.indexOf(-0), 1);
+    assert(t.includes(-0), true);
+    assert(t.indexOf(0), 1);
+
+    const f16 = new Float16Array([NaN, 1]);
+    assert(f16.indexOf(NaN), -1);
+    assert(f16.includes(NaN), true);
+
+    /* an integer array can never hold either, so neither ever matches */
+    const i = new Int32Array([0, 1]);
+    assert(i.indexOf(NaN), -1);
+    assert(i.includes(NaN), false);
+    assert(i.indexOf(-0), 0);
+
+    /* the same, with a shrink in between */
+    const rab = new ArrayBuffer(32, { maxByteLength: 32 });
+    const ta = new Float64Array(rab);
+    ta[0] = NaN;
+    ta[3] = NaN;
+    const evil = { valueOf() { rab.resize(16); return 0; } };
+    assert(ta.indexOf(NaN, evil), -1);
+}
+
+/* the fromIndex coercion is still an ordinary ToInteger: its failures
+   propagate rather than being swallowed like a resize */
+{
+    const ta = new Int8Array(4);
+
+    let threw = null;
+    try {
+        ta.indexOf(0, Symbol("s"));
+    } catch (e) {
+        threw = e;
+    }
+    assert(threw instanceof TypeError, true);
+
+    threw = null;
+    try {
+        ta.indexOf(0, { valueOf() { throw new RangeError("boom"); } });
+    } catch (e) {
+        threw = e;
+    }
+    assert(threw instanceof RangeError, true);
+    assert(threw.message, "boom");
+
+    threw = null;
+    try {
+        ta.lastIndexOf(0, { valueOf() { throw new RangeError("boom"); } });
+    } catch (e) {
+        threw = e;
+    }
+    assert(threw instanceof RangeError, true);
+
+    threw = null;
+    try {
+        ta.includes(0, { valueOf() { throw new RangeError("boom"); } });
+    } catch (e) {
+        threw = e;
+    }
+    assert(threw instanceof RangeError, true);
+}
+
+/* a view that is already out of bounds when the call starts throws, unlike
+   one that goes out of bounds during the coercion */
+{
+    const rab = new ArrayBuffer(16, { maxByteLength: 16 });
+    const ta = new Int32Array(rab, 0, 4);
+    rab.resize(8);
+
+    for (const call of [() => ta.indexOf(1), () => ta.lastIndexOf(1),
+                        () => ta.includes(1)]) {
+        let threw = null;
+        try {
+            call();
+        } catch (e) {
+            threw = e;
+        }
+        assert(threw instanceof TypeError, true);
+    }
+}
