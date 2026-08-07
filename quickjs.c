@@ -16137,7 +16137,11 @@ static no_inline __exception int js_eq_slow(JSContext *ctx, JSValue *sp,
             if (res < 0)
                 goto exception;
         }
-    } else if (tag1 == tag2) {
+    } else if (tag1 == tag2 ||
+               (tag_is_string(tag1) && tag_is_string(tag2))) {
+        /* a rope and a flat string are both Strings even though their tags
+           differ, so they compare like any other same-type pair instead of
+           falling through to the coercions below */
         res = js_strict_eq2(ctx, op1, op2, JS_EQ_STRICT);
         JS_FreeValue(ctx, op1);
         JS_FreeValue(ctx, op2);
@@ -16805,16 +16809,38 @@ static JSValue build_for_in_iterator(JSContext *ctx, JSValue obj)
             break;
         if (JS_IsException(obj1))
             goto fail;
-        if (JS_GetOwnPropertyNamesInternal(ctx, &tab_atom, &tab_atom_count,
-                                           JS_VALUE_GET_OBJ(obj1),
-                                           JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY)) {
-            JS_FreeValue(ctx, obj1);
-            goto fail;
-        }
-        js_free_prop_enum(ctx, tab_atom, tab_atom_count);
-        if (tab_atom_count != 0) {
-            JS_FreeValue(ctx, obj1);
-            goto slow_path;
+        {
+            JSObject *po = JS_VALUE_GET_OBJ(obj1);
+            bool has_enum;
+            if (!po->is_exotic) {
+                /* scan the shape for an enumerable string key instead of
+                   materialising the whole own-property-name array */
+                JSShape *psh = po->shape;
+                JSShapeProperty *pprs = get_shape_prop(psh);
+                int k;
+                has_enum = false;
+                for(k = 0; k < psh->prop_count; k++, pprs++) {
+                    if (pprs->atom != JS_ATOM_NULL &&
+                        (pprs->flags & JS_PROP_ENUMERABLE) &&
+                        JS_AtomGetKind(ctx, pprs->atom) == JS_ATOM_KIND_STRING) {
+                        has_enum = true;
+                        break;
+                    }
+                }
+            } else {
+                if (JS_GetOwnPropertyNamesInternal(ctx, &tab_atom,
+                                                   &tab_atom_count, po,
+                                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY)) {
+                    JS_FreeValue(ctx, obj1);
+                    goto fail;
+                }
+                js_free_prop_enum(ctx, tab_atom, tab_atom_count);
+                has_enum = (tab_atom_count != 0);
+            }
+            if (has_enum) {
+                JS_FreeValue(ctx, obj1);
+                goto slow_path;
+            }
         }
         /* must check for timeout to avoid infinite loop */
         if (js_poll_interrupts(ctx)) {
@@ -20661,10 +20687,49 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             OP_CMP(OP_lte, <=, js_relational_slow(ctx, sp, opcode));
             OP_CMP(OP_gt, >, js_relational_slow(ctx, sp, opcode));
             OP_CMP(OP_gte, >=, js_relational_slow(ctx, sp, opcode));
-            OP_CMP(OP_eq, ==, js_eq_slow(ctx, sp, 0));
-            OP_CMP(OP_neq, !=, js_eq_slow(ctx, sp, 1));
-            OP_CMP(OP_strict_eq, ==, js_strict_eq_slow(ctx, sp, 0));
-            OP_CMP(OP_strict_neq, !=, js_strict_eq_slow(ctx, sp, 1));
+
+/* Inline the same-tag object-identity and string cases that the eq slow paths
+   reach through js_strict_eq2; everything else falls through as before. */
+#define OP_EQ_FAST(opcode_, is_neq_, slow_call)                         \
+            CASE(opcode_):                                              \
+                {                                                       \
+                JSValue op1 = sp[-2], op2 = sp[-1];                     \
+                if (likely(JS_VALUE_IS_BOTH_INT(op1, op2))) {           \
+                    sp[-2] = js_bool((JS_VALUE_GET_INT(op1) ==          \
+                                      JS_VALUE_GET_INT(op2)) ^ (is_neq_)); \
+                    sp--;                                               \
+                } else {                                                \
+                    int t1 = JS_VALUE_GET_NORM_TAG(op1);                \
+                    int t2 = JS_VALUE_GET_NORM_TAG(op2);                \
+                    if (t1 == t2 && t1 == JS_TAG_OBJECT) {              \
+                        bool eqr = JS_VALUE_GET_OBJ(op1) ==             \
+                                   JS_VALUE_GET_OBJ(op2);               \
+                        JS_FreeValue(ctx, op1);                         \
+                        JS_FreeValue(ctx, op2);                         \
+                        sp[-2] = js_bool(eqr ^ (is_neq_));              \
+                        sp--;                                           \
+                    } else if (t1 == t2 && t1 == JS_TAG_STRING) {       \
+                        bool eqr = js_string_eq(JS_VALUE_GET_STRING(op1), \
+                                                JS_VALUE_GET_STRING(op2)); \
+                        JS_FreeValue(ctx, op1);                         \
+                        JS_FreeValue(ctx, op2);                         \
+                        sp[-2] = js_bool(eqr ^ (is_neq_));              \
+                        sp--;                                           \
+                    } else {                                            \
+                        sf->cur_pc = pc;                                \
+                        if (slow_call)                                  \
+                            goto exception;                             \
+                        sp--;                                           \
+                    }                                                   \
+                }                                                       \
+                }                                                       \
+            BREAK
+
+            OP_EQ_FAST(OP_eq, 0, js_eq_slow(ctx, sp, 0));
+            OP_EQ_FAST(OP_neq, 1, js_eq_slow(ctx, sp, 1));
+            OP_EQ_FAST(OP_strict_eq, 0, js_strict_eq_slow(ctx, sp, 0));
+            OP_EQ_FAST(OP_strict_neq, 1, js_strict_eq_slow(ctx, sp, 1));
+#undef OP_EQ_FAST
 
         CASE(OP_in):
             sf->cur_pc = pc;
