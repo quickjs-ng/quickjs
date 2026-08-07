@@ -928,6 +928,115 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+// JSEvalOptions.col_num places the first line of the snippet at a column of
+// the enclosing document, the way JSEvalOptions.line_num places it on a line.
+// Only the first line is shifted: every subsequent line starts at column 1.
+static void eval_options_col_num(void)
+{
+    // returns "line:col" of the first frame of the exception raised by `code`
+    // evaluated under `options`, or NULL if it did not throw
+    char buf[64];
+    JSValue ret, exc, stack;
+    const char *s, *p;
+    JSEvalOptions options;
+
+#define EVAL_LOC(code, opts)                                                  \
+    (buf[0] = '\0',                                                           \
+     ret = JS_Eval2(ctx, code, strlen(code), opts),                           \
+     assert(JS_IsException(ret)),                                             \
+     JS_FreeValue(ctx, ret),                                                  \
+     exc = JS_GetException(ctx),                                              \
+     stack = JS_GetPropertyStr(ctx, exc, "stack"),                            \
+     s = JS_ToCString(ctx, stack),                                            \
+     assert(s),                                                               \
+     p = strstr(s, "eval.js:"),                                               \
+     assert(p),                                                               \
+     snprintf(buf, sizeof(buf), "%.*s",                                       \
+              (int)strcspn(p + 8, "\n )"), p + 8),                             \
+     JS_FreeCString(ctx, s),                                                  \
+     JS_FreeValue(ctx, stack),                                                \
+     JS_FreeValue(ctx, exc),                                                  \
+     buf)
+
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    options = (JSEvalOptions){
+        .version = JS_EVAL_OPTIONS_VERSION,
+        .filename = "eval.js",
+    };
+
+    // the baseline: three spaces then an undefined global, so column 4
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+
+    // an unset col_num is column 1, and so is an explicit 1
+    options.col_num = 0;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+    options.col_num = 1;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+
+    // starting at column 10 moves the first line right by 9
+    options.col_num = 10;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:13"));
+    assert(!strcmp(EVAL_LOC("nope", &options), "1:10"));
+
+    // a syntax error is placed the same way
+    assert(!strcmp(EVAL_LOC("let x = ;", &options), "1:18"));
+
+    // a large offset is carried through intact
+    options.col_num = 100000;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:100003"));
+    options.col_num = 10;
+
+    // only the first line is shifted
+    assert(!strcmp(EVAL_LOC("1;\n   nope", &options), "2:4"));
+    assert(!strcmp(EVAL_LOC("1;\nlet y = ;", &options), "2:9"));
+
+    // col_num composes with line_num
+    options.line_num = 5;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "5:13"));
+    assert(!strcmp(EVAL_LOC("1;\n   nope", &options), "6:4"));
+    options.line_num = 0;
+
+    // a version 1 caller has no col_num field at all, so a stale value in
+    // that position must be ignored rather than read
+    options.version = 1;
+    options.col_num = 10;
+    assert(!strcmp(EVAL_LOC("   nope", &options), "1:4"));
+    options.version = JS_EVAL_OPTIONS_VERSION;
+
+    // versions outside the supported range are refused
+    {
+        static const int bad[] = { 0, -1, JS_EVAL_OPTIONS_VERSION + 1 };
+        size_t i;
+        for (i = 0; i < countof(bad); i++) {
+            options.version = bad[i];
+            ret = JS_Eval2(ctx, "1", 1, &options);
+            assert(JS_IsException(ret));
+            JS_FreeValue(ctx, ret);
+            exc = JS_GetException(ctx);
+            s = JS_ToCString(ctx, exc);
+            assert(s);
+            assert(!strcmp(s, "InternalError: bad JSEvalOptions version"));
+            JS_FreeCString(ctx, s);
+            JS_FreeValue(ctx, exc);
+        }
+        options.version = JS_EVAL_OPTIONS_VERSION;
+    }
+
+    // a successful eval is unaffected by the offset
+    options.col_num = 10;
+    ret = JS_Eval2(ctx, "1 + 1", 5, &options);
+    assert(!JS_IsException(ret));
+    assert(JS_VALUE_GET_INT(ret) == 2);
+    JS_FreeValue(ctx, ret);
+
+#undef EVAL_LOC
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void backtrace_oom_callsite_array(void)
 {
     static const char setup_code[] =
@@ -1840,6 +1949,7 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    eval_options_col_num();
     backtrace_oom_current_exception();
     backtrace_oom_callsite_array();
     proxy_own_keys_huge_length();
