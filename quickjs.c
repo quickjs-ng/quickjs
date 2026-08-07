@@ -3948,12 +3948,12 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
             if (c == '0' && len == 2)
                 goto minus_zero;
         }
-        /* XXX: should test NaN, but the tests do not check it */
         if (!is_num(c)) {
             /* XXX: String should be normalized, therefore 8-bit only */
             const uint16_t nfinity16[7] = { 'n', 'f', 'i', 'n', 'i', 't', 'y' };
             if (!(c =='I' && (r_end - r) == 8 &&
-                  !memcmp(r + 1, nfinity16, sizeof(nfinity16))))
+                  !memcmp(r + 1, nfinity16, sizeof(nfinity16))) &&
+                !(c == 'N' && len == 3 && r[1] == 'a' && r[2] == 'N'))
                 return JS_UNDEFINED;
         }
     } else {
@@ -3974,7 +3974,8 @@ static JSValue JS_AtomIsNumericIndex1(JSContext *ctx, JSAtom atom)
         }
         if (!is_num(c)) {
             if (!(c =='I' && (r_end - r) == 8 &&
-                  !memcmp(r + 1, "nfinity", 7)))
+                  !memcmp(r + 1, "nfinity", 7)) &&
+                !(c == 'N' && len == 3 && r[1] == 'a' && r[2] == 'N'))
                 return JS_UNDEFINED;
         }
     }
@@ -10635,6 +10636,17 @@ retry:
                         if (ret < 0)
                             goto fail;
                     typed_array_oob:
+                        /* An integer index that is out of bounds is not a
+                           property, so a store that requires the property to
+                           exist already has nothing to write to. This is a
+                           `with` binding that vanished between the reference
+                           being taken and the store: SetMutableBinding throws
+                           a ReferenceError (step 3) before reaching [[Set]],
+                           so the value is not coerced either. */
+                        if (unlikely(flags & JS_PROP_NO_ADD)) {
+                            JS_ThrowReferenceErrorNotDefined(ctx, prop);
+                            goto fail;
+                        }
                         /* [[Set]] (10.4.5.5): an out-of-bounds or non-canonical
                            integer index only coerces the value (step i, via
                            TypedArraySetElement) when the receiver is the typed
