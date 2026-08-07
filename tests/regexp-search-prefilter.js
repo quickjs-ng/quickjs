@@ -232,3 +232,104 @@ function all(re, s) {
     assert(m(/[Ā-Ȁ]/, latin1), "null");
     assert(m(/[Ā-Ȁ]/, "abŐ"), "2:Ő");
 }
+
+/* a NUL first character: the 8-bit search is a memchr(), and NUL is exactly
+   the byte a C string search would stop at rather than find */
+{
+    assert(m(/\0/, "abc\0d"), "3:\0");
+    assert(m(/\0/, "abc"), "null");
+    assert(m(/\0x/, "\0a\0x"), "2:\0x");
+    assert(m(/[\0]/, "ab\0"), "2:\0");
+    assert(m(/[^\0]/, "\0\0a"), "2:a");
+    assert(m(/\0/, "a".repeat(4000) + "\0"), "4000:\0");
+    assert(m(/\0/u, "ab\0"), "2:\0");
+    assert(all(/\0/g, "\0a\0"), "0:\0 2:\0");
+    /* and over a 16-bit buffer, where memchr cannot be used at all */
+    assert(m(/\0/, "中\0"), "1:\0");
+    assert(m(/\0中/, "\0a中\0中"), "3:\0中");
+}
+
+/* dotAll changes what the first element accepts, not where it may start */
+{
+    assert(m(/.b/s, "a\nb"), "1:\nb");
+    assert(m(/.b/, "a\nb"), "null");
+    assert(m(/.b/s, "xxab"), "2:ab");
+    assert(all(/./gs, "a\nb"), "0:a 1:\n 2:b");
+    assert(all(/./g, "a\nb"), "0:a 2:b");
+}
+
+/* an inline modifier group scopes case folding to part of the pattern, so
+   the first element's foldedness is not the pattern's */
+{
+    assert(m(/(?i:k)x/, "aKx"), "1:Kx");
+    assert(m(/(?i:k)x/, "aKX"), "null");
+    assert(m(/(?i:[a-c])z/, "xxBz"), "2:Bz");
+    assert(m(/(?-i:k)x/i, "aKX"), "null");
+    assert(m(/(?-i:k)x/i, "akX"), "1:kX");
+}
+
+/* the v flag builds its character classes differently but must summarise to
+   the same set of possible first characters */
+{
+    assert(m(/[\q{abc|x}]/v, "zzabc"), "2:abc");
+    assert(m(/[\q{abc|x}]/v, "zzx"), "2:x");
+    assert(m(/[[a-z]--[b-d]]/v, "bcde"), "3:e");
+    assert(m(/[[a-z]--[b-d]]/v, "bcd"), "null");
+    assert(m(/[\p{ASCII}&&\p{Letter}]/v, "123x"), "3:x");
+    assert(m(/[^a-c]/v, "aaaz"), "3:z");
+    assert(m(/k/iv, "xK"), "1:K");
+    assert(m(/[à-ÿ]/v, "ABĀ"), "null");
+}
+
+/* the search must not start in the middle of a surrogate pair even when
+   lastIndex points there */
+{
+    const s = "\u{1F600}\u{1F600}x";
+    const re = /x/gu;
+    for (let i = 0; i <= s.length; i++) {
+        re.lastIndex = i;
+        const r = re.exec(s);
+        assert(r === null ? "null" : String(r.index), i <= 4 ? "4" : "null",
+               `lastIndex ${i}`);
+    }
+
+    /* a pattern whose first character is the low half of a pair */
+    const lo = /\ude00/gu;
+    lo.lastIndex = 1;
+    assert(lo.exec(s), null);
+    lo.lastIndex = 0;
+    assert(lo.exec(s), null);
+
+    /* without u the same index is a perfectly good starting point */
+    const nolo = /\ude00/g;
+    nolo.lastIndex = 1;
+    assert(nolo.exec(s).index, 1);
+}
+
+/* long 16-bit buffers, where the candidate appears only at the very end */
+{
+    const wide = "中".repeat(5000);
+    assert(m(/x/, wide), "null");
+    assert(m(/x/, wide + "x"), "5000:x");
+    assert(m(/中x/, wide + "x"), "4999:中x");
+    assert(m(/[a-z]/, wide + "q"), "5000:q");
+    assert(m(/[Ā-Ȁ]/, wide + "Ő"), "5000:Ő");
+    assert(m(/中{4999}/, wide), "0:" + "中".repeat(4999));
+    assert(m(/中{5001}/, wide), "null");
+
+    /* the astral equivalent, where every candidate is two code units */
+    const astral = "\u{1F600}".repeat(3000);
+    assert(m(/x/u, astral), "null");
+    assert(m(/x/u, astral + "x"), "6000:x");
+    assert(m(/\u{1F600}x/u, astral + "x"), "5998:\u{1F600}x");
+}
+
+/* full width digits and letters are not \d or \w, however wide the buffer */
+{
+    assert(m(/\d/, "ａｂ１"), "null");
+    assert(m(/\w/, "ａｂｃ"), "null");
+    assert(m(/\d/, "ａｂ1"), "2:1");
+    assert(m(/\d/u, "１2"), "1:2");
+    assert(m(/\s/, "中 "), "1: ");
+    assert(m(/\s/, "中中"), "null");
+}
