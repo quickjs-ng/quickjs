@@ -1822,6 +1822,87 @@ static void transfer_default_managed_array_buffer(void)
     JS_FreeRuntime(rt);
 }
 
+static void get_class_name(void)
+{
+    static const struct {
+        const char *code;
+        const char *name;
+    } builtins[] = {
+        { "({})",               "Object" },
+        { "[]",                 "Array" },
+        { "new Error()",        "Error" },
+        { "new Date()",         "Date" },
+        { "/re/",               "RegExp" },
+        { "new Map()",          "Map" },
+        { "new ArrayBuffer(0)", "ArrayBuffer" },
+        { "new Uint8Array(0)",  "Uint8Array" },
+        { "(function(){})",     "Function" },
+    };
+    JSClassDef def = (JSClassDef){ .class_name = "MyClass" };
+    JSClassID class_id, unregistered_class_id;
+    JSAtom atom, expected;
+    JSRuntime *rt;
+    JSContext *ctx;
+    const char *s;
+    JSValue obj;
+    size_t i;
+
+    rt = new_runtime();
+    class_id = 0;
+    JS_NewClassID(rt, &class_id);
+    assert(0 == JS_NewClass(rt, class_id, &def));
+
+    /* handed out by JS_NewClassID() but never passed to JS_NewClass() */
+    unregistered_class_id = 0;
+    JS_NewClassID(rt, &unregistered_class_id);
+
+    ctx = JS_NewContext(rt);
+
+    /* the name of a class registered from C, not its class id */
+    expected = JS_NewAtom(ctx, "MyClass");
+    atom = JS_GetClassName(rt, class_id);
+    assert(atom == expected);
+    s = JS_AtomToCString(ctx, atom);
+    assert(s);
+    assert(!strcmp(s, "MyClass"));
+    JS_FreeCString(ctx, s);
+    JS_FreeAtom(ctx, atom);
+    JS_FreeAtom(ctx, expected);
+
+    /* the names of the built-in classes */
+    for (i = 0; i < countof(builtins); i++) {
+        obj = eval(ctx, builtins[i].code);
+        assert(!JS_IsException(obj));
+        atom = JS_GetClassName(rt, JS_GetClassID(obj));
+        assert(atom != JS_ATOM_NULL);
+        s = JS_AtomToCString(ctx, atom);
+        assert(s);
+        assert(!strcmp(s, builtins[i].name));
+        JS_FreeCString(ctx, s);
+        JS_FreeAtom(ctx, atom);
+        JS_FreeValue(ctx, obj);
+    }
+
+    /* class ids without a registered class have no name */
+    assert(JS_ATOM_NULL == JS_GetClassName(rt, JS_INVALID_CLASS_ID));
+    assert(JS_ATOM_NULL == JS_GetClassName(rt, unregistered_class_id));
+    assert(JS_ATOM_NULL == JS_GetClassName(rt, class_id + 4096));
+
+    /* the caller owns the returned atom; the class keeps its own reference,
+       so releasing it repeatedly doesn't free the name out from under it */
+    for (i = 0; i < 64; i++)
+        JS_FreeAtom(ctx, JS_GetClassName(rt, class_id));
+    atom = JS_GetClassName(rt, class_id);
+    s = JS_AtomToCString(ctx, atom);
+    assert(s);
+    assert(!strcmp(s, "MyClass"));
+    JS_FreeCString(ctx, s);
+    JS_FreeAtom(ctx, atom);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1855,5 +1936,6 @@ int main(void)
     transfer_external_array_buffer();
     resize_external_array_buffer();
     transfer_default_managed_array_buffer();
+    get_class_name();
     return 0;
 }
