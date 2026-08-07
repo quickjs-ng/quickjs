@@ -2,6 +2,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
@@ -1898,6 +1899,63 @@ static void get_class_name(void)
     assert(!strcmp(s, "MyClass"));
     JS_FreeCString(ctx, s);
     JS_FreeAtom(ctx, atom);
+
+    /* every registered class has a name, and it is a name rather than a
+       number: returning the class id instead produced a valid-looking atom,
+       either an unrelated predefined one for a small id or the id spelled out
+       in decimal for a large one, so check the whole table rather than the
+       handful of classes spelled out above */
+    {
+        JSClassID id;
+        int registered = 0;
+
+        for (id = 1; id < class_id + 16; id++) {
+            char decimal[32];
+            if (!JS_IsRegisteredClass(rt, id))
+                continue;
+            registered++;
+            atom = JS_GetClassName(rt, id);
+            assert(atom != JS_ATOM_NULL);
+            s = JS_AtomToCString(ctx, atom);
+            assert(s);
+            // a few internal classes are deliberately unnamed, but none is
+            // named after a number
+            snprintf(decimal, sizeof(decimal), "%u", (unsigned)id);
+            assert(strcmp(s, decimal));
+            assert(s[0] < '0' || s[0] > '9');
+            JS_FreeCString(ctx, s);
+            JS_FreeAtom(ctx, atom);
+        }
+        /* the built-ins alone are far more than this */
+        assert(registered > 20);
+    }
+
+    /* two classes sharing a name share the interned atom, and the name does
+       not depend on which context asks */
+    {
+        JSClassDef def2 = (JSClassDef){ .class_name = "MyClass" };
+        JSClassID class_id2 = 0;
+        JSContext *ctx2;
+        JSAtom a1, a2;
+
+        JS_NewClassID(rt, &class_id2);
+        assert(0 == JS_NewClass(rt, class_id2, &def2));
+        assert(class_id2 != class_id);
+
+        a1 = JS_GetClassName(rt, class_id);
+        a2 = JS_GetClassName(rt, class_id2);
+        assert(a1 == a2);
+        JS_FreeAtom(ctx, a1);
+        JS_FreeAtom(ctx, a2);
+
+        ctx2 = JS_NewContext(rt);
+        a1 = JS_GetClassName(rt, class_id);
+        a2 = JS_GetClassName(rt, class_id);
+        assert(a1 == a2);
+        JS_FreeAtom(ctx2, a1);
+        JS_FreeAtom(ctx2, a2);
+        JS_FreeContext(ctx2);
+    }
 
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
