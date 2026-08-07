@@ -257,3 +257,78 @@ function evaluate(src) {
     }
     assert(threw, true, "[a] = null is a runtime TypeError");
 }
+
+/* -------------------------------------------------------------------------
+   more non head positions, and the head positions they are easy to confuse
+   with
+   ------------------------------------------------------------------------- */
+{
+    /* a literal that is a NewExpression's callee, or a member of one */
+    assert(syntaxError("var a; new [a] = [1];"), true, "new [a] =");
+    assert(syntaxError("var a; new C([a]) = [1];"), true, "new C([a]) =");
+
+    /* the operand of an update operator, and an update of a literal */
+    assert(syntaxError("var a; ++[a] = [1];"), true, "++[a] =");
+    assert(syntaxError("var a; [a]++ = [1];"), true, "[a]++ =");
+
+    /* a literal followed by a member access is a member expression */
+    assert(syntaxError("var a; [a].length = 1, [a] = [1];") === false, true,
+           "[a].length = 1 is fine");
+    assert(syntaxError("var a; [a][0] = [1];") === false, true, "[a][0] = 1");
+
+    /* an optional chain is never a valid assignment target */
+    assert(syntaxError("var a, o = {}; o?.[a] = [1];"), true, "o?.[a] =");
+
+    /* a compound assignment never destructures, whichever operator it is */
+    assert(syntaxError("var a; [a] += [1];"), true, "[a] +=");
+    assert(syntaxError("var a; [a] **= [1];"), true, "[a] **=");
+    assert(syntaxError("var a; [a] ||= [1];"), true, "[a] ||=");
+    assert(syntaxError("var a; [a] &&= [1];"), true, "[a] &&=");
+    assert(syntaxError("var a; [a] ??= [1];"), true, "[a] ??=");
+    assert(syntaxError("var a; ({a} >>>= {a: 1});"), true, "{a} >>>=");
+
+    /* the head of every statement that takes a full Expression is a head */
+    let a, b;
+    assert(evaluate("var a; for ([a] = [7]; false; ) ; a"), 7, "for init");
+    assert(evaluate("var a; while (([a] = [8]) && false) ; a"), 8, "while");
+    assert(evaluate("var a; switch ([a] = [9]) { } a"), 9, "switch");
+    assert(evaluate("var a; if (([a] = [10])) ; a"), 10, "if");
+    assert(evaluate("var a; do ; while (([a] = [11]) && false); a"), 11, "do");
+    assert(evaluate("var a; with ({}) { [a] = [12]; } a"), 12, "with body");
+    assert(evaluate("var a; ((0, [a] = [13]), a)"), 13, "comma element head");
+    assert(evaluate("var a; (true ? ([a] = [14]) : 0, a)"), 14, "conditional");
+    assert(evaluate("var a; f(); function f() { [a] = [15]; } a"), 15, "call");
+
+    /* an argument, an array element and a property value are each their own
+       AssignmentExpression, so a literal starts one there too */
+    [a] = [1];
+    assert(((x) => x)([a] = [16])[0], 16, "argument");
+    assert([[a] = [17]][0][0], 17, "array element");
+    assert(({ p: [a] = [18] }).p[0], 18, "property value");
+    assert([...([a] = [19])][0], 19, "spread argument");
+
+    /* the operand of yield and await is a head as well */
+    assert(evaluate(`
+        var a;
+        function* g() { yield [a] = [20]; }
+        g().next();
+        a`), 20, "yield operand");
+
+    /* a class field initialiser and a default parameter value are heads */
+    assert(evaluate(`
+        var a;
+        class C { f = ([a] = [21]); }
+        new C();
+        a`), 21, "class field initialiser");
+    assert(evaluate(`
+        var a;
+        function f(p = ([a] = [22])) { return p; }
+        f();
+        a`), 22, "default parameter");
+
+    /* and a template substitution */
+    assert(evaluate("var a; `${[a] = [23]}`; a"), 23, "template substitution");
+
+    /* the tag of a tagged template is a member expression, not a target */
+    assert(syntaxError("var a; [a]`x` = [1];"), true, "tagged template");
+}
