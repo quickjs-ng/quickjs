@@ -250,3 +250,162 @@ function syncIter(t, next) {
     }
     assert(t.text, "next,body,return");
 }
+
+/* --- the control flow that moves the loop's stack around -------------- */
+{
+    const upto = (t, n) => {
+        let i = 0;
+        return asyncIter(t, () => Promise.resolve(
+            i++ < n ? { done: false, value: i } : { done: true }));
+    };
+
+    /* continue takes the back edge, which has to find the same stack it
+       started with */
+    {
+        const t = trace();
+        const seen = [];
+        for await (const x of upto(t, 4)) {
+            if (x % 2) continue;
+            seen.push(x);
+        }
+        assert(seen.join(","), "2,4");
+        assert(t.text, "next,next,next,next,next");
+    }
+
+    /* a labelled break and a labelled continue that cross a loop boundary
+       close every iterator they leave, innermost first */
+    {
+        const t = trace();
+        outer:
+        for await (const a of upto(t, 3)) {
+            for await (const b of upto(t, 3)) {
+                if (a === 2) break outer;
+                continue outer;
+            }
+        }
+        assert(t.text, "next,next,return,next,next,return,return");
+    }
+
+    /* try/finally around and inside the loop: the finally blocks run in
+       order and the iterator is still closed exactly once */
+    {
+        const t = trace();
+        try {
+            for await (const x of upto(t, 3)) {
+                try {
+                    throw new Error("boom");
+                } finally {
+                    t.push("inner-finally");
+                }
+            }
+        } catch (e) {
+            t.push("caught:" + e.message);
+        } finally {
+            t.push("outer-finally");
+        }
+        assert(t.text, "next,inner-finally,return,caught:boom,outer-finally");
+    }
+
+    /* a return out of a try with a finally, from inside the loop */
+    {
+        const t = trace();
+        const r = await (async () => {
+            for await (const x of upto(t, 3)) {
+                try {
+                    return "returned";
+                } finally {
+                    t.push("finally");
+                }
+            }
+        })();
+        assert(r, "returned");
+        assert(t.text, "next,finally,return");
+    }
+
+    /* awaiting in the body suspends the function with the loop's stack live */
+    {
+        const t = trace();
+        const seen = [];
+        for await (const x of upto(t, 3)) {
+            await null;
+            seen.push(await Promise.resolve(x * 10));
+            await null;
+        }
+        assert(seen.join(","), "10,20,30");
+    }
+
+    /* the same, in an async generator, where yield suspends it as well */
+    {
+        async function* relay(t) {
+            for await (const x of upto(t, 3))
+                yield x * 2;
+        }
+        const t = trace();
+        const seen = [];
+        for await (const x of relay(t))
+            seen.push(x);
+        assert(seen.join(","), "2,4,6");
+
+        /* abandoning the outer loop closes the generator, which closes the
+           inner iterator it was driving */
+        const t2 = trace();
+        for await (const x of relay(t2))
+            break;
+        assert(t2.text, "next,return");
+    }
+
+    /* a destructuring head, and a head that assigns to an existing lvalue,
+       both run after the iterator has been restored */
+    {
+        const t = trace();
+        let i = 0;
+        const pairs = {
+            [Symbol.asyncIterator]: () => ({
+                next: () => Promise.resolve(
+                    i++ < 2 ? { done: false, value: { a: i, b: [i, i + 1] } }
+                            : { done: true }),
+            }),
+        };
+        const seen = [];
+        for await (const { a, b: [b0, b1] } of pairs)
+            seen.push(a + ":" + b0 + ":" + b1);
+        assert(seen.join(","), "1:1:2,2:2:3");
+
+        const obj = {};
+        let last;
+        i = 0;
+        for await (obj.k of pairs) last = obj.k.a;
+        assert(last, 2);
+        i = 0;
+        for await (last of pairs) ;
+        assert(last.a, 2);
+    }
+
+    /* nesting deeply enough that an understated stack effect would run off
+       the end of the frame */
+    {
+        const t = trace();
+        let n = 0;
+        for await (const a of upto(t, 2))
+            for await (const b of upto(t, 2))
+                for await (const c of upto(t, 2))
+                    for await (const d of upto(t, 2))
+                        for await (const e of upto(t, 2))
+                            n += a + b + c + d + e;
+        assert(n, 240);
+    }
+
+    /* a rejected next() leaves the iterator open even from inside a try */
+    {
+        const t = trace();
+        let caught = null;
+        try {
+            for await (const x of asyncIter(t, () => Promise.reject(new Error("nx"))))
+                t.push("body");
+        } catch (e) {
+            caught = e.message;
+        }
+        assert(caught, "nx");
+        assert(t.text, "next");
+    }
+}
