@@ -183,3 +183,61 @@ function syntaxError(src) {
     assert(c.set, 12);
     assert(Object.hasOwn(c, "get"), false);
 }
+
+/* the semicolon goes in front of the offending token, so only a `*` that is
+   itself preceded by the line terminator ends the field; a token that keeps
+   the accessor grammar alive across the newline does not */
+{
+    /* `get async` is a getter named async, and its `*` is on the same line */
+    assert(syntaxError("class C { get \n async *m(){} }"), true, "get/async *");
+    assert(syntaxError("class C { get \n async m(){} }"), true, "get/async m");
+    assert(syntaxError("class C { get \n static *m(){} }"), true, "get/static *");
+    assert(syntaxError("class C { set \n static *m(){} }"), true, "set/static *");
+
+    /* likewise a second get: `get get` is a getter named get, so the `*` is
+       an error however it is separated from it */
+    assert(syntaxError("class C { get \n get \n *m(){} }"), true, "get/get *");
+
+    /* a `*` with nothing after it is still an error */
+    assert(syntaxError("class C { get \n * }"), true, "get/* alone");
+    assert(syntaxError("class C { get \n *m }"), true, "get/*m without body");
+}
+
+/* the generator the field is followed by may be named anything, including
+   the words that started all of this */
+{
+    class C {
+        get
+        *async() { return "a"; }
+        set
+        *get() { return "g"; }
+    }
+    const c = new C();
+    assert(Object.hasOwn(c, "get"), true);
+    assert(Object.hasOwn(c, "set"), true);
+    assert(c.get, undefined);
+    assert(c.async().next().value, "a");
+    assert(C.prototype.get.call(c).next().value, "g");
+}
+
+/* `async` cannot be an async generator across a line terminator either, so
+   it becomes a field the same way -- while `static` is a modifier rather
+   than a name and keeps applying to what follows it */
+{
+    class C {
+        async
+        *m() { return 1; }
+    }
+    const c = new C();
+    assert(Object.hasOwn(c, "async"), true);
+    assert(c.async, undefined);
+    assert(C.prototype.m.call(c).next().value, 1);
+
+    class D {
+        static
+        *m() { return 2; }
+    }
+    assert(Object.hasOwn(new D(), "static"), false);
+    assert(D.prototype.m, undefined);
+    assert(D.m().next().value, 2);
+}
