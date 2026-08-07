@@ -928,6 +928,59 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+// JS_NewContext() already installs DOMException by way of
+// JS_AddIntrinsicAToB(), so a host that also calls JS_AddIntrinsicDOMException()
+// explicitly installs it twice. The second install must release the prototype
+// the first one left in ctx->class_proto[] instead of overwriting the slot;
+// new_runtime() aborts at JS_FreeRuntime() if it does not.
+static void dom_exception_added_twice(void)
+{
+    JSValue ret;
+    const char *s;
+    int i;
+
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    // the implicit install left a working DOMException behind
+    ret = eval(ctx, "DOMException.prototype === "
+                    "Object.getPrototypeOf(new DOMException)");
+    assert(JS_ToBool(ctx, ret) == true);
+    JS_FreeValue(ctx, ret);
+
+    // installing it again, repeatedly, must not leak the previous prototype
+    for (i = 0; i < 3; i++)
+        assert(JS_AddIntrinsicDOMException(ctx) == 0);
+
+    // and the class prototype still matches the global constructor, i.e. the
+    // slot tracks the newest install rather than a freed or stale object
+    ret = eval(ctx, "DOMException.prototype === "
+                    "Object.getPrototypeOf(new DOMException)");
+    assert(JS_ToBool(ctx, ret) == true);
+    JS_FreeValue(ctx, ret);
+
+    ret = eval(ctx, "new DOMException('m', 'InvalidCharacterError').name");
+    assert(!JS_IsException(ret));
+    s = JS_ToCString(ctx, ret);
+    assert(s);
+    assert(!strcmp(s, "InvalidCharacterError"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, ret);
+
+    // the internally thrown DOMExceptions pick up the current prototype too
+    ret = eval(ctx, "try { atob('a') } catch (e) { "
+                    "  e instanceof DOMException && e.name } ");
+    assert(!JS_IsException(ret));
+    s = JS_ToCString(ctx, ret);
+    assert(s);
+    assert(!strcmp(s, "InvalidCharacterError"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, ret);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void backtrace_oom_callsite_array(void)
 {
     static const char setup_code[] =
@@ -1840,6 +1893,7 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    dom_exception_added_twice();
     backtrace_oom_current_exception();
     backtrace_oom_callsite_array();
     proxy_own_keys_huge_length();
