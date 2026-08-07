@@ -201,3 +201,97 @@ function order(fn) {
     ({ p: { q: nested[key("f")] } } = { p: { q: 7 } });
     assert(nested.f, 7);
 }
+
+/* the whole right hand side is evaluated before the pattern runs, and
+   then each computed target converts its own key as the pattern reaches
+   it */
+{
+    const o = {};
+    assert(order(() => {
+        [o[key("k1")], o[key("k2")], o[key("k3")]] =
+            [note("v1", 1), note("v2", 2), note("v3", 3)];
+    }), "v1,v2,v3,k1-tostring,k2-tostring,k3-tostring");
+    assert(o.k1 + "," + o.k2 + "," + o.k3, "1,2,3");
+
+    const p = {};
+    assert(order(() => {
+        ({ a: p[key("ka")], b: p[key("kb")] } =
+            { a: note("va", 1), b: note("vb", 2) });
+    }), "va,vb,ka-tostring,kb-tostring");
+    assert(p.ka + "," + p.kb, "1,2");
+}
+
+/* a nested pattern converts the outer target's key before it descends */
+{
+    const o = {};
+    assert(order(() => {
+        [[o[key("inner")]], o[key("outer")]] = [[note("vi", 1)], note("vo", 2)];
+    }), "vi,vo,inner-tostring,outer-tostring");
+    assert(o.inner + "," + o.outer, "1,2");
+}
+
+/* a computed target in a for-of head is re-evaluated and re-converted on
+   every iteration */
+{
+    const o = {};
+    let n = 0;
+    assert(order(() => {
+        for ([o[key("k" + n, "k")]] of [[1], [2]])
+            n++;
+    }), "k0-tostring,k1-tostring");
+    assert(o.k, 2);
+
+    const p = {};
+    n = 0;
+    assert(order(() => {
+        for ({ v: p[key("j" + n, "j")] } of [{ v: 1 }, { v: 2 }])
+            n++;
+    }), "j0-tostring,j1-tostring");
+    assert(p.j, 2);
+}
+
+/* the same key object used for both the source and the target is converted
+   once for each of them */
+{
+    const src = { k: 7 };
+    const dst = {};
+    const k = key("k", "k");
+    assert(order(() => {
+        ({ [k]: dst[k] } = src);
+    }), "k-tostring,k-tostring");
+    assert(dst.k, 7);
+}
+
+/* a target whose setter runs user code sees the value only after the key
+   has been converted */
+{
+    const o = target("k");
+    assert(order(() => {
+        o[key("k", "k")] = note("v", 1);
+    }), "v,k-tostring,set");
+
+    const o2 = target("k");
+    assert(order(() => {
+        [o2[key("k", "k")]] = [note("v", 1)];
+    }), "v,k-tostring,set");
+
+    const o3 = target("k");
+    assert(order(() => {
+        ({ p: o3[key("k", "k")] } = { p: note("v", 1) });
+    }), "v,k-tostring,set");
+}
+
+/* a default value is evaluated before the key it will be stored under */
+{
+    const o = {};
+    assert(order(() => {
+        ({ p: o[key("k")] = note("dflt", 9) } = {});
+    }), "dflt,k-tostring");
+    assert(o.k, 9);
+
+    const p = {};
+    assert(order(() => {
+        [p[key("k")] = note("dflt", 9)] = [];
+    }), "dflt,k-tostring");
+    assert(p.k, 9);
+}
