@@ -1822,6 +1822,33 @@ static void transfer_default_managed_array_buffer(void)
     JS_FreeRuntime(rt);
 }
 
+void object_from(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue t0 = JS_NewObject(ctx);
+    assert(!JS_IsException(t0));
+    assert(JS_IsObject(t0));
+    JSAtom prop = JS_NewAtomLen(ctx, "prop", 4);
+    assert(prop != JS_ATOM_NULL);
+    JSValue val = JS_NULL;
+    JSValue t1 = JS_NewObjectFrom(ctx, 1, &prop, &val);
+    assert(!JS_IsException(t1));
+    assert(JS_IsObject(t1));
+    uint32_t old_shape_hash_count = js_std_cmd(/*GetShapeHashCount*/4, rt);
+    JSValue t2 = JS_NewObjectFrom(ctx, 1, &prop, &val);
+    assert(!JS_IsException(t2));
+    assert(JS_IsObject(t2));
+    uint32_t new_shape_hash_count = js_std_cmd(/*GetShapeHashCount*/4, rt);
+    assert(old_shape_hash_count == new_shape_hash_count);
+    JS_FreeAtom(ctx, prop);
+    JS_FreeValue(ctx, t2);
+    JS_FreeValue(ctx, t1);
+    JS_FreeValue(ctx, t0);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1855,5 +1882,6 @@ int main(void)
     transfer_external_array_buffer();
     resize_external_array_buffer();
     transfer_default_managed_array_buffer();
+    object_from();
     return 0;
 }
