@@ -29883,7 +29883,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         {
             int label_cont, label_break;
             BlockEnv break_entry;
-
+            emit_source_loc_debug(s);
             label_cont = new_label(s);
             label_break = new_label(s);
 
