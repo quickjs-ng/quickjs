@@ -1103,6 +1103,348 @@ static void dtoa_free(void *ptr)
 }
 #endif
 
+/* ---------- Ryu: shortest double to decimal digits ----------
+ *
+ * The exact bignum printer below finds the shortest representation by
+ * successive P-digit tries, which is the hot spot for the common free
+ * format conversion (`d + ""`, Number.prototype.toString).  Ryu
+ * computes the same shortest digits in a handful of 128-bit
+ * operations instead.  The mantissa/exponent it returns are fed into
+ * the same ECMAScript formatting rules as the bignum path, so the
+ * output is byte-identical; the bignum printer remains the fallback
+ * for every other radix and format.  The 128-bit multiply is done via
+ * __int128 when available and a portable 32-bit-split umul128 otherwise
+ * (MSVC), so the fast path runs on all supported compilers.
+ *
+ * Ported from https://github.com/ulfjack/ryu (Copyright 2018 Ulf
+ * Adams, Apache-2.0 or BSL-1.0); lookup tables live in
+ * dtoa-ryu-table.h. */
+#if !defined(JS_DTOA_NO_RYU)
+
+#include "dtoa-ryu-table.h"
+
+#if defined(__SIZEOF_INT128__)
+typedef __uint128_t ryu_uint128_t;
+#endif
+
+static inline uint32_t ryu_decimal_length17(uint64_t v)
+{
+    if (v >= 10000000000000000L) return 17;
+    if (v >= 1000000000000000L) return 16;
+    if (v >= 100000000000000L) return 15;
+    if (v >= 10000000000000L) return 14;
+    if (v >= 1000000000000L) return 13;
+    if (v >= 100000000000L) return 12;
+    if (v >= 10000000000L) return 11;
+    if (v >= 1000000000L) return 10;
+    if (v >= 100000000L) return 9;
+    if (v >= 10000000L) return 8;
+    if (v >= 1000000L) return 7;
+    if (v >= 100000L) return 6;
+    if (v >= 10000L) return 5;
+    if (v >= 1000L) return 4;
+    if (v >= 100L) return 3;
+    if (v >= 10L) return 2;
+    return 1;
+}
+
+static inline uint32_t ryu_log10_pow2(int32_t e)
+{
+    return ((uint32_t)e * 78913) >> 18;
+}
+
+static inline uint32_t ryu_log10_pow5(int32_t e)
+{
+    return ((uint32_t)e * 732923) >> 20;
+}
+
+static inline int32_t ryu_pow5bits(int32_t e)
+{
+    return (int32_t)((((uint32_t)e * 1217359) >> 19) + 1);
+}
+
+static inline uint64_t ryu_div5(uint64_t x)
+{
+    return x / 5;
+}
+
+static inline uint64_t ryu_div10(uint64_t x)
+{
+    return x / 10;
+}
+
+static inline uint64_t ryu_div100(uint64_t x)
+{
+    return x / 100;
+}
+
+static inline uint32_t ryu_pow5_factor(uint64_t value)
+{
+    const uint64_t m_inv_5 = 14757395258967641293u; /* 5 * m_inv_5 = 1 mod 2^64 */
+    const uint64_t n_div_5 = 3689348814741910323u;  /* 2^64 / 5 */
+    uint32_t count = 0;
+    for (;;) {
+        value *= m_inv_5;
+        if (value > n_div_5)
+            break;
+        ++count;
+    }
+    return count;
+}
+
+static inline bool ryu_multiple_of_power_of_5(uint64_t value, uint32_t p)
+{
+    return ryu_pow5_factor(value) >= p;
+}
+
+static inline bool ryu_multiple_of_power_of_2(uint64_t value, uint32_t p)
+{
+    return (value & (((uint64_t)1 << p) - 1)) == 0;
+}
+
+#if defined(__SIZEOF_INT128__)
+static inline uint64_t ryu_mul_shift64(uint64_t m, const uint64_t *mul,
+                                       int32_t j)
+{
+    ryu_uint128_t b0 = (ryu_uint128_t)m * mul[0];
+    ryu_uint128_t b2 = (ryu_uint128_t)m * mul[1];
+    return (uint64_t)(((b0 >> 64) + b2) >> (j - 64));
+}
+#else
+/* portable 64x64 -> 128 multiply and 128-bit right shift for compilers
+   without __int128 (MSVC); m fits in 55 bits, j >= 115, j - 64 < 64 */
+static inline uint64_t ryu_umul128(uint64_t a, uint64_t b, uint64_t *hi)
+{
+    uint32_t a_lo = (uint32_t)a, a_hi = (uint32_t)(a >> 32);
+    uint32_t b_lo = (uint32_t)b, b_hi = (uint32_t)(b >> 32);
+    uint64_t b00 = (uint64_t)a_lo * b_lo;
+    uint64_t b01 = (uint64_t)a_lo * b_hi;
+    uint64_t b10 = (uint64_t)a_hi * b_lo;
+    uint64_t b11 = (uint64_t)a_hi * b_hi;
+    uint64_t mid1 = b10 + (b00 >> 32);
+    uint64_t mid2 = b01 + (uint32_t)mid1;
+    *hi = b11 + (mid1 >> 32) + (mid2 >> 32);
+    return ((mid2 & 0xffffffff) << 32) | (uint32_t)b00;
+}
+
+static inline uint64_t ryu_shiftright128(uint64_t lo, uint64_t hi,
+                                         uint32_t dist)
+{
+    return (hi << (64 - dist)) | (lo >> dist);
+}
+
+static inline uint64_t ryu_mul_shift64(uint64_t m, const uint64_t *mul,
+                                       int32_t j)
+{
+    uint64_t high1, high0, low1, sum;
+    low1 = ryu_umul128(m, mul[1], &high1);
+    ryu_umul128(m, mul[0], &high0);
+    sum = high0 + low1;
+    if (sum < high0)
+        ++high1;
+    return ryu_shiftright128(sum, high1, j - 64);
+}
+#endif
+
+static inline uint64_t ryu_mul_shift_all64(uint64_t m, const uint64_t *mul,
+                                           int32_t j, uint64_t *vp,
+                                           uint64_t *vm, uint32_t mm_shift)
+{
+    *vp = ryu_mul_shift64(4 * m + 2, mul, j);
+    *vm = ryu_mul_shift64(4 * m - 1 - mm_shift, mul, j);
+    return ryu_mul_shift64(4 * m, mul, j);
+}
+
+/* shortest decimal digits for value = m2 * 2^(e2-52), m2 normalized to
+   53 bits, e2 unbiased.  *pexp is the exponent: value = *pmant * 10^exp. */
+static void ryu_d2d(uint64_t m2, int32_t e2, uint64_t *pmant, int32_t *pexp)
+{
+    int32_t e;
+    int32_t e10, k, j, i, removed = 0;
+    uint32_t q, mm_shift;
+    uint64_t mv, vr, vp, vm, output;
+    uint8_t last_removed_digit = 0;
+    bool accept_bounds, vm_is_trailing_zeros = false;
+    bool vr_is_trailing_zeros = false;
+
+    if (e2 < -1022) {
+        /* Subnormals must stay in ryu's raw-mantissa form, otherwise the
+           pow5 table index i = -e - q can exceed DOUBLE_POW5_TABLE_SIZE */
+        m2 >>= -e2 - 1022;
+        e = 1 - 1023 - 52 - 2;
+    } else {
+        e = e2 - 54; /* ryu uses two extra bits for the bounds */
+    }
+    accept_bounds = (m2 & 1) == 0;
+    /* 1 unless the value is a normal power of two (subnormals keep an
+       asymmetric interval down to zero, hence e2 < -1022 also) */
+    mm_shift = (m2 != ((uint64_t)1 << 52)) || (e2 < -1022) ? 1 : 0;
+    mv = 4 * m2;
+    if (e >= 0) {
+        q = ryu_log10_pow2(e) - (e > 3);
+        e10 = (int32_t)q;
+        k = DOUBLE_POW5_INV_BITCOUNT + ryu_pow5bits((int32_t)q) - 1;
+        i = -e + (int32_t)q + k;
+        vr = ryu_mul_shift_all64(m2, DOUBLE_POW5_INV_SPLIT[q], i, &vp, &vm,
+                                 mm_shift);
+        if (q <= 21) {
+            uint32_t mv_mod5 = (uint32_t)mv -
+                               5 * (uint32_t)ryu_div5(mv);
+            if (mv_mod5 == 0) {
+                vr_is_trailing_zeros = ryu_multiple_of_power_of_5(mv, q);
+            } else if (accept_bounds) {
+                vm_is_trailing_zeros =
+                    ryu_multiple_of_power_of_5(mv - 1 - mm_shift, q);
+            } else {
+                vp -= ryu_multiple_of_power_of_5(mv + 2, q);
+            }
+        }
+    } else {
+        q = ryu_log10_pow5(-e) - (-e > 1);
+        e10 = (int32_t)q + e;
+        i = -e - (int32_t)q;
+        k = ryu_pow5bits(i) - DOUBLE_POW5_BITCOUNT;
+        j = (int32_t)q - k;
+        vr = ryu_mul_shift_all64(m2, DOUBLE_POW5_SPLIT[i], j, &vp, &vm,
+                                 mm_shift);
+        if (q <= 1) {
+            vr_is_trailing_zeros = true;
+            if (accept_bounds) {
+                vm_is_trailing_zeros = mm_shift == 1;
+            } else {
+                --vp;
+            }
+        } else if (q < 63) {
+            vr_is_trailing_zeros = ryu_multiple_of_power_of_2(mv, q);
+        }
+    }
+    if (vm_is_trailing_zeros || vr_is_trailing_zeros) {
+        /* rare case (~0.7%): the interval ends on a power of 10 boundary */
+        for (;;) {
+            uint64_t vp_div10 = ryu_div10(vp);
+            uint64_t vm_div10 = ryu_div10(vm);
+            if (vp_div10 <= vm_div10)
+                break;
+            uint32_t vm_mod10 = (uint32_t)vm - 10 * (uint32_t)vm_div10;
+            uint64_t vr_div10 = ryu_div10(vr);
+            uint32_t vr_mod10 = (uint32_t)vr - 10 * (uint32_t)vr_div10;
+            vm_is_trailing_zeros &= vm_mod10 == 0;
+            vr_is_trailing_zeros &= last_removed_digit == 0;
+            last_removed_digit = (uint8_t)vr_mod10;
+            vr = vr_div10;
+            vp = vp_div10;
+            vm = vm_div10;
+            ++removed;
+        }
+        if (vm_is_trailing_zeros) {
+            for (;;) {
+                uint64_t vm_div10 = ryu_div10(vm);
+                uint32_t vm_mod10 = (uint32_t)vm - 10 * (uint32_t)vm_div10;
+                if (vm_mod10 != 0)
+                    break;
+                uint64_t vp_div10 = ryu_div10(vp);
+                uint64_t vr_div10 = ryu_div10(vr);
+                uint32_t vr_mod10 = (uint32_t)vr - 10 * (uint32_t)vr_div10;
+                vr_is_trailing_zeros &= last_removed_digit == 0;
+                last_removed_digit = (uint8_t)vr_mod10;
+                vr = vr_div10;
+                vp = vp_div10;
+                vm = vm_div10;
+                ++removed;
+            }
+        }
+        /* round to even when the exact value ends in .....50..0 */
+        if (vr_is_trailing_zeros && last_removed_digit == 5 && vr % 2 == 0)
+            last_removed_digit = 4;
+        output = vr + ((vr == vm && (!accept_bounds || !vm_is_trailing_zeros))
+                       || last_removed_digit >= 5);
+    } else {
+        bool round_up = false;
+        uint64_t vp_div100 = ryu_div100(vp);
+        uint64_t vm_div100 = ryu_div100(vm);
+        if (vp_div100 > vm_div100) {
+            uint64_t vr_div100 = ryu_div100(vr);
+            uint32_t vr_mod100 = (uint32_t)vr - 100 * (uint32_t)vr_div100;
+            round_up = vr_mod100 >= 50;
+            vr = vr_div100;
+            vp = vp_div100;
+            vm = vm_div100;
+            removed += 2;
+        }
+        for (;;) {
+            uint64_t vp_div10 = ryu_div10(vp);
+            uint64_t vm_div10 = ryu_div10(vm);
+            if (vp_div10 <= vm_div10)
+                break;
+            uint64_t vr_div10 = ryu_div10(vr);
+            uint32_t vr_mod10 = (uint32_t)vr - 10 * (uint32_t)vr_div10;
+            round_up = vr_mod10 >= 5;
+            vr = vr_div10;
+            vp = vp_div10;
+            vm = vm_div10;
+            ++removed;
+        }
+        output = vr + (vr == vm || round_up);
+    }
+    *pmant = output;
+    *pexp = e10 + removed;
+}
+
+/* format value = output * 10^exp with the ECMAScript free-format rules;
+   buf points at the output start (after an optional sign), q at the
+   current position.  Returns the number of characters written. */
+static int ryu_format_free(char *buf, char *q, uint64_t output, int32_t exp)
+{
+    char digits[17];
+    int olength = ryu_decimal_length17(output);
+    int e = exp + olength; /* number of integer digits */
+    int i;
+
+    for (i = olength - 1; i >= 0; i--) {
+        digits[i] = (char)('0' + output % 10);
+        output /= 10;
+    }
+    if (e <= -6 || e > 21) {
+        *q++ = digits[0];
+        if (olength > 1) {
+            *q++ = '.';
+            memcpy(q, digits + 1, olength - 1);
+            q += olength - 1;
+        }
+        *q++ = 'e';
+        e--;
+        if (e < 0) {
+            *q++ = '-';
+            e = -e;
+        } else {
+            *q++ = '+';
+        }
+        q += u32toa(q, e);
+    } else if (e <= 0) {
+        *q++ = '0';
+        *q++ = '.';
+        for (i = 0; i < -e; i++)
+            *q++ = '0';
+        memcpy(q, digits, olength);
+        q += olength;
+    } else if (e >= olength) {
+        memcpy(q, digits, olength);
+        q += olength;
+        for (i = 0; i < e - olength; i++)
+            *q++ = '0';
+    } else {
+        memcpy(q, digits, e);
+        q += e;
+        *q++ = '.';
+        memcpy(q, digits + e, olength - e);
+        q += olength - e;
+    }
+    *q = '\0';
+    return q - buf;
+}
+
+#endif /* !JS_DTOA_NO_RYU */
+
 /* return the length */
 int js_dtoa(char *buf, double d, int radix, int n_digits, int flags,
             JSDTOATempMem *tmp_mem)
@@ -1176,6 +1518,22 @@ int js_dtoa(char *buf, double d, int radix, int n_digits, int flags,
     }
 #endif
     
+#if !defined(JS_DTOA_NO_RYU)
+    if (fmt == JS_DTOA_FORMAT_FREE && radix == 10 &&
+        (flags & JS_DTOA_EXP_MASK) == JS_DTOA_EXP_AUTO) {
+        uint64_t output;
+        int32_t exp;
+        int len;
+        /* at this point value = m * 2^(e-53), m normalized to 53 bits */
+        ryu_d2d(m, e - 1, &output, &exp);
+        len = ryu_format_free(buf, q, output, exp);
+        /* no-op on the arena allocator, real frees on the malloc one */
+        dtoa_free(mant_max);
+        dtoa_free(tmp1);
+        return len;
+    }
+#endif
+
     /* this choice of E implies F=round(x*B^(P-E) is such as: 
        B^(P-1) <= F < 2.B^P. */
     E = 1 + mul_log2_radix(e - 1, radix);
