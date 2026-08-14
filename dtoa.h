@@ -74,11 +74,13 @@ int js_dtoa(char *buf, double d, int radix, int n_digits, int flags,
             JSDTOATempMem *tmp_mem);
 double js_atod(const char *str, const char **pnext, int radix, int flags,
                JSATODTempMem *tmp_mem);
-/* fast parser for plain base-10 strings; only compiled when the
-   implementation has 128-bit integers (see dtoa.c) */
+/* fast parser for plain base-10 strings; guarded exactly like the
+   definitions in dtoa.c so callers don't link against a stub */
+#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__)
 bool js_atod_fast10_parse(const char *str, size_t len, uint64_t *pm,
                           int32_t *pe10, int *pneg);
 double js_atod_fast10_round(uint64_t m, int32_t e10, int neg);
+#endif
 
 #ifdef JS_DTOA_DUMP_STATS
 void js_dtoa_dump_stats(void);
