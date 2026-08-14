@@ -1789,18 +1789,44 @@ static double round_u128_to_double(__uint128_t n)
 /* round m / d to nearest double, 0 < d < 2^62, m >= 1, b = bitlen(m).
    The quotient stays in the normal double range because the caller
    only feeds values in [10^-19, 10^19]; the rounding is exact because
-   m/d is kept as the rational q + r/d until the single final rounding
-   (shifting q left to 53 bits also scales r/d, hence the two cases). */
+   m/d is kept as the rational q + r/d until the single final rounding. */
 static double round_m_div_d_to_double(uint64_t m, uint64_t d, int b)
 {
     uint64_t n = m << (64 - b); /* top bit set */
     uint64_t q = n / d, r = n % d;
-    int bq = 64 - clz64(q);
-    /* v = m/d = (q + r/d) * 2^(b-64) */
-    int e = bq + b - 65;
-    int shift = bq - 53;
+    int bq, e, shift;
     uint64_t mant;
 
+    if (q == 0) {
+        /* m * 2^(64-b) < d, so v = m/d < 1: the 64-bit quotient is zero.
+           Re-do the division with a full 128-bit numerator so the
+           quotient has at least 64 bits and the rounding below applies
+           (d <= 10^19 < 2^64 makes this always well-defined). */
+        __uint128_t n2 = (__uint128_t)m << (128 - b);
+        __uint128_t q2 = n2 / d;
+        uint64_t r2 = (uint64_t)(n2 % d);
+        int bq2 = 128 - clz128((uint64_t)(q2 >> 64), (uint64_t)q2);
+        int e2 = bq2 + b - 129;
+        int shift2 = bq2 - 53;
+        uint64_t mant2 = (uint64_t)(q2 >> shift2);
+        __uint128_t low2 = q2 & (((__uint128_t)1 << shift2) - 1);
+        __uint128_t half2 = (__uint128_t)1 << (shift2 - 1);
+        int round_up = low2 > half2 ||
+                       (low2 == half2 && (r2 != 0 || (mant2 & 1)));
+        if (round_up) {
+            mant2++;
+            if (mant2 >> 53) {
+                mant2 >>= 1;
+                e2++;
+            }
+        }
+        return uint64_as_float64(((uint64_t)(e2 + 1023) << 52) |
+                                 (mant2 & (((uint64_t)1 << 52) - 1)));
+    }
+    bq = 64 - clz64(q);
+    /* v = m/d = (q + r/d) * 2^(b-64) */
+    e = bq + b - 65;
+    shift = bq - 53;
     if (shift > 0) {
         uint64_t low = q & (((uint64_t)1 << shift) - 1);
         uint64_t half = (uint64_t)1 << (shift - 1);
