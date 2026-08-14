@@ -38098,17 +38098,18 @@ static void js_parse_init(JSContext *ctx, JSParseState *s,
     s->ctx = ctx;
     s->filename = filename;
     s->line_num = line;
-    /* number the first line from `col`, but only while every column of the
-       source still fits an int; anything else is numbered from 1 */
-    s->col_num = 1;
-    if (col > 0 && input_len < (size_t)(INT32_MAX - col))
-        s->col_num = col;
+    s->col_num = max_int(1, col);
     s->buf_start = s->buf_ptr = (const uint8_t *)input;
     s->buf_end = s->buf_ptr + input_len;
-    /* the first line starts at column `col` of the enclosing document, so
-       back the two column origins up by that much; both are reset at the
-       first line terminator, so only the first line is affected */
-    col_off = s->col_num - 1;
+    /* back the two column origins up so the first line starts at s->col_num,
+       unless that would put later columns out of int range, in which case
+       start from column 1 instead; both origins are reset at the first line
+       terminator, so only the first line is affected */
+    col_off = 0;
+    if (input_len < (size_t)(INT32_MAX - s->col_num))
+        col_off = s->col_num - 1;
+    else
+        s->col_num = 1;
     s->line_start = s->buf_ptr - col_off;
     s->mark = s->buf_ptr + min_int(1, input_len);
     s->eol = s->buf_ptr - col_off;
