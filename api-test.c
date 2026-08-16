@@ -1849,6 +1849,17 @@ void object_from(void)
     JS_FreeRuntime(rt);
 }
 
+void add_intrinsic_bigint(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContextRaw(rt);
+    JS_AddIntrinsicBaseObjects(ctx);
+    JS_AddIntrinsicBigInt(ctx);
+    assert(!JS_HasException(ctx));
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -1883,5 +1894,6 @@ int main(void)
     resize_external_array_buffer();
     transfer_default_managed_array_buffer();
     object_from();
+    add_intrinsic_bigint();
     return 0;
 }

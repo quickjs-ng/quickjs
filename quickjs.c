@@ -40920,7 +40920,7 @@ static JSValue JS_NewCConstructor(JSContext *ctx, int class_id, const char *name
                                   const JSCFunctionListEntry *proto_fields, int n_proto_fields,
                                   int flags)
 {
-    JSValue ctor = JS_UNDEFINED, proto, parent_proto;
+    JSValue ctor = JS_UNDEFINED, proto, parent_proto, *class_proto;
     int proto_class_id, proto_flags, ctor_flags;
 
     proto_flags = 0;
@@ -40951,8 +40951,12 @@ static JSValue JS_NewCConstructor(JSContext *ctx, int class_id, const char *name
                                             n_proto_fields + 1);
         if (JS_IsException(proto))
             goto fail;
-        if (class_id >= 0)
-            ctx->class_proto[class_id] = js_dup(proto);
+        if (class_id >= 0) {
+            class_proto = &ctx->class_proto[class_id];
+            if (!JS_IsNull(*class_proto))
+                JS_FreeValue(ctx, *class_proto);
+            *class_proto = js_dup(proto);
+        }
     }
     if (JS_SetPropertyFunctionList(ctx, proto, proto_fields, n_proto_fields))
         goto fail;
