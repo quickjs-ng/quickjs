@@ -60085,10 +60085,13 @@ static JSValue js_typed_array_with(JSContext *ctx, JSValueConst this_val,
     if (idx < 0)
         idx = len + idx;
 
-    val = JS_ToPrimitive(ctx, argv[1], HINT_NUMBER);
+    if (p->class_id == JS_CLASS_BIG_INT64_ARRAY || p->class_id == JS_CLASS_BIG_UINT64_ARRAY) {
+        val = JS_ToBigInt(ctx, argv[1]);
+    } else {
+        val = JS_ToNumber(ctx, argv[1]);
+    }
     if (JS_IsException(val))
         return JS_EXCEPTION;
-
     /* re-validate after user code (spec step 9: IsValidIntegerIndex) */
     if (typed_array_is_oob(p)) {
         JS_FreeValue(ctx, val);
