@@ -13976,8 +13976,12 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
             size_t len;
 
             /* plain decimal strings: parse once with the fast dtoa path
-               and skip the general scanner (see js_atod_fast10_parse) */
-#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__)
+               and skip the general scanner (see js_atod_fast10_parse).
+               Not for clang targeting MSVC on Windows: it needs
+               compiler-rt libcalls for 128-bit division that lld does
+               not link (MinGW/Cygwin link the runtime and stay on). */
+#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__) && \
+    !(defined(_WIN32) && defined(__clang__) && !defined(__MINGW32__))
             if (JS_VALUE_GET_NORM_TAG(val) == JS_TAG_STRING) {
                 JSString *sp = JS_VALUE_GET_STRING(val);
                 uint64_t m;

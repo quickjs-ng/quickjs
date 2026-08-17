@@ -1723,8 +1723,13 @@ static void mpb_mul1_base(mpb_t *r, limb_t radix_base, limb_t a)
  *
  * Anything else returns false and falls back to the exact parser, so
  * behavior is unchanged.  Disabled without 128-bit integer support
- * (MSVC) and with JS_ATOD_NO_FAST_PATH for differential testing. */
-#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__)
+ * (MSVC) and for clang targeting MSVC on Windows, which lowers 128-bit
+ * division and the u128->double conversion to compiler-rt libcalls
+ * (__udivti3, __floatuntidf) that lld does not link. MinGW and Cygwin
+ * link the runtime library and keep the fast path. Also disabled with
+ * JS_ATOD_NO_FAST_PATH for differential testing. */
+#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__) && \
+    !(defined(_WIN32) && defined(__clang__) && !defined(__MINGW32__))
 
 static const uint64_t pow10_u64[20] = {
     UINT64_C(1),
@@ -1764,7 +1769,8 @@ static double round_u128_to_double(__uint128_t n)
 
     b = 128 - clz128((uint64_t)(n >> 64), (uint64_t)n);
     if (b <= 53) {
-        return (double)n; /* exact */
+        /* n < 2^53 fits in uint64_t; avoid a u128->double libcall */
+        return (double)(uint64_t)n; /* exact */
     }
     shift = b - 53;
     mant = (uint64_t)(n >> shift);
@@ -2059,7 +2065,8 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
     if (radix == 0)
         radix = 10;
 
-#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__)
+#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__) && \
+    !(defined(_WIN32) && defined(__clang__) && !defined(__MINGW32__))
     /* radix prefixes were consumed above, so p points at the digits */
     if (radix == 10) {
         double d;
