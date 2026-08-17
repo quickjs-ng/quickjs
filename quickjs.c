@@ -6324,48 +6324,21 @@ JSValue JS_NewObjectProto(JSContext *ctx, JSValueConst proto)
 JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
                          const JSValue *values)
 {
-    JSShapeProperty *pr;
-    uint32_t *hash;
-    JSRuntime *rt;
-    JSObject *p;
-    JSShape *sh;
     JSValue obj;
-    JSAtom atom;
-    intptr_t h;
     int i;
 
-    rt = ctx->rt;
     obj = JS_NewObject(ctx);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
-    if (count > 0) {
-        p = JS_VALUE_GET_OBJ(obj);
-        sh = p->shape;
-        assert(sh->is_hashed);
-        assert(JS_REF_COUNT(sh) == 1);
-        js_shape_hash_unlink(rt, sh);
-        if (resize_properties(ctx, &sh, p, count)) {
-            js_shape_hash_link(rt, sh);
-            JS_FreeValue(ctx, obj);
-            return JS_EXCEPTION;
-        }
-        p->shape = sh;
-        for (i = 0; i < count; i++) {
-            atom = props[i];
-            pr = &get_shape_prop(sh)[i];
-            sh->hash = shape_hash(shape_hash(sh->hash, atom), JS_PROP_C_W_E);
-            h = atom & sh->prop_hash_mask;
-            hash = &prop_hash_end(sh)[-h - 1];
-            pr->hash_next = *hash;
-            *hash = i + 1;
-            pr->atom = JS_DupAtom(ctx, atom);
-            pr->flags = JS_PROP_C_W_E;
-            p->prop[i].u.value = values[i];
-        }
-        js_shape_hash_link(rt, sh);
-        sh->prop_count = count;
-    }
+    for (i = 0; i < count; i++)
+        if (JS_SetProperty(ctx, obj, props[i], values[i]) < 0)
+            goto fail;
     return obj;
+fail:
+    for (/*empty*/; i < count; i++)
+        JS_FreeValue(ctx, values[i]);
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
 }
 
 JSValue JS_NewObjectFromStr(JSContext *ctx, int count, const char **props,
@@ -37051,8 +37024,8 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
         goto fail;
 
     function_size = sizeof(*b);
-    cpool_offset = function_size;
-    function_size += fd->cpool_count * sizeof(*fd->cpool);
+    cpool_offset = (function_size + 7) & ~7;
+    function_size = cpool_offset + fd->cpool_count * sizeof(*fd->cpool);
     vardefs_offset = function_size;
     function_size += (fd->arg_count + fd->var_count) * sizeof(*b->vardefs);
     closure_var_offset = function_size;
@@ -39753,8 +39726,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         goto fail;
 
     function_size = sizeof(*b);
-    cpool_offset = function_size;
-    function_size += bc.cpool_count * sizeof(*bc.cpool);
+    cpool_offset = (function_size + 7) & ~7;
+    function_size = cpool_offset + bc.cpool_count * sizeof(*bc.cpool);
     vardefs_offset = function_size;
     function_size += local_count * sizeof(*bc.vardefs);
     closure_var_offset = function_size;
@@ -40947,7 +40920,7 @@ static JSValue JS_NewCConstructor(JSContext *ctx, int class_id, const char *name
                                   const JSCFunctionListEntry *proto_fields, int n_proto_fields,
                                   int flags)
 {
-    JSValue ctor = JS_UNDEFINED, proto, parent_proto;
+    JSValue ctor = JS_UNDEFINED, proto, parent_proto, *class_proto;
     int proto_class_id, proto_flags, ctor_flags;
 
     proto_flags = 0;
@@ -40978,8 +40951,12 @@ static JSValue JS_NewCConstructor(JSContext *ctx, int class_id, const char *name
                                             n_proto_fields + 1);
         if (JS_IsException(proto))
             goto fail;
-        if (class_id >= 0)
-            ctx->class_proto[class_id] = js_dup(proto);
+        if (class_id >= 0) {
+            class_proto = &ctx->class_proto[class_id];
+            if (!JS_IsNull(*class_proto))
+                JS_FreeValue(ctx, *class_proto);
+            *class_proto = js_dup(proto);
+        }
     }
     if (JS_SetPropertyFunctionList(ctx, proto, proto_fields, n_proto_fields))
         goto fail;
@@ -52687,6 +52664,12 @@ static int js_proxy_get_own_property_names(JSContext *ctx,
     prop_array = JS_CallFree(ctx, method, s->handler, 1, vc(&s->target));
     if (JS_IsException(prop_array))
         return -1;
+    /* CreateListFromArrayLike() requires an object */
+    if (JS_VALUE_GET_TAG(prop_array) != JS_TAG_OBJECT) {
+        JS_FreeValue(ctx, prop_array);
+        JS_ThrowTypeError(ctx, "proxy: ownKeys must return an object");
+        return -1;
+    }
     tab = NULL;
     len = 0;
     tab_size = 0;
@@ -64824,6 +64807,10 @@ uintptr_t js_std_cmd(int cmd, ...) {
         rv = -1;
         if (JS_IsString(*pv))
             rv = JS_VALUE_GET_STRING(*pv)->kind;
+        break;
+    case 4: // GetShapeHashCount
+        rt = va_arg(ap, JSRuntime *);
+        rv = rt->shape_hash_count;
         break;
     default:
         rv = -1;
