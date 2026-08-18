@@ -1736,15 +1736,21 @@ JSContext *JS_NewCustomContext(JSRuntime *rt)
     return ctx;
 }
 
+static int interrupt_handler(JSRuntime *rt, void *opaque)
+{
+    int *interrupt_countdown = opaque;
+    return !--*interrupt_countdown;
+}
+
 int run_test_buf(ThreadLocalStorage *tls, const char *filename, char *harness,
                  namelist_t *ip, char *buf, size_t buf_len,
                  const char* error_type, int eval_flags, bool is_negative,
-                 bool is_async, bool can_block, bool track_promise_rejections,
-                 int *msec)
+                 bool is_async, bool can_block, bool set_interrupt_handler,
+                 bool track_promise_rejections, int *msec)
 {
+    int i, ret, interrupt_countdown;
     JSRuntime *rt;
     JSContext *ctx;
-    int i, ret;
 
     rt = JS_NewRuntime();
     if (rt == NULL) {
@@ -1785,6 +1791,12 @@ int run_test_buf(ThreadLocalStorage *tls, const char *filename, char *harness,
         }
     }
 
+    // must be big enough that the script isn't interrupted before it
+    // gets to the meat but not so big that it takes ages to kick in
+    interrupt_countdown = 150;
+    if (set_interrupt_handler)
+        JS_SetInterruptHandler(rt, interrupt_handler, &interrupt_countdown);
+
     ret = eval_buf(ctx, buf, buf_len, filename, true, is_negative,
                    error_type, eval_flags, is_async, msec);
     ret = (ret != 0);
@@ -1814,6 +1826,7 @@ int run_test(ThreadLocalStorage *tls, const char *filename, int *msec)
     int ret, eval_flags, use_strict, use_nostrict;
     bool is_negative, is_nostrict, is_onlystrict, is_async, is_module, skip;
     bool detect_module = true;
+    bool set_interrupt_handler = false;
     bool track_promise_rejections = false;
     bool can_block;
     namelist_t include_list = { 0 }, *ip = &include_list;
@@ -1872,6 +1885,9 @@ int run_test(ThreadLocalStorage *tls, const char *filename, int *msec)
                 }
                 else if (str_equal(option, "qjs:no-detect-module")) {
                     detect_module = false;
+                }
+                else if (str_equal(option, "qjs:set-interrupt-handler")) {
+                    set_interrupt_handler = true;
                 }
                 else if (str_equal(option, "qjs:track-promise-rejections")) {
                     track_promise_rejections = true;
@@ -1970,12 +1986,14 @@ int run_test(ThreadLocalStorage *tls, const char *filename, int *msec)
         if (use_nostrict) {
             ret = run_test_buf(tls, filename, harness, ip, buf, buf_len,
                                error_type, eval_flags, is_negative, is_async,
-                               can_block, track_promise_rejections, msec);
+                               can_block, set_interrupt_handler,
+                               track_promise_rejections, msec);
         }
         if (use_strict) {
             ret |= run_test_buf(tls, filename, harness, ip, buf, buf_len,
                                 error_type, eval_flags | JS_EVAL_FLAG_STRICT,
                                 is_negative, is_async, can_block,
+                                set_interrupt_handler,
                                 track_promise_rejections, msec);
         }
     }
