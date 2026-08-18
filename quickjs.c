@@ -55197,7 +55197,7 @@ static JSValue js_async_dispose_step(JSContext *ctx, JSValueConst this_val,
             return JS_EXCEPTION;
         resolve_fn = JS_NewCFunctionData(ctx, js_async_dispose_rethrow, 0, 0,
                                          1, &prev_err);
-        reject_fn = JS_NewCFunctionData(ctx, js_async_dispose_rethrow, 0, 1,
+        reject_fn = JS_NewCFunctionData(ctx, js_async_dispose_rethrow, 1, 1,
                                         1, &prev_err);
         then_args[0] = resolve_fn;
         then_args[1] = reject_fn;
@@ -55308,7 +55308,7 @@ static JSValue js_disposable_stack_dispose(JSContext *ctx,
             data[2] = hint_val;
             resolve_fn = JS_NewCFunctionData(ctx, js_async_dispose_step, 0, 0,
                                              3, data);
-            reject_fn = JS_NewCFunctionData(ctx, js_async_dispose_step, 0, 1,
+            reject_fn = JS_NewCFunctionData(ctx, js_async_dispose_step, 1, 1,
                                             3, data);
             JS_FreeValue(ctx, hint_val);
             JS_FreeValue(ctx, res->value);
