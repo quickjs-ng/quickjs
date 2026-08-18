@@ -43541,6 +43541,8 @@ static JSValue js_array_every(JSContext *ctx, JSValueConst this_val,
     n = 0;
 
     for(k = 0; k < len; k++) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         if (special & special_TA) {
             val = JS_GetPropertyInt64(ctx, obj, k);
             if (JS_IsException(val))
@@ -43662,6 +43664,8 @@ static JSValue js_array_reduce(JSContext *ctx, JSValueConst this_val,
         acc = js_dup(argv[1]);
     } else {
         for(;;) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             if (k >= len) {
                 JS_ThrowTypeError(ctx, "empty array");
                 goto exception;
@@ -43683,6 +43687,8 @@ static JSValue js_array_reduce(JSContext *ctx, JSValueConst this_val,
         }
     }
     for (; k < len; k++) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         k1 = (special & special_reduceRight) ? len - k - 1 : k;
         if (special & special_TA) {
             val = JS_GetPropertyInt64(ctx, obj, k1);
@@ -43784,6 +43790,8 @@ static JSValue js_array_includes(JSContext *ctx, JSValueConst this_val,
             }
         }
         for (; n < len; n++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             val = JS_GetPropertyInt64(ctx, obj, n);
             if (JS_IsException(val))
                 goto exception;
@@ -43830,6 +43838,8 @@ static JSValue js_array_indexOf(JSContext *ctx, JSValueConst this_val,
             }
         }
         for (; n < len; n++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             int present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
             if (present < 0)
                 goto exception;
@@ -43859,6 +43869,7 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValueConst this_val,
     int64_t len, n;
     JSValue *arrp;
     uint32_t count;
+    int present;
 
     obj = JS_ToObject(ctx, this_val);
     if (js_get_length64(ctx, &len, obj))
@@ -43879,7 +43890,9 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValueConst this_val,
             }
         }
         for (; n >= 0; n--) {
-            int present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
+            if (js_poll_interrupts(ctx))
+                goto exception;
+            present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
             if (present < 0)
                 goto exception;
             if (present) {
@@ -43942,6 +43955,8 @@ static JSValue js_array_find(JSContext *ctx, JSValueConst this_val,
 
     // TODO(bnoordhuis) add fast path for fast arrays
     for(; k != end; k += dir) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         index_val = js_int64(k);
         val = JS_GetPropertyValue(ctx, obj, index_val);
         if (JS_IsException(val))
