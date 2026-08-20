@@ -95,6 +95,6 @@ A lightweight proxy client, empowered by sing-box and thrift.
 
 A multi-engine JavaScript runtime and Rust embedding API with first-class QuickJS-NG support.
 
-## [scriptc]( https://github.com/vercel-labs/scriptc)
+## [scriptc](https://github.com/vercel-labs/scriptc)
 
 TypeScript-to-Native Compiler
