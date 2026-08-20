@@ -63747,7 +63747,7 @@ int JS_AddIntrinsicDOMException(JSContext *ctx)
     }
     JS_DefinePropertyValue(ctx, ctx->global_obj, JS_ATOM_DOMException, ctor,
                            JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-    ctx->class_proto[JS_CLASS_DOM_EXCEPTION] = proto;
+    set_value(ctx, &ctx->class_proto[JS_CLASS_DOM_EXCEPTION], proto);
     return 0;
 }
 /* base64 */
