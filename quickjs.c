@@ -2473,6 +2473,13 @@ void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold)
 #define free(p) free_is_forbidden(p)
 #define realloc(p,s) realloc_is_forbidden(p,s)
 
+JSInterruptHandler *JS_GetInterruptHandler(JSRuntime *rt, void **opaque)
+{
+    if (opaque)
+        *opaque = rt->interrupt_opaque;
+    return rt->interrupt_handler;
+}
+
 void JS_SetInterruptHandler(JSRuntime *rt, JSInterruptHandler *cb, void *opaque)
 {
     rt->interrupt_handler = cb;

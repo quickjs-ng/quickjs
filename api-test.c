@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
+#include "quickjs-libc.h"
 #include "cutils.h"
 
 static JSRuntime *new_runtime(void)
@@ -236,6 +237,49 @@ static void async_call(void)
     JS_FreeValue(ctx, e);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
+}
+
+static void eval_script_interrupt_test(const char *code)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue ret, exception;
+    int time = 0;
+
+    js_std_init_handlers(rt);
+    JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader,
+                            js_module_check_attributes, NULL);
+    js_init_module_std(ctx, "qjs:std");
+    JS_SetInterruptHandler(rt, timeout_interrupt_handler, &time);
+
+    ret = JS_Eval(ctx, code, strlen(code), "<input>",
+                  JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(!JS_IsException(ret));
+    assert(0 == js_module_set_import_meta(ctx, ret, false, false));
+    ret = JS_EvalFunction(ctx, ret);
+    ret = js_std_await(ctx, ret);
+    assert(time > MAX_TIME);
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    assert(JS_HasException(ctx));
+    exception = JS_GetException(ctx);
+    assert(JS_IsError(exception));
+    JS_FreeValue(ctx, exception);
+
+    js_std_free_handlers(rt);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void eval_script_preserves_interrupt_handler(void)
+{
+    eval_script_interrupt_test(
+        "import * as std from 'qjs:std';\n"
+        "std.evalScript('while (true) {}');\n");
+    eval_script_interrupt_test(
+        "import * as std from 'qjs:std';\n"
+        "std.evalScript('1');\n"
+        "while (true) {}\n");
 }
 
 static JSValue save_value(JSContext *ctx, JSValueConst this_val,
@@ -2057,6 +2101,7 @@ int main(void)
     cfunctions();
     sync_call();
     async_call();
+    eval_script_preserves_interrupt_handler();
     async_call_stack_overflow();
     raw_context_global_var();
     is_array();

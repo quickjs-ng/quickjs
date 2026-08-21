@@ -454,6 +454,7 @@ endif()
 add_executable(api-test
     api-test.c
 )
+add_qjs_libc_if_needed(api-test)
 target_compile_definitions(api-test PRIVATE ${qjs_defines})
 target_link_libraries(api-test PRIVATE qjs)
 
