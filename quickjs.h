@@ -542,6 +542,97 @@ JS_EXTERN void JS_SetClassProto(JSContext *ctx, JSClassID class_id, JSValue obj)
 JS_EXTERN JSValue JS_GetClassProto(JSContext *ctx, JSClassID class_id);
 JS_EXTERN JSValue JS_GetFunctionProto(JSContext *ctx);
 
+/* Debug callback - invoked when the interpreter hits an OP_debug opcode.
+   Return 0 to continue execution. Return non-zero to abort execution at
+   this point: the engine will jump to the exception handler.  The
+   callback may itself call JS_Throw* to provide a specific exception;
+   if the callback returns non-zero without having raised one, the engine
+   will synthesize a default InternalError("aborted by debugger").  If
+   the callback raises an exception via JS_Throw* but returns 0, the
+   engine still treats it as a request to abort.
+
+   OP_debug opcodes are only emitted at statement boundaries when a debug
+   trace handler is registered at parse time.  Therefore only code that
+   is parsed (e.g. by JS_Eval / JS_Compile) AFTER JS_SetDebugTraceHandler
+   has been called will be instrumented; previously compiled bytecode
+   will not invoke the callback.  In practice, install the handler before
+   evaluating any application code.
+
+   'filename' and 'funcname' are JSAtom values identifying the source file
+   and enclosing function name.  They are valid only for the duration of
+   the callback; call JS_DupAtom() if you need to retain them.  Either
+   may be JS_ATOM_NULL (0) for anonymous functions or eval code.  Use
+   JS_AtomToCString() / JS_AtomToString() to convert to a C string or
+   JSValue when needed.  Accepting JSAtom avoids a heap allocation on
+   every instrumented statement when the embedder only needs to compare
+   against a known set of breakpoint locations. */
+/* Flags passed to JSDebugTraceFunc.  Use bitwise-AND to test specific bits. */
+#define JS_DEBUG_TRACE_DEBUGGER_STMT (1 << 0) /* triggered by `debugger;` statement */
+
+typedef int JSDebugTraceFunc(JSContext *ctx,
+                             JSAtom filename,
+                             JSAtom funcname,
+                             int line,
+                             int col,
+                             int flags,
+                             void *opaque);
+
+/* Set (or clear) the debug trace handler on a context.  Pass NULL to
+   disable.  Works with any context, including those created with
+   JS_NewContextRaw.  See JSDebugTraceFunc above for the parse-time
+   instrumentation contract. */
+JS_EXTERN void JS_SetDebugTraceHandler(JSContext *ctx,
+                                       JSDebugTraceFunc *cb,
+                                       void *opaque);
+
+/* Debug API: Get local variables in stack frames */
+typedef struct JSDebugLocalVar {
+    const char *name;
+    JSValue value;
+    bool is_arg;
+    bool is_closure;       /* true if captured from an enclosing scope */
+    int scope_level;
+} JSDebugLocalVar;
+
+/* Get the call stack depth (0 when no frames are active). */
+JS_EXTERN int JS_GetStackDepth(JSContext *ctx);
+
+/* Get local variables at a specific stack level (0 = current frame, 1 = caller, etc.).
+   On success, *pvars receives an allocated array of JSDebugLocalVar entries
+   that must be freed with JS_FreeLocalVariables(), and *pcount receives the
+   entry count.  If no variables are available, *pvars is set to NULL and
+   *pcount is set to 0.  Returns -1 on exception.
+
+   The returned array contains arguments first, then locals, then any closure
+   variables captured from enclosing scopes (with `is_closure = true`). */
+JS_EXTERN int JS_GetLocalVariablesAtLevel(JSContext *ctx, int level,
+                                          JSDebugLocalVar **pvars,
+                                          int *pcount);
+
+/* Free local variables array returned by JS_GetLocalVariablesAtLevel */
+JS_EXTERN void JS_FreeLocalVariables(JSContext *ctx, JSDebugLocalVar *vars, int count);
+
+/* Set a local or closure variable in a stack frame by name.
+   Returns 0 on success, -1 if the variable is not found, -2 if it is a const
+   binding (read-only), or -3 on type/argument errors. */
+JS_EXTERN int JS_SetVariableAtLevel(JSContext *ctx, int level,
+                                    const char *name, JSValue value);
+
+/* Evaluate an expression in the context of the given stack frame.
+   The expression has access to the frame's local and closure variables.
+   On success, returns the resulting JSValue.  On error, returns
+   JS_EXCEPTION (the exception is set on `ctx`).
+
+   This is a best-effort implementation: simple identifiers are resolved
+   against the frame's bindings, and otherwise the expression is evaluated
+   in a synthetic scope that surfaces the frame variables as globals on a
+   transient object.  Modifications to those bindings are NOT propagated
+   back to the underlying stack frame -- use JS_SetVariableAtLevel for
+   that. */
+JS_EXTERN JSValue JS_EvalInStackFrame(JSContext *ctx, int level,
+                                      const char *input, size_t input_len,
+                                      const char *filename);
+
 /* the following functions are used to select the intrinsic object to
    save memory */
 JS_EXTERN JSContext *JS_NewContextRaw(JSRuntime *rt);
