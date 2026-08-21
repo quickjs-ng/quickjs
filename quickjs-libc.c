@@ -187,6 +187,8 @@ typedef struct JSThreadState {
     struct list_head port_list; /* list of JSWorkerMessageHandler.link */
     struct list_head rejected_promise_list; /* list of JSRejectedPromiseEntry.link */
     int eval_script_recurse; /* only used in the main thread */
+    JSInterruptHandler *saved_interrupt_handler;
+    void *saved_interrupt_opaque;
     int64_t next_timer_id; /* for setTimeout / setInterval */
     bool can_js_os_poll;
     /* not used in the main thread */
@@ -1085,7 +1087,13 @@ static JSValue js_std_gc(JSContext *ctx, JSValueConst this_val,
 
 static int interrupt_handler(JSRuntime *rt, void *opaque)
 {
-    return (os_pending_signals >> SIGINT) & 1;
+    JSThreadState *ts = opaque;
+
+    if ((os_pending_signals >> SIGINT) & 1)
+        return 1;
+    if (ts->saved_interrupt_handler)
+        return ts->saved_interrupt_handler(rt, ts->saved_interrupt_opaque);
+    return 0;
 }
 
 static JSValue js_evalScript(JSContext *ctx, JSValueConst this_val,
@@ -1147,8 +1155,9 @@ static JSValue js_evalScript(JSContext *ctx, JSValueConst this_val,
             return JS_EXCEPTION;
     }
     if (!ts->recv_pipe && ++ts->eval_script_recurse == 1) {
-        /* install the interrupt handler */
-        JS_SetInterruptHandler(JS_GetRuntime(ctx), interrupt_handler, NULL);
+        ts->saved_interrupt_handler =
+            JS_GetInterruptHandler(rt, &ts->saved_interrupt_opaque);
+        JS_SetInterruptHandler(rt, interrupt_handler, ts);
     }
     flags = compile_module ? JS_EVAL_TYPE_MODULE : JS_EVAL_TYPE_GLOBAL;
     if (backtrace_barrier)
@@ -1165,8 +1174,10 @@ static JSValue js_evalScript(JSContext *ctx, JSValueConst this_val,
     }
     JS_FreeCString(ctx, str);
     if (!ts->recv_pipe && --ts->eval_script_recurse == 0) {
-        /* remove the interrupt handler */
-        JS_SetInterruptHandler(JS_GetRuntime(ctx), NULL, NULL);
+        JS_SetInterruptHandler(rt, ts->saved_interrupt_handler,
+                               ts->saved_interrupt_opaque);
+        ts->saved_interrupt_handler = NULL;
+        ts->saved_interrupt_opaque = NULL;
         os_pending_signals &= ~((uint64_t)1 << SIGINT);
         /* convert the uncatchable "interrupted" error into a normal error
            so that it can be caught by the REPL */

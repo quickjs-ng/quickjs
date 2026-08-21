@@ -518,7 +518,7 @@ if tests.allowed()
       'api-test.c',
 
       c_args: qjs_c_args,
-      dependencies: qjs_dep,
+      dependencies: [qjs_dep, qjs_libc_dep],
       build_by_default: false,
     ),
   )
