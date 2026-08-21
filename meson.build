@@ -188,7 +188,7 @@ qjs_export_variables = [
 ]
 
 # This note is only of interest on Windows.
-# Be conservative here: only pass -DUSING_QJS_SHARED iff default_library ==
+# Be conservative here: only pass -DUSING_QJS_SHARED if default_library ==
 # 'shared', thus qjs is guaranteed to be a DLL. Not passing -DUSING_QJS_SHARED if
 # qjs is a DLL is not harmful, but passing the definition for DLL qjs is desired.
 # Conversely, if -DUSING_QJS_SHARED is passed for static qjs, the consumers
