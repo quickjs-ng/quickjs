@@ -98,3 +98,7 @@ A multi-engine JavaScript runtime and Rust embedding API with first-class QuickJ
 ## [scriptc](https://github.com/vercel-labs/scriptc)
 
 TypeScript-to-Native Compiler
+
+## [Qbs](https://github.com/qbs/qbs)
+
+Cross-platform build system. Uses QuickJS-NG as its JavaScript backend for evaluating project files.
