@@ -1119,7 +1119,7 @@ static void dtoa_free(void *ptr)
  * Ported from https://github.com/ulfjack/ryu (Copyright 2018 Ulf
  * Adams, Apache-2.0 or BSL-1.0); lookup tables live in
  * dtoa-ryu-table.h. */
-#if !defined(JS_DTOA_NO_RYU)
+#if !defined(JS_DTOA_NO_FAST_PATH)
 
 #include "dtoa-ryu-table.h"
 
@@ -1443,7 +1443,7 @@ static int ryu_format_free(char *buf, char *q, uint64_t output, int32_t exp)
     return q - buf;
 }
 
-#endif /* !JS_DTOA_NO_RYU */
+#endif /* !JS_DTOA_NO_FAST_PATH */
 
 /* return the length */
 int js_dtoa(char *buf, double d, int radix, int n_digits, int flags,
@@ -1518,7 +1518,7 @@ int js_dtoa(char *buf, double d, int radix, int n_digits, int flags,
     }
 #endif
     
-#if !defined(JS_DTOA_NO_RYU)
+#if !defined(JS_DTOA_NO_FAST_PATH)
     if (fmt == JS_DTOA_FORMAT_FREE && radix == 10 &&
         (flags & JS_DTOA_EXP_MASK) == JS_DTOA_EXP_AUTO) {
         uint64_t output;
@@ -1728,8 +1728,7 @@ static void mpb_mul1_base(mpb_t *r, limb_t radix_base, limb_t a)
  * (__udivti3, __floatuntidf) that lld does not link. MinGW and Cygwin
  * link the runtime library and keep the fast path. Also disabled with
  * JS_ATOD_NO_FAST_PATH for differential testing. */
-#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__) && \
-    !(defined(_WIN32) && defined(__clang__) && !defined(__MINGW32__))
+#ifdef JS_ATOD_USE_FAST_PATH
 
 static const uint64_t pow10_u64[20] = {
     UINT64_C(1),
@@ -2065,8 +2064,7 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
     if (radix == 0)
         radix = 10;
 
-#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__) && \
-    !(defined(_WIN32) && defined(__clang__) && !defined(__MINGW32__))
+#ifdef JS_ATOD_USE_FAST_PATH
     /* radix prefixes were consumed above, so p points at the digits */
     if (radix == 10) {
         double d;

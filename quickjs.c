@@ -13980,27 +13980,27 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
                Not for clang targeting MSVC on Windows: it needs
                compiler-rt libcalls for 128-bit division that lld does
                not link (MinGW/Cygwin link the runtime and stay on). */
-#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__) && \
-    !(defined(_WIN32) && defined(__clang__) && !defined(__MINGW32__))
+#ifdef JS_ATOD_USE_FAST_PATH
             if (JS_VALUE_GET_NORM_TAG(val) == JS_TAG_STRING) {
                 JSString *sp = JS_VALUE_GET_STRING(val);
                 uint64_t m;
                 int32_t e10;
                 int neg;
-                if (!sp->is_wide_char &&
-                    js_atod_fast10_parse((const char *)str8(sp), sp->len,
-                                         &m, &e10, &neg)) {
-                    JS_FreeValue(ctx, val);
-                    if (m == 0) {
-                        /* keep -0 per StringToNumber */
-                        return neg ? js_float64(-0.0) : js_int32(0);
-                    } else if (e10 == 0 &&
-                               (neg ? m <= 2147483648 : m <= 2147483647)) {
-                        /* skip the double round-trip for plain integers */
-                        return js_int32(neg ? (int32_t)(0 - (uint32_t)m)
-                                            : (int32_t)m);
+                if (!sp->is_wide_char) {
+                    if (js_atod_fast10_parse((const char *)str8(sp), sp->len,
+                                             &m, &e10, &neg)) {
+                        JS_FreeValue(ctx, val);
+                        if (m == 0) {
+                            /* keep -0 per StringToNumber */
+                            return neg ? js_float64(-0.0) : js_int32(0);
+                        } else if (e10 == 0 &&
+                                   (neg ? m <= 2147483648 : m <= 2147483647)) {
+                            /* skip the double round-trip for plain integers */
+                            return js_int32(neg ? (int32_t)(0 - (uint32_t)m)
+                                                : (int32_t)m);
+                        }
+                        return js_number(js_atod_fast10_round(m, e10, neg));
                     }
-                    return js_number(js_atod_fast10_round(m, e10, neg));
                 }
             }
 #endif

@@ -474,6 +474,10 @@ add_executable(unicode_gen EXCLUDE_FROM_ALL
 )
 target_compile_definitions(unicode_gen PRIVATE ${qjs_defines})
 
+add_executable(ryu_gen EXCLUDE_FROM_ALL
+    ryu_gen.c
+)
+
 add_executable(function_source
     gen/function_source.c
 )
