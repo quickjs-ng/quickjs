@@ -18,16 +18,19 @@
         } else {
             const iter = method.call(arrayLike)
             result = isConstructor ? new this() : Array()
-            try {
-                for (;;) {
-                    let {value, done} = await iter.next()
-                    if (done) break
+            for (;;) {
+                let {value, done} = await iter.next()
+                if (done) break
+                try {
                     if (sync) value = await value
                     if (mapFn) value = await mapFn.call(thisArg, value, i)
                     Object·defineProperty(result, i++, {value, configurable: true, writable: true, enumerable: true})
+                } catch (error) {
+                    try {
+                        if (iter.return) await iter.return()
+                    } catch {}
+                    throw error
                 }
-            } finally {
-                if (iter.return) iter.return()
             }
         }
         result.length = i
