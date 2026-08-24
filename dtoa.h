@@ -76,7 +76,8 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
                JSATODTempMem *tmp_mem);
 /* fast parser for plain base-10 strings; guarded exactly like the
    definitions in dtoa.c so callers don't link against a stub */
-#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__)
+#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__) && \
+    !(defined(_WIN32) && defined(__clang__) && !defined(__MINGW32__))
 bool js_atod_fast10_parse(const char *str, size_t len, uint64_t *pm,
                           int32_t *pe10, int *pneg);
 double js_atod_fast10_round(uint64_t m, int32_t e10, int neg);
