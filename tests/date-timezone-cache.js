@@ -4,6 +4,7 @@
 // TZ environment variable changes (on platforms where the C library honors TZ).
 import { assert } from "./assert.js";
 import * as std from "qjs:std";
+import * as os from "qjs:os";
 
 function is_windows() {
     const os = std.getenv("OS");
@@ -51,18 +52,30 @@ function test_tz_change() {
         for (let i = 0; i < 16; i++)
             assert(d.getTimezoneOffset(), 0, "UTC timezone offset cache");
 
+        // The cache picks up a TZ change at most JS_TZ_OFFSET_CACHE_TTL_MS (1s)
+        // later, so poll instead of asserting immediately.
         std.setenv("TZ", "QST8");
-        assert(d.getTimezoneOffset(), 480, "TZ change invalidates cache");
+        assert(wait_for_offset(d, 480, 3000), true, "TZ change invalidates cache");
         assert(Date.parse(d.toString()), t, "TZ change local string roundtrip");
 
         std.setenv("TZ", "UTC0");
-        assert(d.getTimezoneOffset(), 0, "TZ change back to UTC");
+        assert(wait_for_offset(d, 0, 3000), true, "TZ change back to UTC");
     } finally {
         if (old_tz === undefined)
             std.unsetenv("TZ");
         else
             std.setenv("TZ", old_tz);
     }
+}
+
+function wait_for_offset(d, expected, timeout_ms) {
+    const deadline = Date.now() + timeout_ms;
+    while (Date.now() < deadline) {
+        if (d.getTimezoneOffset() === expected)
+            return true;
+        os.sleep(50);
+    }
+    return d.getTimezoneOffset() === expected;
 }
 
 test_repeated_lookup();
