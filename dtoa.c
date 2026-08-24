@@ -1839,21 +1839,28 @@ static double round_m_div_d_to_double(uint64_t m, uint64_t d, int b)
                              (mant & (((uint64_t)1 << 52) - 1)));
 }
 
-/* Return true and set *pd and *pend when the string is a plain base-10
-   number inside the fast-path bounds.  Return false otherwise; the
-   caller then uses the exact parser, which also sets *pnext correctly
-   for partial matches. */
-static bool js_atod_fast10(const char *p, bool int_only, double *pd,
-                           const char **pend)
+/* Shared core of the fast decimal parser: parse a plain base-10 number in
+   [p, end) with no sign and no surrounding spaces, at most 19 significant
+   digits and a decimal exponent in [-19, 19].  Return true and the mantissa
+   m and exponent e10 such that value = m * 10^e10 on success; false means
+   the caller must use the exact parser, which also sets *pnext for partial
+   matches. */
+static bool js_atod_fast10_parse_core(const char *p, const char *end,
+                                      bool int_only, uint64_t *pm,
+                                      int32_t *pe10)
 {
     uint64_t m = 0;
     int ndigits = 0, e10 = 0, exp;
+    bool saw_digit = false;
     const char *q = p;
 
     /* leading zeros don't affect the value */
-    while (*q == '0')
+    while (q < end && *q == '0') {
+        saw_digit = true;
         q++;
-    while (*q >= '0' && *q <= '9') {
+    }
+    while (q < end && *q >= '0' && *q <= '9') {
+        saw_digit = true;
         if (ndigits >= 19) {
             if (*q != '0')
                 return false; /* 20th significant digit: not exact */
@@ -1867,11 +1874,12 @@ static bool js_atod_fast10(const char *p, bool int_only, double *pd,
         }
         q++;
     }
-    if (*q == '.') {
+    if (q < end && *q == '.') {
         if (int_only)
             return false;
         q++;
-        while (*q >= '0' && *q <= '9') {
+        while (q < end && *q >= '0' && *q <= '9') {
+            saw_digit = true;
             if (ndigits >= 19) {
                 if (*q != '0')
                     return false;
@@ -1883,41 +1891,77 @@ static bool js_atod_fast10(const char *p, bool int_only, double *pd,
             q++;
         }
     }
-    if (*q == 'e' || *q == 'E') {
+    if (q < end && (*q == 'e' || *q == 'E')) {
         const char *r = q + 1;
-        int neg = 0;
+        int eneg = 0;
         if (int_only)
             return false;
-        if (*r == '+') {
+        if (r < end && *r == '+') {
             r++;
-        } else if (*r == '-') {
-            neg = 1;
+        } else if (r < end && *r == '-') {
+            eneg = 1;
             r++;
         }
-        if (*r < '0' || *r > '9')
+        if (r >= end || *r < '0' || *r > '9')
             return false; /* bare "1e" parses "1" in the exact parser */
         exp = 0;
-        while (*r >= '0' && *r <= '9') {
+        while (r < end && *r >= '0' && *r <= '9') {
             if (exp > 1000)
                 return false; /* huge exponent: exact parser clamps to 0/inf */
             exp = exp * 10 + (*r - '0');
             r++;
         }
-        e10 += neg ? -exp : exp;
+        e10 += eneg ? -exp : exp;
         q = r;
     }
-    if (*q != '\0' || e10 < -19 || e10 > 19)
+    /* a number must contain at least one digit: ".", "+." and "-." are NaN */
+    if (!saw_digit || q != end || e10 < -19 || e10 > 19)
         return false;
+    *pm = m;
+    *pe10 = e10;
+    return true;
+}
+
+/* Entry point for flat strings: optional sign and surrounding ASCII
+   spaces.  Lets the runtime (JS_ToNumberHintFree) skip the general js_atof
+   scanner for the common short decimal inputs; m may be 0 (then e10 is
+   ignored by the round helper). */
+bool js_atod_fast10_parse(const char *p, size_t len, uint64_t *pm,
+                          int32_t *pe10, int *pneg)
+{
+    const char *end = p + len, *q;
+    int neg = 0;
+
+    while (p < end && *p == ' ')
+        p++;
+    if (p < end && (*p == '+' || *p == '-')) {
+        neg = (*p == '-');
+        p++;
+    }
+    q = end;
+    while (q > p && q[-1] == ' ')
+        q--;
+    if (!js_atod_fast10_parse_core(p, q, 0, pm, pe10))
+        return false;
+    *pneg = neg;
+    return true;
+}
+
+/* Correctly round m * 10^e10 to double, with the sign applied; requires
+   0 <= m < 10^19 and |e10| <= 19 (the parser's bounds). */
+double js_atod_fast10_round(uint64_t m, int32_t e10, int neg)
+{
+    double d;
+
     if (m == 0) {
-        *pd = 0.0; /* sign is applied by the caller, keeping -0 */
+        d = 0.0;
     } else if (e10 >= 0) {
-        *pd = round_u128_to_double((__uint128_t)m * pow10_u64[e10]);
+        d = round_u128_to_double((__uint128_t)m * pow10_u64[e10]);
     } else {
         int b = 64 - clz64(m);
-        *pd = round_m_div_d_to_double(m, pow10_u64[-e10], b);
+        d = round_m_div_d_to_double(m, pow10_u64[-e10], b);
     }
-    *pend = q;
-    return true;
+    return neg ? -d : d;
 }
 #endif
 
@@ -1993,10 +2037,13 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
     /* radix prefixes were consumed above, so p points at the digits */
     if (radix == 10) {
         double d;
-        const char *end;
-        if (js_atod_fast10(p, (flags & JS_ATOD_INT_ONLY) != 0, &d, &end)) {
-            if (is_neg)
-                d = -d;
+        const char *end = p + strlen(p);
+        uint64_t m;
+        int32_t e10;
+        if (js_atod_fast10_parse_core(p, end,
+                                      (flags & JS_ATOD_INT_ONLY) != 0,
+                                      &m, &e10)) {
+            d = js_atod_fast10_round(m, e10, is_neg);
             if (pnext)
                 *pnext = end;
             return d;
