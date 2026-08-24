@@ -74,10 +74,16 @@ int js_dtoa(char *buf, double d, int radix, int n_digits, int flags,
             JSDTOATempMem *tmp_mem);
 double js_atod(const char *str, const char **pnext, int radix, int flags,
                JSATODTempMem *tmp_mem);
-/* fast parser for plain base-10 strings; guarded exactly like the
-   definitions in dtoa.c so callers don't link against a stub */
+/* string->number fast path for plain base-10 input. Enabled when a 128-bit
+   integer type is available and not explicitly disabled. MSVC and clang
+   targeting MSVC on Windows are excluded because 128-bit division and the
+   u128->double conversion lower to compiler-rt libcalls that lld does not
+   link (MinGW/Cygwin link the runtime and keep the fast path). */
 #if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__) && \
     !(defined(_WIN32) && defined(__clang__) && !defined(__MINGW32__))
+#define JS_ATOD_USE_FAST_PATH 1
+#endif
+#ifdef JS_ATOD_USE_FAST_PATH
 bool js_atod_fast10_parse(const char *str, size_t len, uint64_t *pm,
                           int32_t *pe10, int *pneg);
 double js_atod_fast10_round(uint64_t m, int32_t e10, int neg);
