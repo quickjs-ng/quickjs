@@ -1350,6 +1350,219 @@ static void mpb_mul1_base(mpb_t *r, limb_t radix_base, limb_t a)
 }
 
 /* XXX: add fast path for small integers */
+/* ---------- fast path: plain base-10 string to double ----------
+ *
+ * The exact bignum parser below handles every corner case but is the
+ * hot spot for runtime string->number coercions (Number(str), `+str`,
+ * `str | 0`, ...) which overwhelmingly receive short, plain decimal
+ * input.  Parse such input with 128-bit integer arithmetic and round
+ * once at the end (round-half-to-even), which is bit-identical to the
+ * bignum path for the inputs accepted here:
+ *
+ *   - at most 19 significant digits (fits in uint64_t)
+ *   - decimal exponent in [-19, 19] (10^19 fits in uint64_t)
+ *   - no separators, radix prefix or trailing garbage
+ *
+ * Anything else returns false and falls back to the exact parser, so
+ * behavior is unchanged.  Disabled without 128-bit integer support
+ * (MSVC) and with JS_ATOD_NO_FAST_PATH for differential testing. */
+#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__)
+
+static const uint64_t pow10_u64[20] = {
+    UINT64_C(1),
+    UINT64_C(10),
+    UINT64_C(100),
+    UINT64_C(1000),
+    UINT64_C(10000),
+    UINT64_C(100000),
+    UINT64_C(1000000),
+    UINT64_C(10000000),
+    UINT64_C(100000000),
+    UINT64_C(1000000000),
+    UINT64_C(10000000000),
+    UINT64_C(100000000000),
+    UINT64_C(1000000000000),
+    UINT64_C(10000000000000),
+    UINT64_C(100000000000000),
+    UINT64_C(1000000000000000),
+    UINT64_C(10000000000000000),
+    UINT64_C(100000000000000000),
+    UINT64_C(1000000000000000000),
+    UINT64_C(10000000000000000000),
+};
+
+static inline int clz128(uint64_t hi, uint64_t lo)
+{
+    /* caller guarantees n != 0 so at most one branch sees a zero value */
+    return hi ? clz64(hi) : 64 + clz64(lo);
+}
+
+/* round the exact integer n to nearest double, n >= 1.  Used by the
+   multiply path where the scaled value fits in 128 bits. */
+static double round_u128_to_double(__uint128_t n)
+{
+    int b, shift;
+    uint64_t mant;
+
+    b = 128 - clz128((uint64_t)(n >> 64), (uint64_t)n);
+    if (b <= 53) {
+        return (double)n; /* exact */
+    }
+    shift = b - 53;
+    mant = (uint64_t)(n >> shift);
+    {
+        __uint128_t low = n & (((__uint128_t)1 << shift) - 1);
+        __uint128_t half = (__uint128_t)1 << (shift - 1);
+        int round_up = low > half || (low == half && (mant & 1));
+        if (round_up) {
+            mant++;
+            if (mant >> 53) {
+                /* carry to bit 53: mantissa becomes 2^52, exponent +1 */
+                mant >>= 1;
+                b++;
+            }
+        }
+    }
+    /* value = mant * 2^(b-53) with mant in [2^52, 2^53) */
+    return uint64_as_float64(((uint64_t)(b - 1 + 1023) << 52) |
+                             (mant & (((uint64_t)1 << 52) - 1)));
+}
+
+/* round m / d to nearest double, 0 < d < 2^62, m >= 1, b = bitlen(m).
+   The quotient stays in the normal double range because the caller
+   only feeds values in [10^-19, 10^19]; the rounding is exact because
+   m/d is kept as the rational q + r/d until the single final rounding
+   (shifting q left to 53 bits also scales r/d, hence the two cases). */
+static double round_m_div_d_to_double(uint64_t m, uint64_t d, int b)
+{
+    uint64_t n = m << (64 - b); /* top bit set */
+    uint64_t q = n / d, r = n % d;
+    int bq = 64 - clz64(q);
+    /* v = m/d = (q + r/d) * 2^(b-64) */
+    int e = bq + b - 65;
+    int shift = bq - 53;
+    uint64_t mant;
+
+    if (shift > 0) {
+        uint64_t low = q & (((uint64_t)1 << shift) - 1);
+        uint64_t half = (uint64_t)1 << (shift - 1);
+        int round_up;
+        mant = q >> shift;
+        round_up = low > half ||
+                   (low == half && (r != 0 || (mant & 1)));
+        if (round_up) {
+            mant++;
+            if (mant >> 53) {
+                mant >>= 1;
+                e++;
+            }
+        }
+    } else {
+        /* q has fewer than 53 bits: shift q left and fold the scaled
+           fraction r*2^-shift/d in, rounding the remainder once */
+        int sh = -shift;
+        __uint128_t rn = (__uint128_t)r << sh;
+        uint64_t fi = (uint64_t)(rn / d);
+        uint64_t rem = (uint64_t)(rn % d);
+        uint64_t half_d = d / 2; /* d = 10^k is even; avoid 2*rem overflow */
+        mant = (q << sh) + fi;
+        if (rem > half_d)
+            mant++;
+        else if (rem == half_d)
+            mant += (mant & 1);
+        /* q + fi can round up to exactly 2^53 (carry) */
+        if (mant >> 53) {
+            mant >>= 1;
+            e++;
+        }
+    }
+    /* value = mant * 2^(e-52), mant in [2^52, 2^53) */
+    return uint64_as_float64(((uint64_t)(e + 1023) << 52) |
+                             (mant & (((uint64_t)1 << 52) - 1)));
+}
+
+/* Return true and set *pd and *pend when the string is a plain base-10
+   number inside the fast-path bounds.  Return false otherwise; the
+   caller then uses the exact parser, which also sets *pnext correctly
+   for partial matches. */
+static bool js_atod_fast10(const char *p, bool int_only, double *pd,
+                           const char **pend)
+{
+    uint64_t m = 0;
+    int ndigits = 0, e10 = 0, exp;
+    const char *q = p;
+
+    /* leading zeros don't affect the value */
+    while (*q == '0')
+        q++;
+    while (*q >= '0' && *q <= '9') {
+        if (ndigits >= 19) {
+            if (*q != '0')
+                return false; /* 20th significant digit: not exact */
+            /* trailing zeros still scale the value */
+            e10++;
+            if (e10 > 19)
+                return false;
+        } else {
+            m = m * 10 + (*q - '0');
+            ndigits++;
+        }
+        q++;
+    }
+    if (*q == '.') {
+        if (int_only)
+            return false;
+        q++;
+        while (*q >= '0' && *q <= '9') {
+            if (ndigits >= 19) {
+                if (*q != '0')
+                    return false;
+            } else {
+                m = m * 10 + (*q - '0');
+                ndigits++;
+                e10--;
+            }
+            q++;
+        }
+    }
+    if (*q == 'e' || *q == 'E') {
+        const char *r = q + 1;
+        int neg = 0;
+        if (int_only)
+            return false;
+        if (*r == '+') {
+            r++;
+        } else if (*r == '-') {
+            neg = 1;
+            r++;
+        }
+        if (*r < '0' || *r > '9')
+            return false; /* bare "1e" parses "1" in the exact parser */
+        exp = 0;
+        while (*r >= '0' && *r <= '9') {
+            if (exp > 1000)
+                return false; /* huge exponent: exact parser clamps to 0/inf */
+            exp = exp * 10 + (*r - '0');
+            r++;
+        }
+        e10 += neg ? -exp : exp;
+        q = r;
+    }
+    if (*q != '\0' || e10 < -19 || e10 > 19)
+        return false;
+    if (m == 0) {
+        *pd = 0.0; /* sign is applied by the caller, keeping -0 */
+    } else if (e10 >= 0) {
+        *pd = round_u128_to_double((__uint128_t)m * pow10_u64[e10]);
+    } else {
+        int b = 64 - clz64(m);
+        *pd = round_m_div_d_to_double(m, pow10_u64[-e10], b);
+    }
+    *pend = q;
+    return true;
+}
+#endif
+
 double js_atod(const char *str, const char **pnext, int radix, int flags,
                JSATODTempMem *tmp_mem)
 {
@@ -1417,6 +1630,21 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
     }
     if (radix == 0)
         radix = 10;
+
+#if !defined(JS_ATOD_NO_FAST_PATH) && defined(__SIZEOF_INT128__)
+    /* radix prefixes were consumed above, so p points at the digits */
+    if (radix == 10) {
+        double d;
+        const char *end;
+        if (js_atod_fast10(p, (flags & JS_ATOD_INT_ONLY) != 0, &d, &end)) {
+            if (is_neg)
+                d = -d;
+            if (pnext)
+                *pnext = end;
+            return d;
+        }
+    }
+#endif
 
     cur_limb = 0;
     expn_offset = 0;
