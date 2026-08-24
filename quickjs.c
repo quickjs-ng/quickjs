@@ -13934,6 +13934,42 @@ typedef enum JSToNumberHintEnum {
     TON_FLAG_NUMERIC,
 } JSToNumberHintEnum;
 
+/* Fast path for StringToNumber on plain ASCII decimal strings, the hot
+   case for `+str`, `"123" | 0` and arithmetic coercions.  Only values
+   below 2^53 are accepted: below that threshold the value is exact as a
+   double, so integer parsing equals the exact parser.  At or above 2^53
+   the double rounding is handled by the exact parser, hence the cutoff.
+   Only ASCII spaces are trimmed; any other character falls back. */
+static bool js_string_digits_fast(const char *s, size_t len, uint64_t *pv,
+                                  int *pneg)
+{
+    size_t i = 0;
+    int neg = 0;
+    uint64_t v = 0;
+
+    while (i < len && s[i] == ' ')
+        i++;
+    if (i < len && (s[i] == '+' || s[i] == '-')) {
+        neg = (s[i] == '-');
+        i++;
+    }
+    if (i >= len || s[i] < '0' || s[i] > '9')
+        return false;
+    do {
+        if (v >= 9007199254740992ull) /* 2^53 */
+            return false;
+        v = v * 10 + (s[i] - '0');
+        i++;
+    } while (i < len && s[i] >= '0' && s[i] <= '9');
+    while (i < len && s[i] == ' ')
+        i++;
+    if (i != len)
+        return false;
+    *pv = v;
+    *pneg = neg;
+    return true;
+}
+
 static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
                                    JSToNumberHintEnum flag)
 {
@@ -13975,6 +14011,29 @@ static JSValue JS_ToNumberHintFree(JSContext *ctx, JSValue val,
             const char *p;
             size_t len;
 
+            if (JS_VALUE_GET_NORM_TAG(val) == JS_TAG_STRING) {
+                JSString *sp = JS_VALUE_GET_STRING(val);
+                uint64_t v;
+                int neg;
+                if (!sp->is_wide_char &&
+                    js_string_digits_fast((const char *)str8(sp), sp->len,
+                                          &v, &neg)) {
+                    JS_FreeValue(ctx, val);
+                    if (neg) {
+                        /* -0 must remain -0 per StringToNumber */
+                        if (v == 0)
+                            return js_float64(-0.0);
+                        if (v <= 2147483648)
+                            return js_int32((int32_t)(0 - (uint32_t)v));
+                    } else if (v <= 2147483647) {
+                        return js_int32((int32_t)v);
+                    }
+                    {
+                        double d = (double)v;
+                        return js_float64(neg ? -d : d);
+                    }
+                }
+            }
             str = JS_ToCStringLen(ctx, &len, val);
             JS_FreeValue(ctx, val);
             if (!str)
