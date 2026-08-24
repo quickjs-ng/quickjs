@@ -56057,18 +56057,26 @@ static JSValue js_promise_withResolvers(JSContext *ctx, JSValueConst this_val,
     obj = JS_NewObject(ctx);
     if (JS_IsException(obj))
         goto exception;
-    if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_promise, result_promise,
-                               JS_PROP_C_W_E) < 0) {
-        goto exception;
-    }
+    int res;
+    // Set property vals to undefined to avoid double free in case of exception
+    res = JS_DefinePropertyValue(ctx, obj, JS_ATOM_promise, result_promise,
+                               JS_PROP_C_W_E);
     result_promise = JS_UNDEFINED;
-    if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_resolve, resolving_funcs[0],
-                               JS_PROP_C_W_E) < 0) {
+    if (res < 0) {
         goto exception;
     }
+
+    res = JS_DefinePropertyValue(ctx, obj, JS_ATOM_resolve, resolving_funcs[0],
+                               JS_PROP_C_W_E);
     resolving_funcs[0] = JS_UNDEFINED;
-    if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_reject, resolving_funcs[1],
-                               JS_PROP_C_W_E) < 0) {
+    if (res < 0) {
+        goto exception;
+    }
+
+    res = JS_DefinePropertyValue(ctx, obj, JS_ATOM_reject, resolving_funcs[1],
+                               JS_PROP_C_W_E);
+    resolving_funcs[1] = JS_UNDEFINED;
+    if (res < 0) {
         goto exception;
     }
     return obj;
