@@ -61722,6 +61722,14 @@ static JSValue js_typed_array_constructor_ta(JSContext *ctx,
         JS_ThrowTypeErrorArrayBufferOOB(ctx);
         goto fail;
     }
+    bool src_is_bigint = p->class_id == JS_CLASS_BIG_INT64_ARRAY ||
+                         p->class_id == JS_CLASS_BIG_UINT64_ARRAY;
+    bool dst_is_bigint = classid == JS_CLASS_BIG_INT64_ARRAY ||
+                         classid == JS_CLASS_BIG_UINT64_ARRAY;
+    if (src_is_bigint != dst_is_bigint) {
+        JS_ThrowTypeError(ctx, "Cannot mix BigInt and other types, use explicit conversions");
+        goto fail;
+    }
     if (len > p->u.array.count) {
         JS_ThrowRangeError(ctx, "length out of bounds");
         goto fail;
