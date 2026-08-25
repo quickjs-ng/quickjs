@@ -916,37 +916,29 @@ static JSValue js_gc(JSContext *ctx, JSValueConst this_val,
 
 static JSValue add_helpers1(JSContext *ctx)
 {
-    JSValue global_obj;
-    JSValue obj262, is_html_dda;
+    JSValue global_obj, obj262, is_html_dda;
 
     global_obj = JS_GetGlobalObject(ctx);
-
     JS_SetPropertyStr(ctx, global_obj, "print",
                       JS_NewCFunction(ctx, js_print_262, "print", 1));
     JS_SetPropertyStr(ctx, global_obj, "gc",
                       JS_NewCFunction(ctx, js_gc, "gc", 0));
-
+    static const JSCFunctionListEntry props[] = {
+        JS_CFUNC_DEF("codePointRange", 2, js_string_codePointRange),
+        JS_CFUNC_DEF("createRealm", 0, js_createRealm),
+        JS_CFUNC_DEF("detachArrayBuffer", 1, js_detachArrayBuffer),
+        JS_CFUNC_DEF("evalScript", 1, js_evalScript_262),
+        JS_CFUNC_DEF("gc", 0, js_gc),
+    };
     is_html_dda = JS_NewCFunction(ctx, js_IsHTMLDDA, "IsHTMLDDA", 0);
     JS_SetIsHTMLDDA(ctx, is_html_dda);
-#define N 7
-    static const char *props[N] = {
-        "detachArrayBuffer", "evalScript", "codePointRange",
-        "agent", "global", "createRealm", "IsHTMLDDA",
-    };
-    JSValue values[N] = {
-        JS_NewCFunction(ctx, js_detachArrayBuffer, "detachArrayBuffer", 1),
-        JS_NewCFunction(ctx, js_evalScript_262, "evalScript", 1),
-        JS_NewCFunction(ctx, js_string_codePointRange, "codePointRange", 2),
-        js_new_agent(ctx),
-        JS_DupValue(ctx, global_obj),
-        JS_NewCFunction(ctx, js_createRealm, "createRealm", 0),
-        is_html_dda,
-    };
+    obj262 = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, obj262, props, countof(props));
+    JS_SetPropertyStr(ctx, obj262, "IsHTMLDDA", is_html_dda);
+    JS_SetPropertyStr(ctx, obj262, "agent", js_new_agent(ctx));
+    JS_SetPropertyStr(ctx, obj262, "global", JS_GetGlobalObject(ctx));
     /* $262 special object used by the tests */
-    obj262 = JS_NewObjectFromStr(ctx, N, props, values);
     JS_SetPropertyStr(ctx, global_obj, "$262", JS_DupValue(ctx, obj262));
-#undef N
-
     JS_FreeValue(ctx, global_obj);
     return obj262;
 }
