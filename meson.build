@@ -1,7 +1,7 @@
 project(
   'quickjs-ng',
   'c',
-  version: '0.16.1',
+  version: '0.16.2',
   default_options: [
     'c_std=gnu11,c11',
     'warning_level=3',

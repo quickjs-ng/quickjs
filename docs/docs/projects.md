@@ -95,3 +95,14 @@ A lightweight proxy client, empowered by sing-box and thrift.
 
 A multi-engine JavaScript runtime and Rust embedding API with first-class QuickJS-NG support.
 
+## [scriptc](https://github.com/vercel-labs/scriptc)
+
+TypeScript-to-Native Compiler
+
+## [Qbs](https://github.com/qbs/qbs)
+
+Cross-platform build system. Uses QuickJS-NG as its JavaScript backend for evaluating project files.
+
+## [Vayu](https://github.com/athrvk/vayu)
+
+Open-source API client with a native C++ load-testing engine. Embeds QuickJS-NG to enable in-app scripting: pre-request and test scripts with a Postman-compatible `pm.*` API.
