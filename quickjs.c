@@ -4178,7 +4178,7 @@ bool JS_IsRegisteredClass(JSRuntime *rt, JSClassID class_id)
 JSAtom JS_GetClassName(JSRuntime *rt, JSClassID class_id)
 {
     if (JS_IsRegisteredClass(rt, class_id)) {
-        return JS_DupAtomRT(rt, rt->class_array[class_id].class_id);
+        return JS_DupAtomRT(rt, rt->class_array[class_id].class_name);
     } else {
         return JS_ATOM_NULL;
     }
@@ -6324,48 +6324,21 @@ JSValue JS_NewObjectProto(JSContext *ctx, JSValueConst proto)
 JSValue JS_NewObjectFrom(JSContext *ctx, int count, const JSAtom *props,
                          const JSValue *values)
 {
-    JSShapeProperty *pr;
-    uint32_t *hash;
-    JSRuntime *rt;
-    JSObject *p;
-    JSShape *sh;
     JSValue obj;
-    JSAtom atom;
-    intptr_t h;
     int i;
 
-    rt = ctx->rt;
     obj = JS_NewObject(ctx);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
-    if (count > 0) {
-        p = JS_VALUE_GET_OBJ(obj);
-        sh = p->shape;
-        assert(sh->is_hashed);
-        assert(JS_REF_COUNT(sh) == 1);
-        js_shape_hash_unlink(rt, sh);
-        if (resize_properties(ctx, &sh, p, count)) {
-            js_shape_hash_link(rt, sh);
-            JS_FreeValue(ctx, obj);
-            return JS_EXCEPTION;
-        }
-        p->shape = sh;
-        for (i = 0; i < count; i++) {
-            atom = props[i];
-            pr = &get_shape_prop(sh)[i];
-            sh->hash = shape_hash(shape_hash(sh->hash, atom), JS_PROP_C_W_E);
-            h = atom & sh->prop_hash_mask;
-            hash = &prop_hash_end(sh)[-h - 1];
-            pr->hash_next = *hash;
-            *hash = i + 1;
-            pr->atom = JS_DupAtom(ctx, atom);
-            pr->flags = JS_PROP_C_W_E;
-            p->prop[i].u.value = values[i];
-        }
-        js_shape_hash_link(rt, sh);
-        sh->prop_count = count;
-    }
+    for (i = 0; i < count; i++)
+        if (JS_SetProperty(ctx, obj, props[i], values[i]) < 0)
+            goto fail;
     return obj;
+fail:
+    for (/*empty*/; i < count; i++)
+        JS_FreeValue(ctx, values[i]);
+    JS_FreeValue(ctx, obj);
+    return JS_EXCEPTION;
 }
 
 JSValue JS_NewObjectFromStr(JSContext *ctx, int count, const char **props,
@@ -37049,8 +37022,8 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
         goto fail;
 
     function_size = sizeof(*b);
-    cpool_offset = function_size;
-    function_size += fd->cpool_count * sizeof(*fd->cpool);
+    cpool_offset = (function_size + 7) & ~7;
+    function_size = cpool_offset + fd->cpool_count * sizeof(*fd->cpool);
     vardefs_offset = function_size;
     function_size += (fd->arg_count + fd->var_count) * sizeof(*b->vardefs);
     closure_var_offset = function_size;
@@ -39751,8 +39724,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
         goto fail;
 
     function_size = sizeof(*b);
-    cpool_offset = function_size;
-    function_size += bc.cpool_count * sizeof(*bc.cpool);
+    cpool_offset = (function_size + 7) & ~7;
+    function_size = cpool_offset + bc.cpool_count * sizeof(*bc.cpool);
     vardefs_offset = function_size;
     function_size += local_count * sizeof(*bc.vardefs);
     closure_var_offset = function_size;
@@ -40945,7 +40918,7 @@ static JSValue JS_NewCConstructor(JSContext *ctx, int class_id, const char *name
                                   const JSCFunctionListEntry *proto_fields, int n_proto_fields,
                                   int flags)
 {
-    JSValue ctor = JS_UNDEFINED, proto, parent_proto;
+    JSValue ctor = JS_UNDEFINED, proto, parent_proto, *class_proto;
     int proto_class_id, proto_flags, ctor_flags;
 
     proto_flags = 0;
@@ -40976,8 +40949,12 @@ static JSValue JS_NewCConstructor(JSContext *ctx, int class_id, const char *name
                                             n_proto_fields + 1);
         if (JS_IsException(proto))
             goto fail;
-        if (class_id >= 0)
-            ctx->class_proto[class_id] = js_dup(proto);
+        if (class_id >= 0) {
+            class_proto = &ctx->class_proto[class_id];
+            if (!JS_IsNull(*class_proto))
+                JS_FreeValue(ctx, *class_proto);
+            *class_proto = js_dup(proto);
+        }
     }
     if (JS_SetPropertyFunctionList(ctx, proto, proto_fields, n_proto_fields))
         goto fail;
@@ -41176,8 +41153,9 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
     if (present) {
         flags |= JS_PROP_HAS_GET;
         getter = JS_GetProperty(ctx, desc, JS_ATOM_get);
-        if (JS_IsException(getter) ||
-            !(JS_IsUndefined(getter) || JS_IsFunction(ctx, getter))) {
+        if (JS_IsException(getter))
+            goto fail;
+        if (!(JS_IsUndefined(getter) || JS_IsFunction(ctx, getter))) {
             JS_ThrowTypeError(ctx, "Getter must be a function");
             goto fail;
         }
@@ -41188,8 +41166,9 @@ static int js_obj_to_desc(JSContext *ctx, JSPropertyDescriptor *d,
     if (present) {
         flags |= JS_PROP_HAS_SET;
         setter = JS_GetProperty(ctx, desc, JS_ATOM_set);
-        if (JS_IsException(setter) ||
-            !(JS_IsUndefined(setter) || JS_IsFunction(ctx, setter))) {
+        if (JS_IsException(setter))
+            goto fail;
+        if (!(JS_IsUndefined(setter) || JS_IsFunction(ctx, setter))) {
             JS_ThrowTypeError(ctx, "Setter must be a function");
             goto fail;
         }
@@ -43562,6 +43541,8 @@ static JSValue js_array_every(JSContext *ctx, JSValueConst this_val,
     n = 0;
 
     for(k = 0; k < len; k++) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         if (special & special_TA) {
             val = JS_GetPropertyInt64(ctx, obj, k);
             if (JS_IsException(val))
@@ -43683,6 +43664,8 @@ static JSValue js_array_reduce(JSContext *ctx, JSValueConst this_val,
         acc = js_dup(argv[1]);
     } else {
         for(;;) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             if (k >= len) {
                 JS_ThrowTypeError(ctx, "empty array");
                 goto exception;
@@ -43704,6 +43687,8 @@ static JSValue js_array_reduce(JSContext *ctx, JSValueConst this_val,
         }
     }
     for (; k < len; k++) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         k1 = (special & special_reduceRight) ? len - k - 1 : k;
         if (special & special_TA) {
             val = JS_GetPropertyInt64(ctx, obj, k1);
@@ -43805,6 +43790,8 @@ static JSValue js_array_includes(JSContext *ctx, JSValueConst this_val,
             }
         }
         for (; n < len; n++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             val = JS_GetPropertyInt64(ctx, obj, n);
             if (JS_IsException(val))
                 goto exception;
@@ -43851,6 +43838,8 @@ static JSValue js_array_indexOf(JSContext *ctx, JSValueConst this_val,
             }
         }
         for (; n < len; n++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             int present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
             if (present < 0)
                 goto exception;
@@ -43880,6 +43869,7 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValueConst this_val,
     int64_t len, n;
     JSValue *arrp;
     uint32_t count;
+    int present;
 
     obj = JS_ToObject(ctx, this_val);
     if (js_get_length64(ctx, &len, obj))
@@ -43900,7 +43890,9 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValueConst this_val,
             }
         }
         for (; n >= 0; n--) {
-            int present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
+            if (js_poll_interrupts(ctx))
+                goto exception;
+            present = JS_TryGetPropertyInt64(ctx, obj, n, &val);
             if (present < 0)
                 goto exception;
             if (present) {
@@ -43963,6 +43955,8 @@ static JSValue js_array_find(JSContext *ctx, JSValueConst this_val,
 
     // TODO(bnoordhuis) add fast path for fast arrays
     for(; k != end; k += dir) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         index_val = js_int64(k);
         val = JS_GetPropertyValue(ctx, obj, index_val);
         if (JS_IsException(val))
@@ -44671,11 +44665,6 @@ static int js_array_cmp_generic(const void *a, const void *b, void *opaque) {
         return 0;
 
     if (psc->has_method) {
-        /* custom sort function is specified as returning 0 for identical
-         * objects: avoid method call overhead.
-         */
-        if (!memcmp(&ap->val, &bp->val, sizeof(ap->val)))
-            goto cmp_same;
         argv[0] = ap->val;
         argv[1] = bp->val;
         res = JS_Call(ctx, psc->method, JS_UNDEFINED, 2, argv);
@@ -44710,7 +44699,6 @@ static int js_array_cmp_generic(const void *a, const void *b, void *opaque) {
     }
     if (cmp != 0)
         return cmp;
-cmp_same:
     /* make sort stable: compare array offsets */
     return (ap->pos > bp->pos) - (ap->pos < bp->pos);
 
@@ -52222,7 +52210,7 @@ static int js_proxy_has(JSContext *ctx, JSValueConst obj, JSAtom atom)
     int res;
     JSObject *p;
     JSValueConst args[2];
-    bool ret, res2;
+    bool ret;
 
     s = get_proxy_method(ctx, &method, obj, JS_ATOM_has);
     if (!s)
@@ -52248,8 +52236,15 @@ static int js_proxy_has(JSContext *ctx, JSValueConst obj, JSAtom atom)
         if (res < 0)
             return -1;
         if (res) {
-            res2 = !(desc_flags & JS_PROP_CONFIGURABLE);
-            if (res2 || !p->extensible) {
+            if (!(desc_flags & JS_PROP_CONFIGURABLE))
+                goto inconsistent;
+            /* must go through IsExtensible(): the target can be a proxy
+               itself, whose isExtensible trap is observable */
+            res = JS_IsExtensible(ctx, s->target);
+            if (res < 0)
+                return -1;
+            if (!res) {
+            inconsistent:
                 JS_ThrowTypeError(ctx, "proxy: inconsistent has");
                 return -1;
             }
@@ -52445,7 +52440,14 @@ static int js_proxy_get_own_property(JSContext *ctx, JSPropertyDescriptor *pdesc
         js_free_desc(ctx, &target_desc);
     if (JS_IsUndefined(trap_result_obj)) {
         if (target_desc_ret) {
-            if (!(target_desc.flags & JS_PROP_CONFIGURABLE) || !p->extensible)
+            if (!(target_desc.flags & JS_PROP_CONFIGURABLE))
+                goto fail;
+            /* must go through IsExtensible(): the target can be a proxy
+               itself, whose isExtensible trap is observable */
+            res = JS_IsExtensible(ctx, s->target);
+            if (res < 0)
+                return -1;
+            if (!res)
                 goto fail;
         }
         ret = false;
@@ -52508,7 +52510,7 @@ static int js_proxy_define_own_property(JSContext *ctx, JSValueConst obj,
 {
     JSProxyData *s;
     JSValue method, ret1, prop_val, desc_val;
-    int res;
+    int res, extensible_target;
     JSObject *p;
     JSValueConst args[3];
     JSPropertyDescriptor desc;
@@ -52552,11 +52554,19 @@ static int js_proxy_define_own_property(JSContext *ctx, JSValueConst obj,
     res = JS_GetOwnPropertyInternal(ctx, &desc, p, prop);
     if (res < 0)
         return -1;
+    /* must go through IsExtensible(): the target can be a proxy itself, in
+       which case its isExtensible trap is observable and may throw */
+    extensible_target = JS_IsExtensible(ctx, s->target);
+    if (extensible_target < 0) {
+        if (res)
+            js_free_desc(ctx, &desc);
+        return -1;
+    }
     setting_not_configurable = ((flags & (JS_PROP_HAS_CONFIGURABLE |
                                           JS_PROP_CONFIGURABLE)) ==
                                 JS_PROP_HAS_CONFIGURABLE);
     if (!res) {
-        if (!p->extensible || setting_not_configurable)
+        if (!extensible_target || setting_not_configurable)
             goto fail;
     } else {
         if (!check_define_prop_flags(desc.flags, flags) ||
@@ -52685,6 +52695,12 @@ static int js_proxy_get_own_property_names(JSContext *ctx,
     prop_array = JS_CallFree(ctx, method, s->handler, 1, vc(&s->target));
     if (JS_IsException(prop_array))
         return -1;
+    /* CreateListFromArrayLike() requires an object */
+    if (JS_VALUE_GET_TAG(prop_array) != JS_TAG_OBJECT) {
+        JS_FreeValue(ctx, prop_array);
+        JS_ThrowTypeError(ctx, "proxy: ownKeys must return an object");
+        return -1;
+    }
     tab = NULL;
     len = 0;
     tab_size = 0;
@@ -55179,7 +55195,7 @@ static JSValue js_async_dispose_step(JSContext *ctx, JSValueConst this_val,
             return JS_EXCEPTION;
         resolve_fn = JS_NewCFunctionData(ctx, js_async_dispose_rethrow, 0, 0,
                                          1, &prev_err);
-        reject_fn = JS_NewCFunctionData(ctx, js_async_dispose_rethrow, 0, 1,
+        reject_fn = JS_NewCFunctionData(ctx, js_async_dispose_rethrow, 1, 1,
                                         1, &prev_err);
         then_args[0] = resolve_fn;
         then_args[1] = reject_fn;
@@ -55290,7 +55306,7 @@ static JSValue js_disposable_stack_dispose(JSContext *ctx,
             data[2] = hint_val;
             resolve_fn = JS_NewCFunctionData(ctx, js_async_dispose_step, 0, 0,
                                              3, data);
-            reject_fn = JS_NewCFunctionData(ctx, js_async_dispose_step, 0, 1,
+            reject_fn = JS_NewCFunctionData(ctx, js_async_dispose_step, 1, 1,
                                             3, data);
             JS_FreeValue(ctx, hint_val);
             JS_FreeValue(ctx, res->value);
@@ -56030,34 +56046,29 @@ static JSValue js_promise_resolve(JSContext *ctx, JSValueConst this_val,
 static JSValue js_promise_withResolvers(JSContext *ctx, JSValueConst this_val,
                                         int argc, JSValueConst *argv)
 {
-    JSValue result_promise, resolving_funcs[2], obj;
+    static const JSAtom atoms[] = {JS_ATOM_promise, JS_ATOM_resolve, JS_ATOM_reject};
+    JSValue values[3], obj, *pval;
+    int i, ret;
+
     if (!JS_IsObject(this_val))
         return JS_ThrowTypeErrorNotAnObject(ctx);
-    result_promise = js_new_promise_capability(ctx, resolving_funcs, this_val);
-    if (JS_IsException(result_promise))
+    values[0] = js_new_promise_capability(ctx, &values[1], this_val);
+    if (JS_IsException(values[0]))
         return JS_EXCEPTION;
     obj = JS_NewObject(ctx);
     if (JS_IsException(obj))
         goto exception;
-    if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_promise, result_promise,
-                               JS_PROP_C_W_E) < 0) {
-        goto exception;
-    }
-    result_promise = JS_UNDEFINED;
-    if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_resolve, resolving_funcs[0],
-                               JS_PROP_C_W_E) < 0) {
-        goto exception;
-    }
-    resolving_funcs[0] = JS_UNDEFINED;
-    if (JS_DefinePropertyValue(ctx, obj, JS_ATOM_reject, resolving_funcs[1],
-                               JS_PROP_C_W_E) < 0) {
-        goto exception;
+    for (i = 0; i < (int)countof(values); i++) {
+        pval = &values[i];
+        ret = JS_DefinePropertyValue(ctx, obj, atoms[i], *pval, JS_PROP_C_W_E);
+        *pval = JS_UNDEFINED; // consumed by JS_DefinePropertyValue
+        if (ret < 0)
+            goto exception;
     }
     return obj;
 exception:
-    JS_FreeValue(ctx, resolving_funcs[0]);
-    JS_FreeValue(ctx, resolving_funcs[1]);
-    JS_FreeValue(ctx, result_promise);
+    for (i = 0; i < (int)countof(values); i++)
+        JS_FreeValue(ctx, values[i]);
     JS_FreeValue(ctx, obj);
     return JS_EXCEPTION;
 }
@@ -60100,10 +60111,13 @@ static JSValue js_typed_array_with(JSContext *ctx, JSValueConst this_val,
     if (idx < 0)
         idx = len + idx;
 
-    val = JS_ToPrimitive(ctx, argv[1], HINT_NUMBER);
+    if (p->class_id == JS_CLASS_BIG_INT64_ARRAY || p->class_id == JS_CLASS_BIG_UINT64_ARRAY) {
+        val = JS_ToBigInt(ctx, argv[1]);
+    } else {
+        val = JS_ToNumber(ctx, argv[1]);
+    }
     if (JS_IsException(val))
         return JS_EXCEPTION;
-
     /* re-validate after user code (spec step 9: IsValidIntegerIndex) */
     if (typed_array_is_oob(p)) {
         JS_FreeValue(ctx, val);
@@ -63759,7 +63773,7 @@ int JS_AddIntrinsicDOMException(JSContext *ctx)
     }
     JS_DefinePropertyValue(ctx, ctx->global_obj, JS_ATOM_DOMException, ctor,
                            JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
-    ctx->class_proto[JS_CLASS_DOM_EXCEPTION] = proto;
+    set_value(ctx, &ctx->class_proto[JS_CLASS_DOM_EXCEPTION], proto);
     return 0;
 }
 /* base64 */
@@ -64822,6 +64836,10 @@ uintptr_t js_std_cmd(int cmd, ...) {
         rv = -1;
         if (JS_IsString(*pv))
             rv = JS_VALUE_GET_STRING(*pv)->kind;
+        break;
+    case 4: // GetShapeHashCount
+        rt = va_arg(ap, JSRuntime *);
+        rv = rt->shape_hash_count;
         break;
     default:
         rv = -1;

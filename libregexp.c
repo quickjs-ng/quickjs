@@ -1025,7 +1025,7 @@ static int parse_class_string_disjunction(REParseState *s, REStringList *cr,
     for(;;) {
         str.size = 0;
         while (*p != '}' && *p != '|') {
-            c = get_class_atom(s, NULL, &p, false);
+            c = get_class_atom(s, NULL, &p, true);
             if (c < 0)
                 goto fail;
             if (dbuf_put_u32(&str, c)) {
@@ -1117,6 +1117,23 @@ static int get_class_atom(REParseState *s, REStringList *cr,
             break;
         case '-':
             if (!inclass && s->is_unicode)
+                goto invalid_escape;
+            break;
+        case '&':
+        case '!':
+        case '#':
+        case '%':
+        case ',':
+        case ':':
+        case ';':
+        case '<':
+        case '=':
+        case '>':
+        case '@':
+        case '`':
+        case '~':
+            if (s->is_unicode && (!inclass || !s->unicode_sets))
+                /* Only illegal if in unicode mode and not in a class */
                 goto invalid_escape;
             break;
         case '^':
