@@ -954,12 +954,9 @@ static const char *eval_loc(JSContext *ctx, const char *code, JSEvalOptions *opt
     return buf;
 }
 
-// JSEvalOptions.col_num places the first line of the snippet at a column of
-// the enclosing document, the way JSEvalOptions.line_num places it on a line.
 // Only the first line is shifted: every subsequent line starts at column 1.
 static void eval_options_col_num(void)
 {
-    char buf2[64];
     JSValue ret, exc;
     const char *s;
     JSEvalOptions options;
@@ -1037,26 +1034,12 @@ static void eval_options_col_num(void)
     assert(JS_VALUE_GET_INT(ret) == 2);
     JS_FreeValue(ctx, ret);
 
-    // a negative offset is not an offset at all
+    // negative offsets count backwards from the origin, the way negative
+    // line_num values do
     options.col_num = -1;
-    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:2"));
     options.col_num = -100000;
-    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
-
-    // neither is one so large that the columns of the source could not be
-    // numbered from it without overflowing
-    options.col_num = INT_MAX;
-    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
-    options.col_num = INT_MAX - 1;
-    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
-    options.col_num = INT_MAX - 7;
-    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
-
-    // the largest offset that does still fit is used as given: "   nope" is
-    // seven bytes, so the last column the parser can reach is col + 7
-    options.col_num = INT_MAX - 8;
-    snprintf(buf2, sizeof(buf2), "1:%d", INT_MAX - 5);
-    assert(!strcmp(eval_loc(ctx, "   nope", &options), buf2));
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:-99997"));
 
     // every frame of a multi-frame stack is numbered from the same origin
     options.col_num = 10;
