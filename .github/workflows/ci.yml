@@ -97,7 +97,7 @@ jobs:
         with:
           arch: ${{ matrix.config.arch }}
           packages: "build-base make cmake git"
-          apk-tools-url: https://github.com/quickjs-ng/apk-for-ci/raw/refs/heads/master/apk.static#!sha256!34bb1a96f0258982377a289392d4ea9f3f4b767a4bb5806b1b87179b79ad8a1c
+          apk-tools-url: https://raw.githubusercontent.com/quickjs-ng/apk-for-ci/refs/heads/master/apk.static#!sha256!34bb1a96f0258982377a289392d4ea9f3f4b767a4bb5806b1b87179b79ad8a1c
 
       - name: uname
         run: uname -a
