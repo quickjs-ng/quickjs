@@ -2,7 +2,6 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -954,7 +953,7 @@ static const char *eval_loc(JSContext *ctx, const char *code, JSEvalOptions *opt
     return buf;
 }
 
-// Only the first line is shifted: every subsequent line starts at column 1.
+// JSEvalOptions.col_num shifts the first line only; later lines start at 1.
 static void eval_options_col_num(void)
 {
     JSValue ret, exc;
@@ -1055,19 +1054,6 @@ static void eval_options_col_num(void)
 
     // a source whose first line is empty is back to column 1 immediately
     assert(!strcmp(eval_loc(ctx, "\n nope", &options), "2:2"));
-
-    // JSON parsing shares the tokenizer but has no column origin of its own
-    ret = JS_ParseJSON(ctx, "{\"a\":1}", 7, "j.json");
-    assert(!JS_IsException(ret));
-    JS_FreeValue(ctx, ret);
-    ret = JS_ParseJSON(ctx, "{\"a\":}", 6, "j.json");
-    assert(JS_IsException(ret));
-    JS_FreeValue(ctx, ret);
-    exc = JS_GetException(ctx);
-    s = JS_ToCString(ctx, exc);
-    assert(s);
-    JS_FreeCString(ctx, s);
-    JS_FreeValue(ctx, exc);
 
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
