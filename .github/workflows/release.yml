@@ -28,7 +28,7 @@ jobs:
         arch: [aarch64, armv7, riscv64, x86, x86_64]
     steps:
       - uses: actions/checkout@v7
-      - uses: jirutka/setup-alpine@v1
+      - uses: quickjs-ng/setup-alpine@master
         with:
           # mimalloc v3 (mimalloc3-dev) lives in the edge testing repo; enable it.
           # riscv64 has no v3 build there, so it falls back to mimalloc2-dev.
@@ -37,6 +37,7 @@ jobs:
           extra-repositories: |
             http://dl-cdn.alpinelinux.org/alpine/edge/testing
           packages: "build-base make cmake ${{ matrix.arch == 'riscv64' && 'mimalloc2-dev' || 'mimalloc3-dev' }}"
+          apk-tools-url: https://raw.githubusercontent.com/quickjs-ng/apk-for-ci/refs/heads/master/apk.static#!sha256!34bb1a96f0258982377a289392d4ea9f3f4b767a4bb5806b1b87179b79ad8a1c
       - name: build
         shell: alpine.sh {0}
         run: |
