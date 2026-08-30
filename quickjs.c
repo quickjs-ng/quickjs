@@ -45308,50 +45308,58 @@ fail:
 static JSValue js_iterator_from(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
-    JSValue method, iter;
+    JSValue method, iter, next, wrapper;
     JSIteratorWrapData *it;
     int ret;
 
     JSValueConst obj = argv[0];
-    if (JS_IsString(obj)) {
-        method = JS_GetProperty(ctx, obj, JS_ATOM_Symbol_iterator);
-        if (JS_IsException(method))
-            return JS_EXCEPTION;
-        return JS_CallFree(ctx, method, obj, 0, NULL);
-    }
-    if (!JS_IsObject(obj))
+    if (!JS_IsObject(obj) && !JS_IsString(obj))
         return JS_ThrowTypeError(ctx, "Iterator.from called on non-object");
-    ret = JS_OrdinaryIsInstanceOf(ctx, obj, ctx->iterator_ctor);
-    if (ret < 0)
-        return JS_EXCEPTION;
-    if (ret)
-        return js_dup(obj);
     method = JS_GetProperty(ctx, obj, JS_ATOM_Symbol_iterator);
     if (JS_IsException(method))
         return JS_EXCEPTION;
     if (JS_IsNull(method) || JS_IsUndefined(method)) {
-        method = JS_GetProperty(ctx, obj, JS_ATOM_next);
-        if (JS_IsException(method))
-            return JS_EXCEPTION;
-        iter = JS_NewObjectClass(ctx, JS_CLASS_ITERATOR_WRAP);
-        if (JS_IsException(iter))
-            goto fail;
-        it = js_malloc(ctx, sizeof(*it));
-        if (!it)
-            goto fail;
-        it->wrapped_iter = js_dup(obj);
-        it->wrapped_next = method;
-        JS_SetOpaqueInternal(iter, it);
+        iter = js_dup(obj);
     } else {
         iter = JS_GetIterator2(ctx, obj, method);
-        JS_FreeValue(ctx, method);
-        if (JS_IsException(iter))
-            return JS_EXCEPTION;
     }
-    return iter;
-fail:
     JS_FreeValue(ctx, method);
+    if (JS_IsException(iter))
+        return JS_EXCEPTION;
+    if (!JS_IsObject(iter)) {
+        JS_FreeValue(ctx, iter);
+        return JS_ThrowTypeErrorNotAnObject(ctx);
+    }
+
+    /* GetIteratorDirect */
+    next = JS_GetProperty(ctx, iter, JS_ATOM_next);
+    if (JS_IsException(next)) {
+        JS_FreeValue(ctx, iter);
+        return JS_EXCEPTION;
+    }
+    ret = JS_OrdinaryIsInstanceOf(ctx, iter, ctx->iterator_ctor);
+    if (ret < 0)
+        goto fail;
+    if (ret) {
+        JS_FreeValue(ctx, next);
+        return iter;
+    }
+
+    wrapper = JS_NewObjectClass(ctx, JS_CLASS_ITERATOR_WRAP);
+    if (JS_IsException(wrapper))
+        goto fail;
+    it = js_malloc(ctx, sizeof(*it));
+    if (!it) {
+        JS_FreeValue(ctx, wrapper);
+        goto fail;
+    }
+    it->wrapped_iter = iter;
+    it->wrapped_next = next;
+    JS_SetOpaqueInternal(wrapper, it);
+    return wrapper;
+fail:
     JS_FreeValue(ctx, iter);
+    JS_FreeValue(ctx, next);
     return JS_EXCEPTION;
 }
 
