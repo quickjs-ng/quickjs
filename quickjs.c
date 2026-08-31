@@ -32015,6 +32015,7 @@ done:
 static void js_set_module_evaluated(JSContext *ctx, JSModuleDef *m)
 {
     m->status = JS_MODULE_STATUS_EVALUATED;
+    m->async_evaluation = false;
     if (!JS_IsUndefined(m->promise)) {
         JSValue ret_val;
         assert(m->cycle_root == m);
@@ -32110,6 +32111,7 @@ static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst t
     module->eval_has_exception = true;
     module->eval_exception = js_dup(error);
     module->status = JS_MODULE_STATUS_EVALUATED;
+    module->async_evaluation = false;
 
     for(i = 0; i < module->async_parent_modules_count; i++) {
         JSModuleDef *m = module->async_parent_modules[i];
