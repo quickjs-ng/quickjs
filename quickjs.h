@@ -440,7 +440,11 @@ static inline bool JS_VALUE_IS_NAN(JSValue v)
 #define JS_PROP_REFLECT_DEFINE_PROPERTY (1 << 19) /* internal use */
 
 #ifndef JS_DEFAULT_STACK_SIZE
+#ifdef __wasi__
+#define JS_DEFAULT_STACK_SIZE (64 * 1024)
+#else
 #define JS_DEFAULT_STACK_SIZE (1024 * 1024)
+#endif
 #endif
 
 /* JS_Eval() flags */
