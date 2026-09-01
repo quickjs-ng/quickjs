@@ -470,10 +470,7 @@ jobs:
           echo "console.log('hello wasi!');" > t.js
           wasmtime run --dir . build/qjs t.js
           wasmtime run --dir . build/qjs --stack-size 64K tests/wasi-stack-limit.js
-          if wasmtime run --dir . build/qjs tests/wasi-stack-limit.js; then
-            echo "WASI stack guard should be disabled by default"
-            exit 1
-          fi
+          wasmtime run --dir . build/qjs tests/wasi-stack-limit.js
       - name: build wasi reactor
         run: |
           cmake -B build -DQJS_BUILD_WERROR=ON -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_WASI_REACTOR=ON
