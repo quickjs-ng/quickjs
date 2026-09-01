@@ -2368,9 +2368,6 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     rt->js_class_id_alloc = JS_CLASS_INIT_COUNT;
 
     rt->stack_size = JS_DEFAULT_STACK_SIZE;
-#ifdef __wasi__
-    rt->stack_size = 0;
-#endif
 
     JS_UpdateStackTop(rt);
 
