@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
+#include "quickjs-libc.h"
 #include "cutils.h"
 
 static JSRuntime *new_runtime(void)
@@ -175,9 +176,7 @@ static void cfunctions(void)
 static int timeout_interrupt_handler(JSRuntime *rt, void *opaque)
 {
     int *time = (int *)opaque;
-    if (*time <= MAX_TIME)
-        *time += 1;
-    return *time > MAX_TIME;
+    return (*time)++ > MAX_TIME;
 }
 
 static void sync_call(void)
@@ -234,6 +233,38 @@ static void async_call(void)
     JSValue e = JS_GetException(ctx);
     assert(JS_IsUncatchableError(e));
     JS_FreeValue(ctx, e);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void std_eval_interrupt_handler(void)
+{
+    static const char code[] =
+        "import * as std from 'std'; std.evalScript('for(;;){}')";
+    JSRuntime *rt = new_runtime();
+    js_std_init_handlers(rt);
+    JSContext *ctx = JS_NewContext(rt);
+    js_init_module_std(ctx, "std");
+    int time = 0;
+    JS_SetInterruptHandler(rt, timeout_interrupt_handler, &time);
+    JSValue ret =
+        JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
+    ret = js_std_await(ctx, ret);
+    assert(time > MAX_TIME);
+    assert(JS_IsException(ret));
+    ret = JS_GetException(ctx);
+    assert(JS_IsError(ret));
+    // uncatchable "interrupted" exception is turned into a regular exception
+    assert(!JS_IsUncatchableError(ret));
+    const char *str = JS_ToCString(ctx, ret);
+    assert(str != NULL);
+    assert(strstr(str, "InternalError: interrupted"));
+    JS_FreeCString(ctx, str);
+    JS_FreeValue(ctx, ret);
+    uintptr_t interrupt_handler = js_std_cmd(/*GetInterruptHandler*/5, rt);
+    uintptr_t interrupt_opaque = js_std_cmd(/*GetInterruptOpaque*/6, rt);
+    assert(interrupt_handler == (uintptr_t)timeout_interrupt_handler);
+    assert(interrupt_opaque == (uintptr_t)&time);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
@@ -2112,5 +2143,6 @@ int main(void)
     object_from();
     add_intrinsic_bigint();
     new_typed_array();
+    std_eval_interrupt_handler();
     return 0;
 }
