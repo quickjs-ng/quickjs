@@ -2052,6 +2052,28 @@ void add_intrinsic_bigint(void)
     JS_FreeRuntime(rt);
 }
 
+void new_typed_array(void)
+{
+    JSValueConst argv[4];
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    uint8_t *buf = js_malloc(ctx, 8);
+    JSValue ab = JS_NewArrayBuffer(ctx, buf, 8, /*max_len*/0, NULL, NULL, false);
+    assert(JS_IsArrayBuffer(ab));
+    for (int argc = 0; argc < (int)countof(argv); argc++) {
+        JSValue ret = JS_NewTypedArray(ctx, argc, argv, JS_TYPED_ARRAY_UINT8);
+        assert(!JS_IsException(ret));
+        assert(JS_IsObject(ret));
+        JS_FreeValue(ctx, ret);
+        argv[argc] = JS_UNDEFINED;
+        argv[0] = ab;
+    }
+    JS_FreeValue(ctx, ab);
+    js_free(ctx, buf);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2089,5 +2111,6 @@ int main(void)
     get_class_name();
     object_from();
     add_intrinsic_bigint();
+    new_typed_array();
     return 0;
 }

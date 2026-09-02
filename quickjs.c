@@ -59883,9 +59883,21 @@ static JSValue js_typed_array_get_byteOffset(JSContext *ctx, JSValueConst this_v
 JSValue JS_NewTypedArray(JSContext *ctx, int argc, JSValueConst *argv,
                          JSTypedArrayEnum type)
 {
+    JSValueConst temp[3];
+
     if (type < JS_TYPED_ARRAY_UINT8C || type > JS_TYPED_ARRAY_FLOAT64)
         return JS_ThrowRangeError(ctx, "invalid typed array type");
-
+    // js_typed_array_constructor makes assumptions about the length
+    // of the argv vector without checking argc, so let's ensure our
+    // side upholds said assumptions
+    if (argc < countof(temp)) {
+        temp[0] = temp[1] = temp[2] = JS_UNDEFINED;
+        switch (argc) {
+        case 2: temp[1] = argv[1]; // fallthru
+        case 1: temp[0] = argv[0]; // fallthru
+        }
+        argv = temp;
+    }
     return js_typed_array_constructor(ctx, JS_UNDEFINED, argc, argv,
                                       JS_CLASS_UINT8C_ARRAY + type);
 }
@@ -60236,6 +60248,7 @@ static JSValue js_typed_array_create(JSContext *ctx, JSValueConst ctor,
     return ret;
 }
 
+// expects typed array object in argv[0] so argc *must* be > 0
 static JSValue js_typed_array___speciesCreate(JSContext *ctx,
                                               JSValueConst this_val,
                                               int argc, JSValueConst *argv,
@@ -60244,8 +60257,8 @@ static JSValue js_typed_array___speciesCreate(JSContext *ctx,
     JSValueConst obj;
     JSObject *p;
     JSValue ctor, ret;
-    int argc1;
 
+    assert(argc > 0);
     obj = argv[0];
     p = get_typed_array(ctx, obj);
     if (!p)
@@ -60253,12 +60266,13 @@ static JSValue js_typed_array___speciesCreate(JSContext *ctx,
     ctor = JS_SpeciesConstructor(ctx, obj, JS_UNDEFINED);
     if (JS_IsException(ctor))
         return ctor;
-    argc1 = max_int(argc - 1, 0);
+    argc--;
+    argv++;
     if (JS_IsUndefined(ctor)) {
-        ret = js_typed_array_constructor(ctx, JS_UNDEFINED, argc1, argv + 1,
+        ret = js_typed_array_constructor(ctx, JS_UNDEFINED, argc, argv,
                                          p->class_id);
     } else {
-        ret = js_typed_array_create(ctx, ctor, argc1, argv + 1, require_mutable);
+        ret = js_typed_array_create(ctx, ctor, argc, argv, require_mutable);
         JS_FreeValue(ctx, ctor);
     }
     return ret;
