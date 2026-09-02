@@ -64865,6 +64865,14 @@ uintptr_t js_std_cmd(int cmd, ...) {
         rt = va_arg(ap, JSRuntime *);
         rv = rt->shape_hash_count;
         break;
+    case 5: // GetInterruptHandler
+        rt = va_arg(ap, JSRuntime *);
+        rv = (uintptr_t)rt->interrupt_handler;
+        break;
+    case 6: // GetInterruptOpaque
+        rt = va_arg(ap, JSRuntime *);
+        rv = (uintptr_t)rt->interrupt_opaque;
+        break;
     default:
         rv = -1;
     }

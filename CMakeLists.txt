@@ -445,7 +445,7 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(run-test262 PRIVATE qjs)
 endif()
 
-# Interrupt test
+# C API tests
 #
 
 add_executable(api-test
@@ -453,6 +453,7 @@ add_executable(api-test
 )
 target_compile_definitions(api-test PRIVATE ${qjs_defines})
 target_link_libraries(api-test PRIVATE qjs)
+add_qjs_libc_if_needed(api-test)
 
 add_executable(lre-test
     lre-test.c
