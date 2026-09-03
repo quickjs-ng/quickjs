@@ -4950,23 +4950,34 @@ fail:
     return NULL;
 }
 
+static void copy_str16(uint16_t *dst, JSString *p, int offset, int len)
+{
+    if (p->is_wide_char) {
+        memcpy(dst, str16(p) + offset, len * 2);
+    } else {
+        const uint8_t *src1 = str8(p) + offset;
+        int i;
+
+        for(i = 0; i < len; i++)
+            dst[i] = src1[i];
+    }
+}
+
 const uint16_t *JS_ToCStringLenUTF16(JSContext *ctx, size_t *plen,
                                      JSValueConst val1)
 {
     JSString *p, *q;
-    uint32_t i;
     JSValue v;
 
     v = js_force_tostring(ctx, val1);
     if (JS_IsException(v))
         goto fail;
     p = JS_VALUE_GET_STRING(v);
-    if (!p->is_wide_char) {
+    if (!(p->is_wide_char && p->kind == JS_STRING_KIND_NORMAL)) {
         q = js_alloc_string(ctx, p->len, /*is_wide_char*/true);
         if (!q)
             goto fail;
-        for (i = 0; i < p->len; i++)
-            str16(q)[i] = str8(p)[i];
+        copy_str16(str16(q), p, 0, p->len);
         JS_FreeValue(ctx, v);
         p = q;
     }
@@ -5410,19 +5421,6 @@ static JSValue js_linearize_string_rope(JSContext *ctx, JSValueConst rope)
 
 /* flat string concatenation - used by rope when concatenating short strings */
 static JSValue JS_ConcatString2(JSContext *ctx, JSValue op1, JSValue op2);
-
-static void copy_str16(uint16_t *dst, JSString *p, int offset, int len)
-{
-    if (p->is_wide_char) {
-        memcpy(dst, str16(p) + offset, len * 2);
-    } else {
-        const uint8_t *src1 = str8(p) + offset;
-        int i;
-
-        for(i = 0; i < len; i++)
-            dst[i] = src1[i];
-    }
-}
 
 static JSValue JS_ConcatString1(JSContext *ctx, JSString *p1, JSString *p2)
 {
