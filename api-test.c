@@ -681,6 +681,19 @@ static void utf16_string(void)
         JS_FreeCString(ctx, s);
         JS_FreeValue(ctx, e);
     }
+    {
+        // create wide char slice string, see JS_STRING_SLICE_LEN_MAX
+        JSValue v = eval(ctx, "`\\uD800\\uDC00`.repeat(8192).slice(0, -1)");
+        assert(!JS_IsException(v));
+        size_t n;
+        const uint16_t *u = JS_ToCStringLenUTF16(ctx, &n, v);
+        assert(u);
+        assert(n == 2*8192-1);
+        assert(u[0] == 0xD800);
+        assert(u[1] == 0xDC00);
+        JS_FreeCStringUTF16(ctx, u);
+        JS_FreeValue(ctx, v);
+    }
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
