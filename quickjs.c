@@ -324,6 +324,16 @@ typedef struct JSValueLink {
     JSValueConst value;
 } JSValueLink;
 
+typedef struct JSClass {
+    uint32_t class_id; /* 0 means free entry */
+    JSAtom class_name;
+    JSClassFinalizer *finalizer;
+    JSClassGCMark *gc_mark;
+    JSClassCall *call;
+    /* pointers for exotic behavior, can be NULL if none are present */
+    const JSClassExoticMethods *exotic;
+} JSClass;
+
 struct JSRuntime {
     JSMallocFunctions mf;
     JSMallocState malloc_state;
@@ -412,16 +422,6 @@ struct JSRuntime {
     void *user_opaque;
     void *libc_opaque;
     JSRuntimeFinalizerState *finalizers;
-};
-
-struct JSClass {
-    uint32_t class_id; /* 0 means free entry */
-    JSAtom class_name;
-    JSClassFinalizer *finalizer;
-    JSClassGCMark *gc_mark;
-    JSClassCall *call;
-    /* pointers for exotic behavior, can be NULL if none are present */
-    const JSClassExoticMethods *exotic;
 };
 
 typedef struct JSStackFrame {
