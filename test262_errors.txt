@@ -39,10 +39,6 @@ test262/test/language/module-code/top-level-await/module-graphs-does-not-hang.js
 test262/test/language/module-code/top-level-await/rejection-order.js:20: TypeError: $DONE() not called
 test262/test/language/statements/await-using/initializer-Symbol.asyncDispose-disposed-at-end-of-imported-module.js:11: SyntaxError: exported variable 'resource' does not exist
 test262/test/language/statements/await-using/initializer-Symbol.dispose-disposed-at-end-of-imported-module.js:11: SyntaxError: exported variable 'resource' does not exist
-test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: SyntaxError: invalid property name
-test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: strict mode: SyntaxError: invalid property name
-test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-set-followed-by-generator-asi.js:40: SyntaxError: invalid property name
-test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-set-followed-by-generator-asi.js:40: strict mode: SyntaxError: invalid property name
 test262/test/language/statements/using/initializer-disposed-at-end-of-imported-module.js:11: SyntaxError: exported variable 'resource' does not exist
 test262/test/language/statements/with/get-binding-value-call-with-proxy-env.js:39: Test262Error: Actual [has:Object, get:Symbol(Symbol.unscopables), get:Object] and expected [has:Object, get:Symbol(Symbol.unscopables), has:Object, get:Object] should have the same contents. 
 test262/test/language/statements/with/get-binding-value-idref-with-proxy-env.js:39: Test262Error: Actual [has:Object, get:Symbol(Symbol.unscopables), get:Object] and expected [has:Object, get:Symbol(Symbol.unscopables), has:Object, get:Object] should have the same contents. 

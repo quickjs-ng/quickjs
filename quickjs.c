@@ -24876,6 +24876,13 @@ static int __exception js_parse_property_name(JSParseState *s,
                 is_non_reserved_ident = true;
                 goto ident_found;
             }
+            if (allow_private && s->token.val == '*' && s->got_lf) {
+                /* `get`/`set` alone on a line followed by a generator
+                   method: an accessor cannot be a generator, so ASI applies
+                   and this is a class field named get/set */
+                is_non_reserved_ident = true;
+                goto ident_found;
+            }
             prop_type = PROP_TYPE_GET + (name == JS_ATOM_set);
             JS_FreeAtom(s->ctx, name);
         } else if (s->token.val == '*') {
