@@ -8581,9 +8581,55 @@ fini:
     return JS_ThrowTypeError(ctx, "not a constructor");
 }
 
-static JSValue JS_ThrowTypeErrorNotAFunction(JSContext *ctx)
+static JSValue JS_ThrowTypeErrorNotAFunction(JSContext *ctx,
+                                             JSValueConst callee)
 {
-    return JS_ThrowTypeError(ctx, "not a function");
+    JSValue ret;
+    const char *str;
+
+    /* only describe primitive values: converting them to a string
+       cannot run user code */
+    switch (JS_VALUE_GET_TAG(callee)) {
+    case JS_TAG_UNDEFINED:
+        return JS_ThrowTypeError(ctx, "undefined is not a function");
+    case JS_TAG_NULL:
+        return JS_ThrowTypeError(ctx, "null is not a function");
+    case JS_TAG_BOOL:
+    case JS_TAG_INT:
+    case JS_TAG_FLOAT64:
+        str = JS_ToCString(ctx, callee);
+        if (str) {
+            ret = JS_ThrowTypeError(ctx, "%s is not a function", str);
+            JS_FreeCString(ctx, str);
+            return ret;
+        }
+        /* fall thru */
+    default:
+        return JS_ThrowTypeError(ctx, "not a function");
+    }
+}
+
+/* Best-effort improvement of the generic "not a function" TypeError
+   thrown by a failed call instruction; see build_callee_name(). Only
+   ever called on the error path. */
+static void js_enrich_not_a_function_error(JSContext *ctx,
+                                           JSFunctionBytecode *b,
+                                           int call_pc, int slot,
+                                           JSValueConst callee);
+
+/* Mirror of the callability check made by JS_CallInternal(): true if
+   calling 'v' can enter the function, false if JS_CallInternal() throws
+   "not a function" for it. */
+static bool js_is_callable_raw(JSRuntime *rt, JSValueConst v)
+{
+    JSObject *p;
+
+    if (JS_VALUE_GET_TAG(v) != JS_TAG_OBJECT)
+        return false;
+    p = JS_VALUE_GET_OBJ(v);
+    if (p->class_id == JS_CLASS_BYTECODE_FUNCTION)
+        return true;
+    return rt->class_array[p->class_id].call != NULL;
 }
 
 static JSValue JS_ThrowTypeErrorNotAnObject(JSContext *ctx)
@@ -18091,7 +18137,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         call_func = rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
-            return JS_ThrowTypeErrorNotAFunction(caller_ctx);
+            return JS_ThrowTypeErrorNotAFunction(caller_ctx, func_obj);
         }
         return call_func(caller_ctx, func_obj, this_obj, argc,
                          argv, flags);
@@ -18520,8 +18566,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 ret_val = JS_CallInternal(ctx, call_argv[-1], JS_UNDEFINED,
                                           JS_UNDEFINED, call_argc,
                                           vc(call_argv), 0);
-                if (unlikely(JS_IsException(ret_val)))
+                if (unlikely(JS_IsException(ret_val))) {
+                    js_enrich_not_a_function_error(ctx, b,
+                        (int)(pc - b->byte_code_buf) -
+                        ((opcode == OP_call || opcode == OP_tail_call) ? 3 : 1),
+                        (int)(call_argv - 1 - stack_buf), call_argv[-1]);
                     goto exception;
+                }
                 if (opcode == OP_tail_call)
                     goto done;
                 for(i = -1; i < call_argc; i++)
@@ -18557,8 +18608,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 ret_val = JS_CallInternal(ctx, call_argv[-1], call_argv[-2],
                                           JS_UNDEFINED, call_argc,
                                           vc(call_argv), 0);
-                if (unlikely(JS_IsException(ret_val)))
+                if (unlikely(JS_IsException(ret_val))) {
+                    js_enrich_not_a_function_error(ctx, b,
+                                                   (int)(pc - 3 - b->byte_code_buf),
+                                                   (int)(call_argv - 1 - stack_buf),
+                                                   call_argv[-1]);
                     goto exception;
+                }
                 if (opcode == OP_tail_call_method)
                     goto done;
                 for(i = -2; i < call_argc; i++)
@@ -18714,6 +18770,13 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     ret_val = JS_CallInternal(ctx, call_argv[-1], JS_UNDEFINED,
                                               JS_UNDEFINED, call_argc,
                                               vc(call_argv), 0);
+                    if (unlikely(JS_IsException(ret_val))) {
+                        js_enrich_not_a_function_error(ctx, b,
+                                                       (int)(pc - 5 - b->byte_code_buf),
+                                                       (int)(call_argv - 1 - stack_buf),
+                                                       call_argv[-1]);
+                        goto exception;
+                    }
                 }
                 if (unlikely(JS_IsException(ret_val)))
                     goto exception;
@@ -21043,7 +21106,7 @@ static JSValue JS_CallConstructorInternal(JSContext *ctx,
         call_func = ctx->rt->class_array[p->class_id].call;
         if (!call_func) {
         not_a_function:
-            return JS_ThrowTypeErrorNotAFunction(ctx);
+            return JS_ThrowTypeErrorNotAFunction(ctx, func_obj);
         }
         return call_func(ctx, func_obj, new_target, argc,
                          argv, flags);
@@ -22421,6 +22484,392 @@ static const JSOpCode opcode_info[OP_COUNT + (OP_TEMP_END - OP_TEMP_START)] = {
 #define short_opcode_info(op)           \
     opcode_info[(op) >= OP_TEMP_START ? \
                 (op) + (OP_TEMP_END - OP_TEMP_START) : (op)]
+
+/*******************************************************************/
+/* callee name reconstruction for "not a function" errors            */
+
+/* find_stack_slot_writer() return values (>= 0 is a bytecode position) */
+enum {
+    SLOT_WRITER_NONE     = -1, /* no writer found or analysis failed */
+    SLOT_WRITER_MULTIPLE = -2, /* more than one possible writer */
+};
+
+typedef struct SlotWriterState {
+    int bc_len;
+    int slot;
+    /* writer state at instruction entry: SLOT_WRITER_xxx or the position
+       of the instruction that wrote the slot */
+    int32_t *writer_tab;
+    /* stack depth at instruction entry, 0xffff if not yet visited */
+    uint16_t *depth_tab;
+    int32_t *pc_stack;
+    int pc_stack_len;
+    int pc_stack_size;
+} SlotWriterState;
+
+static int sw_merge_writer(int a, int b)
+{
+    if (a == b)
+        return a;
+    if (a == SLOT_WRITER_NONE)
+        return b;
+    if (b == SLOT_WRITER_NONE)
+        return a;
+    return SLOT_WRITER_MULTIPLE;
+}
+
+static int sw_propagate(JSRuntime *rt, SlotWriterState *s,
+                        int pos, int depth, int writer)
+{
+    int w, new_size;
+    int32_t *new_stack;
+
+    if ((unsigned)pos >= (unsigned)s->bc_len)
+        return -1;
+    if (s->depth_tab[pos] == 0xffff) {
+        s->depth_tab[pos] = depth;
+        s->writer_tab[pos] = writer;
+    } else {
+        if (s->depth_tab[pos] != depth)
+            return -1; /* cannot happen: verified by compute_stack_size() */
+        w = sw_merge_writer(s->writer_tab[pos], writer);
+        if (w == s->writer_tab[pos])
+            return 0; /* no change: no need to revisit */
+        s->writer_tab[pos] = w;
+    }
+    if (s->pc_stack_len >= s->pc_stack_size) {
+        /* js_realloc_rt() rather than js_resize_array() so that a failed
+           allocation does not replace the pending exception */
+        new_size = max_int(s->pc_stack_size * 3 / 2, 64);
+        new_stack = js_realloc_rt(rt, s->pc_stack,
+                                  sizeof(s->pc_stack[0]) * new_size);
+        if (!new_stack)
+            return -1;
+        s->pc_stack = new_stack;
+        s->pc_stack_size = new_size;
+    }
+    s->pc_stack[s->pc_stack_len++] = pos;
+    return 0;
+}
+
+/* Determine which instruction wrote the value that occupies stack slot
+   'slot' when execution reaches 'target_pc'. Uses the same graph
+   exploration as compute_stack_size(), which already validated the
+   bytecode when the function was created (in particular, each position
+   has a statically known stack depth), extended with a forward data flow
+   propagating the last writer of 'slot'; writers are joined at control
+   flow merges so that an ambiguous value (e.g. the callee in
+   `(a ? f : g)()`) is reported as SLOT_WRITER_MULTIPLE rather than
+   misattributed. Returns the position of the writing instruction, or a
+   negative SLOT_WRITER_xxx value. Never throws. */
+static int find_stack_slot_writer(JSContext *ctx, JSFunctionBytecode *b,
+                                  int target_pc, int slot,
+                                  int *pwriter_depth)
+{
+    SlotWriterState s_s, *s = &s_s;
+    JSRuntime *rt = ctx->rt;
+    const uint8_t *bc_buf = b->byte_code_buf;
+    const JSOpCode *oi;
+    int i, op, pos, pos_next, depth, writer, n_pop, n_push, diff, ret;
+
+    ret = SLOT_WRITER_NONE;
+    s->bc_len = b->byte_code_len;
+    s->slot = slot;
+    if ((unsigned)target_pc >= (unsigned)s->bc_len)
+        return ret;
+    s->writer_tab = js_malloc_rt(rt, sizeof(s->writer_tab[0]) * s->bc_len +
+                                 sizeof(s->depth_tab[0]) * s->bc_len);
+    if (!s->writer_tab)
+        return ret;
+    s->depth_tab = (uint16_t *)(s->writer_tab + s->bc_len);
+    for (i = 0; i < s->bc_len; i++)
+        s->depth_tab[i] = 0xffff;
+    s->pc_stack = NULL;
+    s->pc_stack_len = 0;
+    s->pc_stack_size = 0;
+
+    if (sw_propagate(rt, s, 0, 0, SLOT_WRITER_NONE))
+        goto done;
+
+    while (s->pc_stack_len > 0) {
+        pos = s->pc_stack[--s->pc_stack_len];
+        depth = s->depth_tab[pos];
+        writer = s->writer_tab[pos];
+        op = bc_buf[pos];
+        if (op == 0 || op >= OP_COUNT)
+            goto done;
+        oi = &short_opcode_info(op);
+        pos_next = pos + oi->size;
+        if (pos_next > s->bc_len)
+            goto done;
+        n_pop = oi->n_pop;
+        /* call pops a variable number of arguments */
+        if (oi->fmt == OP_FMT_npop || oi->fmt == OP_FMT_npop_u16) {
+            n_pop += get_u16(bc_buf + pos + 1);
+        } else if (oi->fmt == OP_FMT_npopx) {
+            n_pop += op - OP_call0;
+        }
+        if (depth < n_pop)
+            goto done;
+        n_push = oi->n_push;
+        /* the instruction writes the slots it pushes */
+        if (depth - n_pop <= s->slot && s->slot < depth - n_pop + n_push)
+            writer = pos;
+        depth += n_push - n_pop;
+        switch(op) {
+        case OP_tail_call:
+        case OP_tail_call_method:
+        case OP_return:
+        case OP_return_undef:
+        case OP_return_async:
+        case OP_throw:
+        case OP_throw_error:
+        case OP_ret:
+            continue;
+        case OP_goto:
+            diff = get_u32(bc_buf + pos + 1);
+            pos_next = pos + 1 + diff;
+            break;
+        case OP_goto16:
+            diff = (int16_t)get_u16(bc_buf + pos + 1);
+            pos_next = pos + 1 + diff;
+            break;
+        case OP_goto8:
+            diff = (int8_t)bc_buf[pos + 1];
+            pos_next = pos + 1 + diff;
+            break;
+        case OP_if_true8:
+        case OP_if_false8:
+            diff = (int8_t)bc_buf[pos + 1];
+            if (sw_propagate(rt, s, pos + 1 + diff, depth, writer))
+                goto done;
+            break;
+        case OP_if_true:
+        case OP_if_false:
+        case OP_catch:
+            diff = get_u32(bc_buf + pos + 1);
+            if (sw_propagate(rt, s, pos + 1 + diff, depth, writer))
+                goto done;
+            break;
+        case OP_gosub:
+            diff = get_u32(bc_buf + pos + 1);
+            if (sw_propagate(rt, s, pos + 1 + diff, depth + 1,
+                             (depth == s->slot) ? pos : writer))
+                goto done;
+            break;
+        case OP_with_get_var:
+        case OP_with_delete_var:
+            diff = get_u32(bc_buf + pos + 5);
+            if (sw_propagate(rt, s, pos + 5 + diff, depth + 1,
+                             (depth == s->slot) ? pos : writer))
+                goto done;
+            break;
+        case OP_with_make_ref:
+        case OP_with_get_ref:
+        case OP_with_get_ref_undef:
+            diff = get_u32(bc_buf + pos + 5);
+            if (sw_propagate(rt, s, pos + 5 + diff, depth + 2,
+                             (depth <= s->slot && s->slot < depth + 2) ?
+                             pos : writer))
+                goto done;
+            break;
+        case OP_with_put_var:
+            diff = get_u32(bc_buf + pos + 5);
+            if (sw_propagate(rt, s, pos + 5 + diff, depth - 1, writer))
+                goto done;
+            break;
+        default:
+            break;
+        }
+        if (sw_propagate(rt, s, pos_next, depth, writer))
+            goto done;
+    }
+
+    if (s->depth_tab[target_pc] != 0xffff) {
+        ret = s->writer_tab[target_pc];
+        if (pwriter_depth && ret >= 0)
+            *pwriter_depth = s->depth_tab[ret];
+    }
+done:
+    js_free_rt(rt, s->writer_tab);
+    js_free_rt(rt, s->pc_stack);
+    return ret;
+}
+
+#define CALLEE_NAME_MAX_PARTS 4
+
+/* Try to reconstruct a name for the callee of the call instruction at
+   'call_pc' whose callee occupies stack slot 'slot', e.g. "f" for `f()`
+   or "a.b.c" for `a.b.c()`. The name is derived from the instructions
+   that pushed the callee and, for member calls, the objects it was
+   looked up on: variable and property name atoms are read directly from
+   the bytecode and the debug information, so no reference counts are
+   touched. The reconstruction is best effort: NULL is returned whenever
+   the callee cannot be attributed to a single named expression. */
+static const char *build_callee_name(JSContext *ctx, JSFunctionBytecode *b,
+                                     int call_pc, int slot,
+                                     char *buf, size_t buf_size)
+{
+    JSAtom parts[CALLEE_NAME_MAX_PARTS];
+    char atom_buf[ATOM_GET_STR_BUF_SIZE];
+    const uint8_t *bc_buf = b->byte_code_buf;
+    int n_parts, limit_pc, wpos, wdepth, op, idx;
+    JSAtom atom;
+    bool is_root;
+    size_t pos;
+    int i;
+
+    n_parts = 0;
+    limit_pc = call_pc;
+    for (;;) {
+        if (n_parts >= CALLEE_NAME_MAX_PARTS)
+            break;
+        wdepth = 0;
+        wpos = find_stack_slot_writer(ctx, b, limit_pc, slot, &wdepth);
+        if (wpos < 0)
+            break;
+        atom = JS_ATOM_NULL;
+        is_root = true;
+        op = bc_buf[wpos];
+        switch(op) {
+        case OP_get_var:
+        case OP_get_var_undef:
+            atom = get_u32(bc_buf + wpos + 1);
+            break;
+        case OP_get_field2:
+            /* member call: continue with the object below the callee */
+            atom = get_u32(bc_buf + wpos + 1);
+            slot--;
+            limit_pc = wpos;
+            is_root = false;
+            break;
+        case OP_get_field:
+            /* intermediate step of a member expression: the object is
+               popped and the property value pushed into the same slot */
+            atom = get_u32(bc_buf + wpos + 1);
+            limit_pc = wpos;
+            is_root = false;
+            break;
+        case OP_get_loc:
+        case OP_get_loc_check:
+        case OP_set_loc: /* stores the value but leaves it on the stack */
+            idx = get_u16(bc_buf + wpos + 1);
+            goto has_loc;
+        case OP_get_loc8:
+        case OP_set_loc8:
+            idx = bc_buf[wpos + 1];
+            goto has_loc;
+        case OP_get_loc0_loc1:
+            idx = (slot > wdepth);
+            goto has_loc;
+        case OP_get_loc0:
+        case OP_get_loc1:
+        case OP_get_loc2:
+        case OP_get_loc3:
+            idx = op - OP_get_loc0;
+            goto has_loc;
+        case OP_set_loc0:
+        case OP_set_loc1:
+        case OP_set_loc2:
+        case OP_set_loc3:
+            idx = op - OP_set_loc0;
+        has_loc:
+            if (b->vardefs && idx < b->var_count)
+                atom = b->vardefs[b->arg_count + idx].var_name;
+            break;
+        case OP_get_arg:
+        case OP_set_arg:
+            idx = get_u16(bc_buf + wpos + 1);
+            goto has_arg;
+        case OP_get_arg0:
+        case OP_get_arg1:
+        case OP_get_arg2:
+        case OP_get_arg3:
+            idx = op - OP_get_arg0;
+            goto has_arg;
+        case OP_set_arg0:
+        case OP_set_arg1:
+        case OP_set_arg2:
+        case OP_set_arg3:
+            idx = op - OP_set_arg0;
+        has_arg:
+            if (b->vardefs && idx < b->arg_count)
+                atom = b->vardefs[idx].var_name;
+            break;
+        case OP_get_var_ref:
+        case OP_get_var_ref_check:
+        case OP_set_var_ref:
+            idx = get_u16(bc_buf + wpos + 1);
+            goto has_var_ref;
+        case OP_get_var_ref0:
+        case OP_get_var_ref1:
+        case OP_get_var_ref2:
+        case OP_get_var_ref3:
+            idx = op - OP_get_var_ref0;
+            goto has_var_ref;
+        case OP_set_var_ref0:
+        case OP_set_var_ref1:
+        case OP_set_var_ref2:
+        case OP_set_var_ref3:
+            idx = op - OP_set_var_ref0;
+        has_var_ref:
+            if (idx < b->closure_var_count)
+                atom = b->closure_var[idx].var_name;
+            break;
+        case OP_push_this:
+            atom = JS_ATOM_this;
+            break;
+        default:
+            break;
+        }
+        if (atom == JS_ATOM_NULL)
+            break;
+        parts[n_parts++] = atom;
+        if (is_root)
+            break;
+    }
+    if (n_parts == 0)
+        return NULL;
+    /* parts were collected from the last component to the first */
+    pos = 0;
+    for (i = n_parts - 1; i >= 0; i--) {
+        pos += snprintf(buf + pos, buf_size - pos, "%s%s",
+                        JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf),
+                                      parts[i]),
+                        (i > 0) ? "." : "");
+        if (pos >= buf_size)
+            break; /* truncated: keep what fits */
+    }
+    return buf;
+}
+
+/* Called when the JS_CallInternal() invocation made by a call
+   instruction at position 'call_pc' returned an exception. If the callee
+   (which occupied stack slot 'slot') is not callable, the pending
+   exception must be the generic "not a function" TypeError that
+   JS_CallInternal() threw before executing anything - the only other
+   possibility, an interrupt raised by its initial js_poll_interrupts()
+   call, is uncatchable - so it is replaced with an error naming the
+   callee. This runs only on the error path: successful calls are not
+   affected. */
+static void js_enrich_not_a_function_error(JSContext *ctx,
+                                           JSFunctionBytecode *b,
+                                           int call_pc, int slot,
+                                           JSValueConst callee)
+{
+    char buf[CALLEE_NAME_MAX_PARTS * ATOM_GET_STR_BUF_SIZE];
+    const char *name;
+
+    if (js_is_callable_raw(ctx->rt, callee))
+        return; /* the exception was raised by the callee itself */
+    if (JS_IsUncatchableError(ctx->rt->current_exception))
+        return;
+    name = build_callee_name(ctx, b, call_pc, slot, buf, sizeof(buf));
+    if (name)
+        JS_ThrowTypeError(ctx, "%s is not a function", name);
+    else
+        JS_ThrowTypeErrorNotAFunction(ctx, callee);
+}
 
 static void json_free_token(JSParseState *s, JSToken *token) {
     // Only free actual allocated values
@@ -40591,7 +41040,7 @@ static int check_function(JSContext *ctx, JSValueConst obj)
 {
     if (likely(JS_IsFunction(ctx, obj)))
         return 0;
-    JS_ThrowTypeErrorNotAFunction(ctx);
+    JS_ThrowTypeErrorNotAFunction(ctx, obj);
     return -1;
 }
 
@@ -45276,7 +45725,7 @@ static JSValue js_iterator_concat(JSContext *ctx, JSValueConst this_val,
         if (JS_IsException(method))
             goto fail;
         if (!JS_IsFunction(ctx, method)) {
-            JS_ThrowTypeErrorNotAFunction(ctx);
+            JS_ThrowTypeErrorNotAFunction(ctx, method);
             JS_FreeValue(ctx, method);
             goto fail;
         }
@@ -52862,7 +53311,7 @@ static JSValue js_proxy_call(JSContext *ctx, JSValueConst func_obj,
         return JS_EXCEPTION;
     if (!s->is_func) {
         JS_FreeValue(ctx, method);
-        return JS_ThrowTypeErrorNotAFunction(ctx);
+        return JS_ThrowTypeErrorNotAFunction(ctx, s->target);
     }
     if (JS_IsUndefined(method))
         return JS_Call(ctx, s->target, this_obj, argc, argv);
