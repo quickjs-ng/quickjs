@@ -973,6 +973,136 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+// returns "line:col" of the first frame of the exception raised by `code`
+// evaluated under `options`
+static const char *eval_loc(JSContext *ctx, const char *code, JSEvalOptions *options)
+{
+    static char buf[64];
+    JSValue ret, exc, stack;
+    const char *s, *p;
+
+    ret = JS_Eval2(ctx, code, strlen(code), options);
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    exc = JS_GetException(ctx);
+    stack = JS_GetPropertyStr(ctx, exc, "stack");
+    s = JS_ToCString(ctx, stack);
+    assert(s);
+    p = strstr(s, "eval.js:");
+    assert(p);
+    snprintf(buf, sizeof(buf), "%.*s", (int)strcspn(p + 8, "\n )"), p + 8);
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, stack);
+    JS_FreeValue(ctx, exc);
+    return buf;
+}
+
+// JSEvalOptions.col_num shifts the first line only; later lines start at 1.
+static void eval_options_col_num(void)
+{
+    JSValue ret, exc;
+    const char *s;
+    JSEvalOptions options;
+
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    options = (JSEvalOptions){
+        .version = JS_EVAL_OPTIONS_VERSION,
+        .filename = "eval.js",
+    };
+
+    // the baseline: three spaces then an undefined global, so column 4
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
+
+    // an unset col_num is column 1, and so is an explicit 1
+    options.col_num = 0;
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
+    options.col_num = 1;
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
+
+    // starting at column 10 moves the first line right by 9
+    options.col_num = 10;
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:13"));
+    assert(!strcmp(eval_loc(ctx, "nope", &options), "1:10"));
+
+    // a syntax error is placed the same way
+    assert(!strcmp(eval_loc(ctx, "let x = ;", &options), "1:18"));
+
+    // a large offset is carried through intact
+    options.col_num = 100000;
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:100003"));
+    options.col_num = 10;
+
+    // only the first line is shifted
+    assert(!strcmp(eval_loc(ctx, "1;\n   nope", &options), "2:4"));
+    assert(!strcmp(eval_loc(ctx, "1;\nlet y = ;", &options), "2:9"));
+
+    // col_num composes with line_num
+    options.line_num = 5;
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "5:13"));
+    assert(!strcmp(eval_loc(ctx, "1;\n   nope", &options), "6:4"));
+    options.line_num = 0;
+
+    // a version 1 caller has no col_num field at all, so a stale value in
+    // that position must be ignored rather than read
+    options.version = 1;
+    options.col_num = 10;
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:4"));
+    options.version = JS_EVAL_OPTIONS_VERSION;
+
+    // versions outside the supported range are refused
+    {
+        static const int bad[] = { 0, -1, JS_EVAL_OPTIONS_VERSION + 1 };
+        size_t i;
+        for (i = 0; i < countof(bad); i++) {
+            options.version = bad[i];
+            ret = JS_Eval2(ctx, "1", 1, &options);
+            assert(JS_IsException(ret));
+            JS_FreeValue(ctx, ret);
+            exc = JS_GetException(ctx);
+            s = JS_ToCString(ctx, exc);
+            assert(s);
+            assert(!strcmp(s, "InternalError: bad JSEvalOptions version"));
+            JS_FreeCString(ctx, s);
+            JS_FreeValue(ctx, exc);
+        }
+        options.version = JS_EVAL_OPTIONS_VERSION;
+    }
+
+    // a successful eval is unaffected by the offset
+    options.col_num = 10;
+    ret = JS_Eval2(ctx, "1 + 1", 5, &options);
+    assert(!JS_IsException(ret));
+    assert(JS_VALUE_GET_INT(ret) == 2);
+    JS_FreeValue(ctx, ret);
+
+    // negative offsets count backwards from the origin, the way negative
+    // line_num values do
+    options.col_num = -1;
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:2"));
+    options.col_num = -100000;
+    assert(!strcmp(eval_loc(ctx, "   nope", &options), "1:-99997"));
+
+    // every frame of a multi-frame stack is numbered from the same origin
+    options.col_num = 10;
+    options.line_num = 1;
+    assert(!strcmp(eval_loc(ctx, "function f() { nope }\n  f()", &options), "1:25"));
+    assert(!strcmp(eval_loc(ctx, "(function () { nope })()", &options), "1:25"));
+
+    // a module is offset the same way a script is
+    options.eval_flags = JS_EVAL_TYPE_MODULE;
+    assert(!strcmp(eval_loc(ctx, "  let x = ;", &options), "1:20"));
+    assert(!strcmp(eval_loc(ctx, "1;\nlet x = ;", &options), "2:9"));
+    options.eval_flags = 0;
+
+    // a source whose first line is empty is back to column 1 immediately
+    assert(!strcmp(eval_loc(ctx, "\n nope", &options), "2:2"));
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 // JS_NewContext() already installs DOMException by way of
 // JS_AddIntrinsicAToB(), so a host that also calls JS_AddIntrinsicDOMException()
 // explicitly installs it twice. The second install must release the prototype
@@ -2136,6 +2266,7 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    eval_options_col_num();
     dom_exception_added_twice();
     backtrace_oom_current_exception();
     backtrace_oom_callsite_array();
