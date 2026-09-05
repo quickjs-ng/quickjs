@@ -973,6 +973,88 @@ static void new_errors(void)
     JS_FreeRuntime(rt);
 }
 
+// Constructing something that is not a constructor reports "not a
+// constructor", never "not a function"; the latter is what *calling* a
+// non-callable reports.
+static void construct_not_a_constructor(void)
+{
+    JSValue not_objects[6];
+    JSValue obj, exc, ret;
+    JSClassID class_id;
+    const char *s;
+    size_t i;
+
+    // a class without a .call handler; an object of that class carrying the
+    // constructor bit is a constructor as far as the object header goes, but
+    // there is nothing to call
+    JSClassDef def = (JSClassDef){
+        .class_name = "NoCall",
+    };
+    JSRuntime *rt = new_runtime();
+    class_id = 0;
+    JS_NewClassID(rt, &class_id);
+    assert(JS_NewClass(rt, class_id, &def) == 0);
+    JSContext *ctx = JS_NewContext(rt);
+
+    obj = JS_NewObjectClass(ctx, class_id);
+    assert(JS_IsObject(obj));
+    assert(JS_SetConstructorBit(ctx, obj, true));
+    assert(JS_IsConstructor(ctx, obj));
+
+    ret = JS_CallConstructor(ctx, obj, 0, NULL);
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    exc = JS_GetException(ctx);
+    s = JS_ToCString(ctx, exc);
+    assert(s);
+    assert(!strcmp(s, "TypeError: not a constructor"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, exc);
+
+    // the same object reached through the interpreter's `new`
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "nocall", obj); // takes ownership
+    JS_FreeValue(ctx, global);
+    ret = eval(ctx, "try { new nocall() } catch (e) { `${e}` }");
+    assert(!JS_IsException(ret));
+    s = JS_ToCString(ctx, ret);
+    assert(s);
+    assert(!strcmp(s, "TypeError: not a constructor"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, ret);
+
+    // and constructing a non-object
+    not_objects[0] = JS_UNDEFINED;
+    not_objects[1] = JS_NULL;
+    not_objects[2] = JS_TRUE;
+    not_objects[3] = JS_FALSE;
+    not_objects[4] = JS_NewInt32(ctx, 42);
+    not_objects[5] = JS_NewFloat64(ctx, 1.5);
+    for (i = 0; i < countof(not_objects); i++) {
+        ret = JS_CallConstructor(ctx, not_objects[i], 0, NULL);
+        assert(JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        exc = JS_GetException(ctx);
+        s = JS_ToCString(ctx, exc);
+        assert(s);
+        assert(!strcmp(s, "TypeError: not a constructor"));
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, exc);
+    }
+
+    // calling a non-callable is still "not a function"
+    ret = eval(ctx, "try { undefined() } catch (e) { `${e}` }");
+    assert(!JS_IsException(ret));
+    s = JS_ToCString(ctx, ret);
+    assert(s);
+    assert(!strcmp(s, "TypeError: not a function"));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, ret);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 // JS_NewContext() already installs DOMException by way of
 // JS_AddIntrinsicAToB(), so a host that also calls JS_AddIntrinsicDOMException()
 // explicitly installs it twice. The second install must release the prototype
@@ -2136,6 +2218,7 @@ int main(void)
     promise_hook();
     dump_memory_usage();
     new_errors();
+    construct_not_a_constructor();
     dom_exception_added_twice();
     backtrace_oom_current_exception();
     backtrace_oom_callsite_array();
