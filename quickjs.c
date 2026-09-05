@@ -11885,24 +11885,15 @@ static inline int JS_SetGlobalVar(JSContext *ctx, JSAtom prop, JSValue val,
 /* return -1, false or true */
 static int JS_DeleteGlobalVar(JSContext *ctx, JSAtom prop)
 {
-    JSObject *p;
-    JSShapeProperty *prs;
     JSProperty *pr;
-    int ret;
+    JSObject *p;
 
     /* 9.1.1.4.7 DeleteBinding ( N ) */
     p = JS_VALUE_GET_OBJ(ctx->global_var_obj);
-    prs = find_own_property(&pr, p, prop);
-    if (prs)
+    if (find_own_property(&pr, p, prop))
         return false; /* lexical variables cannot be deleted */
-    ret = JS_HasProperty(ctx, ctx->global_obj, prop);
-    if (ret < 0)
-        return -1;
-    if (ret) {
-        return JS_DeleteProperty(ctx, ctx->global_obj, prop, 0);
-    } else {
-        return true;
-    }
+    p = JS_VALUE_GET_OBJ(ctx->global_obj);
+    return delete_property(ctx, p, prop);
 }
 
 /* return -1, false or true. return false if not configurable or
