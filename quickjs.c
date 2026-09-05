@@ -52505,6 +52505,19 @@ static int js_proxy_get_own_property(JSContext *ctx, JSPropertyDescriptor *pdesc
         }
         ret = true;
         if (pdesc) {
+            /* js_obj_to_desc() returns defineProperty-style flags; convert to
+               an own-property descriptor (CompletePropertyDescriptor) so
+               consumers relying on JS_PROP_GETSET see the accessor. */
+            if (result_desc.flags & (JS_PROP_HAS_GET | JS_PROP_HAS_SET)) {
+                result_desc.flags =
+                    (result_desc.flags &
+                     (JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE)) |
+                    JS_PROP_GETSET;
+            } else {
+                result_desc.flags &=
+                    (JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE |
+                     JS_PROP_WRITABLE);
+            }
             *pdesc = result_desc;
         } else {
             js_free_desc(ctx, &result_desc);
