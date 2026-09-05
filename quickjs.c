@@ -25328,6 +25328,9 @@ static __exception int js_parse_object_literal(JSParseState *s)
 /* forbid the exponentiation operator in js_parse_unary() */
 #define PF_POW_FORBIDDEN (1 << 3)
 #define PF_AWAIT_USING   (1 << 4)
+/* an object/array literal may start a destructuring assignment: only set at
+   the leftmost position of an AssignmentExpression */
+#define PF_PATTERN       (1 << 5)
 
 static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags);
 
@@ -27210,7 +27213,8 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
     case '[':
         {
             int skip_bits;
-            if (js_parse_skip_parens_token(s, &skip_bits, false) == '=') {
+            if ((parse_flags & PF_PATTERN) &&
+                js_parse_skip_parens_token(s, &skip_bits, false) == '=') {
                 if (js_parse_destructuring_element(s, 0, false, false, skip_bits & SKIP_HAS_ELLIPSIS, true, false) < 0)
                     return -1;
             } else {
@@ -27875,7 +27879,8 @@ static __exception int js_parse_unary(JSParseState *s, int parse_flags)
         parse_flags = 0;
         break;
     default:
-        if (js_parse_postfix_expr(s, PF_POSTFIX_CALL))
+        if (js_parse_postfix_expr(s, PF_POSTFIX_CALL |
+                                  (parse_flags & PF_PATTERN)))
             return -1;
         if (!s->got_lf &&
             (s->token.val == TOK_DEC || s->token.val == TOK_INC)) {
@@ -27918,7 +27923,7 @@ static __exception int js_parse_expr_binary(JSParseState *s, int level,
     int op, opcode;
 
     if (level == 0) {
-        return js_parse_unary(s, PF_POW_ALLOWED);
+        return js_parse_unary(s, PF_POW_ALLOWED | (parse_flags & PF_PATTERN));
     } else if (s->token.val == TOK_PRIVATE_NAME &&
                (parse_flags & PF_IN_ACCEPTED) && level == 4 &&
                peek_token(s, false) == TOK_IN) {
@@ -27930,7 +27935,7 @@ static __exception int js_parse_expr_binary(JSParseState *s, int level,
             goto fail_private_in;
         if (next_token(s))
             goto fail_private_in;
-        if (js_parse_expr_binary(s, level - 1, parse_flags)) {
+        if (js_parse_expr_binary(s, level - 1, parse_flags & ~PF_PATTERN)) {
         fail_private_in:
             JS_FreeAtom(s->ctx, atom);
             return -1;
@@ -28068,7 +28073,7 @@ static __exception int js_parse_expr_binary(JSParseState *s, int level,
         if (next_token(s))
             return -1;
         emit_source_loc(s);
-        if (js_parse_expr_binary(s, level - 1, parse_flags))
+        if (js_parse_expr_binary(s, level - 1, parse_flags & ~PF_PATTERN))
             return -1;
         emit_op(s, opcode);
     }
@@ -28099,10 +28104,11 @@ static __exception int js_parse_logical_and_or(JSParseState *s, int op,
             emit_op(s, OP_drop);
 
             if (op == TOK_LAND) {
-                if (js_parse_expr_binary(s, 8, parse_flags))
+                if (js_parse_expr_binary(s, 8, parse_flags & ~PF_PATTERN))
                     return -1;
             } else {
-                if (js_parse_logical_and_or(s, TOK_LAND, parse_flags))
+                if (js_parse_logical_and_or(s, TOK_LAND,
+                                            parse_flags & ~PF_PATTERN))
                     return -1;
             }
             if (s->token.val != op) {
@@ -28134,7 +28140,7 @@ static __exception int js_parse_coalesce_expr(JSParseState *s, int parse_flags)
             emit_goto(s, OP_if_false, label1);
             emit_op(s, OP_drop);
 
-            if (js_parse_expr_binary(s, 8, parse_flags))
+            if (js_parse_expr_binary(s, 8, parse_flags & ~PF_PATTERN))
                 return -1;
             if (s->token.val != TOK_DOUBLE_QUESTION_MARK)
                 break;
@@ -28364,7 +28370,7 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
         /* name0 is used to check for OP_set_name pattern, not duplicated */
         name0 = s->token.u.ident.atom;
     }
-    if (js_parse_cond_expr(s, parse_flags))
+    if (js_parse_cond_expr(s, parse_flags | PF_PATTERN))
         return -1;
 
     op = s->token.val;
