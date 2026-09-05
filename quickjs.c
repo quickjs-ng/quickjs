@@ -9857,6 +9857,15 @@ int JS_PreventExtensions(JSContext *ctx, JSValueConst obj)
     p = JS_VALUE_GET_OBJ(obj);
     if (unlikely(p->class_id == JS_CLASS_PROXY))
         return js_proxy_preventExtensions(ctx, obj);
+    if (is_typed_array(p->class_id)) {
+        JSTypedArray *ta = p->u.typed_array;
+        JSArrayBuffer *abuf = ta->buffer->u.array_buffer;
+        if (ta->track_rab ||
+            (array_buffer_is_resizable(abuf) && !abuf->shared))
+        {
+            return false;
+        }
+    }
     p->extensible = false;
     return true;
 }
@@ -41742,7 +41751,7 @@ static JSValue js_object_preventExtensions(JSContext *ctx, JSValueConst this_val
         return js_bool(ret);
     } else {
         if (!ret)
-            return JS_ThrowTypeError(ctx, "proxy preventExtensions handler returned false");
+            return JS_ThrowTypeError(ctx, "Cannot prevent extensions");
         return js_dup(obj);
     }
 }
