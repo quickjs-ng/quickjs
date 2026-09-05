@@ -470,6 +470,8 @@ jobs:
           wasmtime run build/qjs -qd
           echo "console.log('hello wasi!');" > t.js
           wasmtime run --dir . build/qjs t.js
+          wasmtime run --dir . build/qjs --stack-size 64K tests/wasi-stack-limit.js
+          wasmtime run --dir . build/qjs tests/wasi-stack-limit.js
       - name: build wasi reactor
         run: |
           cmake -B build -DQJS_BUILD_WERROR=ON -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_WASI_REACTOR=ON
