@@ -59993,6 +59993,13 @@ static JSValue js_typed_array_set_internal(JSContext *ctx,
         goto fail;
     src_p = JS_VALUE_GET_OBJ(src_obj);
     if (is_typed_array(src_p->class_id)) {
+        if (p->class_id != src_p->class_id && ((p->class_id == JS_CLASS_BIG_INT64_ARRAY ||
+            p->class_id == JS_CLASS_BIG_UINT64_ARRAY) ^ (src_p->class_id == JS_CLASS_BIG_INT64_ARRAY
+            || src_p->class_id == JS_CLASS_BIG_UINT64_ARRAY))) {
+            JS_ThrowTypeError(ctx, "Cannot mix BigInt and other types, use explicit conversions");
+            goto fail;
+        }
+
         JSTypedArray *dest_ta = p->u.typed_array;
         JSArrayBuffer *dest_abuf = dest_ta->buffer->u.array_buffer;
         JSTypedArray *src_ta = src_p->u.typed_array;
