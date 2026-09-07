@@ -11,8 +11,6 @@ on:
       - '!examples/**'
       - '.github/workflows/ci.yml'
   push:
-    branches:
-      - master
     paths:
       - '**'
       - '!.gitignore'
