@@ -2058,6 +2058,58 @@ static void get_class_name(void)
     JS_FreeRuntime(rt);
 }
 
+static void map_set_cross_context(void)
+{
+    static const char create_source[] =
+        "({"
+        "  map: new Map(Array.from({length: 1024}, (_, i) => ['key' + i, i])),"
+        "  set: new Set(Array.from({length: 1024}, (_, i) => 'key' + i))"
+        "})";
+    static const char check_source[] =
+        "(() => {"
+        "  for (let i = 0; i < 1024; i++) {"
+        "    const key = 'key' + i;"
+        "    if (Map.prototype.get.call(foreign.map, key) !== i) return false;"
+        "    if (!Set.prototype.has.call(foreign.set, key)) return false;"
+        "  }"
+        "  return true;"
+        "})()";
+    JSRuntime *rt = new_runtime();
+    JSContext *owner_ctx = JS_NewContext(rt);
+    JSValue containers = eval(owner_ctx, create_source);
+    int i;
+
+    assert(!JS_IsException(containers));
+    for (i = 0; i < 4; i++) {
+        uint64_t timestamp = js__gettimeofday_us();
+        JSContext *caller_ctx;
+        JSValue global, result;
+
+        while (js__gettimeofday_us() == timestamp) {
+        }
+        caller_ctx = JS_NewContext(rt);
+        global = JS_GetGlobalObject(caller_ctx);
+        assert(JS_SetPropertyStr(caller_ctx, global, "foreign",
+                                 JS_DupValue(caller_ctx, containers)) >= 0);
+        JS_FreeValue(caller_ctx, global);
+
+        result = eval(caller_ctx, check_source);
+        assert(!JS_IsException(result));
+        assert(JS_IsBool(result));
+        assert(JS_VALUE_GET_BOOL(result));
+        JS_FreeValue(caller_ctx, result);
+
+        result = eval(caller_ctx, "globalThis.foreign = undefined");
+        assert(!JS_IsException(result));
+        JS_FreeValue(caller_ctx, result);
+        JS_FreeContext(caller_ctx);
+    }
+
+    JS_FreeValue(owner_ctx, containers);
+    JS_FreeContext(owner_ctx);
+    JS_FreeRuntime(rt);
+}
+
 void object_from(void)
 {
     JSRuntime *rt = new_runtime();
@@ -2153,6 +2205,7 @@ int main(void)
     resize_external_array_buffer();
     transfer_default_managed_array_buffer();
     get_class_name();
+    map_set_cross_context();
     object_from();
     add_intrinsic_bigint();
     new_typed_array();
