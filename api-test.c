@@ -1063,6 +1063,45 @@ static void backtrace_oom_callsite_array(void)
     JS_FreeRuntime(rt);
 }
 
+/* Blocks too large for the arena are accounted with the usable size reported by
+   the malloc functions. A platform that reports zero there makes JS_SetMemoryLimit()
+   bound an allocation count instead of a byte total: the limit check sees the
+   requested size, but nothing accumulates in malloc_size. */
+static void large_allocation_accounting(void)
+{
+    static const size_t block_size = 1024 * 1024;
+    JSMemoryUsage before, after;
+    JSValue ret;
+    JSRuntime *rt;
+    JSContext *ctx;
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+
+    JS_ComputeMemoryUsage(rt, &before);
+    ret = eval(ctx, "globalThis.a = new Uint8Array(1024 * 1024)");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_ComputeMemoryUsage(rt, &after);
+    assert(after.malloc_size - before.malloc_size >= (int64_t)block_size);
+
+    /* and therefore sub-limit blocks accumulate against the limit */
+    JS_ComputeMemoryUsage(rt, &before);
+    JS_SetMemoryLimit(rt, (size_t)before.malloc_size + 4 * block_size);
+    ret = eval(ctx, "globalThis.a = [];\n"
+                    "for (let i = 0; i < 64; i++)\n"
+                    "    a.push(new Uint8Array(1024 * 1024));");
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, JS_GetException(ctx));
+    JS_SetMemoryLimit(rt, 0);
+    JS_ComputeMemoryUsage(rt, &after);
+    assert(after.malloc_size - before.malloc_size < (int64_t)(8 * block_size));
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void backtrace_oom_current_exception(void)
 {
     static const char setup_code[] =
@@ -2137,6 +2176,7 @@ int main(void)
     dump_memory_usage();
     new_errors();
     dom_exception_added_twice();
+    large_allocation_accounting();
     backtrace_oom_current_exception();
     backtrace_oom_callsite_array();
     proxy_own_keys_huge_length();
