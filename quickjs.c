@@ -40504,7 +40504,7 @@ static int JS_ReadObjectAtoms(BCReaderState *s)
             atom = 0;
             if ((type & 0x40) && bc_get_leb128(s, &atom))
                 return -1;
-            atom = atom<<6 | type&0x3F;
+            atom = (atom << 6) | (type & 0x3F);
             if (!__JS_AtomIsConst(atom)) {
                 JS_ThrowInternalError(s->ctx, "out of range atom");
                 return -1;
