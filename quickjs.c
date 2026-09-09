@@ -339,6 +339,7 @@ struct JSRuntime {
     JSMallocState malloc_state;
     JSArenaState arena_state;
     const char *rt_info;
+    uint32_t hash_seed;
 
     int atom_hash_size; /* power of two */
     int atom_count;
@@ -602,7 +603,6 @@ struct JSContext {
     double time_origin;
 
     uint64_t random_state;
-    uint32_t hash_seed;
 
     /* when the counter reaches zero, JSRutime.interrupt_handler is called */
     int interrupt_counter;
@@ -2315,6 +2315,7 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
 {
     JSRuntime *rt;
     JSMallocState ms;
+    uint64_t random_state;
 
     memset(&ms, 0, sizeof(ms));
     ms.opaque = opaque;
@@ -2334,6 +2335,10 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     rt->malloc_state = ms;
     js_arena_init(rt);
     rt->malloc_gc_threshold = 256 * 1024;
+    random_state = js__gettimeofday_us();
+    if (random_state == 0)
+        random_state = 1;
+    rt->hash_seed = xorshift64star(&random_state);
 
     init_list_head(&rt->context_list);
     init_list_head(&rt->gc_obj_list);
@@ -2885,7 +2890,6 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     // the state must be non zero
     if (ctx->random_state == 0)
         ctx->random_state = 1;
-    ctx->hash_seed = xorshift64star(&ctx->random_state);
 
     if (JS_AddIntrinsicBasicObjects(ctx)) {
         JS_FreeContext(ctx);
@@ -53371,7 +53375,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         h = 0;
         break;
     }
-    return h ^ ctx->hash_seed ^ hash32(tag);
+    return h ^ ctx->rt->hash_seed ^ hash32(tag);
 }
 
 static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,
