@@ -1103,6 +1103,348 @@ static void dtoa_free(void *ptr)
 }
 #endif
 
+/* ---------- Ryu: shortest double to decimal digits ----------
+ *
+ * The exact bignum printer below finds the shortest representation by
+ * successive P-digit tries, which is the hot spot for the common free
+ * format conversion (`d + ""`, Number.prototype.toString).  Ryu
+ * computes the same shortest digits in a handful of 128-bit
+ * operations instead.  The mantissa/exponent it returns are fed into
+ * the same ECMAScript formatting rules as the bignum path, so the
+ * output is byte-identical; the bignum printer remains the fallback
+ * for every other radix and format.  The 128-bit multiply is done via
+ * __int128 when available and a portable 32-bit-split umul128 otherwise
+ * (MSVC), so the fast path runs on all supported compilers.
+ *
+ * Ported from https://github.com/ulfjack/ryu (Copyright 2018 Ulf
+ * Adams, Apache-2.0 or BSL-1.0); lookup tables live in
+ * dtoa-ryu-table.h. */
+#if !defined(JS_DTOA_NO_FAST_PATH)
+
+#include "dtoa-ryu-table.h"
+
+#if defined(__SIZEOF_INT128__)
+typedef __uint128_t ryu_uint128_t;
+#endif
+
+static inline uint32_t ryu_decimal_length17(uint64_t v)
+{
+    if (v >= 10000000000000000L) return 17;
+    if (v >= 1000000000000000L) return 16;
+    if (v >= 100000000000000L) return 15;
+    if (v >= 10000000000000L) return 14;
+    if (v >= 1000000000000L) return 13;
+    if (v >= 100000000000L) return 12;
+    if (v >= 10000000000L) return 11;
+    if (v >= 1000000000L) return 10;
+    if (v >= 100000000L) return 9;
+    if (v >= 10000000L) return 8;
+    if (v >= 1000000L) return 7;
+    if (v >= 100000L) return 6;
+    if (v >= 10000L) return 5;
+    if (v >= 1000L) return 4;
+    if (v >= 100L) return 3;
+    if (v >= 10L) return 2;
+    return 1;
+}
+
+static inline uint32_t ryu_log10_pow2(int32_t e)
+{
+    return ((uint32_t)e * 78913) >> 18;
+}
+
+static inline uint32_t ryu_log10_pow5(int32_t e)
+{
+    return ((uint32_t)e * 732923) >> 20;
+}
+
+static inline int32_t ryu_pow5bits(int32_t e)
+{
+    return (int32_t)((((uint32_t)e * 1217359) >> 19) + 1);
+}
+
+static inline uint64_t ryu_div5(uint64_t x)
+{
+    return x / 5;
+}
+
+static inline uint64_t ryu_div10(uint64_t x)
+{
+    return x / 10;
+}
+
+static inline uint64_t ryu_div100(uint64_t x)
+{
+    return x / 100;
+}
+
+static inline uint32_t ryu_pow5_factor(uint64_t value)
+{
+    const uint64_t m_inv_5 = 14757395258967641293u; /* 5 * m_inv_5 = 1 mod 2^64 */
+    const uint64_t n_div_5 = 3689348814741910323u;  /* 2^64 / 5 */
+    uint32_t count = 0;
+    for (;;) {
+        value *= m_inv_5;
+        if (value > n_div_5)
+            break;
+        ++count;
+    }
+    return count;
+}
+
+static inline bool ryu_multiple_of_power_of_5(uint64_t value, uint32_t p)
+{
+    return ryu_pow5_factor(value) >= p;
+}
+
+static inline bool ryu_multiple_of_power_of_2(uint64_t value, uint32_t p)
+{
+    return (value & (((uint64_t)1 << p) - 1)) == 0;
+}
+
+#if defined(__SIZEOF_INT128__)
+static inline uint64_t ryu_mul_shift64(uint64_t m, const uint64_t *mul,
+                                       int32_t j)
+{
+    ryu_uint128_t b0 = (ryu_uint128_t)m * mul[0];
+    ryu_uint128_t b2 = (ryu_uint128_t)m * mul[1];
+    return (uint64_t)(((b0 >> 64) + b2) >> (j - 64));
+}
+#else
+/* portable 64x64 -> 128 multiply and 128-bit right shift for compilers
+   without __int128 (MSVC); m fits in 55 bits, j >= 115, j - 64 < 64 */
+static inline uint64_t ryu_umul128(uint64_t a, uint64_t b, uint64_t *hi)
+{
+    uint32_t a_lo = (uint32_t)a, a_hi = (uint32_t)(a >> 32);
+    uint32_t b_lo = (uint32_t)b, b_hi = (uint32_t)(b >> 32);
+    uint64_t b00 = (uint64_t)a_lo * b_lo;
+    uint64_t b01 = (uint64_t)a_lo * b_hi;
+    uint64_t b10 = (uint64_t)a_hi * b_lo;
+    uint64_t b11 = (uint64_t)a_hi * b_hi;
+    uint64_t mid1 = b10 + (b00 >> 32);
+    uint64_t mid2 = b01 + (uint32_t)mid1;
+    *hi = b11 + (mid1 >> 32) + (mid2 >> 32);
+    return ((mid2 & 0xffffffff) << 32) | (uint32_t)b00;
+}
+
+static inline uint64_t ryu_shiftright128(uint64_t lo, uint64_t hi,
+                                         uint32_t dist)
+{
+    return (hi << (64 - dist)) | (lo >> dist);
+}
+
+static inline uint64_t ryu_mul_shift64(uint64_t m, const uint64_t *mul,
+                                       int32_t j)
+{
+    uint64_t high1, high0, low1, sum;
+    low1 = ryu_umul128(m, mul[1], &high1);
+    ryu_umul128(m, mul[0], &high0);
+    sum = high0 + low1;
+    if (sum < high0)
+        ++high1;
+    return ryu_shiftright128(sum, high1, j - 64);
+}
+#endif
+
+static inline uint64_t ryu_mul_shift_all64(uint64_t m, const uint64_t *mul,
+                                           int32_t j, uint64_t *vp,
+                                           uint64_t *vm, uint32_t mm_shift)
+{
+    *vp = ryu_mul_shift64(4 * m + 2, mul, j);
+    *vm = ryu_mul_shift64(4 * m - 1 - mm_shift, mul, j);
+    return ryu_mul_shift64(4 * m, mul, j);
+}
+
+/* shortest decimal digits for value = m2 * 2^(e2-52), m2 normalized to
+   53 bits, e2 unbiased.  *pexp is the exponent: value = *pmant * 10^exp. */
+static void ryu_d2d(uint64_t m2, int32_t e2, uint64_t *pmant, int32_t *pexp)
+{
+    int32_t e;
+    int32_t e10, k, j, i, removed = 0;
+    uint32_t q, mm_shift;
+    uint64_t mv, vr, vp, vm, output;
+    uint8_t last_removed_digit = 0;
+    bool accept_bounds, vm_is_trailing_zeros = false;
+    bool vr_is_trailing_zeros = false;
+
+    if (e2 < -1022) {
+        /* Subnormals must stay in ryu's raw-mantissa form, otherwise the
+           pow5 table index i = -e - q can exceed DOUBLE_POW5_TABLE_SIZE */
+        m2 >>= -e2 - 1022;
+        e = 1 - 1023 - 52 - 2;
+    } else {
+        e = e2 - 54; /* ryu uses two extra bits for the bounds */
+    }
+    accept_bounds = (m2 & 1) == 0;
+    /* 1 unless the value is a normal power of two (subnormals keep an
+       asymmetric interval down to zero, hence e2 < -1022 also) */
+    mm_shift = (m2 != ((uint64_t)1 << 52)) || (e2 < -1022) ? 1 : 0;
+    mv = 4 * m2;
+    if (e >= 0) {
+        q = ryu_log10_pow2(e) - (e > 3);
+        e10 = (int32_t)q;
+        k = DOUBLE_POW5_INV_BITCOUNT + ryu_pow5bits((int32_t)q) - 1;
+        i = -e + (int32_t)q + k;
+        vr = ryu_mul_shift_all64(m2, DOUBLE_POW5_INV_SPLIT[q], i, &vp, &vm,
+                                 mm_shift);
+        if (q <= 21) {
+            uint32_t mv_mod5 = (uint32_t)mv -
+                               5 * (uint32_t)ryu_div5(mv);
+            if (mv_mod5 == 0) {
+                vr_is_trailing_zeros = ryu_multiple_of_power_of_5(mv, q);
+            } else if (accept_bounds) {
+                vm_is_trailing_zeros =
+                    ryu_multiple_of_power_of_5(mv - 1 - mm_shift, q);
+            } else {
+                vp -= ryu_multiple_of_power_of_5(mv + 2, q);
+            }
+        }
+    } else {
+        q = ryu_log10_pow5(-e) - (-e > 1);
+        e10 = (int32_t)q + e;
+        i = -e - (int32_t)q;
+        k = ryu_pow5bits(i) - DOUBLE_POW5_BITCOUNT;
+        j = (int32_t)q - k;
+        vr = ryu_mul_shift_all64(m2, DOUBLE_POW5_SPLIT[i], j, &vp, &vm,
+                                 mm_shift);
+        if (q <= 1) {
+            vr_is_trailing_zeros = true;
+            if (accept_bounds) {
+                vm_is_trailing_zeros = mm_shift == 1;
+            } else {
+                --vp;
+            }
+        } else if (q < 63) {
+            vr_is_trailing_zeros = ryu_multiple_of_power_of_2(mv, q);
+        }
+    }
+    if (vm_is_trailing_zeros || vr_is_trailing_zeros) {
+        /* rare case (~0.7%): the interval ends on a power of 10 boundary */
+        for (;;) {
+            uint64_t vp_div10 = ryu_div10(vp);
+            uint64_t vm_div10 = ryu_div10(vm);
+            if (vp_div10 <= vm_div10)
+                break;
+            uint32_t vm_mod10 = (uint32_t)vm - 10 * (uint32_t)vm_div10;
+            uint64_t vr_div10 = ryu_div10(vr);
+            uint32_t vr_mod10 = (uint32_t)vr - 10 * (uint32_t)vr_div10;
+            vm_is_trailing_zeros &= vm_mod10 == 0;
+            vr_is_trailing_zeros &= last_removed_digit == 0;
+            last_removed_digit = (uint8_t)vr_mod10;
+            vr = vr_div10;
+            vp = vp_div10;
+            vm = vm_div10;
+            ++removed;
+        }
+        if (vm_is_trailing_zeros) {
+            for (;;) {
+                uint64_t vm_div10 = ryu_div10(vm);
+                uint32_t vm_mod10 = (uint32_t)vm - 10 * (uint32_t)vm_div10;
+                if (vm_mod10 != 0)
+                    break;
+                uint64_t vp_div10 = ryu_div10(vp);
+                uint64_t vr_div10 = ryu_div10(vr);
+                uint32_t vr_mod10 = (uint32_t)vr - 10 * (uint32_t)vr_div10;
+                vr_is_trailing_zeros &= last_removed_digit == 0;
+                last_removed_digit = (uint8_t)vr_mod10;
+                vr = vr_div10;
+                vp = vp_div10;
+                vm = vm_div10;
+                ++removed;
+            }
+        }
+        /* round to even when the exact value ends in .....50..0 */
+        if (vr_is_trailing_zeros && last_removed_digit == 5 && vr % 2 == 0)
+            last_removed_digit = 4;
+        output = vr + ((vr == vm && (!accept_bounds || !vm_is_trailing_zeros))
+                       || last_removed_digit >= 5);
+    } else {
+        bool round_up = false;
+        uint64_t vp_div100 = ryu_div100(vp);
+        uint64_t vm_div100 = ryu_div100(vm);
+        if (vp_div100 > vm_div100) {
+            uint64_t vr_div100 = ryu_div100(vr);
+            uint32_t vr_mod100 = (uint32_t)vr - 100 * (uint32_t)vr_div100;
+            round_up = vr_mod100 >= 50;
+            vr = vr_div100;
+            vp = vp_div100;
+            vm = vm_div100;
+            removed += 2;
+        }
+        for (;;) {
+            uint64_t vp_div10 = ryu_div10(vp);
+            uint64_t vm_div10 = ryu_div10(vm);
+            if (vp_div10 <= vm_div10)
+                break;
+            uint64_t vr_div10 = ryu_div10(vr);
+            uint32_t vr_mod10 = (uint32_t)vr - 10 * (uint32_t)vr_div10;
+            round_up = vr_mod10 >= 5;
+            vr = vr_div10;
+            vp = vp_div10;
+            vm = vm_div10;
+            ++removed;
+        }
+        output = vr + (vr == vm || round_up);
+    }
+    *pmant = output;
+    *pexp = e10 + removed;
+}
+
+/* format value = output * 10^exp with the ECMAScript free-format rules;
+   buf points at the output start (after an optional sign), q at the
+   current position.  Returns the number of characters written. */
+static int ryu_format_free(char *buf, char *q, uint64_t output, int32_t exp)
+{
+    char digits[17];
+    int olength = ryu_decimal_length17(output);
+    int e = exp + olength; /* number of integer digits */
+    int i;
+
+    for (i = olength - 1; i >= 0; i--) {
+        digits[i] = (char)('0' + output % 10);
+        output /= 10;
+    }
+    if (e <= -6 || e > 21) {
+        *q++ = digits[0];
+        if (olength > 1) {
+            *q++ = '.';
+            memcpy(q, digits + 1, olength - 1);
+            q += olength - 1;
+        }
+        *q++ = 'e';
+        e--;
+        if (e < 0) {
+            *q++ = '-';
+            e = -e;
+        } else {
+            *q++ = '+';
+        }
+        q += u32toa(q, e);
+    } else if (e <= 0) {
+        *q++ = '0';
+        *q++ = '.';
+        for (i = 0; i < -e; i++)
+            *q++ = '0';
+        memcpy(q, digits, olength);
+        q += olength;
+    } else if (e >= olength) {
+        memcpy(q, digits, olength);
+        q += olength;
+        for (i = 0; i < e - olength; i++)
+            *q++ = '0';
+    } else {
+        memcpy(q, digits, e);
+        q += e;
+        *q++ = '.';
+        memcpy(q, digits + e, olength - e);
+        q += olength - e;
+    }
+    *q = '\0';
+    return q - buf;
+}
+
+#endif /* !JS_DTOA_NO_FAST_PATH */
+
 /* return the length */
 int js_dtoa(char *buf, double d, int radix, int n_digits, int flags,
             JSDTOATempMem *tmp_mem)
@@ -1176,6 +1518,22 @@ int js_dtoa(char *buf, double d, int radix, int n_digits, int flags,
     }
 #endif
     
+#if !defined(JS_DTOA_NO_FAST_PATH)
+    if (fmt == JS_DTOA_FORMAT_FREE && radix == 10 &&
+        (flags & JS_DTOA_EXP_MASK) == JS_DTOA_EXP_AUTO) {
+        uint64_t output;
+        int32_t exp;
+        int len;
+        /* at this point value = m * 2^(e-53), m normalized to 53 bits */
+        ryu_d2d(m, e - 1, &output, &exp);
+        len = ryu_format_free(buf, q, output, exp);
+        /* no-op on the arena allocator, real frees on the malloc one */
+        dtoa_free(mant_max);
+        dtoa_free(tmp1);
+        return len;
+    }
+#endif
+
     /* this choice of E implies F=round(x*B^(P-E) is such as: 
        B^(P-1) <= F < 2.B^P. */
     E = 1 + mul_log2_radix(e - 1, radix);
@@ -1350,6 +1708,294 @@ static void mpb_mul1_base(mpb_t *r, limb_t radix_base, limb_t a)
 }
 
 /* XXX: add fast path for small integers */
+/* ---------- fast path: plain base-10 string to double ----------
+ *
+ * The exact bignum parser below handles every corner case but is the
+ * hot spot for runtime string->number coercions (Number(str), `+str`,
+ * `str | 0`, ...) which overwhelmingly receive short, plain decimal
+ * input.  Parse such input with 128-bit integer arithmetic and round
+ * once at the end (round-half-to-even), which is bit-identical to the
+ * bignum path for the inputs accepted here:
+ *
+ *   - at most 19 significant digits (fits in uint64_t)
+ *   - decimal exponent in [-19, 19] (10^19 fits in uint64_t)
+ *   - no separators, radix prefix or trailing garbage
+ *
+ * Anything else returns false and falls back to the exact parser, so
+ * behavior is unchanged.  Disabled without 128-bit integer support
+ * (MSVC) and for clang targeting MSVC on Windows, which lowers 128-bit
+ * division and the u128->double conversion to compiler-rt libcalls
+ * (__udivti3, __floatuntidf) that lld does not link. MinGW and Cygwin
+ * link the runtime library and keep the fast path. Also disabled with
+ * JS_ATOD_NO_FAST_PATH for differential testing. */
+#ifdef JS_ATOD_USE_FAST_PATH
+
+static const uint64_t pow10_u64[20] = {
+    UINT64_C(1),
+    UINT64_C(10),
+    UINT64_C(100),
+    UINT64_C(1000),
+    UINT64_C(10000),
+    UINT64_C(100000),
+    UINT64_C(1000000),
+    UINT64_C(10000000),
+    UINT64_C(100000000),
+    UINT64_C(1000000000),
+    UINT64_C(10000000000),
+    UINT64_C(100000000000),
+    UINT64_C(1000000000000),
+    UINT64_C(10000000000000),
+    UINT64_C(100000000000000),
+    UINT64_C(1000000000000000),
+    UINT64_C(10000000000000000),
+    UINT64_C(100000000000000000),
+    UINT64_C(1000000000000000000),
+    UINT64_C(10000000000000000000),
+};
+
+static inline int clz128(uint64_t hi, uint64_t lo)
+{
+    /* caller guarantees n != 0 so at most one branch sees a zero value */
+    return hi ? clz64(hi) : 64 + clz64(lo);
+}
+
+/* round the exact integer n to nearest double, n >= 1.  Used by the
+   multiply path where the scaled value fits in 128 bits. */
+static double round_u128_to_double(__uint128_t n)
+{
+    int b, shift;
+    uint64_t mant;
+
+    b = 128 - clz128((uint64_t)(n >> 64), (uint64_t)n);
+    if (b <= 53) {
+        /* n < 2^53 fits in uint64_t; avoid a u128->double libcall */
+        return (double)(uint64_t)n; /* exact */
+    }
+    shift = b - 53;
+    mant = (uint64_t)(n >> shift);
+    {
+        __uint128_t low = n & (((__uint128_t)1 << shift) - 1);
+        __uint128_t half = (__uint128_t)1 << (shift - 1);
+        int round_up = low > half || (low == half && (mant & 1));
+        if (round_up) {
+            mant++;
+            if (mant >> 53) {
+                /* carry to bit 53: mantissa becomes 2^52, exponent +1 */
+                mant >>= 1;
+                b++;
+            }
+        }
+    }
+    /* value = mant * 2^(b-53) with mant in [2^52, 2^53) */
+    return uint64_as_float64(((uint64_t)(b - 1 + 1023) << 52) |
+                             (mant & (((uint64_t)1 << 52) - 1)));
+}
+
+/* round m / d to nearest double, 0 < d < 2^62, m >= 1, b = bitlen(m).
+   The quotient stays in the normal double range because the caller
+   only feeds values in [10^-19, 10^19]; the rounding is exact because
+   m/d is kept as the rational q + r/d until the single final rounding. */
+static double round_m_div_d_to_double(uint64_t m, uint64_t d, int b)
+{
+    uint64_t n = m << (64 - b); /* top bit set */
+    uint64_t q = n / d, r = n % d;
+    int bq, e, shift;
+    uint64_t mant;
+
+    if (q == 0) {
+        /* m * 2^(64-b) < d, so v = m/d < 1: the 64-bit quotient is zero.
+           Re-do the division with a full 128-bit numerator so the
+           quotient has at least 64 bits and the rounding below applies
+           (d <= 10^19 < 2^64 makes this always well-defined). */
+        __uint128_t n2 = (__uint128_t)m << (128 - b);
+        __uint128_t q2 = n2 / d;
+        uint64_t r2 = (uint64_t)(n2 % d);
+        int bq2 = 128 - clz128((uint64_t)(q2 >> 64), (uint64_t)q2);
+        int e2 = bq2 + b - 129;
+        int shift2 = bq2 - 53;
+        uint64_t mant2 = (uint64_t)(q2 >> shift2);
+        __uint128_t low2 = q2 & (((__uint128_t)1 << shift2) - 1);
+        __uint128_t half2 = (__uint128_t)1 << (shift2 - 1);
+        int round_up = low2 > half2 ||
+                       (low2 == half2 && (r2 != 0 || (mant2 & 1)));
+        if (round_up) {
+            mant2++;
+            if (mant2 >> 53) {
+                mant2 >>= 1;
+                e2++;
+            }
+        }
+        return uint64_as_float64(((uint64_t)(e2 + 1023) << 52) |
+                                 (mant2 & (((uint64_t)1 << 52) - 1)));
+    }
+    bq = 64 - clz64(q);
+    /* v = m/d = (q + r/d) * 2^(b-64) */
+    e = bq + b - 65;
+    shift = bq - 53;
+    if (shift > 0) {
+        uint64_t low = q & (((uint64_t)1 << shift) - 1);
+        uint64_t half = (uint64_t)1 << (shift - 1);
+        int round_up;
+        mant = q >> shift;
+        round_up = low > half ||
+                   (low == half && (r != 0 || (mant & 1)));
+        if (round_up) {
+            mant++;
+            if (mant >> 53) {
+                mant >>= 1;
+                e++;
+            }
+        }
+    } else {
+        /* q has fewer than 53 bits: shift q left and fold the scaled
+           fraction r*2^-shift/d in, rounding the remainder once */
+        int sh = -shift;
+        __uint128_t rn = (__uint128_t)r << sh;
+        uint64_t fi = (uint64_t)(rn / d);
+        uint64_t rem = (uint64_t)(rn % d);
+        uint64_t half_d = d / 2; /* d = 10^k is even; avoid 2*rem overflow */
+        mant = (q << sh) + fi;
+        if (rem > half_d)
+            mant++;
+        else if (rem == half_d)
+            mant += (mant & 1);
+        /* q + fi can round up to exactly 2^53 (carry) */
+        if (mant >> 53) {
+            mant >>= 1;
+            e++;
+        }
+    }
+    /* value = mant * 2^(e-52), mant in [2^52, 2^53) */
+    return uint64_as_float64(((uint64_t)(e + 1023) << 52) |
+                             (mant & (((uint64_t)1 << 52) - 1)));
+}
+
+/* Shared core of the fast decimal parser: parse a plain base-10 number in
+   [p, end) with no sign and no surrounding spaces, at most 19 significant
+   digits and a decimal exponent in [-19, 19].  Return true and the mantissa
+   m and exponent e10 such that value = m * 10^e10 on success; false means
+   the caller must use the exact parser, which also sets *pnext for partial
+   matches. */
+static bool js_atod_fast10_parse_core(const char *p, const char *end,
+                                      bool int_only, uint64_t *pm,
+                                      int32_t *pe10)
+{
+    uint64_t m = 0;
+    int ndigits = 0, e10 = 0, exp;
+    bool saw_digit = false;
+    const char *q = p;
+
+    /* leading zeros don't affect the value */
+    while (q < end && *q == '0') {
+        saw_digit = true;
+        q++;
+    }
+    while (q < end && *q >= '0' && *q <= '9') {
+        saw_digit = true;
+        if (ndigits >= 19) {
+            if (*q != '0')
+                return false; /* 20th significant digit: not exact */
+            /* trailing zeros still scale the value */
+            e10++;
+            if (e10 > 19)
+                return false;
+        } else {
+            m = m * 10 + (*q - '0');
+            ndigits++;
+        }
+        q++;
+    }
+    if (q < end && *q == '.') {
+        if (int_only)
+            return false;
+        q++;
+        while (q < end && *q >= '0' && *q <= '9') {
+            saw_digit = true;
+            if (ndigits >= 19) {
+                if (*q != '0')
+                    return false;
+            } else {
+                m = m * 10 + (*q - '0');
+                ndigits++;
+                e10--;
+            }
+            q++;
+        }
+    }
+    if (q < end && (*q == 'e' || *q == 'E')) {
+        const char *r = q + 1;
+        int eneg = 0;
+        if (int_only)
+            return false;
+        if (r < end && *r == '+') {
+            r++;
+        } else if (r < end && *r == '-') {
+            eneg = 1;
+            r++;
+        }
+        if (r >= end || *r < '0' || *r > '9')
+            return false; /* bare "1e" parses "1" in the exact parser */
+        exp = 0;
+        while (r < end && *r >= '0' && *r <= '9') {
+            if (exp > 1000)
+                return false; /* huge exponent: exact parser clamps to 0/inf */
+            exp = exp * 10 + (*r - '0');
+            r++;
+        }
+        e10 += eneg ? -exp : exp;
+        q = r;
+    }
+    /* a number must contain at least one digit: ".", "+." and "-." are NaN */
+    if (!saw_digit || q != end || e10 < -19 || e10 > 19)
+        return false;
+    *pm = m;
+    *pe10 = e10;
+    return true;
+}
+
+/* Entry point for flat strings: optional sign and surrounding ASCII
+   spaces.  Lets the runtime (JS_ToNumberHintFree) skip the general js_atof
+   scanner for the common short decimal inputs; m may be 0 (then e10 is
+   ignored by the round helper). */
+bool js_atod_fast10_parse(const char *p, size_t len, uint64_t *pm,
+                          int32_t *pe10, int *pneg)
+{
+    const char *end = p + len, *q;
+    int neg = 0;
+
+    while (p < end && *p == ' ')
+        p++;
+    if (p < end && (*p == '+' || *p == '-')) {
+        neg = (*p == '-');
+        p++;
+    }
+    q = end;
+    while (q > p && q[-1] == ' ')
+        q--;
+    if (!js_atod_fast10_parse_core(p, q, 0, pm, pe10))
+        return false;
+    *pneg = neg;
+    return true;
+}
+
+/* Correctly round m * 10^e10 to double, with the sign applied; requires
+   0 <= m < 10^19 and |e10| <= 19 (the parser's bounds). */
+double js_atod_fast10_round(uint64_t m, int32_t e10, int neg)
+{
+    double d;
+
+    if (m == 0) {
+        d = 0.0;
+    } else if (e10 >= 0) {
+        d = round_u128_to_double((__uint128_t)m * pow10_u64[e10]);
+    } else {
+        int b = 64 - clz64(m);
+        d = round_m_div_d_to_double(m, pow10_u64[-e10], b);
+    }
+    return neg ? -d : d;
+}
+#endif
+
 double js_atod(const char *str, const char **pnext, int radix, int flags,
                JSATODTempMem *tmp_mem)
 {
@@ -1417,6 +2063,24 @@ double js_atod(const char *str, const char **pnext, int radix, int flags,
     }
     if (radix == 0)
         radix = 10;
+
+#ifdef JS_ATOD_USE_FAST_PATH
+    /* radix prefixes were consumed above, so p points at the digits */
+    if (radix == 10) {
+        double d;
+        const char *end = p + strlen(p);
+        uint64_t m;
+        int32_t e10;
+        if (js_atod_fast10_parse_core(p, end,
+                                      (flags & JS_ATOD_INT_ONLY) != 0,
+                                      &m, &e10)) {
+            d = js_atod_fast10_round(m, e10, is_neg);
+            if (pnext)
+                *pnext = end;
+            return d;
+        }
+    }
+#endif
 
     cur_limb = 0;
     expn_offset = 0;

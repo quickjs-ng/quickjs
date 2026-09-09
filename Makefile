@@ -146,4 +146,10 @@ unicode_gen: $(BUILD_DIR)
 libunicode-table.h: unicode_gen
 	$(BUILD_DIR)/unicode_gen unicode $@
 
-.PHONY: all amalgam ctest cxxtest debug fuzz jscheck install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen $(QJS) $(QJSC)
+ryu_gen: $(BUILD_DIR)
+	cmake --build $(BUILD_DIR) --target ryu_gen
+
+dtoa-ryu-table.h: ryu_gen
+	$(BUILD_DIR)/ryu_gen $@
+
+.PHONY: all amalgam ctest cxxtest debug fuzz jscheck install clean codegen distclean stats test test262 test262-update test262-check microbench unicode_gen ryu_gen $(QJS) $(QJSC)
