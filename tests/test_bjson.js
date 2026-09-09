@@ -1,6 +1,6 @@
 import * as std from "qjs:std";
 import * as bjson from "qjs:bjson";
-import { assert } from "./assert.js";
+import { assert, assertArrayEquals } from "./assert.js";
 
 function base64decode(s) {
     var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -285,11 +285,11 @@ function bjson_test_bytecode()
 function bjson_test_fuzz()
 {
     var corpus = [
-        ["G/////8QAAAAAARg"],
-        ["G//////m5uaCLQ=="],
-        ["G/////8AEQATBgYGBgYGBgYGBgb/////EAARAC8R/78vEf+/"],
-        ["G/////8ACH8ACv////9//////////////////////////////9//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAA+fn5+fn5+fn5+fn5AAAAAAAGAKs="],
-        ["G/////8ADgAAABQA=", bjson.READ_OBJ_REFERENCE],
+        ["HP////8QAAAAAARg"],
+        ["HP/////m5uaCLQ=="],
+        ["HP////8AEQATBgYGBgYGBgYGBgb/////EAARAC8R/78vEf+/"],
+        ["HP////8ACH8ACv////9//////////////////////////////9//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAA+fn5+fn5+fn5+fn5AAAAAAAGAKs="],
+        ["HP////8ADgAAABQA=", bjson.READ_OBJ_REFERENCE],
     ];
     for (var [input, flags] of corpus) {
         var buf = base64decode(input);
@@ -322,6 +322,14 @@ function bjson_test_csum()
             tab[i] = t;
         }
     }
+}
+
+function bjson_test_atom()
+{
+    var o = {return:1, with:2, Map:3}; // Map tests LEB128 encoding
+    var b = bjson.write(o);
+    var r = bjson.read(b, 0, b.byteLength);
+    assertArrayEquals(Object.entries(o), Object.entries(r));
 }
 
 function bjson_test_all()
@@ -361,6 +369,7 @@ function bjson_test_all()
     bjson_test_bytecode();
     bjson_test_fuzz();
     bjson_test_csum();
+    bjson_test_atom();
 }
 
 bjson_test_all();
