@@ -63657,13 +63657,13 @@ static JSValue js_domexception_constructor0(JSContext *ctx, JSValueConst new_tar
     obj = js_create_from_ctor(ctx, new_target, JS_CLASS_DOM_EXCEPTION);
     if (JS_IsException(obj))
         return JS_EXCEPTION;
-    if (!JS_IsUndefined(argv[0]))
+    if (argc > 0 && !JS_IsUndefined(argv[0]))
         message = JS_ToString(ctx, argv[0]);
     else
         message = js_empty_string(ctx->rt);
     if (JS_IsException(message))
         goto fail1;
-    if (!JS_IsUndefined(argv[1]))
+    if (argc > 1 && !JS_IsUndefined(argv[1]))
         name = JS_ToString(ctx, argv[1]);
     else
         name = JS_AtomToString(ctx, JS_ATOM_Error);
@@ -63737,11 +63737,12 @@ static JSValue js_domexception_get_code(JSContext *ctx, JSValueConst this_val)
 }
 
 static const JSCFunctionListEntry js_domexception_proto_funcs[] = {
-    JS_CGETSET_MAGIC_DEF("name", js_domexception_getfield, NULL,
-        offsetof(JSDOMExceptionData, name) ),
-    JS_CGETSET_MAGIC_DEF("message", js_domexception_getfield, NULL,
-        offsetof(JSDOMExceptionData, message) ),
-    JS_CGETSET_DEF("code", js_domexception_get_code, NULL ),
+    JS_CGETSET_MAGIC_DEF2("name", js_domexception_getfield, NULL,
+        offsetof(JSDOMExceptionData, name), JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE ),
+    JS_CGETSET_MAGIC_DEF2("message", js_domexception_getfield, NULL,
+        offsetof(JSDOMExceptionData, message), JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE ),
+    JS_CGETSET_DEF2("code", js_domexception_get_code, NULL,
+        JS_PROP_CONFIGURABLE | JS_PROP_ENUMERABLE ),
     JS_PROP_STRING_DEF("[Symbol.toStringTag]", "DOMException", JS_PROP_CONFIGURABLE ),
 };
 
@@ -63794,7 +63795,7 @@ int JS_AddIntrinsicDOMException(JSContext *ctx)
     JS_SetPropertyFunctionList(ctx, proto,
                                js_domexception_proto_funcs,
                                countof(js_domexception_proto_funcs));
-    ctor = JS_NewCFunction2(ctx, js_domexception_constructor, "DOMException", 2,
+    ctor = JS_NewCFunction2(ctx, js_domexception_constructor, "DOMException", 0,
                             JS_CFUNC_constructor_or_func, 0);
     JS_SetConstructor(ctx, ctor, proto);
     for (i = 0; i < countof(js_dom_exception_names_table); i++) {
