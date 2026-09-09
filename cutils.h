@@ -206,6 +206,20 @@ static inline uint32_t hash32(uint32_t a)
     return a * 0x61c88647;
 }
 
+static inline uint64_t hash64(uint64_t a)
+{
+    return a * 0x61c8864680b583ebULL;
+}
+
+static inline uintptr_t hash_uintptr(uintptr_t a)
+{
+    if (sizeof(uintptr_t) == sizeof(uint32_t)) {
+        return hash32(a);
+    } else {
+        return hash64(a);
+    }
+}
+
 /* WARNING: undefined if a = 0 */
 static inline int clz32(unsigned int a)
 {
@@ -235,6 +249,15 @@ static inline int clz64(uint64_t a)
 #else
     return __builtin_clzll(a);
 #endif
+}
+
+static inline uintptr_t clz_uintptr(uintptr_t a)
+{
+    if (sizeof(uintptr_t) == sizeof(uint32_t)) {
+        return clz32(a);
+    } else {
+        return clz64(a);
+    }
 }
 
 /* WARNING: undefined if a = 0 */
