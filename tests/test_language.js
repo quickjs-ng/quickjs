@@ -268,6 +268,51 @@ function test_constructor()
     assert(ex.message, "G is not a constructor")
 }
 
+function test_not_a_function()
+{
+    function expect(f, message) {
+        let ex
+        try { f() } catch (ex_) { ex = ex_ }
+        assert(ex instanceof TypeError)
+        assert(ex.message, message)
+    }
+    // callee loaded from a local variable
+    expect(() => { let x = 42; x() }, "x is not a function")
+    // ditto when the store and the load are fused into OP_set_loc
+    expect(() => { var zz = 1; zz() }, "zz is not a function")
+    // callee loaded from an argument
+    expect(() => { (function(f) { f() })(1) }, "f is not a function")
+    // callee loaded from a closure variable
+    expect(() => { let up = 1; (function() { up() })() }, "up is not a function")
+    // callee loaded from a global variable
+    globalThis.__not_a_function = 8
+    expect(() => { __not_a_function() }, "__not_a_function is not a function")
+    delete globalThis.__not_a_function
+    // member calls, member call chains, 'this'
+    expect(() => { let o = {}; o.foo() }, "o.foo is not a function")
+    expect(() => { let a = {b: {c: 1}}; a.b.c() }, "a.b.c is not a function")
+    expect(() => { let s = "abc"; s.charCodeAt.bad() },
+           "s.charCodeAt.bad is not a function")
+    expect(() => { new function() { this.m() } }, "this.m is not a function")
+    // member call on an unnamed object: only the property names are known
+    expect(() => { ({}).foo() }, "foo is not a function")
+    // tail calls
+    expect(() => { "use strict"; let h = 5; return h() }, "h is not a function")
+    expect(() => { "use strict"; let o = {f: 0}; return o.f() },
+           "o.f is not a function")
+    // no name available: the callee value is described instead
+    expect(() => { let o = {}; o["computed"]() }, "undefined is not a function")
+    // ambiguous callee (can come from more than one instruction)
+    let cond = [1].length == 1
+    expect(() => { let f = 1, g = 2; (cond ? f : g)() }, "1 is not a function")
+    expect(() => { (null)() }, "null is not a function")
+    expect(() => { (void 0)() }, "undefined is not a function")
+    expect(() => { (true)() }, "true is not a function")
+    // calls that do not go through a call opcode
+    expect(() => { Reflect.apply(123, null, []) }, "123 is not a function")
+    expect(() => { [1].map(null) }, "null is not a function")
+}
+
 function test_prototype()
 {
     var f = function f() { };
@@ -1089,6 +1134,7 @@ test_inc_dec();
 test_op2();
 test_delete();
 test_constructor();
+test_not_a_function();
 test_prototype();
 test_arguments();
 test_class();
