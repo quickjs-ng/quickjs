@@ -1063,6 +1063,47 @@ static void backtrace_oom_callsite_array(void)
     JS_FreeRuntime(rt);
 }
 
+static void large_allocation_accounting(void)
+{
+    static const size_t block_size = 1024 * 1024;
+    JSMemoryUsage before, after;
+    JSValue ret, exception;
+    JSRuntime *rt;
+    JSContext *ctx;
+    const char *str;
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+
+    JS_ComputeMemoryUsage(rt, &before);
+    ret = eval(ctx, "globalThis.a = new Uint8Array(1024 * 1024)");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_ComputeMemoryUsage(rt, &after);
+    assert(after.malloc_size - before.malloc_size >= (int64_t)block_size);
+
+    JS_ComputeMemoryUsage(rt, &before);
+    JS_SetMemoryLimit(rt, (size_t)before.malloc_size + 4 * block_size);
+    ret = eval(ctx, "globalThis.a = [];\n"
+                    "for (let i = 0; i < 64; i++)\n"
+                    "    a.push(new Uint8Array(1024 * 1024));");
+    assert(JS_IsException(ret));
+    JS_SetMemoryLimit(rt, 0);
+    JS_ComputeMemoryUsage(rt, &after);
+    assert(after.malloc_size - before.malloc_size < (int64_t)(8 * block_size));
+
+    exception = JS_GetException(ctx);
+    assert(JS_IsError(exception));
+    str = JS_ToCString(ctx, exception);
+    assert(str);
+    assert(!strcmp(str, "InternalError: out of memory"));
+    JS_FreeCString(ctx, str);
+    JS_FreeValue(ctx, exception);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void backtrace_oom_current_exception(void)
 {
     static const char setup_code[] =
@@ -2137,6 +2178,7 @@ int main(void)
     dump_memory_usage();
     new_errors();
     dom_exception_added_twice();
+    large_allocation_accounting();
     backtrace_oom_current_exception();
     backtrace_oom_callsite_array();
     proxy_own_keys_huge_length();
