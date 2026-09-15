@@ -1,9 +1,14 @@
 let overflow;
 
+// Use a large interpreter frame so QuickJS's linear-memory stack guard trips
+// before Wasmtime's independent WebAssembly call stack is exhausted.
+const args = Array(1024).fill("0").join(",");
+const recurse = Function(
+    `return function recurse() { recurse(${args}); }`
+)();
+
 try {
-    (function recurse() {
-        recurse();
-    })();
+    recurse();
 } catch (error) {
     overflow = error;
 }
