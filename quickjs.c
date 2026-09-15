@@ -3119,7 +3119,7 @@ JSRuntime *JS_GetRuntime(JSContext *ctx)
 
 static void update_stack_limit(JSRuntime *rt)
 {
-    if (rt->stack_size == 0) {
+    if (rt->stack_size == 0 || rt->stack_top < rt->stack_size) {
         rt->stack_limit = 0; /* no limit */
     } else {
         rt->stack_limit = rt->stack_top - rt->stack_size;
