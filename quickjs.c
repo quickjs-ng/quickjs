@@ -3366,7 +3366,7 @@ static int JS_InitAtoms(JSRuntime *rt)
     rt->atom_count = 0;
     rt->atom_size = 0;
     rt->atom_free_index = 0;
-    if (JS_ResizeAtomHash(rt, 512))     /* there are at least 504 predefined atoms */
+    if (JS_ResizeAtomHash(rt, 1024)) // there are at least 587 predefined atoms
         return -1;
 
     p = js_atom_init;
