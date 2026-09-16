@@ -173,6 +173,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
         _WASI_EMULATED_SIGNAL
     )
     add_link_options(
+        -Wl,-z,stack-size=2097152
         -lwasi-emulated-process-clocks
         -lwasi-emulated-signal
     )
