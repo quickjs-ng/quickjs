@@ -977,6 +977,8 @@ JS_EXTERN JSValue JS_GetPropertyInt64(JSContext *ctx, JSValueConst this_obj,
                                       int64_t idx);
 JS_EXTERN JSValue JS_GetPropertyStr(JSContext *ctx, JSValueConst this_obj,
                                     const char *prop);
+JS_EXTERN JSValue JS_GetPropertyValue(JSContext *ctx, JSValueConst this_obj,
+                                      JSValue prop);
 
 JS_EXTERN int JS_SetProperty(JSContext *ctx, JSValueConst this_obj,
                              JSAtom prop, JSValue val);
@@ -986,6 +988,9 @@ JS_EXTERN int JS_SetPropertyInt64(JSContext *ctx, JSValueConst this_obj,
                                   int64_t idx, JSValue val);
 JS_EXTERN int JS_SetPropertyStr(JSContext *ctx, JSValueConst this_obj,
                                 const char *prop, JSValue val);
+// |flags| is a mix of JS_PROP_* values; when in doubt use JS_PROP_C_W_E
+JS_EXTERN int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
+                                  JSValue prop, JSValue val, int flags);
 JS_EXTERN int JS_HasProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop);
 JS_EXTERN int JS_IsExtensible(JSContext *ctx, JSValueConst obj);
 JS_EXTERN int JS_PreventExtensions(JSContext *ctx, JSValueConst obj);
@@ -1150,7 +1155,10 @@ JS_EXTERN bool JS_IsPromise(JSValueConst val);
 JS_EXTERN void JS_PromiseMarkAsHandled(JSContext *ctx, JSValueConst promise);
 JS_EXTERN JSValue JS_NewSettledPromise(JSContext *ctx, bool is_reject, JSValueConst value);
 
+// a symbol that is visible to JavaScript code
 JS_EXTERN JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global);
+// a symbol that is only visible to C code
+JS_EXTERN JSValue JS_NewPrivateSymbol(JSContext *ctx, const char *description);
 
 typedef enum JSPromiseHookType {
     JS_PROMISE_HOOK_INIT,     // emitted when a new promise is created

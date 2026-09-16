@@ -1496,8 +1496,6 @@ static JSValue js_promise_resolve_thenable_job(JSContext *ctx,
                                                int argc, JSValueConst *argv);
 static bool js_string_eq(JSString *p1, JSString *p2);
 static int js_string_compare(JSString *p1, JSString *p2);
-static int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
-                               JSValue prop, JSValue val, int flags);
 static int JS_NumberIsInteger(JSContext *ctx, JSValueConst val);
 static bool JS_NumberIsNegativeOrMinusZero(JSContext *ctx, JSValueConst val);
 static JSValue JS_ToNumberFree(JSContext *ctx, JSValue val);
@@ -3790,12 +3788,13 @@ static JSValue JS_NewSymbolFromAtom(JSContext *ctx, JSAtom descr,
 }
 
 /* `description` may be pure ASCII or UTF-8 encoded */
-JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global)
+static JSValue js_new_symbol(JSContext *ctx, const char *description,
+                             int atom_type)
 {
     if (description == NULL) {
-        if (!is_global) {
+        if (atom_type != JS_ATOM_TYPE_GLOBAL_SYMBOL) {
             /* Local symbol without description: Symbol() */
-            return JS_NewSymbolInternal(ctx, NULL, JS_ATOM_TYPE_SYMBOL);
+            return JS_NewSymbolInternal(ctx, NULL, atom_type);
         }
         /* Global symbol without description: Symbol.for() 
            Per ES spec, ToString(undefined) becomes "undefined" */
@@ -3804,11 +3803,24 @@ JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global)
     JSAtom atom = JS_NewAtom(ctx, description);
     if (atom == JS_ATOM_NULL)
         return JS_EXCEPTION;
-    int atom_type =
-        is_global ? JS_ATOM_TYPE_GLOBAL_SYMBOL : JS_ATOM_TYPE_SYMBOL;
     JSValue symbol = JS_NewSymbolFromAtom(ctx, atom, atom_type);
     JS_FreeAtom(ctx, atom);
     return symbol;
+}
+
+JSValue JS_NewSymbol(JSContext *ctx, const char *description, bool is_global)
+{
+    int atom_type;
+
+    atom_type = JS_ATOM_TYPE_SYMBOL;
+    if (is_global)
+        atom_type = JS_ATOM_TYPE_GLOBAL_SYMBOL;
+    return js_new_symbol(ctx, description, atom_type);
+}
+
+JSValue JS_NewPrivateSymbol(JSContext *ctx, const char *description)
+{
+    return js_new_symbol(ctx, description, JS_ATOM_TYPE_PRIVATE);
 }
 
 #define ATOM_GET_STR_BUF_SIZE 64
@@ -10013,8 +10025,8 @@ static bool js_get_fast_array_element(JSContext *ctx, JSObject *p,
     }
 }
 
-static JSValue JS_GetPropertyValue(JSContext *ctx, JSValueConst this_obj,
-                                   JSValue prop)
+JSValue JS_GetPropertyValue(JSContext *ctx, JSValueConst this_obj,
+                            JSValue prop)
 {
     JSAtom atom;
     JSValue ret;
@@ -10803,8 +10815,8 @@ int JS_SetProperty(JSContext *ctx, JSValueConst this_obj, JSAtom prop, JSValue v
 }
 
 /* flags can be JS_PROP_THROW or JS_PROP_THROW_STRICT */
-static int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
-                               JSValue prop, JSValue val, int flags)
+int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
+                        JSValue prop, JSValue val, int flags)
 {
     if (likely(JS_VALUE_GET_TAG(this_obj) == JS_TAG_OBJECT &&
                JS_VALUE_GET_TAG(prop) == JS_TAG_INT)) {
