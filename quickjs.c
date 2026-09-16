@@ -35254,7 +35254,16 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
                 break;
             }
             goto no_change;
-
+        case OP_lnot:
+            /* Transformation: lnot if_false|if_true -> if_true|if_false */
+            if (code_match(&cc, pos_next, M2(OP_if_false, OP_if_true), -1)) {
+                dbuf_putc(&bc_out, cc.op ^ OP_if_false ^ OP_if_true);
+                dbuf_put_u32(&bc_out, cc.label);
+                pos_next = cc.pos;
+                s->jump_size++;
+                break;
+            }
+            goto no_change;
         case OP_goto:
             s->jump_size++;
             /* fall thru */
