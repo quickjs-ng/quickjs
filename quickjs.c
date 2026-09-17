@@ -20823,10 +20823,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                             val = JS_UNDEFINED;
                         } else {
                             val = JS_GetProperty(ctx, obj, atom);
-                            *sp++ = val;
                             if (unlikely(JS_IsException(val)))
                                 goto exception;
                         }
+                        *sp++ = val;
                         break;
                     case OP_with_get_ref_undef:
                         /* produce a pair undefined/function on the stack */
