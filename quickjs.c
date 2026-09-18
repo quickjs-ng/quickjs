@@ -20778,9 +20778,21 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     }
                     switch (opcode) {
                     case OP_with_get_var:
-                        val = JS_GetProperty(ctx, obj, atom);
-                        if (unlikely(JS_IsException(val)))
+                        ret = JS_HasProperty(ctx, obj, atom);
+                        if (unlikely(ret < 0))
                             goto exception;
+                        
+                        if (ret == 0) {
+                            if (is_strict_mode(ctx)) {
+                                JS_ThrowReferenceErrorNotDefined(ctx, atom);
+                                goto exception;
+                            }
+                            val = JS_UNDEFINED;
+                        } else {
+                            val = JS_GetProperty(ctx, obj, atom);
+                            if (unlikely(JS_IsException(val)))
+                                goto exception;
+                        }
                         set_value(ctx, &sp[-1], val);
                         break;
                     case OP_with_put_var:
@@ -20805,9 +20817,20 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                         break;
                     case OP_with_get_ref:
                         /* produce a pair object/method on the stack */
-                        val = JS_GetProperty(ctx, obj, atom);
-                        if (unlikely(JS_IsException(val)))
+                        ret = JS_HasProperty(ctx, obj, atom);
+                        if (unlikely(ret < 0))
                             goto exception;
+                        if (ret == 0) {
+                            if (is_strict_mode(ctx)) {
+                                JS_ThrowReferenceErrorNotDefined(ctx, atom);
+                                goto exception;
+                            }
+                            val = JS_UNDEFINED;
+                        } else {
+                            val = JS_GetProperty(ctx, obj, atom);
+                            if (unlikely(JS_IsException(val)))
+                                goto exception;
+                        }
                         *sp++ = val;
                         break;
                     case OP_with_get_ref_undef:
