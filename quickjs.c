@@ -8596,6 +8596,16 @@ static JSValue JS_ThrowTypeErrorNotAFunction(JSContext *ctx)
     return JS_ThrowTypeError(ctx, "not a function");
 }
 
+#ifndef QJS_DISABLE_PARSER
+static no_inline void js_improve_type_error(JSContext *ctx, JSStackFrame *sf,
+                                            JSFunctionBytecode *b,
+                                            const uint8_t *pc,
+                                            JSValueConst *ptr, JSAtom prop);
+#else
+/* no stack depth analysis without compute_stack_size() */
+#define js_improve_type_error(ctx, sf, b, pc, ptr, prop) ((void)0)
+#endif
+
 static JSValue JS_ThrowTypeErrorNotAnObject(JSContext *ctx)
 {
     return JS_ThrowTypeError(ctx, "not an object");
@@ -18576,8 +18586,11 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 ret_val = JS_CallInternal(ctx, call_argv[-1], call_argv[-2],
                                           JS_UNDEFINED, call_argc,
                                           vc(call_argv), 0);
-                if (unlikely(JS_IsException(ret_val)))
+                if (unlikely(JS_IsException(ret_val))) {
+                    js_improve_type_error(ctx, sf, b, pc, vc(call_argv),
+                                          JS_ATOM_NULL);
                     goto exception;
+                }
                 if (opcode == OP_tail_call_method)
                     goto done;
                 for(i = -2; i < call_argc; i++)
@@ -19584,8 +19597,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 get_field_slow_path:
                     sf->cur_pc = pc;
                     val = JS_GetPropertyInternal(ctx, obj, atom, sp[-1], false);
-                    if (unlikely(JS_IsException(val)))
+                    if (unlikely(JS_IsException(val))) {
+                        js_improve_type_error(ctx, sf, b, pc, vc(sp), atom);
                         goto exception;
+                    }
                 }
                 JS_FreeValue(ctx, sp[-1]);
                 sp[-1] = val;
@@ -19632,8 +19647,10 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 get_field2_slow_path:
                     sf->cur_pc = pc;
                     val = JS_GetPropertyInternal(ctx, obj, atom, sp[-1], false);
-                    if (unlikely(JS_IsException(val)))
+                    if (unlikely(JS_IsException(val))) {
+                        js_improve_type_error(ctx, sf, b, pc, vc(sp), atom);
                         goto exception;
+                    }
                 }
                 *sp++ = val;
             }
@@ -36732,17 +36749,18 @@ static __exception int ss_check(JSContext *ctx, StackSizeState *s,
     return 0;
 }
 
+/* If 'pstack_level_tab' is not NULL, it receives the table of stack
+   depths at each instruction (0xffff = unreachable); the caller frees it. */
 static __exception int compute_stack_size(JSContext *ctx,
-                                          JSFunctionDef *fd,
-                                          int *pstack_size)
+                                          const uint8_t *bc_buf, int bc_len,
+                                          int *pstack_size,
+                                          uint16_t **pstack_level_tab)
 {
     StackSizeState s_s, *s = &s_s;
     int i, diff, n_pop, pos_next, stack_len, pos, op, catch_pos, catch_level;
     const JSOpCode *oi;
-    const uint8_t *bc_buf;
 
-    bc_buf = fd->byte_code.buf;
-    s->bc_len = fd->byte_code.size;
+    s->bc_len = bc_len;
     /* bc_len > 0 */
     s->stack_level_tab = js_malloc(ctx, sizeof(s->stack_level_tab[0]) *
                                    s->bc_len);
@@ -36917,7 +36935,10 @@ static __exception int compute_stack_size(JSContext *ctx,
     }
     js_free(ctx, s->pc_stack);
     js_free(ctx, s->catch_pos_tab);
-    js_free(ctx, s->stack_level_tab);
+    if (pstack_level_tab)
+        *pstack_level_tab = s->stack_level_tab;
+    else
+        js_free(ctx, s->stack_level_tab);
     *pstack_size = s->stack_len_max;
     return 0;
  fail:
@@ -36926,6 +36947,90 @@ static __exception int compute_stack_size(JSContext *ctx,
     js_free(ctx, s->stack_level_tab);
     *pstack_size = 0;
     return -1;
+}
+
+/* On the error path, rewrite "not a function" (prop == JS_ATOM_NULL) or
+   "cannot read property of undefined/null" (prop = the property read) to
+   name the callee or base: the atom of the last get_var/get_field/
+   get_field2 that wrote that stack slot, found with the stack depths of
+   compute_stack_size(). The write cannot be shadowed (method call callees
+   only come from property accesses with the arguments evaluating above
+   them; a read on undefined/null runs no user code before throwing), and
+   slots written any other way keep the generic message. */
+static no_inline void js_improve_type_error(JSContext *ctx, JSStackFrame *sf,
+                                            JSFunctionBytecode *b,
+                                            const uint8_t *pc,
+                                            JSValueConst *ptr, JSAtom prop)
+{
+    char buf1[ATOM_GET_STR_BUF_SIZE], buf2[ATOM_GET_STR_BUF_SIZE];
+    const uint8_t *bc_buf = b->byte_code_buf;
+    const JSOpCode *oi;
+    const char *of;
+    uint16_t *depth_tab;
+    int pos, op, n_pop, depth, stack_size, limit_pc, slot;
+    JSAtom name = JS_ATOM_NULL;
+    JSValue exc;
+
+    if (prop == JS_ATOM_NULL) {
+        /* only the "not callable" TypeError JS_CallInternal() just threw */
+        if (JS_IsFunction(ctx, ptr[-1]))
+            return;
+        limit_pc = (int)(pc - 3 - bc_buf); /* OP_call_method */
+    } else {
+        /* only when the base (ptr[-1]) really is undefined/null */
+        if (!JS_IsUndefined(ptr[-1]) && !JS_IsNull(ptr[-1]))
+            return;
+        limit_pc = (int)(pc - 5 - bc_buf); /* OP_get_field */
+    }
+    slot = (int)(ptr - 1 - vc(sf->var_buf + b->var_count));
+    exc = JS_GetException(ctx);
+    if (JS_IsUncatchableError(exc))
+        goto restore; /* e.g. an interrupt: must stay uncatchable */
+    if (compute_stack_size(ctx, bc_buf, b->byte_code_len, &stack_size,
+                           &depth_tab)) {
+        JS_FreeValue(ctx, JS_GetException(ctx)); /* out of memory */
+        goto restore;
+    }
+    for (pos = 0; pos < limit_pc; pos += oi->size) {
+        op = bc_buf[pos];
+        if (op == 0 || op >= OP_COUNT)
+            break; /* cannot happen: verified by compute_stack_size() */
+        oi = &short_opcode_info(op);
+        depth = depth_tab[pos];
+        if (depth == 0xffff)
+            continue; /* not reachable */
+        n_pop = oi->n_pop;
+        if (oi->fmt == OP_FMT_npop || oi->fmt == OP_FMT_npop_u16)
+            n_pop += get_u16(bc_buf + pos + 1);
+        else if (oi->fmt == OP_FMT_npopx)
+            n_pop += op - OP_call0;
+        /* the instruction writes the slots it pushes */
+        if (depth - n_pop <= slot && slot < depth - n_pop + oi->n_push) {
+            if (op == OP_get_field2 ||
+                (prop != JS_ATOM_NULL &&
+                 (op == OP_get_field || op == OP_get_var)))
+                name = get_u32(bc_buf + pos + 1);
+            else
+                name = JS_ATOM_NULL;
+        }
+    }
+    js_free(ctx, depth_tab);
+    if (name == JS_ATOM_NULL ||
+        (prop != JS_ATOM_NULL &&
+         (name == JS_ATOM_undefined || name == JS_ATOM_null)))
+        goto restore;
+    JS_FreeValue(ctx, exc);
+    if (prop == JS_ATOM_NULL) {
+        JS_ThrowTypeErrorAtom(ctx, "%s is not a function", name);
+    } else {
+        of = JS_IsNull(ptr[-1]) ? "null" : "undefined";
+        JS_ThrowTypeError(ctx, "cannot read property '%s' of %s ('%s' is %s)",
+                          JS_AtomGetStr(ctx, buf1, sizeof(buf1), prop), of,
+                          JS_AtomGetStr(ctx, buf2, sizeof(buf2), name), of);
+    }
+    return;
+restore:
+    JS_Throw(ctx, exc);
 }
 
 static int add_module_variables(JSContext *ctx, JSFunctionDef *fd)
@@ -37061,7 +37166,8 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     if (resolve_labels(ctx, fd))
         goto fail;
 
-    if (compute_stack_size(ctx, fd, &stack_size) < 0)
+    if (compute_stack_size(ctx, fd->byte_code.buf, fd->byte_code.size,
+                           &stack_size, NULL) < 0)
         goto fail;
 
     function_size = sizeof(*b);
