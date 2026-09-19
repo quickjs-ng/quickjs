@@ -80,11 +80,9 @@ it. A `gc_mark` method can be provided so that the cycle removal
 algorithm can find the other objects referenced by this object. Other
 methods are available to define exotic object behaviors.
 
-The Class ID are allocated per-runtime. The
-`JSClass` are allocated per `JSRuntime`. `JS_SetClassProto()`
-is used to define a prototype for a given class in a given
-`JSContext`. `JS_NewObjectClass()` sets this prototype in the
-created object.
+The class and class ID are allocated per-runtime. `JS_SetClassProto()`
+is used to define a prototype for a given class in a given `JSContext`.
+`JS_NewObjectClass()` sets this prototype in the created object.
 
 Examples are available in `quickjs-libc.c`.
 
