@@ -1,5 +1,20 @@
 import { assert, assertThrows } from "./assert.js";
 
+function test_length() {
+	assert(DOMException.length, 0);
+}
+
+function test_descriptors() {
+	/* Per Web IDL, these should be enumerable, configurable accessors */
+	for (const name of ["name", "message", "code"]) {
+		const desc = Object.getOwnPropertyDescriptor(DOMException.prototype, name);
+		assert(typeof desc.get, "function");
+		assert(desc.set, undefined);
+		assert(desc.enumerable, true);
+		assert(desc.configurable, true);
+	}
+}
+
 function test_code() {
 	let ex = new DOMException();
 	assert(ex.code, 0);
@@ -31,5 +46,7 @@ function test_properties() {
 	assert(Object.getOwnPropertyNames(ex), ["stack"]);
 }
 
+test_length();
+test_descriptors();
 test_code();
 test_properties();
