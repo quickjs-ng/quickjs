@@ -173,6 +173,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
         _WASI_EMULATED_SIGNAL
     )
     add_link_options(
+        -Wl,-z,stack-size=2097152
         -lwasi-emulated-process-clocks
         -lwasi-emulated-signal
     )
@@ -285,6 +286,9 @@ list(APPEND qjs_defines _GNU_SOURCE)
 if(WIN32)
     # NB: Windows 7 is EOL and we are only supporting in so far as it doesn't interfere with progress.
     list(APPEND qjs_defines WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0601)
+else()
+    # UNIX-y platforms.
+    list(APPEND qjs_libs m)
 endif()
 if(TVOS)
     list(APPEND qjs_defines _TVOS)
@@ -296,12 +300,6 @@ list(APPEND qjs_libs ${CMAKE_DL_LIBS})
 find_package(Threads)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
     list(APPEND qjs_libs ${CMAKE_THREAD_LIBS_INIT})
-endif()
-
-# try to find libm
-find_library(M_LIBRARIES m)
-if(M_LIBRARIES OR CMAKE_C_COMPILER_ID STREQUAL "TinyCC")
-    list(APPEND qjs_libs m)
 endif()
 
 add_library(qjs ${qjs_sources})
@@ -448,7 +446,7 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(run-test262 PRIVATE qjs)
 endif()
 
-# Interrupt test
+# C API tests
 #
 
 add_executable(api-test
@@ -456,6 +454,7 @@ add_executable(api-test
 )
 target_compile_definitions(api-test PRIVATE ${qjs_defines})
 target_link_libraries(api-test PRIVATE qjs)
+add_qjs_libc_if_needed(api-test)
 
 add_executable(lre-test
     lre-test.c
