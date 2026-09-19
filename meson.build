@@ -1,7 +1,7 @@
 project(
   'quickjs-ng',
   'c',
-  version: '0.16.2',
+  version: '0.17.0',
   default_options: [
     'c_std=gnu11,c11',
     'warning_level=3',
@@ -518,7 +518,7 @@ if tests.allowed()
       'api-test.c',
 
       c_args: qjs_c_args,
-      dependencies: qjs_dep,
+      dependencies: [qjs_dep, qjs_libc_dep],
       build_by_default: false,
     ),
   )
