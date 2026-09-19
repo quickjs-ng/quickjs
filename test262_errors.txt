@@ -36,7 +36,6 @@ test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguou
 test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguous-if-export-star-as-from.js:75: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/nam' is ambiguous
 test262/test/language/module-code/ambiguous-export-bindings/namespace-unambiguous-if-import-star-as-and-export.js:74: SyntaxError: export 'foo' in module 'test262/test/language/module-code/ambiguous-export-bindings/nam' is ambiguous
 test262/test/language/module-code/top-level-await/module-graphs-does-not-hang.js:10: TypeError: $DONE() not called
-test262/test/language/module-code/top-level-await/rejection-order.js:20: TypeError: $DONE() not called
 test262/test/language/statements/await-using/initializer-Symbol.asyncDispose-disposed-at-end-of-imported-module.js:11: SyntaxError: exported variable 'resource' does not exist
 test262/test/language/statements/await-using/initializer-Symbol.dispose-disposed-at-end-of-imported-module.js:11: SyntaxError: exported variable 'resource' does not exist
 test262/test/language/statements/class/elements/syntax/valid/grammar-field-named-get-followed-by-generator-asi.js:40: SyntaxError: invalid property name
