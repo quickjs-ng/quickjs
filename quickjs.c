@@ -10556,9 +10556,15 @@ static int JS_SetPropertyInternal2(JSContext *ctx, JSValueConst obj, JSAtom prop
 
     switch(JS_VALUE_GET_TAG(this_obj)) {
     case JS_TAG_NULL:
+        if (JS_IsObject(obj)) {
+            goto primitive_receiver;
+        }
         JS_ThrowTypeErrorAtom(ctx, "cannot set property '%s' of null", prop);
         goto fail;
     case JS_TAG_UNDEFINED:
+        if (JS_IsObject(obj)) {
+            goto primitive_receiver;
+        }
         JS_ThrowTypeErrorAtom(ctx, "cannot set property '%s' of undefined", prop);
         goto fail;
     case JS_TAG_OBJECT:
@@ -10568,6 +10574,7 @@ static int JS_SetPropertyInternal2(JSContext *ctx, JSValueConst obj, JSAtom prop
             break;
         goto retry2;
     default:
+    primitive_receiver:
         if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)
             obj = JS_GetPrototypePrimitive(ctx, obj);
         p = NULL;
