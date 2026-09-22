@@ -870,6 +870,11 @@ typedef struct JSFunctionBytecode {
     uint8_t *byte_code_buf; /* (self pointer) */
     int byte_code_len;
     JSAtom func_name;
+    /* name inferred by the parser from the assignment target of an
+       anonymous function, e.g. "foo" for `obj.foo = function() {}`.
+       Only used to label frames in stack traces, never exposed to JS
+       (the `name` property of such a function must stay "") */
+    JSAtom inferred_name;
     JSVarDef *vardefs; /* arguments + local variables (arg_count + var_count) (self pointer) */
     JSClosureVar *closure_var; /* list of variables in the closure (self pointer) */
     uint16_t arg_count;
@@ -8127,26 +8132,34 @@ fail:
     return b->line_num;
 }
 
-/* in order to avoid executing arbitrary code during the stack trace
-   generation, we only look at simple 'name' properties containing a
-   string. */
+/* Name used to label the function's frames in stack traces: the `name`
+   property when it is a non-empty string, else the name the parser inferred
+   for an anonymous function (see JSFunctionBytecode.inferred_name), else
+   NULL. In order to avoid executing arbitrary code during the stack trace
+   generation, only simple 'name' properties containing a string are
+   considered. */
 static const char *get_func_name(JSContext *ctx, JSValueConst func)
 {
     JSProperty *pr;
     JSShapeProperty *prs;
+    JSObject *p;
     JSValue val;
 
     if (JS_VALUE_GET_TAG(func) != JS_TAG_OBJECT)
         return NULL;
-    prs = find_own_property(&pr, JS_VALUE_GET_OBJ(func), JS_ATOM_name);
-    if (!prs)
-        return NULL;
-    if ((prs->flags & JS_PROP_TMASK) != JS_PROP_NORMAL)
-        return NULL;
-    val = pr->u.value;
-    if (JS_VALUE_GET_TAG(val) != JS_TAG_STRING)
-        return NULL;
-    return JS_ToCString(ctx, val);
+    p = JS_VALUE_GET_OBJ(func);
+    prs = find_own_property(&pr, p, JS_ATOM_name);
+    if (prs && (prs->flags & JS_PROP_TMASK) == JS_PROP_NORMAL) {
+        val = pr->u.value;
+        if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING && !JS_IsEmptyString(val))
+            return JS_ToCString(ctx, val);
+    }
+    if (js_class_has_bytecode(p->class_id)) {
+        JSFunctionBytecode *b = p->u.func.function_bytecode;
+        if (b->inferred_name != JS_ATOM_NULL)
+            return JS_AtomToCString(ctx, b->inferred_name);
+    }
+    return NULL;
 }
 
 /* Note: it is important that no exception is returned by this function */
@@ -22307,6 +22320,7 @@ typedef struct JSFunctionDef {
     JSParseFunctionEnum func_type : 7;
     uint8_t is_strict_mode : 1;
     JSAtom func_name; /* JS_ATOM_NULL if no name */
+    JSAtom inferred_name; /* see JSFunctionBytecode.inferred_name */
 
     JSVarDef *vars;
     uint32_t *vars_htab; // indexes into vars[]
@@ -25197,6 +25211,58 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, bool no_line_
     return tok;
 }
 
+/* `obj.prop = function() {}` does not perform NamedEvaluation, so the
+   function's `name` property must stay "". The property name is still the
+   most useful label for the function's frames in a stack trace, so record
+   it on the function definition, where JS cannot observe it (this is what
+   V8 calls an inferred name). `opcode` and `name` describe the assignment
+   target, as returned by get_lvalue(). */
+static void set_inferred_function_name(JSParseState *s, int opcode, JSAtom name)
+{
+    JSFunctionDef *fd = s->cur_func;
+    JSFunctionDef *child;
+    struct list_head *el;
+    uint8_t *bc_buf;
+    int pos;
+    uint32_t idx;
+
+    switch (opcode) {
+    case OP_get_field:
+    case OP_scope_get_private_field:
+        if (name == JS_ATOM_empty_string)
+            return;
+        break;
+    case OP_get_array_el:
+        /* the property key is only known at run time, use the same
+           placeholder as V8 */
+        name = JS_ATOM__computed_;
+        break;
+    default:
+        return;
+    }
+    /* anonymous function expressions and arrow functions are emitted as
+       `fclosure idx` followed by a placeholder `set_name null` */
+    if (get_prev_opcode(fd) != OP_set_name)
+        return;
+    bc_buf = fd->byte_code.buf;
+    pos = fd->last_opcode_pos;
+    if (get_u32(bc_buf + pos + 1) != JS_ATOM_NULL)
+        return;
+    pos -= 1 + 4;
+    if (pos < 0 || bc_buf[pos] != OP_fclosure)
+        return;
+    idx = get_u32(bc_buf + pos + 1);
+    /* the function was parsed last, so search from the end of the list */
+    list_for_each_prev(el, &fd->child_list) {
+        child = list_entry(el, JSFunctionDef, link);
+        if (child->parent_cpool_idx == (int)idx) {
+            if (child->inferred_name == JS_ATOM_NULL)
+                child->inferred_name = JS_DupAtom(s->ctx, name);
+            break;
+        }
+    }
+}
+
 static void set_object_name(JSParseState *s, JSAtom name)
 {
     JSFunctionDef *fd = s->cur_func;
@@ -27690,6 +27756,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
                 return -1;
         } else if (s->token.val == '[') {
             int prev_op;
+            bool is_str_key;
 
         parse_array_access:
             prev_op = get_prev_opcode(fd);
@@ -27698,12 +27765,19 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             }
             if (next_token(s))
                 return -1;
+            /* obj["foo"] is compiled like obj.foo */
+            is_str_key = s->token.val == TOK_STRING && peek_token(s, false) == ']';
             if (js_parse_expr(s))
                 return -1;
             if (js_parse_expect(s, ']'))
                 return -1;
             if (prev_op == OP_get_super) {
                 emit_op(s, OP_get_super_value);
+            } else if (is_str_key && get_prev_opcode(fd) == OP_push_atom_value) {
+                /* the key was emitted as `push_atom_value foo`, turn it into
+                   `get_field foo` (numeric strings are emitted with
+                   push_const and keep the generic element access) */
+                fd->byte_code.buf[fd->last_opcode_pos] = OP_get_field;
             } else {
                 emit_op(s, OP_get_array_el);
             }
@@ -28445,15 +28519,16 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
             return -1;
         }
 
-        if (op == '=' && opcode == OP_get_array_el) {
-            emit_op(s, OP_swap); // obj key val -> obj val key
-            emit_op(s, OP_to_propkey);
-            emit_op(s, OP_swap);
-        }
-
         if (op == '=') {
             if ((opcode == OP_get_ref_value || opcode == OP_scope_get_var) && name == name0) {
                 set_object_name(s, name);
+            } else {
+                set_inferred_function_name(s, opcode, name);
+            }
+            if (opcode == OP_get_array_el) {
+                emit_op(s, OP_swap); // obj key val -> obj val key
+                emit_op(s, OP_to_propkey);
+                emit_op(s, OP_swap);
             }
         } else {
             emit_op(s, op - TOK_MUL_ASSIGN + OP_mul);
@@ -28482,6 +28557,8 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
 
         if ((opcode == OP_get_ref_value || opcode == OP_scope_get_var) && name == name0) {
             set_object_name(s, name);
+        } else {
+            set_inferred_function_name(s, opcode, name);
         }
 
         switch(depth_lvalue) {
@@ -32993,6 +33070,7 @@ static JSFunctionDef *js_new_function_def(JSContext *ctx,
     js_dbuf_init(ctx, &fd->byte_code);
     fd->last_opcode_pos = -1;
     fd->func_name = JS_ATOM_NULL;
+    fd->inferred_name = JS_ATOM_NULL;
     fd->var_object_idx = -1;
     fd->arg_var_object_idx = -1;
     fd->arguments_var_idx = -1;
@@ -33093,6 +33171,7 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
     js_free(ctx, fd->cpool);
 
     JS_FreeAtom(ctx, fd->func_name);
+    JS_FreeAtom(ctx, fd->inferred_name);
 
     for(i = 0; i < fd->var_count; i++) {
         JS_FreeAtom(ctx, fd->vars[i].var_name);
@@ -37086,6 +37165,7 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     fd->byte_code.buf = NULL;
 
     b->func_name = fd->func_name;
+    b->inferred_name = fd->inferred_name;
     if (fd->arg_count + fd->var_count > 0) {
         b->vardefs = (void *)((uint8_t*)b + vardefs_offset);
         if (fd->arg_count > 0)
@@ -37193,6 +37273,7 @@ static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)
         JS_FreeContext(b->realm);
 
     JS_FreeAtomRT(rt, b->func_name);
+    JS_FreeAtomRT(rt, b->inferred_name);
     JS_FreeAtomRT(rt, b->filename);
     js_free_rt(rt, b->pc2line_buf);
     js_free_rt(rt, b->source);
@@ -38512,7 +38593,7 @@ typedef enum BCTagEnum {
     BC_TAG_SYMBOL,
 } BCTagEnum;
 
-#define BC_VERSION 28
+#define BC_VERSION 29
 
 typedef struct BCWriterState {
     JSContext *ctx;
@@ -38814,6 +38895,7 @@ static int JS_WriteFunctionTag(BCWriterState *s, JSValueConst obj)
     bc_put_u16(s, flags);
     bc_put_u8(s, b->is_strict_mode);
     bc_put_atom(s, b->func_name);
+    bc_put_atom(s, b->inferred_name);
 
     bc_put_leb128(s, b->arg_count);
     bc_put_leb128(s, b->var_count);
@@ -39749,6 +39831,8 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
     bc.is_strict_mode = (v8 > 0);
     if (bc_get_atom(s, &bc.func_name))
         goto fail;
+    if (bc_get_atom(s, &bc.inferred_name))
+        goto fail;
     if (bc_get_leb128_u16(s, &bc.arg_count))
         goto fail;
     if (bc_get_leb128_u16(s, &bc.var_count))
@@ -39784,6 +39868,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
 
     memcpy(b, &bc, sizeof(*b));
     bc.func_name = JS_ATOM_NULL;
+    bc.inferred_name = JS_ATOM_NULL;
     JS_REF_COUNT(b) = 1;
     if (local_count != 0) {
         b->vardefs = (void *)((uint8_t*)b + vardefs_offset);
@@ -39950,6 +40035,7 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
 
  fail:
     JS_FreeAtom(ctx, bc.func_name);
+    JS_FreeAtom(ctx, bc.inferred_name);
     JS_FreeValue(ctx, obj);
     return JS_EXCEPTION;
 }
