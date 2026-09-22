@@ -56823,6 +56823,8 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
                                                    1, vc(&value), 0);
         if (JS_IsException(value_wrapper_promise)) {
             JS_FreeValue(ctx, value);
+            if (!done && magic != GEN_MAGIC_RETURN)
+                JS_IteratorClose(ctx, s->sync_iter, true);
             goto reject;
         }
 
