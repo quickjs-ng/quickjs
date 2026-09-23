@@ -2195,8 +2195,69 @@ void private_symbols(void)
     JS_FreeRuntime(rt);
 }
 
+static int discarded_job_calls;
+static int discarded_job_finalizers;
+
+static JSValue discard_job_callback(JSContext *ctx, int argc, JSValueConst *argv)
+{
+    discarded_job_calls++;
+    return JS_UNDEFINED;
+}
+
+static void discard_job_finalizer(JSRuntime *rt, JSValueConst val)
+{
+    discarded_job_finalizers++;
+}
+
+static void discard_pending_jobs(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSContext *job_ctx = NULL;
+    JSClassID class_id = 0;
+    JSClassDef def = { "DiscardJobArgument", .finalizer = discard_job_finalizer };
+    JSValueConst args[2];
+    JSMemoryUsage before, after;
+    int i;
+
+    assert(rt && ctx);
+    assert(JS_DiscardPendingJobs(rt) == 0);
+    JS_NewClassID(rt, &class_id);
+    assert(JS_NewClass(rt, class_id, &def) == 0);
+    JS_ComputeMemoryUsage(rt, &before);
+    for (i = 0; i < 2; i++) {
+        args[0] = JS_NewObjectClass(ctx, class_id);
+        args[1] = JS_NewString(ctx, "retained job argument");
+        assert(!JS_IsException(args[0]));
+        assert(!JS_IsException(args[1]));
+        assert(JS_EnqueueJob(ctx, discard_job_callback, 2, args) == 0);
+        JS_FreeValue(ctx, (JSValue)args[0]);
+        JS_FreeValue(ctx, (JSValue)args[1]);
+    }
+    assert(discarded_job_finalizers == 0);
+    assert(JS_IsJobPending(rt));
+    assert(JS_DiscardPendingJobs(rt) == 2);
+    assert(!JS_IsJobPending(rt));
+    assert(discarded_job_calls == 0);
+    assert(discarded_job_finalizers == 2);
+    assert(JS_DiscardPendingJobs(rt) == 0);
+    JS_ComputeMemoryUsage(rt, &after);
+    assert(after.malloc_count == before.malloc_count);
+    assert(after.memory_used_size == before.memory_used_size);
+
+    assert(JS_EnqueueJob(ctx, discard_job_callback, 0, NULL) == 0);
+    assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+    assert(job_ctx == ctx);
+    assert(discarded_job_calls == 1);
+    assert(JS_ExecutePendingJob(rt, &job_ctx) == 0);
+    assert(JS_DiscardPendingJobs(rt) == 0);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
+    discard_pending_jobs();
     cfunctions();
     sync_call();
     async_call();

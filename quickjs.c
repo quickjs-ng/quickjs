@@ -2508,6 +2508,23 @@ int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
     return 0;
 }
 
+size_t JS_DiscardPendingJobs(JSRuntime *rt)
+{
+    size_t count = 0;
+    JSJobEntry *e;
+    int i;
+
+    while (!list_empty(&rt->job_list)) {
+        e = list_entry(rt->job_list.next, JSJobEntry, link);
+        list_del(&e->link);
+        for (i = 0; i < e->argc; i++)
+            JS_FreeValueRT(rt, e->argv[i]);
+        js_free_rt(rt, e);
+        count++;
+    }
+    return count;
+}
+
 bool JS_IsJobPending(JSRuntime *rt)
 {
     return !list_empty(&rt->job_list);
