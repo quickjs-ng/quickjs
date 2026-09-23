@@ -62990,7 +62990,8 @@ int JS_AddIntrinsicTypedArrays(JSContext *ctx)
 
 static double js__now_ms(void)
 {
-    return js__hrtime_ns() / 1e6;
+    uint64_t ns = js__hrtime_ns();
+    return (double)(ns / 1000000) + (double)(ns % 1000000) / 1e6;
 }
 
 static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
