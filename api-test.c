@@ -423,6 +423,78 @@ static void module_serde(void)
     JS_FreeRuntime(rt);
 }
 
+static JSModuleDef *pending_module_loader(JSContext *ctx, const char *name,
+                                          void *opaque)
+{
+    static const char dependency_source[] =
+        "await new Promise(() => {}); export const value = 42;";
+    const char *source;
+    JSValue val;
+    JSModuleDef *m;
+
+    if (!strcmp(name, "dependency")) {
+        source = dependency_source;
+    } else {
+        assert(!strcmp(name, "pending"));
+        source = opaque;
+    }
+    val = JS_Eval(ctx, source, strlen(source), name,
+                  JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(!JS_IsException(val));
+    m = JS_VALUE_GET_PTR(val);
+    JS_FreeValue(ctx, val);
+    return m;
+}
+
+static JSValue pending_job(JSContext *ctx, int argc, JSValueConst *argv)
+{
+    return JS_UNDEFINED;
+}
+
+static void pending_job_lifetime(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContextRaw(rt);
+    JSContext *job_ctx = ctx;
+
+    assert(JS_EnqueueJob(ctx, pending_job, 0, NULL) == 0);
+    assert(JS_IsJobPending(rt));
+    JS_FreeContext(ctx);
+    JS_RunGC(rt);
+    assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+    assert(!JS_IsJobPending(rt));
+    JS_FreeRuntime(rt);
+}
+
+static void pending_module_lifetime(void)
+{
+    static const char module_source[] =
+        "import { value } from 'dependency'; export { value };";
+    static const char source[] = "import('pending')";
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx;
+    JSContext *job_ctx = NULL;
+    JSValue first, second;
+    int count = 0;
+
+    JS_SetModuleLoaderFunc(rt, NULL, pending_module_loader,
+                           (void *)module_source);
+    ctx = JS_NewContext(rt);
+    first = eval(ctx, source);
+    second = eval(ctx, source);
+    assert(JS_IsPromise(first));
+    assert(JS_IsPromise(second));
+    while (JS_IsJobPending(rt) && count++ < 64)
+        assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+    assert(!JS_IsJobPending(rt));
+    assert(JS_PromiseState(ctx, first) == JS_PROMISE_PENDING);
+    assert(JS_PromiseState(ctx, second) == JS_PROMISE_PENDING);
+    JS_FreeValue(ctx, second);
+    JS_FreeValue(ctx, first);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 struct rejection_counts {
     int reject_count;
     int handle_count;
@@ -2204,6 +2276,8 @@ int main(void)
     raw_context_global_var();
     is_array();
     module_serde();
+    pending_job_lifetime();
+    pending_module_lifetime();
     module_unhandled_rejection();
     promise_mark_as_handled();
     promise_then();
