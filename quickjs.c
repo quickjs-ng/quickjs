@@ -48103,7 +48103,7 @@ static JSValue js_string_repeat(JSContext *ctx, JSValueConst this_val,
     if (len == 0 || val == 1)
         return str;
     if (val * len > JS_STRING_LEN_MAX) {
-        JS_ThrowRangeError(ctx, "invalid string length");
+        JS_ThrowRangeError(ctx, "string too long");
         goto fail;
     }
     n = val;

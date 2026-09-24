@@ -32,6 +32,19 @@ assertThrows(RangeError, () => "ab".repeat(Number.MAX_SAFE_INTEGER));
 assertThrows(RangeError, () => "ab".repeat(1e300));
 assertThrows(RangeError, () => "ab".repeat(2147483648));
 
+// A finite count that is too large is a string length error, not a bad count.
+function messageOf(f) {
+    try {
+        f();
+    } catch (e) {
+        return e.message;
+    }
+    return undefined;
+}
+assert(messageOf(() => "ab".repeat(2147483648)), "string too long");
+assert(messageOf(() => "ab".repeat(-1)), "invalid repeat count");
+assert(messageOf(() => "ab".repeat(Infinity)), "invalid repeat count");
+
 // The receiver is coerced with ToString before the count is coerced.
 var order = [];
 var count = { valueOf() { order.push("count"); return 0 } };
