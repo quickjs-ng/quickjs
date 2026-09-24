@@ -268,6 +268,28 @@ function test_constructor()
     assert(ex.message, "G is not a constructor")
 }
 
+function test_not_a_function()
+{
+    function expect(f, message) {
+        let ex
+        try { f() } catch (ex_) { ex = ex_ }
+        assert(ex instanceof TypeError)
+        assert(ex.message, message)
+    }
+    expect(() => { let o = {}; o.foo() }, "foo is not a function")
+    // interleaved property writes must not confuse it
+    expect(() => { let o = {f: 1}, a = {b: 2}; o.f(a.b += 1) }, "f is not a function")
+    // computed properties and unnamed bases keep the old messages
+    expect(() => { let o = {}; o["computed"]() }, "not a function")
+    expect(() => { let a = [undefined]; return a[0].x },
+           "cannot read property 'x' of undefined")
+    // property reads on undefined/null name the base that produced it
+    expect(() => { let a = {b: {c: () => 1}}; a.bb.c() },
+           "cannot read property 'c' of undefined ('bb' is undefined)")
+    expect(() => { let o = {a: null}; return o.a.b },
+           "cannot read property 'b' of null ('a' is null)")
+}
+
 function test_prototype()
 {
     var f = function f() { };
@@ -1089,6 +1111,7 @@ test_inc_dec();
 test_op2();
 test_delete();
 test_constructor();
+test_not_a_function();
 test_prototype();
 test_arguments();
 test_class();
