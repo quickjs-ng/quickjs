@@ -1247,12 +1247,13 @@ typedef JSValue JSJobFunc(JSContext *ctx, int argc, JSValueConst *argv);
 JS_EXTERN int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
                             int argc, JSValueConst *argv);
 
-/* Discard all queued jobs without executing their callbacks. Releases the
-   queue's argument references and entries, but does not free contexts or the
+/* Discard the jobs queued at entry without executing their callbacks. Releases
+   their argument references and entries, but does not free contexts or the
    runtime. Returns the number of discarded jobs; the runtime remains usable.
    Call only while no JavaScript or job is executing and with exclusive access
    to the runtime. Releasing arguments may invoke native finalizers; these must
-   not execute JavaScript, enqueue jobs, or reenter this function. This does not
+   not execute JavaScript or reenter this function. Jobs enqueued by finalizers
+   remain pending and are not included in the returned count. This does not
    settle promises whose reactions are discarded. */
 JS_EXTERN size_t JS_DiscardPendingJobs(JSRuntime *rt);
 JS_EXTERN bool JS_IsJobPending(JSRuntime *rt);

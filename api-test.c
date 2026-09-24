@@ -2206,7 +2206,11 @@ static JSValue discard_job_callback(JSContext *ctx, int argc, JSValueConst *argv
 
 static void discard_job_finalizer(JSRuntime *rt, JSValueConst val)
 {
+    JSContext *ctx = JS_GetRuntimeOpaque(rt);
+
     discarded_job_finalizers++;
+    if (ctx)
+        assert(JS_EnqueueJob(ctx, discard_job_callback, 0, NULL) == 0);
 }
 
 static void discard_pending_jobs(void)
@@ -2251,6 +2255,33 @@ static void discard_pending_jobs(void)
     assert(discarded_job_calls == 1);
     assert(JS_ExecutePendingJob(rt, &job_ctx) == 0);
     assert(JS_DiscardPendingJobs(rt) == 0);
+
+    /* Finalizers may enqueue new jobs, but discarding must only consume the
+       jobs present at entry. Exercise both singleton and multi-entry queues. */
+    JS_SetRuntimeOpaque(rt, ctx);
+    for (i = 1; i <= 2; i++) {
+        int j, calls = discarded_job_calls;
+        int finalizers = discarded_job_finalizers;
+
+        for (j = 0; j < i; j++) {
+            args[0] = JS_NewObjectClass(ctx, class_id);
+            assert(!JS_IsException(args[0]));
+            assert(JS_EnqueueJob(ctx, discard_job_callback, 1, args) == 0);
+            JS_FreeValue(ctx, (JSValue)args[0]);
+        }
+        assert(JS_DiscardPendingJobs(rt) == (size_t)i);
+        assert(discarded_job_finalizers == finalizers + i);
+        assert(discarded_job_calls == calls);
+        assert(JS_IsJobPending(rt));
+        for (j = 0; j < i; j++) {
+            assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+            assert(job_ctx == ctx);
+        }
+        assert(discarded_job_calls == calls + i);
+        assert(JS_ExecutePendingJob(rt, &job_ctx) == 0);
+        assert(JS_DiscardPendingJobs(rt) == 0);
+    }
+    JS_SetRuntimeOpaque(rt, NULL);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }

@@ -2511,11 +2511,14 @@ int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
 size_t JS_DiscardPendingJobs(JSRuntime *rt)
 {
     size_t count = 0;
+    struct list_head jobs;
     JSJobEntry *e;
     int i;
 
-    while (!list_empty(&rt->job_list)) {
-        e = list_entry(rt->job_list.next, JSJobEntry, link);
+    /* Finalizers may enqueue jobs while arguments are released. */
+    list_move(&rt->job_list, &jobs);
+    while (!list_empty(&jobs)) {
+        e = list_entry(jobs.next, JSJobEntry, link);
         list_del(&e->link);
         for (i = 0; i < e->argc; i++)
             JS_FreeValueRT(rt, e->argv[i]);
