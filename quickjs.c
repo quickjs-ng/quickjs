@@ -54144,12 +54144,13 @@ static int js_setlike_get_props(JSContext *ctx, JSValueConst setlike,
         }
         if (JS_ToFloat64Free(ctx, &d, v) < 0)
             return -1;
-        if (d < 0) {
-            JS_ThrowRangeError(ctx, ".size is not a legal size");
-            return -1;
-        }
         if (isnan(d)) {
             JS_ThrowTypeError(ctx, ".size is not a legal size");
+            return -1;
+        }
+        d = trunc(d);
+        if (d < 0) {
+            JS_ThrowRangeError(ctx, ".size is not a legal size");
             return -1;
         }
         if (isinf(d) || d > (double)MAX_SAFE_INTEGER) {
