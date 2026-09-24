@@ -1,6 +1,6 @@
 import * as std from "qjs:std";
 import * as bjson from "qjs:bjson";
-import { assert, assertArrayEquals } from "./assert.js";
+import { assert, assertArrayEquals, assertThrows } from "./assert.js";
 
 function base64decode(s) {
     var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -174,6 +174,35 @@ function bjson_test_arraybuffer()
     assert(array_buffer.resizable, true);
 }
 
+/* the elements are not read with [[Get]]: a getter can run arbitrary JS and
+   free the array while it is being serialized */
+function bjson_test_array_accessor()
+{
+    var a, buf, obj;
+
+    /* the array is only reachable through obj.a: reading element 0 with [[Get]]
+       would free it in the middle of the serialization */
+    obj = { a: [1, 2, 3] };
+    Object.defineProperty(obj.a, 0, {
+        get: function () { delete obj.a; return 5; },
+        enumerable: true,
+        configurable: true,
+    });
+    assertThrows(TypeError, () => bjson.write(obj));
+
+    /* slow array with a hole in the middle */
+    a = [1, 2, 3];
+    delete a[1];
+    bjson_test(a);
+
+    /* non-enumerable elements are serialized as undefined */
+    a = [1, 2, 3];
+    Object.defineProperty(a, 1, { enumerable: false });
+    buf = bjson.write(a);
+    a = bjson.read(buf, 0, buf.byteLength);
+    assertArrayEquals(a, [1, undefined, 3]);
+}
+
 /* test multiple references to an object including circular
    references */
 function bjson_test_reference()
@@ -280,6 +309,18 @@ function bjson_test_bytecode()
     assert(String(o), "[function bytecode]");
     o = std.evalScript(o, {eval_function: true});
     for (i = 0; i < 42; i++) o({i}); // exercise o.i IC
+
+    /* template objects are serialized as non-extensible arrays, with their
+       non-enumerable 'raw' property */
+    o = std.evalScript(";(function f(t){ return t`a\\n${1}b` })",
+                       {compile_only: true});
+    buf = bjson.write(o, bjson.WRITE_OBJ_BYTECODE);
+    o = bjson.read(buf, 0, buf.byteLength, bjson.READ_OBJ_BYTECODE);
+    o = std.evalScript(o, {eval_function: true});
+    r = o((strs, ...vals) => [Array.from(strs), strs.raw, vals]);
+    assertArrayEquals(r[0], ["a\n", "b"]);
+    assertArrayEquals(r[1], ["a\\n", "b"]);
+    assertArrayEquals(r[2], [1]);
 }
 
 function bjson_test_fuzz()
@@ -338,6 +379,16 @@ function bjson_test_all()
 
     bjson_test({x:1, y:2, if:3});
     bjson_test([1, 2, 3]);
+
+    /* array with holes */
+    bjson_test([1, , 2, , 3]);
+
+    /* fast array with holes at the end */
+    obj = new Array(5);
+    obj[0] = 1;
+    obj[1] = 2;
+    bjson_test(obj);
+
     bjson_test([1.0, "aa", true, false, undefined, null, NaN, -Infinity, -0.0]);
     if (typeof BigInt !== "undefined") {
         bjson_test([BigInt("1"), -BigInt("0x123456789"),
@@ -361,6 +412,7 @@ function bjson_test_all()
     }
 
     bjson_test_arraybuffer();
+    bjson_test_array_accessor();
     bjson_test_reference();
     bjson_test_regexp();
     bjson_test_map();

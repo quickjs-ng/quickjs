@@ -38936,12 +38936,17 @@ static int JS_WriteModule(BCWriterState *s, JSValueConst obj)
     return -1;
 }
 
+/* Only write own enumerable value properties; the elements are not read with
+   [[Get]] because that can run arbitrary JS, which may free `obj` (it is
+   borrowed from the enclosing object) */
+/* XXX: be compatible with the structured clone algorithm */
 static int JS_WriteArray(BCWriterState *s, JSValueConst obj)
 {
+    JSContext *ctx = s->ctx;
     JSObject *p = JS_VALUE_GET_OBJ(obj);
+    JSShapeProperty *prs;
+    JSProperty *pr;
     uint32_t i, len;
-    JSValue val;
-    int ret;
     bool is_template;
 
     if (s->allow_bytecode && !p->extensible) {
@@ -38953,29 +38958,51 @@ static int JS_WriteArray(BCWriterState *s, JSValueConst obj)
         bc_put_u8(s, BC_TAG_ARRAY);
         is_template = false;
     }
-    if (js_get_length32(s->ctx, &len, obj))
-        goto fail1;
+    if (js_get_length32(ctx, &len, obj)) /* no side effect */
+        goto fail;
     bc_put_leb128(s, len);
-    for(i = 0; i < len; i++) {
-        val = JS_GetPropertyUint32(s->ctx, obj, i);
-        if (JS_IsException(val))
-            goto fail1;
-        ret = JS_WriteObjectRec(s, val);
-        JS_FreeValue(s->ctx, val);
-        if (ret)
-            goto fail1;
+    if (p->fast_array) {
+        for(i = 0; i < min_uint32(len, p->u.array.count); i++)
+            if (JS_WriteObjectRec(s, p->u.array.u.values[i]))
+                goto fail;
+        for(; i < len; i++) /* holes past the end of the fast array */
+            if (JS_WriteObjectRec(s, JS_UNDEFINED))
+                goto fail;
+    } else {
+        for(i = 0; i < len; i++) {
+            JSAtom atom = JS_NewAtomUInt32(ctx, i);
+            if (atom == JS_ATOM_NULL)
+                goto fail;
+            prs = find_own_property(&pr, p, atom);
+            JS_FreeAtom(ctx, atom);
+            if (!prs || !(prs->flags & JS_PROP_ENUMERABLE)) {
+                if (JS_WriteObjectRec(s, JS_UNDEFINED)) /* hole */
+                    goto fail;
+                continue;
+            }
+            if (prs->flags & JS_PROP_TMASK) {
+                JS_ThrowTypeError(ctx, "only value properties are supported");
+                goto fail;
+            }
+            if (JS_WriteObjectRec(s, pr->u.value))
+                goto fail;
+        }
     }
     if (is_template) {
-        val = JS_GetProperty(s->ctx, obj, JS_ATOM_raw);
-        if (JS_IsException(val))
-            goto fail1;
-        ret = JS_WriteObjectRec(s, val);
-        JS_FreeValue(s->ctx, val);
-        if (ret)
-            goto fail1;
+        /* the 'raw' property is not enumerable */
+        prs = find_own_property(&pr, p, JS_ATOM_raw);
+        if (!prs) {
+            if (JS_WriteObjectRec(s, JS_UNDEFINED))
+                goto fail;
+        } else if (prs->flags & JS_PROP_TMASK) {
+            JS_ThrowTypeError(ctx, "only value properties are supported");
+            goto fail;
+        } else if (JS_WriteObjectRec(s, pr->u.value)) {
+            goto fail;
+        }
     }
     return 0;
- fail1:
+ fail:
     return -1;
 }
 
