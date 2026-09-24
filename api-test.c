@@ -2220,7 +2220,7 @@ static void discard_pending_jobs(void)
     JSContext *job_ctx = NULL;
     JSClassID class_id = 0;
     JSClassDef def = { "DiscardJobArgument", .finalizer = discard_job_finalizer };
-    JSValueConst args[2];
+    JSValue args[2];
     JSMemoryUsage before, after;
     int i;
 
@@ -2234,9 +2234,9 @@ static void discard_pending_jobs(void)
         args[1] = JS_NewString(ctx, "retained job argument");
         assert(!JS_IsException(args[0]));
         assert(!JS_IsException(args[1]));
-        assert(JS_EnqueueJob(ctx, discard_job_callback, 2, args) == 0);
-        JS_FreeValue(ctx, (JSValue)args[0]);
-        JS_FreeValue(ctx, (JSValue)args[1]);
+        assert(JS_EnqueueJob(ctx, discard_job_callback, 2, (JSValueConst *)args) == 0);
+        JS_FreeValue(ctx, args[0]);
+        JS_FreeValue(ctx, args[1]);
     }
     assert(discarded_job_finalizers == 0);
     assert(JS_IsJobPending(rt));
@@ -2266,8 +2266,8 @@ static void discard_pending_jobs(void)
         for (j = 0; j < i; j++) {
             args[0] = JS_NewObjectClass(ctx, class_id);
             assert(!JS_IsException(args[0]));
-            assert(JS_EnqueueJob(ctx, discard_job_callback, 1, args) == 0);
-            JS_FreeValue(ctx, (JSValue)args[0]);
+            assert(JS_EnqueueJob(ctx, discard_job_callback, 1, (JSValueConst *)args) == 0);
+            JS_FreeValue(ctx, args[0]);
         }
         assert(JS_DiscardPendingJobs(rt) == (size_t)i);
         assert(discarded_job_finalizers == finalizers + i);
