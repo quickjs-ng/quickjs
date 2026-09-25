@@ -27078,6 +27078,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
 {
     FuncCallType call_type;
     int optional_chaining_label;
+    int import_line_num, import_col_num;
     bool accept_lparen = (parse_flags & PF_POSTFIX_CALL) != 0;
 
     call_type = FUNC_CALL_NORMAL;
@@ -27318,6 +27319,8 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
         }
         break;
     case TOK_IMPORT:
+        import_line_num = s->token.line_num;
+        import_col_num = s->token.col_num;
         if (next_token(s))
             return -1;
         if (s->token.val == '.') {
@@ -27357,6 +27360,7 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
             }
             if (js_parse_expect(s, ')'))
                 return -1;
+            emit_source_loc_at(s, import_line_num, import_col_num);
             emit_op(s, OP_import);
         }
         break;
