@@ -40011,7 +40011,6 @@ static JSValue JS_ReadModule(BCReaderState *s)
     m = js_new_module_def(ctx, module_name);
     if (!m)
         goto fail;
-    obj = js_dup(JS_MKPTR(JS_TAG_MODULE, m));
     if (bc_get_leb128_int(s, &m->req_module_entries_count))
         goto fail;
     obj = JS_NewModuleValue(ctx, m);
