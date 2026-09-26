@@ -1,13 +1,5 @@
 import { assert } from "./assert.js";
 
-/* A stack frame in a function that calls import() must point at the
-   import() call, not at the start of the statement, an earlier call in the
-   same function or the function itself. import() can run user code
-   synchronously, such as a getter on the options object, which captures the
-   frame while import() executes. It can also reject without a stack, for
-   example on a bad options argument, and the TypeError then gets its stack
-   when the await rethrows it. */
-
 async function import_in_declaration()
 {
     const m = await import("./assert.js", { with: 1 });
@@ -41,10 +33,10 @@ async function location(f)
 
 Error.prepareStackTrace = (_, frames) => frames;
 try {
-    assert(await location(import_in_declaration), [13, 21]);
-    assert(await location(import_after_call), [19, 21]);
-    assert(await location(import_in_statement), [24, 11]);
-    assert(await location(import_with_throwing_getter), [30, 12]);
+    assert(await location(import_in_declaration), [5, 21]);
+    assert(await location(import_after_call), [11, 21]);
+    assert(await location(import_in_statement), [16, 11]);
+    assert(await location(import_with_throwing_getter), [22, 12]);
 } finally {
     Error.prepareStackTrace = undefined;
 }
