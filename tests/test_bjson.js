@@ -2,60 +2,6 @@ import * as std from "qjs:std";
 import * as bjson from "qjs:bjson";
 import { assert, assertArrayEquals } from "./assert.js";
 
-function base64decode(s) {
-    var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    var n = s.indexOf("=");
-    if (n < 0) n = s.length;
-    if (n & 3 === 1) throw Error("bad base64"); // too much padding
-    var r = new Uint8Array(3 * (n>>2) + (n>>1 & 1) + (n & 1));
-    var a, b, c, d, i, j;
-    a = b = c = d = i = j = 0;
-    while (i+3 < n) {
-        a = A.indexOf(s[i++]);
-        b = A.indexOf(s[i++]);
-        c = A.indexOf(s[i++]);
-        d = A.indexOf(s[i++]);
-        if (~63 & (a|b|c|d)) throw Error("bad base64");
-        r[j++] = a<<2 | b>>4;
-        r[j++] = 255 & b<<4 | c>>2;
-        r[j++] = 255 & c<<6 | d;
-    }
-    switch (n & 3) {
-    case 2:
-        a = A.indexOf(s[i++]);
-        b = A.indexOf(s[i++]);
-        if (~63 & (a|b)) throw Error("bad base64");
-        if (b & 15) throw Error("bad base64");
-        r[j++] = a<<2 | b>>4;
-        break;
-    case 3:
-        a = A.indexOf(s[i++]);
-        b = A.indexOf(s[i++]);
-        c = A.indexOf(s[i++]);
-        if (~63 & (a|b|c)) throw Error("bad base64");
-        if (c & 3) throw Error("bad base64");
-        r[j++] = a<<2 | b>>4;
-        r[j++] = 255 & b<<4 | c>>2;
-        break;
-    }
-    return r.buffer;
-}
-
-function toHex(a)
-{
-    var i, s = "", tab, v;
-    tab = new Uint8Array(a);
-    for(i = 0; i < tab.length; i++) {
-        v = tab[i].toString(16);
-        if (v.length < 2)
-            v = "0" + v;
-        if (i !== 0)
-            s += " ";
-        s += v;
-    }
-    return s;
-}
-
 function isArrayLike(a)
 {
     return Array.isArray(a) ||
@@ -128,7 +74,7 @@ function bjson_test(a)
     a_str = toStr(a);
     buf = bjson.write(a);
     if (0) {
-        print(a_str, "->", toHex(buf));
+        print(a_str, "->", new Uint8Array(buf).toHex());
     }
     r = bjson.read(buf, 0, buf.byteLength);
     r_str = toStr(r);
@@ -289,10 +235,10 @@ function bjson_test_fuzz()
         ["HP/////m5uaCLQ=="],
         ["HP////8AEQATBgYGBgYGBgYGBgb/////EAARAC8R/78vEf+/"],
         ["HP////8ACH8ACv////9//////////////////////////////9//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAA+fn5+fn5+fn5+fn5AAAAAAAGAKs="],
-        ["HP////8ADgAAABQA=", bjson.READ_OBJ_REFERENCE],
+        ["HP////8ADgAAABQA", bjson.READ_OBJ_REFERENCE],
     ];
     for (var [input, flags] of corpus) {
-        var buf = base64decode(input);
+        var buf = Uint8Array.fromBase64(input);
         try {
             bjson.read(buf, 0, buf.byteLength, flags);
         } catch (e) {
