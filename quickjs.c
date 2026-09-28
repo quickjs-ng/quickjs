@@ -28216,6 +28216,16 @@ static __exception int js_parse_cond_expr(JSParseState *s, int parse_flags)
 }
 
 /* allowed parse_flags: PF_IN_ACCEPTED */
+/* peek_token() uses the lightweight scanner, which reports an identifier or
+   keyword such as `true`/`null`/`this` as TOK_IDENT and a literal as its
+   leading character. These tokens start a primary expression, which can never
+   legally follow a bare identifier. */
+static bool yield_followed_by_value(int tok)
+{
+    return tok == TOK_IDENT || (tok >= '0' && tok <= '9') ||
+           tok == '"' || tok == '\'' || tok == '`';
+}
+
 static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
 {
     int opcode, op, scope;
@@ -28361,23 +28371,18 @@ static __exception int js_parse_assign_expr2(JSParseState *s, int parse_flags)
         return 0;
     } else if (s->token.val == TOK_IDENT &&
                s->token.u.ident.atom == JS_ATOM_yield &&
-               !(s->cur_func->func_kind & JS_FUNC_GENERATOR)) {
+               !(s->cur_func->func_kind & JS_FUNC_GENERATOR) &&
+               yield_followed_by_value(peek_token(s, true))) {
         /* In a non-generator function `yield` is a plain identifier, so
            `yield <expr>` would otherwise fail with the generic "expecting ';'".
            When a value-producing token follows `yield` on the same line, the
            user almost certainly meant the generator keyword, so emit a clearer
-           message. peek_token() uses the lightweight scanner, which reports an
-           identifier or keyword such as `true`/`null`/`this` as TOK_IDENT and a
-           literal as its leading character; we only fire on the start of a
-           primary expression (identifier/keyword, number, or string/template),
-           which can never legally follow a bare identifier. This leaves
-           identifier uses of `yield` such as `var yield = 1; yield;`,
-           `yield + 1`, `yield()`, `yield[0]`, or `yield.foo` untouched.
+           message. The check is part of the branch condition so that every
+           other identifier use of `yield` (`yield;`, `yield + 1`, `yield()`,
+           `yield[0]`, `yield.foo`, and the arrow parameter `yield => 1`)
+           still falls through to the branches below.
            See https://github.com/quickjs-ng/quickjs/issues/833 */
-        int tok = peek_token(s, true);
-        if (tok == TOK_IDENT || (tok >= '0' && tok <= '9') ||
-            tok == '"' || tok == '\'' || tok == '`')
-            return js_parse_error(s, "'yield' is only valid inside a generator function");
+        return js_parse_error(s, "'yield' is only valid inside a generator function");
     } else if (s->token.val == '(' &&
                js_parse_skip_parens_token(s, NULL, true) == TOK_ARROW) {
         return js_parse_function_decl(s, JS_PARSE_FUNC_ARROW,

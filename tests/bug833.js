@@ -41,6 +41,7 @@ for (const src of [
     "var yield = { a: 1 }; yield.a;",
     "var yield; yield = 5;",
     "var yield = 1; yield++;",
+    "var af = yield => 1;",
 ]) {
     assert(compileError(src), null, "yield-as-identifier should parse: " + src);
 }
