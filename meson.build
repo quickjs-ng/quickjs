@@ -132,8 +132,11 @@ qjs_sys_deps = []
 
 m_dep = cc.find_library('m', required: false)
 qjs_sys_deps += m_dep
-qjs_sys_deps += dependency('threads', required: false)
-qjs_sys_deps += dependency('dl', required: false)
+if host_system != 'dos'
+  qjs_sys_deps += dependency('threads', required: false)
+  qjs_sys_deps += dependency('dl', required: false)
+endif
+tools = get_option('tools')
 
 qjs_srcs = files(
   'dtoa.c',
@@ -222,6 +225,8 @@ if qjs_libc
     include_directories: include_directories('.'),
     dependencies: qjs_dep,
   )
+elif not tools.allowed()
+  qjs_libc_dep = []
 else
   qjs_libc_lib = static_library(
     'quickjs-libc',
@@ -306,13 +311,15 @@ endif
 qjsc_srcs = files(
   'qjsc.c',
 )
+
 qjsc_exe = executable(
   'qjsc',
   qjsc_srcs,
 
   c_args: qjs_c_args,
   dependencies: [qjs_dep, qjs_libc_dep],
-  install: true,
+  build_by_default: tools.allowed(),
+  install: tools.allowed(),
 )
 
 mimalloc_dep = []
@@ -330,6 +337,7 @@ qjs_exe_srcs = files(
   'gen/standalone.c',
   'qjs.c',
 )
+
 qjs_exe = executable(
   'qjs',
   qjs_exe_srcs,
@@ -337,8 +345,8 @@ qjs_exe = executable(
   c_args: qjs_c_args,
   dependencies: [qjs_dep, qjs_libc_dep, mimalloc_dep],
   export_dynamic: true,
-
-  install: true,
+  build_by_default: tools.allowed(),
+  install: tools.allowed(),
 )
 
 if meson.is_cross_build()
@@ -574,7 +582,7 @@ alias_target('codegen',
   run_target(
     'codegen_repl.c',
     command: [
-      qjsc_exe,
+      'qjsc',
       '-ss',
       '-o', files('gen/repl.c'),
       '-m',
@@ -585,7 +593,7 @@ alias_target('codegen',
   run_target(
     'codegen_standalone.c',
     command: [
-      qjsc_exe,
+      'qjsc',
       '-ss',
       '-o', files('gen/standalone.c'),
       '-m',
@@ -596,7 +604,7 @@ alias_target('codegen',
   run_target(
     'codegen_function_source.c',
     command: [
-      qjsc_exe,
+      'qjsc',
       '-e',
       '-o', files('gen/function_source.c'),
       '-n', 'tests/function_source.js',
@@ -606,7 +614,7 @@ alias_target('codegen',
   run_target(
     'codegen_hello.c',
     command: [
-      qjsc_exe,
+      'qjsc',
       '-e',
       '-o', files('gen/hello.c'),
       '-n', 'examples/hello.js',
@@ -616,7 +624,7 @@ alias_target('codegen',
   run_target(
     'codegen_hello_module.c',
     command: [
-      qjsc_exe,
+      'qjsc',
       '-e',
       '-o', files('gen/hello_module.c'),
       '-m',
@@ -627,7 +635,7 @@ alias_target('codegen',
   run_target(
     'codegen_test_fib.c',
     command: [
-      qjsc_exe,
+      'qjsc',
       '-e',
       '-o', files('gen/test_fib.c'),
       '-m',
@@ -638,7 +646,7 @@ alias_target('codegen',
   run_target(
     'codegen_builtin-array-fromasync.h',
     command: [
-      qjsc_exe,
+      'qjsc',
       '-C',
       '-ss',
       '-o', files('builtin-array-fromasync.h'),
