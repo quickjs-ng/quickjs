@@ -339,6 +339,24 @@ static void raw_context_global_var(void)
     JS_FreeRuntime(rt);
 }
 
+// A raw context without JS_AddIntrinsicPromise still parses async functions,
+// but the async function class is never registered, so its bytecode is never
+// freed and JS_FreeRuntime asserts on the leaked object.
+static void raw_context_async_function(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContextRaw(rt);
+    JS_AddIntrinsicBaseObjects(ctx);
+    JS_AddIntrinsicEval(ctx);
+    {
+        JSValue ret = eval(ctx, "async function f() {}");
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void is_array(void)
 {
     JSRuntime *rt = new_runtime();
@@ -2202,6 +2220,7 @@ int main(void)
     async_call();
     async_call_stack_overflow();
     raw_context_global_var();
+    raw_context_async_function();
     is_array();
     module_serde();
     module_unhandled_rejection();
