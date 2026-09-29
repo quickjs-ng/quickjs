@@ -2195,11 +2195,192 @@ void private_symbols(void)
     JS_FreeRuntime(rt);
 }
 
+/* Module evaluation must not reject an import promise for an uncatchable
+   exception. */
+struct uncatch_mod_state {
+    int mode;
+    JSValue terminal;
+    int caught;
+    int success;
+};
+
+static JSValue uncatch_mod_mark(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    struct uncatch_mod_state *s = JS_GetContextOpaque(ctx);
+    int32_t kind = -1;
+    if (argc >= 1)
+        JS_ToInt32(ctx, &kind, argv[0]);
+    if (kind == 0)
+        s->caught++;
+    else if (kind == 2)
+        s->success++;
+    return JS_UNDEFINED;
+}
+
+static JSValue uncatch_mod_fail(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    struct uncatch_mod_state *s = JS_GetContextOpaque(ctx);
+    JSValue err;
+    if (s->mode == 0)
+        return JS_Throw(ctx, JS_DupValue(ctx, s->terminal));
+    if (s->mode == 2)
+        return JS_ThrowRangeError(ctx, "range");
+    err = JS_NewError(ctx);
+    if (JS_IsException(err))
+        return JS_EXCEPTION;
+    return JS_Throw(ctx, err);
+}
+
+static JSModuleDef *uncatch_mod_loader(JSContext *ctx, const char *name,
+                                       void *opaque)
+{
+    const char *code = NULL;
+    JSValue ret;
+    JSModuleDef *m;
+    if (!strcmp(name, "syncmod"))
+        code = "fail();\nexport {};\n";
+    else if (!strcmp(name, "tlafirst"))
+        code = "fail();\nawait 0;\nexport {};\n";
+    else {
+        JS_ThrowReferenceError(ctx, "unknown module '%s'", name);
+        return NULL;
+    }
+    ret = JS_Eval(ctx, code, strlen(code), name,
+                  JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    if (JS_IsException(ret))
+        return NULL;
+    m = JS_VALUE_GET_PTR(ret);
+    JS_FreeValue(ctx, ret);
+    return m;
+}
+
+static void uncatch_mod_route(const char *name, const char *code, int module_body,
+                              int ord_caught, int ord_success)
+{
+    int mode;
+    for (mode = 0; mode < 3; mode++) {
+        struct uncatch_mod_state s;
+        JSRuntime *rt;
+        JSContext *ctx, *job_ctx;
+        JSValue global, ret, err, probe;
+        int host = 0, steps = 0;
+        int flags = module_body ? JS_EVAL_TYPE_MODULE : JS_EVAL_TYPE_GLOBAL;
+        memset(&s, 0, sizeof(s));
+        s.mode = mode;
+        s.terminal = JS_UNINITIALIZED;
+        rt = new_runtime();
+        JS_SetModuleLoaderFunc(rt, NULL, uncatch_mod_loader, NULL);
+        ctx = JS_NewContext(rt);
+        assert(ctx);
+        JS_SetContextOpaque(ctx, &s);
+        global = JS_GetGlobalObject(ctx);
+        assert(JS_SetPropertyStr(ctx, global, "mark",
+                                 JS_NewCFunction(ctx, uncatch_mod_mark, "mark", 1)) >= 0);
+        assert(JS_SetPropertyStr(ctx, global, "fail",
+                                 JS_NewCFunction(ctx, uncatch_mod_fail, "fail", 0)) >= 0);
+        s.terminal = JS_NewError(ctx);
+        assert(!JS_IsException(s.terminal));
+        if (mode == 0)
+            JS_SetUncatchableError(ctx, s.terminal);
+        JS_FreeValue(ctx, global);
+
+        ret = JS_Eval(ctx, code, strlen(code), "<repro>", flags);
+        host = JS_IsException(ret);
+        if (!host && module_body && JS_IsPromise(ret)) {
+            global = JS_GetGlobalObject(ctx);
+            assert(JS_SetPropertyStr(ctx, global, "modp", JS_DupValue(ctx, ret)) >= 0);
+            JS_FreeValue(ctx, global);
+            probe = eval(ctx, "modp.then(() => mark(2), () => mark(0));");
+            if (JS_IsException(probe))
+                host = 1;
+            JS_FreeValue(ctx, probe);
+        }
+        JS_FreeValue(ctx, ret);
+        job_ctx = ctx;
+        while (!host && JS_IsJobPending(rt)) {
+            assert(++steps < 30);
+            if (JS_ExecutePendingJob(rt, &job_ctx) < 0) {
+                host = 1;
+                if (!job_ctx)
+                    job_ctx = ctx;
+            }
+        }
+        if (mode == 0) {
+            if (!host || !JS_HasException(job_ctx)) {
+                fprintf(stderr, "route %s: expected a host exception\n", name);
+                assert(host && JS_HasException(job_ctx));
+            }
+            err = JS_GetException(job_ctx);
+            if (!JS_IsError(err) || !JS_IsUncatchableError(err) ||
+                JS_VALUE_GET_PTR(err) != JS_VALUE_GET_PTR(s.terminal) ||
+                s.caught != 0 || s.success != 0) {
+                fprintf(stderr,
+                        "route %s: module rejection was recoverable "
+                        "(caught=%d success=%d)\n",
+                        name, s.caught, s.success);
+                assert(JS_IsError(err));
+                assert(JS_IsUncatchableError(err));
+                assert(JS_VALUE_GET_PTR(err) == JS_VALUE_GET_PTR(s.terminal));
+                assert(s.caught == 0);
+                assert(s.success == 0);
+            }
+            JS_FreeValue(job_ctx, err);
+        } else if (host || JS_HasException(ctx) ||
+                   s.caught != ord_caught || s.success != ord_success) {
+            fprintf(stderr, "route %s mode %d: ordinary caught=%d success=%d host=%d\n",
+                    name, mode, s.caught, s.success, host);
+            assert(!host);
+            assert(!JS_HasException(ctx));
+            assert(s.caught == ord_caught);
+            assert(s.success == ord_success);
+        }
+        JS_FreeValue(ctx, s.terminal);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+}
+
+static void uncatchable_module_rejection(void)
+{
+    JSRuntime *rt;
+    JSContext *ctx;
+    JSValue ret;
+    int32_t n;
+
+    uncatch_mod_route(
+        "import-sync",
+        "import('syncmod').catch(() => mark(0)).then(() => mark(2));",
+        0, 1, 1);
+    uncatch_mod_route(
+        "import-tla-first",
+        "import('tlafirst').catch(() => mark(0)).then(() => mark(2));",
+        0, 1, 1);
+    uncatch_mod_route(
+        "import-tostring",
+        "import({ toString() { fail(); } }).catch(() => mark(0)).then(() => mark(2));",
+        0, 1, 1);
+    uncatch_mod_route("module-eval-sync", "fail();\nexport {};\n", 1, 1, 0);
+    uncatch_mod_route("module-eval-tla-first", "fail();\nawait 0;\nexport {};\n",
+                      1, 1, 0);
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    ret = eval(ctx, "1+2");
+    assert(!JS_IsException(ret));
+    assert(JS_ToInt32(ctx, &n, ret) == 0 && n == 3);
+    JS_FreeValue(ctx, ret);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
     sync_call();
     async_call();
+    uncatchable_module_rejection();
     async_call_stack_overflow();
     raw_context_global_var();
     is_array();
