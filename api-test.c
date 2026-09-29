@@ -2195,11 +2195,225 @@ void private_symbols(void)
     JS_FreeRuntime(rt);
 }
 
+/* A native callback throws a preallocated uncatchable Error. Internal
+   promise rejection must not turn that into a catchable rejection. */
+struct uncatch_promise_state {
+    int mode; /* 0 uncatchable, 1 Error, 2 RangeError */
+    JSValue terminal;
+    int caught;
+    int success;
+};
+
+static JSValue uncatch_promise_mark(JSContext *ctx, JSValueConst this_val,
+                                    int argc, JSValueConst *argv)
+{
+    struct uncatch_promise_state *s = JS_GetContextOpaque(ctx);
+    int32_t kind = -1;
+    if (argc >= 1)
+        JS_ToInt32(ctx, &kind, argv[0]);
+    if (kind == 0)
+        s->caught++;
+    else if (kind == 2)
+        s->success++;
+    return JS_UNDEFINED;
+}
+
+static JSValue uncatch_promise_fail(JSContext *ctx, JSValueConst this_val,
+                                    int argc, JSValueConst *argv)
+{
+    struct uncatch_promise_state *s = JS_GetContextOpaque(ctx);
+    JSValue err;
+    if (s->mode == 0)
+        return JS_Throw(ctx, JS_DupValue(ctx, s->terminal));
+    if (s->mode == 2)
+        return JS_ThrowRangeError(ctx, "range");
+    err = JS_NewError(ctx);
+    if (JS_IsException(err))
+        return JS_EXCEPTION;
+    return JS_Throw(ctx, err);
+}
+
+static void uncatch_promise_route(const char *name, const char *code)
+{
+    int mode;
+    for (mode = 0; mode < 3; mode++) {
+        struct uncatch_promise_state s;
+        JSRuntime *rt;
+        JSContext *ctx, *job_ctx;
+        JSValue global, ret, err;
+        int host = 0, steps = 0;
+        memset(&s, 0, sizeof(s));
+        s.mode = mode;
+        s.terminal = JS_UNINITIALIZED;
+        rt = new_runtime();
+        ctx = JS_NewContext(rt);
+        assert(ctx);
+        JS_SetContextOpaque(ctx, &s);
+        global = JS_GetGlobalObject(ctx);
+        assert(JS_SetPropertyStr(ctx, global, "mark",
+                                 JS_NewCFunction(ctx, uncatch_promise_mark, "mark", 1)) >= 0);
+        assert(JS_SetPropertyStr(ctx, global, "fail",
+                                 JS_NewCFunction(ctx, uncatch_promise_fail, "fail", 0)) >= 0);
+        JS_FreeValue(ctx, global);
+        s.terminal = JS_NewError(ctx);
+        assert(!JS_IsException(s.terminal));
+        if (mode == 0)
+            JS_SetUncatchableError(ctx, s.terminal);
+
+        ret = eval(ctx, code);
+        host = JS_IsException(ret);
+        JS_FreeValue(ctx, ret);
+        job_ctx = ctx;
+        while (!host && JS_IsJobPending(rt)) {
+            assert(++steps < 20);
+            if (JS_ExecutePendingJob(rt, &job_ctx) < 0) {
+                host = 1;
+                if (!job_ctx)
+                    job_ctx = ctx;
+            }
+        }
+        if (mode == 0) {
+            if (!host || !JS_HasException(job_ctx)) {
+                fprintf(stderr, "route %s: expected a host exception\n", name);
+                assert(host && JS_HasException(job_ctx));
+            }
+            err = JS_GetException(job_ctx);
+            if (!JS_IsError(err) || !JS_IsUncatchableError(err) ||
+                JS_VALUE_GET_PTR(err) != JS_VALUE_GET_PTR(s.terminal) ||
+                s.caught != 0 || s.success != 0) {
+                fprintf(stderr, "route %s: uncatchable promise result was recoverable\n", name);
+                assert(JS_IsError(err));
+                assert(JS_IsUncatchableError(err));
+                assert(JS_VALUE_GET_PTR(err) == JS_VALUE_GET_PTR(s.terminal));
+                assert(s.caught == 0);
+                assert(s.success == 0);
+            }
+            JS_FreeValue(job_ctx, err);
+        } else {
+            if (host || JS_HasException(ctx) || s.caught != 1 || s.success != 1) {
+                fprintf(stderr, "route %s mode %d: ordinary exception was not caught\n",
+                        name, mode);
+                assert(!host);
+                assert(!JS_HasException(ctx));
+                assert(s.caught == 1);
+                assert(s.success == 1);
+            }
+        }
+        JS_FreeValue(ctx, s.terminal);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+}
+
+static void uncatchable_promise_rejection(void)
+{
+    static const char *reaction =
+        "Promise.resolve().then(() => { fail(); }).catch(e => mark(0)).then(() => mark(2));";
+    static const char *await_resume =
+        "(async () => { await 0; try { fail(); } catch (e) { mark(0); } })()"
+        ".then(() => mark(2), () => mark(0));";
+    JSRuntime *rt;
+    JSContext *ctx;
+    JSValue global, ret, err;
+    struct uncatch_promise_state s;
+    int32_t n;
+
+    uncatch_promise_route(
+        "executor",
+        "new Promise(() => { fail(); }).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "then-getter",
+        "Promise.resolve({ get then() { fail(); } }).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "then-call",
+        "Promise.resolve({ then() { fail(); } }).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "try",
+        "Promise.try(() => { fail(); }).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "all",
+        "Promise.all({ [Symbol.iterator]() { fail(); } }).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "allSettled",
+        "Promise.allSettled({ [Symbol.iterator]() { fail(); } }).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "any",
+        "Promise.any({ [Symbol.iterator]() { fail(); } }).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "race",
+        "Promise.race({ [Symbol.iterator]() { fail(); } }).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "all-thenable",
+        "Promise.all([{ then() { fail(); } }]).catch(e => mark(0)).then(() => mark(2));");
+    uncatch_promise_route(
+        "race-thenable",
+        "Promise.race([{ then() { fail(); } }]).catch(e => mark(0)).then(() => mark(2));");
+
+    /* #811: reactions and async resumption already propagate. */
+    uncatch_promise_route("reaction", reaction);
+    /* async-await's success marker is the function's fulfillment, which must
+       not run; the inner catch must not run either. Ordinary errors are
+       caught inside the function and then fulfill. The route helper expects
+       ordinary caught=1 success=1, which matches that. */
+    uncatch_promise_route("await", await_resume);
+
+    /* Same runtime remains usable after the host consumes the exception. */
+    memset(&s, 0, sizeof(s));
+    s.terminal = JS_UNINITIALIZED;
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    JS_SetContextOpaque(ctx, &s);
+    global = JS_GetGlobalObject(ctx);
+    assert(JS_SetPropertyStr(ctx, global, "mark",
+                             JS_NewCFunction(ctx, uncatch_promise_mark, "mark", 1)) >= 0);
+    assert(JS_SetPropertyStr(ctx, global, "fail",
+                             JS_NewCFunction(ctx, uncatch_promise_fail, "fail", 0)) >= 0);
+    JS_FreeValue(ctx, global);
+    s.terminal = JS_NewError(ctx);
+    JS_SetUncatchableError(ctx, s.terminal);
+    ret = eval(ctx, "new Promise(() => { fail(); }).catch(() => mark(0)).then(() => mark(2));");
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    err = JS_GetException(ctx);
+    assert(JS_IsUncatchableError(err));
+    assert(JS_VALUE_GET_PTR(err) == JS_VALUE_GET_PTR(s.terminal));
+    JS_FreeValue(ctx, err);
+    assert(s.caught == 0 && s.success == 0);
+    ret = eval(ctx, "try { throw new RangeError(); } catch (e) { mark(0); } 7");
+    assert(!JS_IsException(ret));
+    assert(JS_ToInt32(ctx, &n, ret) == 0 && n == 7);
+    JS_FreeValue(ctx, ret);
+    assert(s.caught == 1);
+    ret = eval(ctx, "Promise.reject(1).catch(() => mark(0)).then(() => mark(2));");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    {
+        JSContext *job_ctx = ctx;
+        while (JS_IsJobPending(rt))
+            assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+    }
+    assert(s.caught == 2 && s.success == 1);
+    assert(!JS_HasException(ctx));
+    JS_FreeValue(ctx, s.terminal);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    ret = eval(ctx, "1+2");
+    assert(!JS_IsException(ret));
+    assert(JS_ToInt32(ctx, &n, ret) == 0 && n == 3);
+    JS_FreeValue(ctx, ret);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
     sync_call();
     async_call();
+    uncatchable_promise_rejection();
     async_call_stack_overflow();
     raw_context_global_var();
     is_array();

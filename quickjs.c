@@ -55728,7 +55728,15 @@ static JSValue js_promise_resolve_thenable_job(JSContext *ctx,
                          rt->promise_hook_opaque);
     }
     if (JS_IsException(res)) {
-        JSValue error = JS_GetException(ctx);
+        JSValue error;
+        /* Rejecting would let a user catch handler continue after an
+           uncatchable exception. Leave it pending for the host. */
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
+            JS_FreeValue(ctx, args[0]);
+            JS_FreeValue(ctx, args[1]);
+            return JS_EXCEPTION;
+        }
+        error = JS_GetException(ctx);
         res = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
     }
@@ -55846,6 +55854,8 @@ static JSValue js_promise_resolve_function_call(JSContext *ctx,
     then = JS_GetProperty(ctx, resolution, JS_ATOM_then);
     if (JS_IsException(then)) {
         JSValue error;
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+            return JS_EXCEPTION;
     fail_reject:
         error = JS_GetException(ctx);
         fulfill_or_reject_promise(ctx, s->promise, error, true);
@@ -55958,6 +55968,8 @@ static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
     ret = JS_Call(ctx, executor, JS_UNDEFINED, 2, vc(args));
     if (JS_IsException(ret)) {
         JSValue ret2, error;
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+            goto fail;
         error = JS_GetException(ctx);
         ret2 = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
@@ -56150,6 +56162,12 @@ static JSValue js_promise_try(JSContext *ctx, JSValueConst this_val,
         return result_promise;
     ret = JS_Call(ctx, argv[0], JS_UNDEFINED, argc - 1, argv + 1);
     if (JS_IsException(ret)) {
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
+            JS_FreeValue(ctx, result_promise);
+            JS_FreeValue(ctx, resolving_funcs[0]);
+            JS_FreeValue(ctx, resolving_funcs[1]);
+            return JS_EXCEPTION;
+        }
         is_reject = 1;
         ret = JS_GetException(ctx);
     }
@@ -56283,6 +56301,8 @@ static JSValue js_promise_all(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(iter)) {
         JSValue error;
     fail_reject:
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+            goto fail;
         error = JS_GetException(ctx);
         ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
@@ -56424,6 +56444,8 @@ static JSValue js_promise_race(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(iter)) {
         JSValue error;
     fail_reject:
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+            goto fail;
         error = JS_GetException(ctx);
         ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
