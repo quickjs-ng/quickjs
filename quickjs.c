@@ -31868,6 +31868,8 @@ static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
     evaluate_promise = JS_EvalFunction(ctx, func_obj);
     if (JS_IsException(evaluate_promise)) {
     fail:
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+            return;
         err = JS_GetException(ctx);
         ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
         JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
@@ -31902,6 +31904,10 @@ JSValue JS_LoadModule(JSContext *ctx, const char *basename,
     JS_LoadModuleInternal(ctx, basename, filename, vc(resolving_funcs), JS_UNDEFINED);
     JS_FreeValue(ctx, resolving_funcs[0]);
     JS_FreeValue(ctx, resolving_funcs[1]);
+    if (JS_HasException(ctx)) {
+        JS_FreeValue(ctx, promise);
+        return JS_EXCEPTION;
+    }
     return promise;
 }
 
@@ -31930,8 +31936,14 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     JS_LoadModuleInternal(ctx, basename, filename, resolving_funcs, attributes);
     JS_FreeCString(ctx, filename);
     JS_FreeCString(ctx, basename);
+    if (JS_HasException(ctx))
+        return JS_EXCEPTION;
     return JS_UNDEFINED;
  exception:
+    if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
+        JS_FreeCString(ctx, basename);
+        return JS_EXCEPTION;
+    }
     err = JS_GetException(ctx);
     ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
     JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
@@ -32037,6 +32049,15 @@ done:
     return promise;
  exception:
     JS_FreeValue(ctx, attributes_obj);
+    if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
+        JS_FreeValue(ctx, promise);
+        JS_FreeValue(ctx, resolving_funcs[0]);
+        JS_FreeValue(ctx, resolving_funcs[1]);
+        JS_FreeValue(ctx, basename_val);
+        JS_FreeValue(ctx, specifier_str);
+        JS_FreeValue(ctx, attributes);
+        return JS_EXCEPTION;
+    }
     err = JS_GetException(ctx);
     ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
     JS_FreeValue(ctx, ret);
@@ -32360,7 +32381,10 @@ static int js_inner_module_evaluation(JSContext *ctx, JSModuleDef *m,
         m->async_evaluation = true;
         m->async_evaluation_timestamp =
             ctx->rt->module_async_evaluation_next_timestamp++;
-        js_execute_async_module(ctx, m);
+        if (js_execute_async_module(ctx, m) < 0) {
+            *pvalue = JS_GetException(ctx);
+            return -1;
+        }
     } else {
         if (js_execute_sync_module(ctx, m, pvalue) < 0)
             return -1;
@@ -32418,6 +32442,18 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
             m1->eval_exception = js_dup(result);
             m1->cycle_root = m; /* spec bug: should be present */
             stack_top = m1->stack_prev;
+        }
+        if (JS_IsUncatchableError(result)) {
+            /* Do not reject the evaluation promise. A later import must
+               surface the same exception instead of a pending promise. */
+            JS_FreeValue(ctx, m->resolving_funcs[0]);
+            JS_FreeValue(ctx, m->resolving_funcs[1]);
+            m->resolving_funcs[0] = JS_UNDEFINED;
+            m->resolving_funcs[1] = JS_UNDEFINED;
+            JS_FreeValue(ctx, m->promise);
+            m->promise = JS_UNDEFINED;
+            JS_Throw(ctx, result);
+            return JS_EXCEPTION;
         }
         JS_FreeValue(ctx, result);
         assert(m->status == JS_MODULE_STATUS_EVALUATED);
