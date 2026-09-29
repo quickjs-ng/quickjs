@@ -21776,6 +21776,39 @@ static int js_async_generator_await(JSContext *ctx,
     return -1;
 }
 
+static void js_async_generator_complete(JSContext *ctx,
+                                        JSAsyncGeneratorData *s);
+
+/* Unlink a queued request without resolving its promise. */
+static void js_async_generator_drop_request(JSContext *ctx,
+                                            JSAsyncGeneratorRequest *req)
+{
+    list_del(&req->link);
+    JS_FreeValue(ctx, req->result);
+    JS_FreeValue(ctx, req->promise);
+    JS_FreeValue(ctx, req->resolving_funcs[0]);
+    JS_FreeValue(ctx, req->resolving_funcs[1]);
+    js_free(ctx, req);
+}
+
+/* Leave an uncatchable exception pending and do not settle the request
+   promise. func_state has already been freed in the completed and
+   awaiting-return states. */
+static void js_async_generator_propagate_uncatchable(JSContext *ctx,
+                                                    JSAsyncGeneratorData *s,
+                                                    JSAsyncGeneratorRequest *req,
+                                                    JSValue error)
+{
+    if (s->state != JS_ASYNC_GENERATOR_STATE_COMPLETED &&
+        s->state != JS_ASYNC_GENERATOR_STATE_AWAITING_RETURN) {
+        js_async_generator_complete(ctx, s);
+    } else {
+        s->state = JS_ASYNC_GENERATOR_STATE_COMPLETED;
+    }
+    js_async_generator_drop_request(ctx, req);
+    JS_Throw(ctx, error);
+}
+
 static void js_async_generator_resolve_or_reject(JSContext *ctx,
                                                  JSAsyncGeneratorData *s,
                                                  JSValueConst result,
@@ -21834,10 +21867,13 @@ static int js_async_generator_completed_return(JSContext *ctx,
     // Can fail looking up JS_ATOM_constructor when is_reject==0.
     promise = js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&value),
                                  /*is_reject*/0);
-    // A poisoned .constructor property is observable and the resulting
-    // exception should be delivered to the catch handler.
+    /* A poisoned .constructor property is observable. An ordinary exception
+       is delivered to the catch handler; an uncatchable one stays pending. */
     if (JS_IsException(promise)) {
-        JSValue err = JS_GetException(ctx);
+        JSValue err;
+        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+            return -1;
+        err = JS_GetException(ctx);
         promise = js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&err),
                                      /*is_reject*/1);
         JS_FreeValue(ctx, err);
@@ -21890,8 +21926,18 @@ static void js_async_generator_resume_next(JSContext *ctx,
                 js_async_generator_resolve(ctx, s, JS_UNDEFINED, true);
             } else if (next->completion_type == GEN_MAGIC_RETURN) {
                 s->state = JS_ASYNC_GENERATOR_STATE_AWAITING_RETURN;
-                js_async_generator_completed_return(ctx, s, next->result);
+                if (js_async_generator_completed_return(ctx, s, next->result) < 0 &&
+                    unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
+                    JSValue error = JS_GetException(ctx);
+                    js_async_generator_propagate_uncatchable(ctx, s, next, error);
+                    goto done;
+                }
             } else {
+                if (JS_IsUncatchableError(next->result)) {
+                    JSValue error = js_dup(next->result);
+                    js_async_generator_propagate_uncatchable(ctx, s, next, error);
+                    goto done;
+                }
                 js_async_generator_reject(ctx, s, next->result);
             }
             goto done;
@@ -21916,6 +21962,11 @@ static void js_async_generator_resume_next(JSContext *ctx,
         resume_exec:
             func_ret = async_func_resume(ctx, &s->func_state);
             if (JS_IsException(func_ret)) {
+                if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
+                    JSValue error = JS_GetException(ctx);
+                    js_async_generator_propagate_uncatchable(ctx, s, next, error);
+                    goto done;
+                }
                 value = JS_GetException(ctx);
                 js_async_generator_complete(ctx, s);
                 js_async_generator_reject(ctx, s, value);
@@ -21981,6 +22032,12 @@ static JSValue js_async_generator_resolve_function(JSContext *ctx,
                s->state == JS_ASYNC_GENERATOR_STATE_COMPLETED);
         s->state = JS_ASYNC_GENERATOR_STATE_COMPLETED;
         if (is_reject) {
+            if (JS_IsUncatchableError(arg)) {
+                JSAsyncGeneratorRequest *req;
+                req = list_entry(s->queue.next, JSAsyncGeneratorRequest, link);
+                js_async_generator_propagate_uncatchable(ctx, s, req, js_dup(arg));
+                return JS_EXCEPTION;
+            }
             js_async_generator_reject(ctx, s, arg);
         } else {
             js_async_generator_resolve(ctx, s, arg, true);
@@ -21995,6 +22052,8 @@ static JSValue js_async_generator_resolve_function(JSContext *ctx,
             s->func_state.frame.cur_sp[-1] = js_dup(arg);
         }
         js_async_generator_resume_next(ctx, s);
+        if (JS_HasException(ctx))
+            return JS_EXCEPTION;
     }
     return JS_UNDEFINED;
 }
@@ -22034,6 +22093,10 @@ static JSValue js_async_generator_next(JSContext *ctx, JSValueConst this_val,
     list_add_tail(&req->link, &s->queue);
     if (s->state != JS_ASYNC_GENERATOR_STATE_EXECUTING) {
         js_async_generator_resume_next(ctx, s);
+        if (JS_HasException(ctx)) {
+            JS_FreeValue(ctx, promise);
+            return JS_EXCEPTION;
+        }
     }
     return promise;
  fail:
