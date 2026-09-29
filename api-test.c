@@ -2,6 +2,7 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2195,6 +2196,511 @@ void private_symbols(void)
     JS_FreeRuntime(rt);
 }
 
+/* Opt-in terminal handling of JS_SetMemoryLimit exhaustion.
+   The runtime is not reusable after the condition is reached. */
+typedef struct {
+    int allocator;
+    size_t headroom;
+    int caught, continued, success, null_caught;
+    int armed, refused;
+    size_t live;
+} MemState;
+
+typedef union {
+    max_align_t alignment;
+    size_t size;
+} MemBlock;
+
+static void *mem_term_alloc(void *opaque, size_t size)
+{
+    MemState *s = opaque;
+    MemBlock *b;
+    if (s->armed && size >= 1024 * 1024) {
+        s->refused++;
+        return NULL;
+    }
+    b = malloc(sizeof(*b) + size);
+    if (!b)
+        return NULL;
+    b->size = size;
+    s->live++;
+    return b + 1;
+}
+
+static void mem_term_free(void *opaque, void *ptr)
+{
+    MemState *s = opaque;
+    if (!ptr)
+        return;
+    s->live--;
+    free((MemBlock *)ptr - 1);
+}
+
+static void *mem_term_realloc(void *opaque, void *ptr, size_t size)
+{
+    void *p;
+    size_t old;
+    if (!ptr)
+        return mem_term_alloc(opaque, size);
+    if (!size) {
+        mem_term_free(opaque, ptr);
+        return NULL;
+    }
+    p = mem_term_alloc(opaque, size);
+    if (!p)
+        return NULL;
+    old = ((MemBlock *)ptr - 1)->size;
+    memcpy(p, ptr, old < size ? old : size);
+    mem_term_free(opaque, ptr);
+    return p;
+}
+
+static void *mem_term_calloc(void *opaque, size_t count, size_t size)
+{
+    void *p;
+    if (size && count > SIZE_MAX / size)
+        return NULL;
+    p = mem_term_alloc(opaque, count * size);
+    if (p)
+        memset(p, 0, count * size);
+    return p;
+}
+
+static size_t mem_term_usable(const void *ptr)
+{
+    return ptr ? ((const MemBlock *)ptr - 1)->size : 0;
+}
+
+static const JSMallocFunctions mem_term_mf = {
+    mem_term_calloc,
+    mem_term_alloc,
+    mem_term_free,
+    mem_term_realloc,
+    mem_term_usable,
+};
+
+static JSValue mem_term_arm(JSContext *ctx, JSValueConst this_val,
+                            int argc, JSValueConst *argv)
+{
+    MemState *s = JS_GetContextOpaque(ctx);
+    JSMemoryUsage usage;
+    if (s->allocator) {
+        s->armed = 1;
+        return JS_UNDEFINED;
+    }
+    JS_ComputeMemoryUsage(JS_GetRuntime(ctx), &usage);
+    JS_SetMemoryLimit(JS_GetRuntime(ctx), (size_t)usage.malloc_size + s->headroom);
+    return JS_UNDEFINED;
+}
+
+static JSValue mem_term_mark(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv)
+{
+    MemState *s = JS_GetContextOpaque(ctx);
+    int32_t kind = -1;
+    assert(argc >= 1);
+    assert(JS_ToInt32(ctx, &kind, argv[0]) == 0);
+    if (kind == 0) {
+        s->caught++;
+        if (argc > 1 && JS_IsNull(argv[1]))
+            s->null_caught++;
+    } else if (kind == 1) {
+        s->continued++;
+    } else if (kind == 2) {
+        s->success++;
+    }
+    return JS_UNDEFINED;
+}
+
+static void mem_term_install(JSContext *ctx)
+{
+    JSValue g = JS_GetGlobalObject(ctx);
+    assert(JS_SetPropertyStr(ctx, g, "arm",
+                             JS_NewCFunction(ctx, mem_term_arm, "arm", 0)) >= 0);
+    assert(JS_SetPropertyStr(ctx, g, "mark",
+                             JS_NewCFunction(ctx, mem_term_mark, "mark", 2)) >= 0);
+    JS_FreeValue(ctx, g);
+}
+
+static JSRuntime *mem_term_runtime(MemState *s, int terminal)
+{
+    JSRuntime *rt = s->allocator ? JS_NewRuntime2(&mem_term_mf, s) : JS_NewRuntime();
+    assert(rt);
+    JS_SetDumpFlags(rt, JS_ABORT_ON_LEAKS);
+    if (terminal)
+        JS_SetMemoryLimitTermination(rt, true);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_NONE);
+    return rt;
+}
+
+static void mem_term_shutdown(JSRuntime *rt, JSContext *ctx, MemState *s)
+{
+    JS_SetMemoryLimit(rt, 0);
+    s->armed = 0;
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    assert(s->live == 0);
+}
+
+static void mem_term_eval_ok(JSContext *ctx, const char *code)
+{
+    JSValue ret = eval(ctx, code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+}
+
+/* Returns 1 when evaluation itself failed. */
+static int mem_term_eval(JSContext *ctx, const char *code)
+{
+    JSValue ret = eval(ctx, code);
+    int failed = JS_IsException(ret);
+    JS_FreeValue(ctx, ret);
+    return failed;
+}
+
+static void mem_term_expect_quiescent(MemState *s, JSRuntime *rt)
+{
+    assert(s->caught == 0 && s->continued == 0 && s->success == 0);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_MEMORY_LIMIT);
+}
+
+static void mem_term_not_reusable(JSRuntime *rt, JSContext *ctx, MemState *s)
+{
+    JSValue ret, exc;
+    JSContext *job_ctx = ctx;
+    JS_SetMemoryLimit(rt, 0);
+    ret = eval(ctx, "mark(2)");
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    assert(JS_HasException(ctx));
+    exc = JS_GetException(ctx);
+    assert(JS_IsNull(exc));
+    JS_FreeValue(ctx, exc);
+    assert(s->success == 0);
+    if (JS_IsJobPending(rt))
+        assert(JS_ExecutePendingJob(rt, &job_ctx) < 0);
+    assert(s->caught == 0 && s->continued == 0 && s->success == 0);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_MEMORY_LIMIT);
+}
+
+static const char mem_term_prelude[] =
+    "function trigger() { arm(); new ArrayBuffer(1024 * 1024); }\n";
+
+static void memory_limit_termination(void)
+{
+    static const char sync_code[] =
+        "try { trigger(); } catch (e) { mark(0, e); } mark(1); mark(2);";
+    static const char job_code[] =
+        "Promise.resolve().then(() => {"
+        "  try { trigger(); } catch (e) { mark(0, e); }"
+        "  mark(1);"
+        "}).then(() => { mark(2); });";
+    static const char await_code[] =
+        "(async () => {"
+        "  await 0;"
+        "  try { trigger(); } catch (e) { mark(0, e); }"
+        "  mark(1);"
+        "})().then(() => { mark(2); });";
+    static const char executor_code[] =
+        "try { new Promise(() => { trigger(); }); } catch (e) { mark(0, e); }"
+        "mark(1); mark(2);";
+    static const char thenable_code[] =
+        "Promise.resolve({ then() {"
+        "  try { trigger(); } catch (e) { mark(0, e); }"
+        "  mark(1);"
+        "}}).catch((e) => { mark(0, e); }).then(() => { mark(2); });";
+    static const char ordinary[] =
+        "try { throw new Error('e'); } catch (e) { mark(0); }"
+        "try { throw new RangeError('r'); } catch (e) { mark(0); }"
+        "try { null.f; } catch (e) { mark(0); }"
+        "try { eval('}'); } catch (e) { mark(0); }"
+        "mark(1);"
+        "Promise.reject(42).catch(() => { mark(0); }).then(() => { mark(2); });";
+    MemState s;
+    JSRuntime *rt;
+    JSContext *ctx, *job_ctx;
+    JSValue exc;
+    int steps, saw;
+
+    /* Existing behavior: exhaustion stays catchable, including a null Error. */
+    memset(&s, 0, sizeof(s));
+    s.headroom = 65536;
+    rt = mem_term_runtime(&s, 0);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(!mem_term_eval(ctx, sync_code));
+    assert(s.caught == 1 && s.continued == 1 && s.success == 1);
+    assert(s.null_caught == 0);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_NONE);
+    mem_term_shutdown(rt, ctx, &s);
+
+    memset(&s, 0, sizeof(s));
+    s.headroom = 1;
+    rt = mem_term_runtime(&s, 0);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(!mem_term_eval(ctx, sync_code));
+    assert(s.caught == 1 && s.null_caught == 1);
+    assert(s.continued == 1 && s.success == 1);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_NONE);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* The configured-limit check records termination before any exception exists. */
+    memset(&s, 0, sizeof(s));
+    rt = mem_term_runtime(&s, 0);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    {
+        JSMemoryUsage usage;
+        JS_ComputeMemoryUsage(rt, &usage);
+        JS_SetMemoryLimit(rt, (size_t)usage.malloc_size + 1);
+    }
+    assert(js_malloc_rt(rt, 1024 * 1024) == NULL);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_NONE);
+    assert(!JS_HasException(ctx));
+    mem_term_shutdown(rt, ctx, &s);
+
+    memset(&s, 0, sizeof(s));
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    {
+        JSMemoryUsage usage;
+        JS_ComputeMemoryUsage(rt, &usage);
+        JS_SetMemoryLimit(rt, (size_t)usage.malloc_size + 1);
+    }
+    assert(js_malloc_rt(rt, 1024 * 1024) == NULL);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_MEMORY_LIMIT);
+    assert(!JS_HasException(ctx));
+    mem_term_not_reusable(rt, ctx, &s);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* Terminal synchronous path. The diagnostic Error can still be allocated. */
+    memset(&s, 0, sizeof(s));
+    s.headroom = 65536;
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(mem_term_eval(ctx, sync_code));
+    mem_term_expect_quiescent(&s, rt);
+    exc = JS_GetException(ctx);
+    assert(JS_IsError(exc));
+    JS_FreeValue(ctx, exc);
+    mem_term_not_reusable(rt, ctx, &s);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* No spare headroom: the Error allocation fails and the value is null. */
+    memset(&s, 0, sizeof(s));
+    s.headroom = 1;
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(mem_term_eval(ctx, sync_code));
+    mem_term_expect_quiescent(&s, rt);
+    exc = JS_GetException(ctx);
+    assert(JS_IsNull(exc));
+    assert(!JS_IsUncatchableError(exc));
+    JS_FreeValue(ctx, exc);
+    mem_term_not_reusable(rt, ctx, &s);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* Pending job: catch inside the reaction must not recover. */
+    memset(&s, 0, sizeof(s));
+    s.headroom = 65536;
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(!mem_term_eval(ctx, job_code));
+    assert(s.caught == 0 && s.success == 0);
+    job_ctx = ctx;
+    steps = 0;
+    saw = 0;
+    while (JS_IsJobPending(rt)) {
+        int r;
+        assert(++steps < 20);
+        r = JS_ExecutePendingJob(rt, &job_ctx);
+        if (r < 0) {
+            saw = 1;
+            break;
+        }
+        assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_NONE);
+    }
+    assert(saw);
+    mem_term_expect_quiescent(&s, rt);
+    assert(JS_HasException(job_ctx));
+    exc = JS_GetException(job_ctx);
+    assert(JS_IsError(exc));
+    JS_FreeValue(job_ctx, exc);
+    mem_term_not_reusable(rt, ctx, &s);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* Same job route with no room to allocate the diagnostic Error. */
+    memset(&s, 0, sizeof(s));
+    s.headroom = 1;
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(!mem_term_eval(ctx, job_code));
+    job_ctx = ctx;
+    steps = 0;
+    saw = 0;
+    while (JS_IsJobPending(rt)) {
+        int r;
+        assert(++steps < 20);
+        r = JS_ExecutePendingJob(rt, &job_ctx);
+        if (r < 0) {
+            saw = 1;
+            break;
+        }
+    }
+    assert(saw);
+    mem_term_expect_quiescent(&s, rt);
+    exc = JS_GetException(job_ctx);
+    assert(JS_IsNull(exc));
+    assert(!JS_IsUncatchableError(exc));
+    JS_FreeValue(job_ctx, exc);
+    mem_term_not_reusable(rt, ctx, &s);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* Async resumption after await. */
+    memset(&s, 0, sizeof(s));
+    s.headroom = 65536;
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(!mem_term_eval(ctx, await_code));
+    job_ctx = ctx;
+    steps = 0;
+    saw = 0;
+    while (JS_IsJobPending(rt)) {
+        int r;
+        assert(++steps < 20);
+        r = JS_ExecutePendingJob(rt, &job_ctx);
+        if (r < 0) {
+            saw = 1;
+            break;
+        }
+    }
+    assert(saw);
+    mem_term_expect_quiescent(&s, rt);
+    if (JS_HasException(job_ctx))
+        JS_FreeValue(job_ctx, JS_GetException(job_ctx));
+    mem_term_not_reusable(rt, ctx, &s);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* Promise constructor must not reject and continue. */
+    memset(&s, 0, sizeof(s));
+    s.headroom = 65536;
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(mem_term_eval(ctx, executor_code));
+    mem_term_expect_quiescent(&s, rt);
+    if (JS_HasException(ctx))
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    mem_term_not_reusable(rt, ctx, &s);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* Thenable job must not reject into a user catch. */
+    memset(&s, 0, sizeof(s));
+    s.headroom = 65536;
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(!mem_term_eval(ctx, thenable_code));
+    job_ctx = ctx;
+    steps = 0;
+    saw = 0;
+    while (JS_IsJobPending(rt)) {
+        int r;
+        assert(++steps < 20);
+        r = JS_ExecutePendingJob(rt, &job_ctx);
+        if (r < 0) {
+            saw = 1;
+            break;
+        }
+    }
+    assert(saw);
+    mem_term_expect_quiescent(&s, rt);
+    if (JS_HasException(job_ctx))
+        JS_FreeValue(job_ctx, JS_GetException(job_ctx));
+    mem_term_not_reusable(rt, ctx, &s);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* Ordinary exceptions stay catchable while the option is enabled. */
+    memset(&s, 0, sizeof(s));
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    assert(!mem_term_eval(ctx, ordinary));
+    assert(s.caught == 4 && s.continued == 1 && s.success == 0);
+    job_ctx = ctx;
+    while (JS_IsJobPending(rt))
+        assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+    assert(s.caught == 5 && s.success == 1);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_NONE);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* A custom allocator NULL is not a configured memory-limit termination. */
+    memset(&s, 0, sizeof(s));
+    s.allocator = 1;
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    mem_term_install(ctx);
+    mem_term_eval_ok(ctx, mem_term_prelude);
+    assert(!mem_term_eval(ctx, sync_code));
+    assert(s.refused >= 1);
+    assert(s.caught == 1 && s.continued == 1 && s.success == 1);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_NONE);
+    mem_term_shutdown(rt, ctx, &s);
+
+    /* A fresh runtime is unaffected. */
+    memset(&s, 0, sizeof(s));
+    rt = mem_term_runtime(&s, 1);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    exc = eval(ctx, "40 + 2");
+    assert(!JS_IsException(exc));
+    {
+        int32_t n = 0;
+        assert(JS_ToInt32(ctx, &n, exc) == 0 && n == 42);
+    }
+    JS_FreeValue(ctx, exc);
+    assert(JS_GetTerminationStatus(rt) == JS_TERMINATION_NONE);
+    mem_term_shutdown(rt, ctx, &s);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2236,5 +2742,6 @@ int main(void)
     new_typed_array();
     std_eval_interrupt_handler();
     private_symbols();
+    memory_limit_termination();
     return 0;
 }

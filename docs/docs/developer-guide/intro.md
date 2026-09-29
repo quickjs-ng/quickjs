@@ -97,6 +97,13 @@ of a native module.
 Use `JS_SetMemoryLimit()` to set a global memory allocation limit
 to a given `JSRuntime`.
 
+By default, exceeding that limit throws a catchable out-of-memory
+exception. `JS_SetMemoryLimitTermination()` opts into treating that
+configured-limit exhaustion as terminal: JavaScript cannot catch it, and
+`JS_GetTerminationStatus()` reports `JS_TERMINATION_MEMORY_LIMIT` even if
+the exception object cannot be allocated. Free the runtime afterwards.
+Arbitrary allocator failures are unchanged.
+
 Custom memory allocation functions can be provided with `JS_NewRuntime2()`.
 
 The maximum system stack size can be set with `JS_SetMaxStackSize()`.

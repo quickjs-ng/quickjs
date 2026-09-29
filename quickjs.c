@@ -372,6 +372,10 @@ struct JSRuntime {
     JSValue current_exception;
     /* true if inside an out of memory error, to avoid recursing */
     bool in_out_of_memory;
+    /* Opt-in: configured JS_SetMemoryLimit exhaustion is terminal. */
+    bool terminate_on_memory_limit;
+    /* Sticky until JS_FreeRuntime. Independent of any exception object. */
+    bool memory_limit_exhausted;
     /* true if inside build_backtrace, to avoid recursing */
     bool in_build_stack_trace;
     /* true if inside JS_FreeRuntime */
@@ -1976,6 +1980,15 @@ static void js_arena_free_all(JSRuntime *rt)
     }
 }
 
+/* Record configured JS_SetMemoryLimit exhaustion. malloc_limit == 0 is
+   unlimited, so that comparison is not this event. Allocator NULL is not
+   recorded here. The flag is sticky for the life of the runtime. */
+static inline void js_memory_limit_hit(JSRuntime *rt)
+{
+    if (rt->terminate_on_memory_limit && rt->malloc_state.malloc_limit != 0)
+        rt->memory_limit_exhausted = true;
+}
+
 void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size)
 {
     void *ptr;
@@ -1990,8 +2003,10 @@ void *js_calloc_rt(JSRuntime *rt, size_t count, size_t size)
 
     s = &rt->malloc_state;
     /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (unlikely(s->malloc_size + (count * size) > s->malloc_limit - 1))
+    if (unlikely(s->malloc_size + (count * size) > s->malloc_limit - 1)) {
+        js_memory_limit_hit(rt);
         return NULL;
+    }
 
     ptr = js_arena_calloc(rt, count, size);
     if (!ptr)
@@ -2013,8 +2028,10 @@ void *js_malloc_rt(JSRuntime *rt, size_t size)
 
     s = &rt->malloc_state;
     /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (unlikely(s->malloc_size + size > s->malloc_limit - 1))
+    if (unlikely(s->malloc_size + size > s->malloc_limit - 1)) {
+        js_memory_limit_hit(rt);
         return NULL;
+    }
 
     ptr = js_arena_malloc(rt, size);
     if (!ptr)
@@ -2060,8 +2077,10 @@ void *js_realloc_rt(JSRuntime *rt, void *ptr, size_t size)
     old_size = js_arena_usable_size(rt, ptr);
     s = &rt->malloc_state;
     /* When malloc_limit is 0 (unlimited), malloc_limit - 1 will be SIZE_MAX. */
-    if (s->malloc_size + size - old_size > s->malloc_limit - 1)
+    if (s->malloc_size + size - old_size > s->malloc_limit - 1) {
+        js_memory_limit_hit(rt);
         return NULL;
+    }
 
     ptr = js_arena_realloc(rt, ptr, size);
     if (!ptr)
@@ -2438,6 +2457,18 @@ void JS_SetMemoryLimit(JSRuntime *rt, size_t limit)
     rt->malloc_state.malloc_limit = limit;
 }
 
+void JS_SetMemoryLimitTermination(JSRuntime *rt, bool enable)
+{
+    rt->terminate_on_memory_limit = enable;
+}
+
+JSTerminationStatus JS_GetTerminationStatus(JSRuntime *rt)
+{
+    if (rt->memory_limit_exhausted)
+        return JS_TERMINATION_MEMORY_LIMIT;
+    return JS_TERMINATION_NONE;
+}
+
 void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags)
 {
 #ifdef ENABLE_DUMPS
@@ -2535,6 +2566,13 @@ int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx)
         return 0;
     }
 
+    /* Do not run JavaScript continuations after the memory limit terminated
+       execution. Leave the job queued; the host should free the runtime. */
+    if (unlikely(rt->memory_limit_exhausted)) {
+        *pctx = list_entry(rt->job_list.next, JSJobEntry, link)->ctx;
+        return -1;
+    }
+
     /* get the first pending job and execute it */
     e = list_entry(rt->job_list.next, JSJobEntry, link);
     list_del(&e->link);
@@ -2542,7 +2580,7 @@ int JS_ExecutePendingJob(JSRuntime *rt, JSContext **pctx)
     res = e->job_func(e->ctx, e->argc, vc(e->argv));
     for(i = 0; i < e->argc; i++)
         JS_FreeValue(ctx, e->argv[i]);
-    if (JS_IsException(res))
+    if (JS_IsException(res) || unlikely(rt->memory_limit_exhausted))
         ret = -1;
     else
         ret = 1;
@@ -8562,6 +8600,10 @@ JSValue JS_ThrowOutOfMemory(JSContext *ctx)
     if (!rt->in_out_of_memory) {
         rt->in_out_of_memory = true;
         JS_ThrowInternalError(ctx, "out of memory");
+        /* Diagnostic only. memory_limit_exhausted is the authority and
+           remains set when this Error cannot be allocated (exception is null). */
+        if (rt->memory_limit_exhausted)
+            JS_SetUncatchableError(ctx, rt->current_exception);
         rt->in_out_of_memory = false;
     }
     return JS_EXCEPTION;
@@ -12058,6 +12100,25 @@ bool JS_IsUncatchableError(JSValueConst val)
         return false;
     p = JS_VALUE_GET_OBJ(val);
     return p->class_id == JS_CLASS_ERROR && p->is_uncatchable_error;
+}
+
+/* memory_limit_exhausted is independent of exc. exc may be JS_NULL when the
+   diagnostic Error could not be allocated. */
+static inline bool js_is_uncatchable_exception(JSRuntime *rt, JSValueConst exc)
+{
+    return rt->memory_limit_exhausted || JS_IsUncatchableError(exc);
+}
+
+/* Block a new JavaScript entry after configured-limit termination.
+   Returns 1 and ensures a pending exception. */
+static int js_memory_limit_blocks_entry(JSContext *ctx)
+{
+    JSRuntime *rt = ctx->rt;
+    if (likely(!rt->memory_limit_exhausted) || rt->in_out_of_memory || rt->in_free)
+        return 0;
+    if (JS_IsUninitialized(rt->current_exception))
+        JS_Throw(ctx, JS_NULL);
+    return 1;
 }
 
 static void js_set_uncatchable_error(JSContext *ctx, JSValueConst val, bool flag)
@@ -18051,6 +18112,9 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
     JSVarRef **var_refs;
     size_t alloca_size;
 
+    if (unlikely(js_memory_limit_blocks_entry(caller_ctx)))
+        return JS_EXCEPTION;
+
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_STEP
 #define DUMP_BYTECODE_OR_DONT(pc) \
     if (check_dump_flag(ctx->rt, JS_DUMP_BYTECODE_STEP)) dump_single_byte_code(ctx, pc, b, 0);
@@ -20926,7 +20990,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
         build_backtrace(ctx, rt->current_exception, JS_UNDEFINED,
                         NULL, 0, 0, 0);
     }
-    if (!JS_IsUncatchableError(rt->current_exception)) {
+    if (!js_is_uncatchable_exception(rt, rt->current_exception)) {
         while (sp > stack_buf) {
             JSValue val = *--sp;
             JS_FreeValue(ctx, val);
@@ -21507,7 +21571,7 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
     func_ret = async_func_resume(ctx, &s->func_state);
     if (JS_IsException(func_ret)) {
     fail:
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
+        if (unlikely(js_is_uncatchable_exception(ctx->rt, ctx->rt->current_exception))) {
             is_success = false;
         } else {
             JSValue error = JS_GetException(ctx);
@@ -21516,7 +21580,7 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
             JS_FreeValue(ctx, error);
         resolved:
             if (unlikely(JS_IsException(ret2))) {
-                if (JS_IsUncatchableError(ctx->rt->current_exception)) {
+                if (js_is_uncatchable_exception(ctx->rt, ctx->rt->current_exception)) {
                     is_success = false;
                 } else {
                     abort(); /* BUG */
@@ -38282,6 +38346,9 @@ static JSValue JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
                                const char *filename, int line, int flags, int scope_idx)
 {
     JSRuntime *rt = ctx->rt;
+
+    if (unlikely(js_memory_limit_blocks_entry(ctx)))
+        return JS_EXCEPTION;
 
     if (unlikely(!ctx->eval_internal)) {
         return JS_ThrowTypeError(ctx, "eval is not supported");
@@ -55626,7 +55693,7 @@ static JSValue promise_reaction_job(JSContext *ctx, int argc,
     }
     is_reject = JS_IsException(res);
     if (is_reject) {
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+        if (unlikely(js_is_uncatchable_exception(ctx->rt, ctx->rt->current_exception)))
             return JS_EXCEPTION;
         res = JS_GetException(ctx);
     }
@@ -55728,7 +55795,13 @@ static JSValue js_promise_resolve_thenable_job(JSContext *ctx,
                          rt->promise_hook_opaque);
     }
     if (JS_IsException(res)) {
-        JSValue error = JS_GetException(ctx);
+        JSValue error;
+        if (unlikely(ctx->rt->memory_limit_exhausted)) {
+            JS_FreeValue(ctx, args[0]);
+            JS_FreeValue(ctx, args[1]);
+            return JS_EXCEPTION;
+        }
+        error = JS_GetException(ctx);
         res = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
     }
@@ -55847,6 +55920,8 @@ static JSValue js_promise_resolve_function_call(JSContext *ctx,
     if (JS_IsException(then)) {
         JSValue error;
     fail_reject:
+        if (unlikely(ctx->rt->memory_limit_exhausted))
+            return JS_EXCEPTION;
         error = JS_GetException(ctx);
         fulfill_or_reject_promise(ctx, s->promise, error, true);
         JS_FreeValue(ctx, error);
@@ -55958,6 +56033,8 @@ static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
     ret = JS_Call(ctx, executor, JS_UNDEFINED, 2, vc(args));
     if (JS_IsException(ret)) {
         JSValue ret2, error;
+        if (unlikely(ctx->rt->memory_limit_exhausted))
+            goto fail;
         error = JS_GetException(ctx);
         ret2 = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
