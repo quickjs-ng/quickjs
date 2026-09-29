@@ -2195,11 +2195,204 @@ void private_symbols(void)
     JS_FreeRuntime(rt);
 }
 
+/* Async-generator request promises must not settle an uncatchable exception. */
+struct uncatch_gen_state {
+    int mode; /* 0 uncatchable, 1 Error, 2 RangeError */
+    JSValue terminal;
+    int caught;
+    int success;
+};
+
+static JSValue uncatch_gen_mark(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    struct uncatch_gen_state *s = JS_GetContextOpaque(ctx);
+    int32_t kind = -1;
+    if (argc >= 1)
+        JS_ToInt32(ctx, &kind, argv[0]);
+    if (kind == 0)
+        s->caught++;
+    else if (kind == 2)
+        s->success++;
+    return JS_UNDEFINED;
+}
+
+static JSValue uncatch_gen_fail(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    struct uncatch_gen_state *s = JS_GetContextOpaque(ctx);
+    JSValue err;
+    if (s->mode == 0)
+        return JS_Throw(ctx, JS_DupValue(ctx, s->terminal));
+    if (s->mode == 2)
+        return JS_ThrowRangeError(ctx, "range");
+    err = JS_NewError(ctx);
+    if (JS_IsException(err))
+        return JS_EXCEPTION;
+    return JS_Throw(ctx, err);
+}
+
+static void uncatch_gen_route(const char *name, const char *code,
+                              int ord_caught, int ord_success)
+{
+    int mode;
+    for (mode = 0; mode < 3; mode++) {
+        struct uncatch_gen_state s;
+        JSRuntime *rt;
+        JSContext *ctx, *job_ctx;
+        JSValue global, ret, err;
+        int host = 0, steps = 0;
+        memset(&s, 0, sizeof(s));
+        s.mode = mode;
+        s.terminal = JS_UNINITIALIZED;
+        rt = new_runtime();
+        ctx = JS_NewContext(rt);
+        assert(ctx);
+        JS_SetContextOpaque(ctx, &s);
+        global = JS_GetGlobalObject(ctx);
+        assert(JS_SetPropertyStr(ctx, global, "mark",
+                                 JS_NewCFunction(ctx, uncatch_gen_mark, "mark", 1)) >= 0);
+        assert(JS_SetPropertyStr(ctx, global, "fail",
+                                 JS_NewCFunction(ctx, uncatch_gen_fail, "fail", 0)) >= 0);
+        s.terminal = JS_NewError(ctx);
+        assert(!JS_IsException(s.terminal));
+        if (mode == 0)
+            JS_SetUncatchableError(ctx, s.terminal);
+        assert(JS_SetPropertyStr(ctx, global, "terminal",
+                                 JS_DupValue(ctx, s.terminal)) >= 0);
+        JS_FreeValue(ctx, global);
+
+        ret = eval(ctx, code);
+        host = JS_IsException(ret);
+        JS_FreeValue(ctx, ret);
+        job_ctx = ctx;
+        while (!host && JS_IsJobPending(rt)) {
+            assert(++steps < 20);
+            if (JS_ExecutePendingJob(rt, &job_ctx) < 0) {
+                host = 1;
+                if (!job_ctx)
+                    job_ctx = ctx;
+            }
+        }
+        if (mode == 0) {
+            if (!host || !JS_HasException(job_ctx)) {
+                fprintf(stderr, "route %s: expected a host exception\n", name);
+                assert(host && JS_HasException(job_ctx));
+            }
+            err = JS_GetException(job_ctx);
+            if (!JS_IsError(err) || !JS_IsUncatchableError(err) ||
+                JS_VALUE_GET_PTR(err) != JS_VALUE_GET_PTR(s.terminal) ||
+                s.caught != 0 || s.success != 0) {
+                fprintf(stderr,
+                        "route %s: uncatchable generator result was recoverable "
+                        "(caught=%d success=%d)\n",
+                        name, s.caught, s.success);
+                assert(JS_IsError(err));
+                assert(JS_IsUncatchableError(err));
+                assert(JS_VALUE_GET_PTR(err) == JS_VALUE_GET_PTR(s.terminal));
+                assert(s.caught == 0);
+                assert(s.success == 0);
+            }
+            JS_FreeValue(job_ctx, err);
+        } else if (host || JS_HasException(ctx) ||
+                   s.caught != ord_caught || s.success != ord_success) {
+            fprintf(stderr, "route %s mode %d: ordinary result caught=%d success=%d host=%d\n",
+                    name, mode, s.caught, s.success, host);
+            assert(!host);
+            assert(!JS_HasException(ctx));
+            assert(s.caught == ord_caught);
+            assert(s.success == ord_success);
+        }
+        JS_FreeValue(ctx, s.terminal);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+}
+
+static void uncatchable_async_generator(void)
+{
+    uncatch_gen_route(
+        "next",
+        "const g = (async function* () { try { fail(); } catch (e) { mark(0); } })();"
+        "g.next().then(() => mark(2), () => mark(0));",
+        1, 1);
+    uncatch_gen_route(
+        "return",
+        "const g = (async function* () { try { yield 1; } finally { fail(); } })();"
+        "g.next(); g.return(0).then(() => mark(2), () => mark(0));",
+        1, 0);
+    uncatch_gen_route(
+        "throw-at-yield",
+        "const g = (async function* () { try { yield 1; } catch (e) { mark(0); } })();"
+        "g.next(); g.throw(terminal).then(() => mark(2), () => mark(0));",
+        1, 1);
+    uncatch_gen_route(
+        "throw-before-start",
+        "const g = (async function* () { yield 1; })();"
+        "g.throw(terminal).then(() => mark(2), () => mark(0));",
+        1, 0);
+    uncatch_gen_route(
+        "resume",
+        "const g = (async function* () { await 0; try { fail(); } catch (e) { mark(0); } })();"
+        "g.next().then(() => mark(2), () => mark(0));",
+        1, 1);
+    uncatch_gen_route(
+        "for-await",
+        "(async () => { try { for await (const x of (async function* () { fail(); })()) mark(2); }"
+        " catch (e) { mark(0); } })().then(() => mark(2), () => mark(0));",
+        1, 1);
+    uncatch_gen_route(
+        "return-constructor",
+        "const g = (async function* () {})();"
+        "const p = Promise.resolve(1);"
+        "Object.defineProperty(p, 'constructor', { get() { fail(); } });"
+        "g.return(p).then(() => mark(2), () => mark(0));",
+        1, 0);
+
+    /* Same runtime remains usable after the host consumes the exception. */
+    {
+        struct uncatch_gen_state s;
+        JSRuntime *rt = new_runtime();
+        JSContext *ctx = JS_NewContext(rt);
+        JSValue global, ret, err;
+        int32_t n;
+        memset(&s, 0, sizeof(s));
+        JS_SetContextOpaque(ctx, &s);
+        global = JS_GetGlobalObject(ctx);
+        assert(JS_SetPropertyStr(ctx, global, "mark",
+                                 JS_NewCFunction(ctx, uncatch_gen_mark, "mark", 1)) >= 0);
+        assert(JS_SetPropertyStr(ctx, global, "fail",
+                                 JS_NewCFunction(ctx, uncatch_gen_fail, "fail", 0)) >= 0);
+        JS_FreeValue(ctx, global);
+        s.terminal = JS_NewError(ctx);
+        JS_SetUncatchableError(ctx, s.terminal);
+        ret = eval(ctx,
+                   "const g = (async function* () { fail(); })();"
+                   "g.next().catch(() => mark(0)).then(() => mark(2));");
+        assert(JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        err = JS_GetException(ctx);
+        assert(JS_IsUncatchableError(err));
+        assert(JS_VALUE_GET_PTR(err) == JS_VALUE_GET_PTR(s.terminal));
+        JS_FreeValue(ctx, err);
+        assert(s.caught == 0 && s.success == 0);
+        ret = eval(ctx, "try { throw new RangeError(); } catch (e) { mark(0); } 7");
+        assert(!JS_IsException(ret));
+        assert(JS_ToInt32(ctx, &n, ret) == 0 && n == 7);
+        JS_FreeValue(ctx, ret);
+        assert(s.caught == 1);
+        JS_FreeValue(ctx, s.terminal);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+}
+
 int main(void)
 {
     cfunctions();
     sync_call();
     async_call();
+    uncatchable_async_generator();
     async_call_stack_overflow();
     raw_context_global_var();
     is_array();
