@@ -2,7 +2,6 @@
 #undef NDEBUG
 #endif
 #include <assert.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2206,8 +2205,13 @@ typedef struct {
     size_t live;
 } MemState;
 
+/* Header size is a multiple of the strictest standard alignment, so the
+   pointer returned to the engine stays aligned. max_align_t is unavailable
+   on tcc and in some MSVC C modes. */
 typedef union {
-    max_align_t alignment;
+    long double align_ld;
+    long long align_ll;
+    void *align_ptr;
     size_t size;
 } MemBlock;
 
