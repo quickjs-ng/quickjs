@@ -2853,7 +2853,7 @@ static int js_os_poll_internal(JSContext *ctx, int timeout_ms, int flags)
 {
     JSRuntime *rt = JS_GetRuntime(ctx);
     JSThreadState *ts = js_get_thread_state(rt);
-    int r, w, ret, nfds, min_delay;
+    int r, w, ret, nfds, min_delay, poll_nfds;
     JSOSRWHandler *rh;
     struct list_head *el;
     struct pollfd *pfd, *pfds, pfds_local[64];
@@ -2947,12 +2947,14 @@ static int js_os_poll_internal(JSContext *ctx, int timeout_ms, int flags)
     // linear-ish in practice because we bail out on the first hit,
     // i.e., it's probably good enough for now
     ret = 0;
+    /* poll() returns the number of ready descriptors, not the array length. */
+    poll_nfds = nfds;
     nfds = poll(pfds, nfds, min_delay);
     if (nfds < 0) {
         ret = -1;
         goto done;
     }
-    for (pfd = pfds; nfds-- > 0; pfd++) {
+    for (pfd = pfds; poll_nfds-- > 0; pfd++) {
         rh = find_rh(ts, pfd->fd);
         if (rh) {
             r = (POLLERR|POLLHUP|POLLNVAL|POLLIN) * !JS_IsNull(rh->rw_func[0]);

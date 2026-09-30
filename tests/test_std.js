@@ -241,6 +241,37 @@ function test_os()
     }
 }
 
+function test_poll_handler_order()
+{
+    if (isWin)
+        return;
+
+    const first = os.pipe();
+    const second = os.pipe();
+    const buf = new ArrayBuffer(1);
+    let called = false;
+    const timeout = os.setTimeout(function () {
+        assert(called, true, "second pipe handler was not called");
+    }, 100);
+
+    os.setReadHandler(first[0], function () {
+        throw new Error("unexpected first pipe handler call");
+    });
+    os.setReadHandler(second[0], function () {
+        assert(os.read(second[0], buf, 0, 1), 1);
+        called = true;
+        os.clearTimeout(timeout);
+        os.setReadHandler(first[0], null);
+        os.setReadHandler(second[0], null);
+        os.close(first[0]);
+        os.close(first[1]);
+        os.close(second[0]);
+        os.close(second[1]);
+    });
+
+    assert(os.write(second[1], buf, 0, 1), 1);
+}
+
 function test_os_exec()
 {
     var ret, fds, pid, f, status;
@@ -333,6 +364,7 @@ test_file2();
 test_getline();
 test_popen();
 test_os();
+test_poll_handler_order();
 !isWin && test_os_exec();
 test_interval();
 test_timeout();
