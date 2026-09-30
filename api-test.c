@@ -2195,6 +2195,47 @@ void private_symbols(void)
     JS_FreeRuntime(rt);
 }
 
+// A builtin property that is set up on first access must still work after
+// that first access failed, e.g. for lack of memory.
+static void autoinit_after_failure(void)
+{
+    static const char code[] = "JSON.parse";
+    JSMemoryUsage stats;
+    size_t headroom;
+    JSRuntime *rt;
+    JSContext *ctx;
+    JSValue fun, ret;
+    const char *s;
+    bool done;
+
+    done = false;
+    for (headroom = 0; !done && headroom < 64 * 1024; headroom += 8) {
+        rt = new_runtime();
+        ctx = JS_NewContext(rt);
+        // compile first, so that only the property access runs short of memory
+        fun = JS_Eval(ctx, code, strlen(code), "<input>",
+                      JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+        assert(!JS_IsException(fun));
+        JS_ComputeMemoryUsage(rt, &stats);
+        JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + headroom);
+        ret = JS_EvalFunction(ctx, fun); // first access sets up the function
+        JS_SetMemoryLimit(rt, 0);
+        if (JS_IsException(ret))
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        else
+            done = true;
+        JS_FreeValue(ctx, ret);
+        ret = eval(ctx, "typeof JSON.parse");
+        s = JS_ToCString(ctx, ret);
+        assert(s && !strcmp(s, "function"));
+        JS_FreeCString(ctx, s);
+        JS_FreeValue(ctx, ret);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+    assert(done);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2236,5 +2277,6 @@ int main(void)
     new_typed_array();
     std_eval_interrupt_handler();
     private_symbols();
+    autoinit_after_failure();
     return 0;
 }
