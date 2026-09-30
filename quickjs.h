@@ -511,8 +511,23 @@ typedef struct JSGCObjectHeader JSGCObjectHeader;
 JS_EXTERN JSRuntime *JS_NewRuntime(void);
 /* info lifetime must exceed that of rt */
 JS_EXTERN void JS_SetRuntimeInfo(JSRuntime *rt, const char *info);
+typedef enum JSTerminationStatus {
+    JS_TERMINATION_NONE = 0,
+    /* JS_SetMemoryLimit rejected an allocation. Not set for arbitrary
+       allocator failures, system OOM, or ordinary exceptions. Sticky until
+       JS_FreeRuntime; the runtime is not reusable after this. */
+    JS_TERMINATION_MEMORY_LIMIT,
+} JSTerminationStatus;
+
 /* use 0 to disable memory limit */
 JS_EXTERN void JS_SetMemoryLimit(JSRuntime *rt, size_t limit);
+/* Disabled by default. When enabled, configured memory-limit exhaustion
+   terminates execution: JavaScript cannot catch it, even if no Error object
+   can be allocated. Query the result with JS_GetTerminationStatus. Disabling
+   the option does not clear an existing termination. Free the runtime
+   afterwards; do not reuse it. */
+JS_EXTERN void JS_SetMemoryLimitTermination(JSRuntime *rt, bool enable);
+JS_EXTERN JSTerminationStatus JS_GetTerminationStatus(JSRuntime *rt);
 JS_EXTERN void JS_SetDumpFlags(JSRuntime *rt, uint64_t flags);
 JS_EXTERN uint64_t JS_GetDumpFlags(JSRuntime *rt);
 JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
