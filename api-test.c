@@ -2195,6 +2195,45 @@ void private_symbols(void)
     JS_FreeRuntime(rt);
 }
 
+// running out of memory in JSON.stringify must not leak the array element
+// that was being converted
+static void json_stringify_oom(void)
+{
+    static const char setup_code[] =
+        "globalThis.f = () => JSON.stringify([{}]);\n"
+        "f();\n"; // JSON.stringify is set up on first access, do it now
+    JSValue global_object, func, ret;
+    JSMemoryUsage stats;
+    uint32_t headroom;
+    JSRuntime *rt;
+    JSContext *ctx;
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    global_object = JS_GetGlobalObject(ctx);
+
+    ret = eval(ctx, setup_code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+
+    func = JS_GetPropertyStr(ctx, global_object, "f");
+    assert(JS_IsFunction(ctx, func));
+
+    for (headroom = 0; headroom < 2048; headroom++) {
+        JS_ComputeMemoryUsage(rt, &stats);
+        JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + headroom);
+        ret = JS_Call(ctx, func, JS_UNDEFINED, 0, NULL);
+        JS_SetMemoryLimit(rt, 0);
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+
+    JS_FreeValue(ctx, func);
+    JS_FreeValue(ctx, global_object);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2236,5 +2275,6 @@ int main(void)
     new_typed_array();
     std_eval_interrupt_handler();
     private_symbols();
+    json_stringify_oom();
     return 0;
 }
