@@ -2195,6 +2195,42 @@ void private_symbols(void)
     JS_FreeRuntime(rt);
 }
 
+// When the byte code buffer can't grow, the parser leaves the byte code
+// truncated, and compiling it must fail rather than read past its end.
+static void eval_low_memory(void)
+{
+    // plain syntax, no builtins: only the parser and compiler are exercised
+    static const char code[] = "var a = [1, 2, {b: 'c'}]; a[2].b";
+    JSMemoryUsage stats;
+    size_t headroom;
+    JSRuntime *rt;
+    JSContext *ctx;
+    JSValue ret;
+    int all, ok;
+
+    all = ok = 0;
+    // not new_runtime(): some out-of-memory paths in the parser still leak
+    // atoms, which JS_ABORT_ON_LEAKS would turn into an abort
+    rt = JS_NewRuntime();
+    ctx = JS_NewContext(rt);
+    for (headroom = 0; ok < 4 && headroom < 64 * 1024; headroom += 8) {
+        JS_ComputeMemoryUsage(rt, &stats);
+        JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + headroom);
+        ret = eval(ctx, code); // expected to fail, not to crash
+        JS_SetMemoryLimit(rt, 0);
+        if (JS_IsException(ret))
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        else
+            ok++;
+        JS_FreeValue(ctx, ret);
+        all++;
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    assert(ok > 0);     // expect some successes...
+    assert(ok < all);   // ...but not all
+}
+
 int main(void)
 {
     cfunctions();
@@ -2236,5 +2272,6 @@ int main(void)
     new_typed_array();
     std_eval_interrupt_handler();
     private_symbols();
+    eval_low_memory();
     return 0;
 }
