@@ -21505,9 +21505,9 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
     bool is_success = true;
     JSValue func_ret, ret2;
 
+ resume:
     func_ret = async_func_resume(ctx, &s->func_state);
     if (JS_IsException(func_ret)) {
-    fail:
         if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
             is_success = false;
         } else {
@@ -21546,10 +21546,10 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
                                          1, vc(&value), 0);
             JS_FreeValue(ctx, value);
             if (JS_IsException(promise))
-                goto fail;
+                goto await_fail;
             if (js_async_function_resolve_create(ctx, s, resolving_funcs)) {
                 JS_FreeValue(ctx, promise);
-                goto fail;
+                goto await_fail;
             }
 
             /* Note: no need to create 'thrownawayCapability' as in
@@ -21562,8 +21562,11 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
             JS_FreeValue(ctx, promise);
             for(i = 0; i < 2; i++)
                 JS_FreeValue(ctx, resolving_funcs[i]);
-            if (res)
-                goto fail;
+            if (res) {
+            await_fail:
+                s->func_state.throw_flag = true;
+                goto resume;
+            }
         }
     }
     return is_success;
