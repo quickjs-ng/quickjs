@@ -71,8 +71,8 @@ typedef enum {
 #define CAPTURE_COUNT_MAX 255
 #define REGISTER_COUNT_MAX 255
 #define GROUP_NAME_SCOPE_MAX 255
-/* must be large enough to have a negligible runtime cost and small
-   enough to call the interrupt callback often. */
+/* Shared by compilation and execution. Large enough that the check is
+   cheap, small enough that a pending interrupt is observed promptly. */
 #define INTERRUPT_COUNTER_INIT 10000
 
 /* unicode code points */
@@ -96,6 +96,8 @@ typedef struct {
     int capture_count;
     int total_capture_count; /* -1 = not computed yet */
     int has_named_captures; /* -1 = don't know, 0 = no, 1 = yes */
+    int interrupt_counter;
+    bool is_timeout;
     void *opaque;
     DynBuf group_names;
     union {
@@ -703,6 +705,22 @@ static int re_parse_out_of_memory(REParseState *s)
     return re_parse_error(s, "out of memory");
 }
 
+/* Host callback, every INTERRUPT_COUNTER_INIT checkpoints. The slow path
+   is out of line so the decrement itself stays in the compiler loops.
+   re_parse_term is too large for a reliable inline of a function call. */
+static no_inline int re_parse_poll_slow(REParseState *s)
+{
+    s->interrupt_counter = INTERRUPT_COUNTER_INIT;
+    if (lre_check_timeout(s->opaque)) {
+        s->is_timeout = true;
+        return re_parse_error(s, "interrupted");
+    }
+    return 0;
+}
+
+#define re_parse_poll(s) \
+    (unlikely(--((s)->interrupt_counter) <= 0) ? re_parse_poll_slow(s) : 0)
+
 /* If allow_overflow is false, return -1 in case of
    overflow. Otherwise return INT32_MAX. */
 static int parse_digits(const uint8_t **pp, bool allow_overflow)
@@ -1023,8 +1041,12 @@ static int parse_class_string_disjunction(REParseState *s, REStringList *cr,
     
     p++;
     for(;;) {
+        if (re_parse_poll(s))
+            goto fail;
         str.size = 0;
         while (*p != '}' && *p != '|') {
+            if (re_parse_poll(s))
+                goto fail;
             c = get_class_atom(s, NULL, &p, true);
             if (c < 0)
                 goto fail;
@@ -1447,6 +1469,8 @@ static int re_parse_nested_class(REParseState *s, REStringList *cr, const uint8_
     /* handle unions */
     is_first = true;
     for(;;) {
+        if (re_parse_poll(s))
+            goto fail;
         if (*p == ']')
             break;
         if (*p == '[' && s->unicode_sets) {
@@ -1738,7 +1762,11 @@ static int re_parse_captures(REParseState *s, int *phas_named_captures,
     capture_index = 1;
     n = 0;
     *phas_named_captures = 0;
+    /* Forward named references call this once per reference, so the
+       scan is quadratic in the pattern length. Checkpoint each byte. */
     for (p = s->buf_start; p < s->buf_end; p++) {
+        if (re_parse_poll(s))
+            return -1;
         switch (*p) {
         case '(':
             if (p[1] == '?') {
@@ -1770,6 +1798,8 @@ static int re_parse_captures(REParseState *s, int *phas_named_captures,
             break;
         case '[':
             for (p += 1 + (*p == ']'); p < s->buf_end && *p != ']'; p++) {
+                if (re_parse_poll(s))
+                    return -1;
                 if (*p == '\\')
                     p++;
             }
@@ -1784,19 +1814,31 @@ static int re_parse_captures(REParseState *s, int *phas_named_captures,
     }
 }
 
+/* -1 on interrupt. */
 static int re_count_captures(REParseState *s)
 {
+    int count;
+
+    if (s->is_timeout)
+        return -1;
     if (s->total_capture_count < 0) {
-        s->total_capture_count = re_parse_captures(s, &s->has_named_captures,
-                                                   NULL, false);
+        count = re_parse_captures(s, &s->has_named_captures, NULL, false);
+        if (count < 0)
+            return -1;
+        s->total_capture_count = count;
     }
     return s->total_capture_count;
 }
 
-static bool re_has_named_captures(REParseState *s)
+/* -1 on interrupt, otherwise 0 or 1. */
+static int re_has_named_captures(REParseState *s)
 {
-    if (s->has_named_captures < 0)
-        re_count_captures(s);
+    if (s->is_timeout)
+        return -1;
+    if (s->has_named_captures < 0) {
+        if (re_count_captures(s) < 0)
+            return -1;
+    }
     return s->has_named_captures;
 }
 
@@ -2095,10 +2137,14 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                 
                 p1 = p;
                 if (p1[2] != '<') {
+                    int named;
                     /* annex B: we tolerate invalid group names in non
                        unicode mode if there is no named capture
                        definition */
-                    if (s->is_unicode || re_has_named_captures(s))
+                    named = s->is_unicode ? 1 : re_has_named_captures(s);
+                    if (named < 0)
+                        return -1;
+                    if (named)
                         return re_parse_error(s, "expecting group name");
                     else
                         goto parse_class_atom;
@@ -2106,7 +2152,11 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                 p1 += 3;
                 if (re_parse_group_name(s->u.tmp_buf, sizeof(s->u.tmp_buf),
                                         &p1)) {
-                    if (s->is_unicode || re_has_named_captures(s))
+                    int named;
+                    named = s->is_unicode ? 1 : re_has_named_captures(s);
+                    if (named < 0)
+                        return -1;
+                    if (named)
                         return re_parse_error(s, "invalid group name");
                     else
                         goto parse_class_atom;
@@ -2117,8 +2167,14 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                     /* no capture name parsed before, try to look
                        after (inefficient, but hopefully not common */
                     n = re_parse_captures(s, &dummy_res, s->u.tmp_buf, false);
+                    if (n < 0)
+                        return -1;
                     if (n == 0) {
-                        if (s->is_unicode || re_has_named_captures(s))
+                        int named;
+                        named = s->is_unicode ? 1 : re_has_named_captures(s);
+                        if (named < 0)
+                            return -1;
+                        if (named)
                             return re_parse_error(s, "group name not defined");
                         else
                             goto parse_class_atom;
@@ -2131,7 +2187,8 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                 /* emit back references to all the captures indexes matching the group name */
                 re_emit_op_u8(s, REOP_back_reference + 2 * is_backward_dir + s->ignore_case, n);
                 if (is_forward) {
-                    re_parse_captures(s, &dummy_res, s->u.tmp_buf, true);
+                    if (re_parse_captures(s, &dummy_res, s->u.tmp_buf, true) < 0)
+                        return -1;
                 } else {
                     find_group_name(s, s->u.tmp_buf, true);
                 }
@@ -2162,30 +2219,35 @@ static int re_parse_term(REParseState *s, bool is_backward_dir)
                 const uint8_t *q = ++p;
 
                 c = parse_digits(&p, false);
-                if (c < 0 || (c >= s->capture_count && c >= re_count_captures(s))) {
-                    if (!s->is_unicode) {
-                        /* Annex B.1.4: accept legacy octal */
-                        p = q;
-                        if (*p <= '7') {
-                            c = 0;
-                            if (*p <= '3')
-                                c = *p++ - '0';
-                            if (*p >= '0' && *p <= '7') {
-                                c = (c << 3) + *p++ - '0';
+                {
+                    int total_captures = re_count_captures(s);
+                    if (total_captures < 0)
+                        return -1;
+                    if (c < 0 || (c >= s->capture_count && c >= total_captures)) {
+                        if (!s->is_unicode) {
+                            /* Annex B.1.4: accept legacy octal */
+                            p = q;
+                            if (*p <= '7') {
+                                c = 0;
+                                if (*p <= '3')
+                                    c = *p++ - '0';
                                 if (*p >= '0' && *p <= '7') {
                                     c = (c << 3) + *p++ - '0';
+                                    if (*p >= '0' && *p <= '7') {
+                                        c = (c << 3) + *p++ - '0';
+                                    }
                                 }
+                            } else {
+                                c = *p++;
                             }
-                        } else {
-                            c = *p++;
+                            goto normal_char;
                         }
-                        goto normal_char;
+                        return re_parse_error(s, "back reference out of range in regular expression");
                     }
-                    return re_parse_error(s, "back reference out of range in regular expression");
                 }
                 last_atom_start = s->byte_code.size;
                 last_capture_count = s->capture_count;
-                
+
                 re_emit_op_u8(s, REOP_back_reference + 2 * is_backward_dir + s->ignore_case, 1);
                 dbuf_putc(&s->byte_code, c);
             }
@@ -2426,6 +2488,8 @@ static int re_parse_alternative(REParseState *s, bool is_backward_dir)
 
     start = s->byte_code.size;
     for(;;) {
+        if (re_parse_poll(s))
+            return -1;
         p = s->buf_ptr;
         if (p >= s->buf_end)
             break;
@@ -2458,11 +2522,17 @@ static int re_parse_disjunction(REParseState *s, bool is_backward_dir)
 
     if (lre_check_stack_overflow(s->opaque, 0))
         return re_parse_error(s, "stack overflow");
+    if (re_parse_poll(s))
+        return -1;
 
     start = s->byte_code.size;
     if (re_parse_alternative(s, is_backward_dir))
         return -1;
     while (*s->buf_ptr == '|') {
+        int named;
+
+        if (re_parse_poll(s))
+            return -1;
         s->buf_ptr++;
 
         len = s->byte_code.size - start;
@@ -2476,7 +2546,10 @@ static int re_parse_disjunction(REParseState *s, bool is_backward_dir)
 
         pos = re_emit_op_u32(s, REOP_goto, 0);
 
-        if (re_has_named_captures(s) && s->group_name_scope == GROUP_NAME_SCOPE_MAX)
+        named = re_has_named_captures(s);
+        if (named < 0)
+            return -1;
+        if (named && s->group_name_scope == GROUP_NAME_SCOPE_MAX)
             return re_parse_error(s, "too many named groups");
 
         s->group_name_scope++;
@@ -2496,17 +2569,21 @@ static int re_parse_disjunction(REParseState *s, bool is_backward_dir)
 
 /* Allocate the registers as a stack. The control flow is recursive so
    the analysis can be linear. */
-static int compute_register_count(uint8_t *bc_buf, int bc_buf_len)
+static int compute_register_count(REParseState *s)
 {
     int stack_size, stack_size_max, pos, opcode, len;
     uint32_t val;
+    uint8_t *bc_buf;
+    int bc_buf_len;
 
     stack_size = 0;
     stack_size_max = 0;
-    bc_buf += RE_HEADER_LEN;
-    bc_buf_len -= RE_HEADER_LEN;
+    bc_buf = s->byte_code.buf + RE_HEADER_LEN;
+    bc_buf_len = s->byte_code.size - RE_HEADER_LEN;
     pos = 0;
     while (pos < bc_buf_len) {
+        if (re_parse_poll(s))
+            return -1;
         opcode = bc_buf[pos];
         len = reopcode_info[opcode].size;
         assert(opcode < REOP_COUNT);
@@ -2571,8 +2648,10 @@ static void *lre_bytecode_realloc(void *opaque, void *ptr, size_t size)
 }
 
 /* 'buf' must be a zero terminated UTF-8 string of length buf_len.
-   Return NULL if error and allocate an error message in *perror_msg,
-   otherwise the compiled bytecode and its length in plen.
+   Return the bytecode and its length in *plen. On error return NULL,
+   write a message into error_msg, and set *plen to 0, or to
+   LRE_RET_TIMEOUT if lre_check_timeout() requested cancellation.
+   Partial compiler buffers are freed on every error path.
 */
 uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
                      const char *buf, size_t buf_len, int re_flags,
@@ -2597,6 +2676,8 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
     s->capture_count = 1;
     s->total_capture_count = -1;
     s->has_named_captures = -1;
+    s->interrupt_counter = INTERRUPT_COUNTER_INIT;
+    s->is_timeout = false;
 
     dbuf_init2(&s->byte_code, opaque, lre_bytecode_realloc);
     dbuf_init2(&s->group_names, opaque, lre_realloc);
@@ -2622,7 +2703,7 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
         dbuf_free(&s->byte_code);
         dbuf_free(&s->group_names);
         js__pstrcpy(error_msg, error_msg_size, s->u.error_msg);
-        *plen = 0;
+        *plen = s->is_timeout ? LRE_RET_TIMEOUT : 0;
         return NULL;
     }
 
@@ -2640,7 +2721,9 @@ uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
         goto error;
     }
 
-    register_count = compute_register_count(s->byte_code.buf, s->byte_code.size);
+    register_count = compute_register_count(s);
+    if (s->is_timeout)
+        goto error;
     if (register_count < 0) {
         re_parse_error(s, "too many imbricated quantifiers");
         goto error;

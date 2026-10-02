@@ -2159,6 +2159,241 @@ void new_typed_array(void)
     JS_FreeRuntime(rt);
 }
 
+typedef struct {
+    int calls;
+    /* Interrupt once calls exceeds limit. Negative: never interrupt. */
+    int limit;
+} ReCompileInterrupt;
+
+static int re_compile_interrupt_handler(JSRuntime *rt, void *opaque)
+{
+    ReCompileInterrupt *st = opaque;
+    (void)rt;
+    st->calls++;
+    return st->limit >= 0 && st->calls > st->limit;
+}
+
+/* "\\k<a>" * n + "(?<a>x)". Forward named references rescan the pattern. */
+static char *re_forward_named_pattern(int n, size_t *len)
+{
+    size_t size = (size_t)n * 5 + 7;
+    char *s = malloc(size + 1);
+    char *p = s;
+    int i;
+
+    assert(s);
+    for (i = 0; i < n; i++) {
+        memcpy(p, "\\k<a>", 5);
+        p += 5;
+    }
+    memcpy(p, "(?<a>x)", 8);
+    *len = size;
+    return s;
+}
+
+static JSValue re_call_regexp(JSContext *ctx, const char *pat, size_t len)
+{
+    JSValue global, ctor, pattern, ret;
+    JSValueConst argv[1];
+
+    global = JS_GetGlobalObject(ctx);
+    ctor = JS_GetPropertyStr(ctx, global, "RegExp");
+    pattern = JS_NewStringLen(ctx, pat, len);
+    assert(!JS_IsException(ctor));
+    assert(!JS_IsException(pattern));
+    argv[0] = pattern;
+    ret = JS_CallConstructor(ctx, ctor, 1, argv);
+    JS_FreeValue(ctx, pattern);
+    JS_FreeValue(ctx, ctor);
+    JS_FreeValue(ctx, global);
+    return ret;
+}
+
+static void assert_eval_bool(JSContext *ctx, const char *code, int expect)
+{
+    JSValue ret;
+    int res;
+
+    ret = eval(ctx, code);
+    assert(!JS_IsException(ret));
+    res = JS_ToBool(ctx, ret);
+    JS_FreeValue(ctx, ret);
+    assert(res == expect);
+}
+
+/* N is large enough that the capture prescan crosses several interrupt
+   periods (two linear scans per forward reference) and small enough to
+   stay a deterministic counter test, not a wall-clock test. */
+#define RE_COMPILE_INTERRUPT_N 128
+
+static void regexp_compile_interrupt(void)
+{
+    ReCompileInterrupt st;
+    JSRuntime *rt, *rt2;
+    JSContext *ctx, *ctx2;
+    JSValue ret, exc, global, phase;
+    char *pat;
+    size_t len;
+    const char *msg;
+    int calls_done, calls_stopped, i;
+    int32_t phase_val;
+
+    pat = re_forward_named_pattern(RE_COMPILE_INTERRUPT_N, &len);
+
+    /* A normal pattern polls the handler once, from the call itself. */
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    st.calls = 0;
+    st.limit = -1;
+    JS_SetInterruptHandler(rt, re_compile_interrupt_handler, &st);
+    ret = re_call_regexp(ctx, "a(b+)c", strlen("a(b+)c"));
+    assert(!JS_IsException(ret));
+    assert(st.calls == 1);
+    JS_FreeValue(ctx, ret);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    /* Pathological compilation observes the handler and still succeeds. */
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    st.calls = 0;
+    st.limit = -1;
+    JS_SetInterruptHandler(rt, re_compile_interrupt_handler, &st);
+    ret = re_call_regexp(ctx, pat, len);
+    assert(!JS_IsException(ret));
+    calls_done = st.calls;
+    assert(calls_done > 1);
+    global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "re", ret);
+    JS_FreeValue(ctx, global);
+    assert_eval_bool(ctx,
+                      "re.test('x') && re.exec('x')[0] === 'x' &&"
+                      "re.exec('x')[1] === 'x' && re.exec('x').groups.a === 'x' &&"
+                      "!re.test('')",
+                      1);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    /* A pending interrupt aborts compilation before it finishes polling. */
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    st.calls = 0;
+    st.limit = 1; /* let the call-entry poll return, then cancel */
+    JS_SetInterruptHandler(rt, re_compile_interrupt_handler, &st);
+    ret = re_call_regexp(ctx, pat, len);
+    assert(JS_IsException(ret));
+    calls_stopped = st.calls;
+    assert(calls_stopped >= 2);
+    assert(calls_stopped < calls_done);
+    exc = JS_GetException(ctx);
+    assert(JS_IsError(exc));
+    assert(JS_IsUncatchableError(exc));
+    msg = JS_ToCString(ctx, exc);
+    assert(msg);
+    assert(strstr(msg, "interrupted"));
+    assert(!strstr(msg, "SyntaxError"));
+    JS_FreeCString(ctx, msg);
+    JS_FreeValue(ctx, exc);
+    assert(!JS_HasException(ctx));
+
+    /* The script cannot catch the interrupt or keep running after it. */
+    global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "pat", JS_NewStringLen(ctx, pat, len));
+    st.calls = 0;
+    st.limit = 1;
+    ret = eval(ctx,
+               "var phase = 1;\n"
+               "try {\n"
+               "  var re = new RegExp(pat);\n"
+               "  phase = 2;\n"
+               "} catch (e) {\n"
+               "  phase = 3;\n"
+               "}\n"
+               "phase = 4;\n");
+    assert(JS_IsException(ret));
+    exc = JS_GetException(ctx);
+    assert(JS_IsUncatchableError(exc));
+    msg = JS_ToCString(ctx, exc);
+    assert(msg && strstr(msg, "interrupted"));
+    JS_FreeCString(ctx, msg);
+    JS_FreeValue(ctx, exc);
+    phase = JS_GetPropertyStr(ctx, global, "phase");
+    phase_val = -1;
+    assert(JS_ToInt32(ctx, &phase_val, phase) == 0);
+    assert(phase_val == 1);
+    JS_FreeValue(ctx, phase);
+    JS_FreeValue(ctx, global);
+
+    /* Clearing the exception leaves the runtime able to compile and match. */
+    st.calls = 0;
+    st.limit = -1;
+    assert_eval_bool(ctx,
+                      "var re = /a(b+)c/;"
+                      "re.exec('zabbbc')[1] === 'bbb' &&"
+                      "new RegExp('(?<a>ab)\\\\k<a>').exec('abab')[0] === 'abab' &&"
+                      "new RegExp('\\\\k<a>(?<a>x)').exec('x').groups.a === 'x'",
+                      1);
+    assert_eval_bool(ctx,
+                      "var ok = false;"
+                      "try { new RegExp('('); } catch (e) {"
+                      "  ok = e instanceof SyntaxError &&"
+                      "       e.message.indexOf('expecting') >= 0; }"
+                      "ok",
+                      1);
+    assert_eval_bool(ctx,
+                      "var ok = false;"
+                      "try { new RegExp('(?<a>x)(?<a>y)'); } catch (e) {"
+                      "  ok = e instanceof SyntaxError; }"
+                      "ok",
+                      1);
+    assert_eval_bool(ctx, "try { eval('/(/'); false } catch (e) { e instanceof SyntaxError }", 1);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    /* Repeated cancellation frees partial compiler state. */
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    JS_SetInterruptHandler(rt, re_compile_interrupt_handler, &st);
+    for (i = 0; i < 32; i++) {
+        st.calls = 0;
+        st.limit = 1;
+        ret = re_call_regexp(ctx, pat, len);
+        assert(JS_IsException(ret));
+        exc = JS_GetException(ctx);
+        assert(JS_IsUncatchableError(exc));
+        JS_FreeValue(ctx, exc);
+    }
+    st.calls = 0;
+    st.limit = -1;
+    assert_eval_bool(ctx, "/a(b)/.exec('ab')[1] === 'b'", 1);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    /* An independent runtime is unaffected. */
+    rt2 = new_runtime();
+    ctx2 = JS_NewContext(rt2);
+    assert_eval_bool(ctx2,
+                      "new RegExp('\\\\k<a>(?<a>x)').test('x') &&"
+                      "/[0-9]+/.exec('a42b')[0] === '42'",
+                      1);
+    /* Armed handler, short invalid patterns: still SyntaxError. */
+    st.calls = 0;
+    st.limit = 1;
+    JS_SetInterruptHandler(rt2, re_compile_interrupt_handler, &st);
+    assert_eval_bool(ctx2,
+                      "var ok = false;"
+                      "try { new RegExp('('); } catch (e) {"
+                      "  ok = e instanceof SyntaxError; }"
+                      "if (ok) { try { new RegExp('['); } catch (e) {"
+                      "  ok = e instanceof SyntaxError; } }"
+                      "ok",
+                      1);
+    JS_FreeContext(ctx2);
+    JS_FreeRuntime(rt2);
+
+    free(pat);
+}
+
 void private_symbols(void)
 {
     JSRuntime *rt = new_runtime();
@@ -2268,6 +2503,7 @@ int main(void)
     add_intrinsic_bigint();
     new_typed_array();
     std_eval_interrupt_handler();
+    regexp_compile_interrupt();
     private_symbols();
     new_context_low_memory();
     return 0;

@@ -50,6 +50,8 @@ extern "C" {
 /* trailer length after the group name including the trailing '\0' */
 #define LRE_GROUP_NAME_TRAILER_LEN 2
 
+/* On success, *plen is the bytecode length. On error, returns NULL and
+   *plen is 0, or LRE_RET_TIMEOUT if lre_check_timeout() cancelled compilation. */
 uint8_t *lre_compile(int *plen, char *error_msg, int error_msg_size,
                      const char *buf, size_t buf_len, int re_flags,
                      void *opaque);
