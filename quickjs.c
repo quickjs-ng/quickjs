@@ -10574,9 +10574,10 @@ static int JS_SetPropertyInternal2(JSContext *ctx, JSValueConst obj, JSAtom prop
             break;
         goto retry2;
     default:
-    primitive_receiver:
         if (JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)
             obj = JS_GetPrototypePrimitive(ctx, obj);
+    
+    primitive_receiver:
         p = NULL;
         p1 = JS_VALUE_GET_OBJ(obj);
         goto prototype_lookup;
