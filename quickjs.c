@@ -2878,6 +2878,7 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->class_proto = js_malloc_rt(rt, sizeof(ctx->class_proto[0]) *
                                     rt->class_count);
     if (!ctx->class_proto) {
+        remove_gc_object(&ctx->header);
         js_free_rt(rt, ctx);
         return NULL;
     }
@@ -42594,8 +42595,16 @@ static JSValue js_function_bind(JSContext *ctx, JSValueConst this_val,
     if (check_function(ctx, this_val))
         return JS_EXCEPTION;
 
-    func_obj = JS_NewObjectProtoClass(ctx, ctx->function_proto,
+    JSValue prototype = JS_GetPrototype(ctx, this_val);
+
+    if (JS_IsException(prototype))
+        return JS_EXCEPTION;
+    
+    func_obj = JS_NewObjectProtoClass(ctx, prototype,
                                  JS_CLASS_BOUND_FUNCTION);
+    
+    JS_FreeValue(ctx, prototype);
+
     if (JS_IsException(func_obj))
         return JS_EXCEPTION;
     p = JS_VALUE_GET_OBJ(func_obj);
@@ -48098,27 +48107,35 @@ static JSValue js_string_repeat(JSContext *ctx, JSValueConst this_val,
     JSValue str;
     StringBuffer b_s, *b = &b_s;
     JSString *p;
-    int64_t val;
+    double val;
     int n, len;
 
     str = JS_ToStringCheckObject(ctx, this_val);
     if (JS_IsException(str))
         goto fail;
-    if (JS_ToInt64Sat(ctx, &val, argv[0]))
+    if (JS_ToFloat64(ctx, &val, argv[0]))
         goto fail;
-    if (val < 0 || val > 2147483647) {
+    // ToIntegerOrInfinity: NaN maps to zero, everything else truncates
+    if (isnan(val))
+        val = 0;
+    else
+        val = trunc(val);
+    // only a negative or infinite count is out of range; a large finite
+    // count is not, it merely risks exceeding the maximum string length
+    if (val < 0 || val == INFINITY) {
         JS_ThrowRangeError(ctx, "invalid repeat count");
         goto fail;
     }
-    n = val;
     p = JS_VALUE_GET_STRING(str);
     len = p->len;
-    if (len == 0 || n == 1)
+    // any number of copies of the empty string is the empty string
+    if (len == 0 || val == 1)
         return str;
     if (val * len > JS_STRING_LEN_MAX) {
-        JS_ThrowRangeError(ctx, "invalid string length");
+        JS_ThrowRangeError(ctx, "string too long");
         goto fail;
     }
+    n = val;
     if (string_buffer_init2(ctx, b, n * len, p->is_wide_char))
         goto fail;
     if (len == 1) {
@@ -63010,7 +63027,8 @@ int JS_AddIntrinsicTypedArrays(JSContext *ctx)
 
 static double js__now_ms(void)
 {
-    return js__hrtime_ns() / 1e6;
+    uint64_t ns = js__hrtime_ns();
+    return (double)(ns / 1000000) + (double)(ns % 1000000) / 1e6;
 }
 
 static JSValue js_perf_now(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)

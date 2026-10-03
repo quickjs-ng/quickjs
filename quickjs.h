@@ -315,7 +315,10 @@ static inline bool JS_VALUE_IS_NAN(JSValue v)
 #else /* !JS_NAN_BOXING */
 
 typedef union JSValueUnion {
-    int32_t int32;
+    /* JS_MKVAL() writes all 64 bits even though only 32 are needed:
+       leaving the upper half uninitialized makes GCC 14+ generate much
+       slower code on x86-64 */
+    uint64_t uint64;
     double float64;
     void *ptr;
     int32_t short_big_int;
@@ -329,10 +332,10 @@ typedef struct JSValue {
 #define JS_VALUE_GET_TAG(v) ((int32_t)(v).tag)
 /* same as JS_VALUE_GET_TAG, but return JS_TAG_FLOAT64 with NaN boxing */
 #define JS_VALUE_GET_NORM_TAG(v) JS_VALUE_GET_TAG(v)
-#define JS_VALUE_GET_INT(v) ((v).u.int32)
-#define JS_VALUE_GET_BOOL(v) ((v).u.int32)
+#define JS_VALUE_GET_INT(v) ((int)(v).u.uint64)
+#define JS_VALUE_GET_BOOL(v) ((int)(v).u.uint64)
 #define JS_VALUE_GET_FLOAT64(v) ((v).u.float64)
-#define JS_VALUE_GET_SHORT_BIG_INT(v) ((v).u.short_big_int)
+#define JS_VALUE_GET_SHORT_BIG_INT(v) ((int32_t)(v).u.uint64)
 #define JS_VALUE_GET_PTR(v) ((v).u.ptr)
 
 /* msvc doesn't understand designated initializers without /std:c++20 */
@@ -347,7 +350,7 @@ static inline JSValue JS_MKPTR(int64_t tag, void *ptr)
 static inline JSValue JS_MKVAL(int64_t tag, int32_t int32)
 {
     JSValue v;
-    v.u.int32 = int32;
+    v.u.uint64 = (uint32_t)int32;
     v.tag = tag;
     return v;
 }
@@ -364,7 +367,7 @@ static inline JSValue JS_MKNAN(void)
 #define JS_NAN             JS_MKNAN() /* alas, not a constant expression */
 #else
 #define JS_MKPTR(tag, p)   (JSValue){ (JSValueUnion){ .ptr = p }, tag }
-#define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .int32 = val }, tag }
+#define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .uint64 = (uint32_t)(val) }, tag }
 #define JS_NAN             (JSValue){ (JSValueUnion){ .float64 = NAN }, JS_TAG_FLOAT64 }
 #endif
 

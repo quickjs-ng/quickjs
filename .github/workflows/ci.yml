@@ -183,8 +183,8 @@ jobs:
           - { arch: x64, vsArch: x64, buildType: Release, os: windows-latest, msvc: 18 }
           - { arch: Win32, vsArch: x86, buildType: Debug, os: windows-latest, msvc: 18 }
           - { arch: Win32, vsArch: x86, buildType: Release, os: windows-latest, msvc: 18 }
-          - { arch: ARM64, vsArch: arm64, buildType: Debug, os: windows-11-arm, msvc: 17 }
-          - { arch: ARM64, vsArch: arm64, buildType: Release, os: windows-11-arm, msvc: 17 }
+          - { arch: ARM64, vsArch: arm64, buildType: Debug, os: windows-11-arm, msvc: 18 }
+          - { arch: ARM64, vsArch: arm64, buildType: Release, os: windows-11-arm, msvc: 18 }
     steps:
       - uses: actions/checkout@v7
       - name: build

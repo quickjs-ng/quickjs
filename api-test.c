@@ -2286,6 +2286,39 @@ static void discard_pending_jobs(void)
     JS_FreeRuntime(rt);
 }
 
+// https://github.com/quickjs-ng/quickjs/issues/1181
+// JS_NewContext() must fail cleanly, not crash or leak, whichever of its
+// allocations runs out of memory.
+static void new_context_low_memory(void)
+{
+    JSMemoryUsage stats;
+    size_t base, headroom;
+    JSRuntime *rt;
+    JSContext *ctx;
+    int all, ok;
+
+    all = ok = 0;
+    rt = new_runtime();
+    JS_ComputeMemoryUsage(rt, &stats);
+    base = (size_t)stats.malloc_size;
+    // Small steps first, so that each of the first allocations gets its turn
+    // to fail, then bigger ones until a few contexts fit.
+    for (headroom = 0; ok < 4 && headroom < 4 * 1024 * 1024;
+         headroom += headroom < 8192 ? 8 : 1024) {
+        JS_SetMemoryLimit(rt, base + headroom);
+        ctx = JS_NewContext(rt); // expected to fail, not to crash
+        if (ctx) {
+            JS_FreeContext(ctx);
+            ok++;
+        }
+        all++;
+    }
+    JS_SetMemoryLimit(rt, 0);
+    JS_FreeRuntime(rt);
+    assert(ok > 0);     // expect some successes...
+    assert(ok < all);   // ...but not all
+}
+
 int main(void)
 {
     discard_pending_jobs();
@@ -2328,5 +2361,6 @@ int main(void)
     new_typed_array();
     std_eval_interrupt_handler();
     private_symbols();
+    new_context_low_memory();
     return 0;
 }
