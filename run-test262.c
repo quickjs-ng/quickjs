@@ -1728,7 +1728,7 @@ JSContext *JS_NewCustomContext(JSRuntime *rt)
     return ctx;
 }
 
-static int interrupt_handler(JSRuntime *rt, void *opaque)
+static int interrupt_handler(JSContext *ctx, void *opaque)
 {
     int *interrupt_countdown = opaque;
     return !--*interrupt_countdown;
