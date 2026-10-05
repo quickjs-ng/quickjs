@@ -8656,7 +8656,7 @@ static no_inline __exception int __js_poll_interrupts(JSContext *ctx)
     JSRuntime *rt = ctx->rt;
     ctx->interrupt_counter = JS_INTERRUPT_COUNTER_INIT;
     if (rt->interrupt_handler) {
-        if (rt->interrupt_handler(rt, rt->interrupt_opaque)) {
+        if (rt->interrupt_handler(ctx, rt->interrupt_opaque)) {
             JS_ThrowInterrupted(ctx);
             return -1;
         }
@@ -49661,7 +49661,7 @@ int lre_check_timeout(void *opaque)
     JSContext *ctx = opaque;
     JSRuntime *rt = ctx->rt;
     return (rt->interrupt_handler &&
-            rt->interrupt_handler(rt, rt->interrupt_opaque));
+            rt->interrupt_handler(ctx, rt->interrupt_opaque));
 }
 
 void *lre_realloc(void *opaque, void *ptr, size_t size)

@@ -1085,14 +1085,14 @@ static JSValue js_std_gc(JSContext *ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-static int interrupt_handler(JSRuntime *rt, void *opaque)
+static int interrupt_handler(JSContext *ctx, void *opaque)
 {
     JSThreadState *ts = opaque;
 
     if (1 & (os_pending_signals >> SIGINT))
         return 1;
     if (ts->prev_interrupt_handler)
-        return ts->prev_interrupt_handler(rt, ts->prev_interrupt_opaque);
+        return ts->prev_interrupt_handler(ctx, ts->prev_interrupt_opaque);
     return 0;
 }
 

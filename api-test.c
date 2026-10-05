@@ -173,7 +173,7 @@ static void cfunctions(void)
 
 #define MAX_TIME 10
 
-static int timeout_interrupt_handler(JSRuntime *rt, void *opaque)
+static int timeout_interrupt_handler(JSContext *ctx, void *opaque)
 {
     int *time = (int *)opaque;
     return (*time)++ > MAX_TIME;
