@@ -408,7 +408,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
             OUTPUT_NAME "qjs"
             SUFFIX ".wasm"
         )
-        target_compile_definitions(qjs_wasi PRIVATE ${qjs_defines})
+        target_compile_definitions(qjs PRIVATE BUILDING_QJS_SHARED)
+        target_compile_definitions(qjs_wasi PRIVATE ${qjs_defines} BUILDING_QJS_SHARED)
         target_link_libraries(qjs_wasi qjs)
         target_link_options(qjs_wasi PRIVATE
             -mexec-model=reactor
