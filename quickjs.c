@@ -43021,8 +43021,6 @@ static int JS_CopySubArray(JSContext *ctx,
     }
 
     for (i = 0; i < count; ) {
-        if (js_poll_interrupts(ctx))
-            goto exception;
         if (dir < 0) {
             from = from_pos + count - i - 1;
             to = to_pos + count - i - 1;
@@ -43055,6 +43053,8 @@ static int JS_CopySubArray(JSContext *ctx,
             }
             i += l;
         } else {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             fromPresent = JS_TryGetPropertyInt64(ctx, obj, from, &val);
             if (fromPresent < 0)
                 goto exception;
