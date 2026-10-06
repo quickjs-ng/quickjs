@@ -940,6 +940,20 @@ function test_regexp()
     assert(a, ["123a23", "3"]);
     a = "ab".split(/(c)*/);
     assert(a, ["a", undefined, "b"]);
+
+    /* line terminators must be escaped in source */
+    assert(new RegExp("\u2028").source, "\\u2028");
+    assert(new RegExp("[\u2029]").source, "[\\u2029]");
+    assert(new RegExp("a\\\n").source, "a\\n");
+    assert(new RegExp("\\d\\\r").source, "\\d\\r");
+    assert(new RegExp("\\\\\n").source, "\\\\\\n");
+    a = eval("/" + new RegExp("\\\u2028|\u2029").source + "/");
+    assert(a.exec("\u2029")[0], "\u2029");
+
+    /* '[]' is an empty class, so the next '/' must be escaped */
+    assert(new RegExp("[]/").source, "[]\\/");
+    assert(new RegExp("[]]/").source, "[]]\\/");
+    assert(new RegExp("[/]").source, "[/]");
 }
 
 function test_symbol()
