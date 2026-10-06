@@ -2228,8 +2228,77 @@ static void new_context_low_memory(void)
     assert(ok < all);   // ...but not all
 }
 
+static JSValue async_stack_failing_job(JSContext *ctx, int argc, JSValueConst *argv)
+{
+    return JS_ThrowTypeError(ctx, "nested job failure");
+}
+
+static JSValue async_stack_pump(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    JSContext *job_ctx = NULL;
+    bool failure = JS_ToBool(ctx, argv[0]);
+    /* Queue the failure behind the inner callback, before it enqueues more jobs. */
+    if (!failure)
+        assert(JS_EnqueueJob(ctx, async_stack_failing_job, 0, NULL) == 0);
+    int ret = JS_ExecutePendingJob(JS_GetRuntime(ctx), &job_ctx);
+    assert(job_ctx == ctx);
+    assert(ret == (failure ? -1 : 1));
+    if (failure)
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    return JS_UNDEFINED;
+}
+
+static void async_stack_reentrant_jobs(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue global = JS_GetGlobalObject(ctx), promise, result;
+    int ret, jobs = 0;
+
+    assert(JS_SetPropertyStr(ctx, global, "pump",
+                             JS_NewCFunction(ctx, async_stack_pump, "pump", 1)) >= 0);
+    JS_FreeValue(ctx, global);
+    promise = eval(ctx,
+        "Error.prepareStackTrace = (_, frames) => frames;"
+        "const snapshots = [];"
+        "function capture() {"
+        "  return new Error().stack"
+        "    .filter(f => f.isAsync() && f.getPromiseIndex() === null)"
+        "    .map(f => f.getFunctionName()).join(',');"
+        "}"
+        "const outer = Promise.resolve().then(function outerCallback() {"
+        "  snapshots.push(capture());"
+        "  pump(false);"
+        "  snapshots.push(capture());"
+        "  pump(true);"
+        "  snapshots.push(capture());"
+        "});"
+        "const inner = Promise.resolve().then(function innerCallback() {"
+        "  snapshots.push(capture());"
+        "});"
+        "async function outerWait() { await outer; }"
+        "async function innerWait() { await inner; }"
+        "Promise.all([outerWait(), innerWait()]);");
+    assert(JS_IsPromise(promise));
+    while ((ret = JS_ExecutePendingJob(rt, &job_ctx)) != 0) {
+        assert(ret == 1);
+        assert(++jobs < 20);
+    }
+    assert(JS_PromiseState(ctx, promise) == JS_PROMISE_FULFILLED);
+    JS_FreeValue(ctx, promise);
+    result = eval(ctx,
+        "snapshots.join('|') === 'outerWait|innerWait|outerWait|outerWait' &&"
+        "capture() === ''");
+    assert(JS_IsBool(result) && JS_ToBool(ctx, result));
+    JS_FreeValue(ctx, result);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
+    async_stack_reentrant_jobs();
     cfunctions();
     sync_call();
     async_call();
