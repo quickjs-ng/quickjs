@@ -38110,6 +38110,8 @@ static JSValue JS_EvalFunctionInternal(JSContext *ctx, JSValue fun_obj,
     tag = JS_VALUE_GET_TAG(fun_obj);
     if (tag == JS_TAG_FUNCTION_BYTECODE) {
         fun_obj = js_closure(ctx, fun_obj, var_refs, sf);
+        if (JS_IsException(fun_obj))
+            return JS_EXCEPTION; /* calling it would replace the exception */
         ret_val = JS_CallFree(ctx, fun_obj, this_obj, 0, NULL);
     } else if (tag == JS_TAG_MODULE) {
         JSModuleDef *m;

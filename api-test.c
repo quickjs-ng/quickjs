@@ -2237,10 +2237,12 @@ static void autoinit_after_failure(void)
     size_t headroom;
     JSRuntime *rt;
     JSContext *ctx;
-    JSValue fun, ret;
+    JSValue fun, ret, exc;
     const char *s;
+    int failed;
     bool done;
 
+    failed = 0;
     done = false;
     for (headroom = 0; !done && headroom < 64 * 1024; headroom += 8) {
         rt = new_runtime();
@@ -2253,10 +2255,21 @@ static void autoinit_after_failure(void)
         JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + headroom);
         ret = JS_EvalFunction(ctx, fun); // first access sets up the function
         JS_SetMemoryLimit(rt, 0);
-        if (JS_IsException(ret))
-            JS_FreeValue(ctx, JS_GetException(ctx));
-        else
+        if (JS_IsException(ret)) {
+            // out of memory: an InternalError, or null when even that does
+            // not fit (see JS_ThrowError2)
+            exc = JS_GetException(ctx);
+            if (!JS_IsNull(exc)) {
+                assert(JS_IsError(exc));
+                s = JS_ToCString(ctx, exc);
+                assert(s && !strcmp(s, "InternalError: out of memory"));
+                JS_FreeCString(ctx, s);
+            }
+            JS_FreeValue(ctx, exc);
+            failed++;
+        } else {
             done = true;
+        }
         JS_FreeValue(ctx, ret);
         ret = eval(ctx, "typeof JSON.parse");
         s = JS_ToCString(ctx, ret);
@@ -2267,6 +2280,7 @@ static void autoinit_after_failure(void)
         JS_FreeRuntime(rt);
     }
     assert(done);
+    assert(failed > 0);
 }
 
 int main(void)
