@@ -2228,6 +2228,30 @@ static void new_context_low_memory(void)
     assert(ok < all);   // ...but not all
 }
 
+static int interrupt_always_handler(JSContext *ctx, void *opaque)
+{
+    return 1;
+}
+
+static void array_find_interrupt(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue ret = eval(ctx, "var a = []; for (var i = 0; i < 10000; i++) a.push({}); function f() {}");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_SetInterruptHandler(rt, interrupt_always_handler, NULL);
+    // calling f() moves the interrupt between the two checks in find's loop
+    for (int i = 0; i < 4; i++) {
+        ret = eval(ctx, i & 1 ? "f(); a.find(Array.isArray)" : "a.find(Array.isArray)");
+        assert(JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2270,5 +2294,6 @@ int main(void)
     std_eval_interrupt_handler();
     private_symbols();
     new_context_low_memory();
+    array_find_interrupt();
     return 0;
 }
