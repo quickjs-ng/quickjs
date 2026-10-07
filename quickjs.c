@@ -555,6 +555,9 @@ enum {
    enough to call the interrupt callback often. */
 #define JS_INTERRUPT_COUNTER_INIT 10000
 
+/* number of elements between interrupt polls in fast array loops */
+#define JS_INTERRUPT_POLL_INTERVAL 2048
+
 struct JSContext {
     JSGCObjectHeader header; /* must come first */
     JSRuntime *rt;
@@ -43818,7 +43821,7 @@ static JSValue js_array_includes(JSContext *ctx, JSValueConst this_val,
         }
         if (js_get_fast_array(ctx, obj, &arrp, &count)) {
             for (; n < count; n++) {
-                if (js_poll_interrupts(ctx))
+                if (unlikely(n % JS_INTERRUPT_POLL_INTERVAL == 0) && js_poll_interrupts(ctx))
                     goto exception;
                 if (js_strict_eq2(ctx, argv[0], arrp[n],
                                   JS_EQ_SAME_VALUE_ZERO)) {
@@ -43869,7 +43872,7 @@ static JSValue js_array_indexOf(JSContext *ctx, JSValueConst this_val,
         }
         if (js_get_fast_array(ctx, obj, &arrp, &count)) {
             for (; n < count; n++) {
-                if (js_poll_interrupts(ctx))
+                if (unlikely(n % JS_INTERRUPT_POLL_INTERVAL == 0) && js_poll_interrupts(ctx))
                     goto exception;
                 if (js_strict_eq2(ctx, argv[0], arrp[n], JS_EQ_STRICT)) {
                     goto done;
@@ -43922,7 +43925,7 @@ static JSValue js_array_lastIndexOf(JSContext *ctx, JSValueConst this_val,
         }
         if (js_get_fast_array(ctx, obj, &arrp, &count) && count == len) {
             for (; n >= 0; n--) {
-                if (js_poll_interrupts(ctx))
+                if (unlikely(n % JS_INTERRUPT_POLL_INTERVAL == 0) && js_poll_interrupts(ctx))
                     goto exception;
                 if (js_strict_eq2(ctx, argv[0], arrp[n],
                                   JS_EQ_STRICT)) {
