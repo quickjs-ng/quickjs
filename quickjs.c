@@ -9095,11 +9095,12 @@ static int JS_AutoInitProperty(JSContext *ctx, JSObject *p, JSAtom prop,
     func = js_autoinit_func_table[js_autoinit_get_id(pr)];
     /* 'func' shall not modify the object properties 'pr' */
     val = func(realm, p, prop, pr->u.init.opaque);
-    js_autoinit_free(ctx->rt, pr);
-    prs->flags &= ~JS_PROP_TMASK;
-    pr->u.value = JS_UNDEFINED;
+    /* on failure, e.g. out of memory, leave the property to be initialized
+       by the next access instead of turning it into undefined for good */
     if (JS_IsException(val))
         return -1;
+    js_autoinit_free(ctx->rt, pr);
+    prs->flags &= ~JS_PROP_TMASK;
     pr->u.value = val;
     return 0;
 }
@@ -38109,6 +38110,8 @@ static JSValue JS_EvalFunctionInternal(JSContext *ctx, JSValue fun_obj,
     tag = JS_VALUE_GET_TAG(fun_obj);
     if (tag == JS_TAG_FUNCTION_BYTECODE) {
         fun_obj = js_closure(ctx, fun_obj, var_refs, sf);
+        if (JS_IsException(fun_obj))
+            return JS_EXCEPTION; /* calling it would replace the exception */
         ret_val = JS_CallFree(ctx, fun_obj, this_obj, 0, NULL);
     } else if (tag == JS_TAG_MODULE) {
         JSModuleDef *m;
