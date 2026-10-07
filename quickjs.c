@@ -40278,6 +40278,7 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
     JSContext *ctx = s->ctx;
     JSString *pattern;
     JSString *bc;
+    JSValue obj;
 
     pattern = JS_ReadString(s);
     if (!pattern)
@@ -40296,9 +40297,17 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         return JS_ThrowInternalError(ctx, "bad regexp bytecode");
     }
 
-    return js_regexp_constructor_internal(ctx, JS_UNDEFINED,
-                                          JS_MKPTR(JS_TAG_STRING, pattern),
-                                          JS_MKPTR(JS_TAG_STRING, bc));
+    /* takes ownership of 'pattern' and 'bc' */
+    obj = js_regexp_constructor_internal(ctx, JS_UNDEFINED,
+                                         JS_MKPTR(JS_TAG_STRING, pattern),
+                                         JS_MKPTR(JS_TAG_STRING, bc));
+    if (JS_IsException(obj))
+        return JS_EXCEPTION;
+    if (BC_add_object_ref(s, obj)) {
+        JS_FreeValue(ctx, obj);
+        return JS_EXCEPTION;
+    }
+    return obj;
 }
 
 static JSValue JS_ReadDate(BCReaderState *s)
