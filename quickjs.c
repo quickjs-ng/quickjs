@@ -555,6 +555,9 @@ enum {
    enough to call the interrupt callback often. */
 #define JS_INTERRUPT_COUNTER_INIT 10000
 
+/* number of elements between interrupt polls in fast array loops */
+#define JS_INTERRUPT_POLL_INTERVAL 2048
+
 struct JSContext {
     JSGCObjectHeader header; /* must come first */
     JSRuntime *rt;
@@ -43015,6 +43018,8 @@ static int JS_CopySubArray(JSContext *ctx,
     }
 
     for (i = 0; i < count; ) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         if (dir < 0) {
             from = from_pos + count - i - 1;
             to = to_pos + count - i - 1;
@@ -43028,8 +43033,10 @@ static int JS_CopySubArray(JSContext *ctx,
             int64_t l, j;
             /* Fast path for fast arrays. Since we don't look at the
                prototype chain, we can optimize only the cases where
-               all the elements are present in the array. */
-            l = count - i;
+               all the elements are present in the array. Copy at most
+               JS_INTERRUPT_POLL_INTERVAL elements at a time so that the
+               poll above also runs for long fast arrays. */
+            l = min_int64(count - i, JS_INTERRUPT_POLL_INTERVAL);
             if (dir < 0) {
                 l = min_int64(l, from + 1);
                 l = min_int64(l, to + 1);
@@ -43173,6 +43180,8 @@ static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
         if (JS_IsException(r))
             goto exception;
         for(k = 0; k < len; k++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             v = JS_GetPropertyInt64(ctx, arrayLike, k);
             if (JS_IsException(v))
                 goto exception;
@@ -43438,6 +43447,8 @@ static JSValue js_array_concat(JSContext *ctx, JSValueConst this_val,
                 goto exception;
             }
             for (k = 0; k < len; k++, n++) {
+                if (js_poll_interrupts(ctx))
+                    goto exception;
                 res = JS_TryGetPropertyInt64(ctx, e, k, &val);
                 if (res < 0)
                     goto exception;
@@ -43791,6 +43802,8 @@ static JSValue js_array_fill(JSContext *ctx, JSValueConst this_val,
 
     /* XXX: should special case fast arrays */
     while (start < end) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         if (JS_SetPropertyInt64(ctx, obj, start, js_dup(argv[0])) < 0)
             goto exception;
         start++;
@@ -44085,6 +44098,8 @@ static JSValue js_array_join(JSContext *ctx, JSValueConst this_val,
     string_buffer_init(ctx, b, 0);
 
     for(i = 0; i < n; i++) {
+        if (js_poll_interrupts(ctx))
+            goto fail;
         if (i > 0) {
             if (c >= 0) {
                 string_buffer_putc8(b, c);
@@ -44250,19 +44265,25 @@ static JSValue js_array_reverse(JSContext *ctx, JSValueConst this_val,
 
     /* Special case fast arrays */
     if (js_get_fast_array(ctx, obj, &arrp, &count32) && count32 == len) {
+        JSValue tmp;
         uint32_t ll, hh;
 
         if (count32 > 1) {
             for (ll = 0, hh = count32 - 1; ll < hh; ll++, hh--) {
-                lval = arrp[ll];
+                /* tmp, not lval: the exception path frees lval */
+                if (unlikely(ll % JS_INTERRUPT_POLL_INTERVAL == 0) && js_poll_interrupts(ctx))
+                    goto exception;
+                tmp = arrp[ll];
                 arrp[ll] = arrp[hh];
-                arrp[hh] = lval;
+                arrp[hh] = tmp;
             }
         }
         return obj;
     }
 
     for (l = 0, h = len - 1; l < h; l++, h--) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         l_present = JS_TryGetPropertyInt64(ctx, obj, l, &lval);
         if (l_present < 0)
             goto exception;
@@ -44411,12 +44432,16 @@ static JSValue js_array_slice(JSContext *ctx, JSValueConst this_val,
         js_is_fast_array(ctx, arr)) {
         /* XXX: should share code with fast array constructor */
         for (; k < final && k < count32; k++, n++) {
+            if (unlikely(k % JS_INTERRUPT_POLL_INTERVAL == 0) && js_poll_interrupts(ctx))
+                goto exception;
             if (JS_CreateDataPropertyUint32Const(ctx, arr, n, arrp[k], JS_PROP_THROW) < 0)
                 goto exception;
         }
     }
     /* Copy the remaining elements if any (handle case of inherited properties) */
     for (; k < final; k++, n++) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         kPresent = JS_TryGetPropertyInt64(ctx, obj, k, &val);
         if (kPresent < 0)
             goto exception;
@@ -44437,6 +44462,8 @@ static JSValue js_array_slice(JSContext *ctx, JSValueConst this_val,
                 goto exception;
 
             for (k = len; k-- > new_len; ) {
+                if (js_poll_interrupts(ctx))
+                    goto exception;
                 if (JS_DeletePropertyInt64(ctx, obj, k, JS_PROP_THROW) < 0)
                     goto exception;
             }
@@ -44586,6 +44613,8 @@ static int64_t JS_FlattenIntoArray(JSContext *ctx, JSValueConst target,
     }
 
     for (sourceIndex = 0; sourceIndex < sourceLen; sourceIndex++) {
+        if (js_poll_interrupts(ctx))
+            return -1;
         present = JS_TryGetPropertyInt64(ctx, source, sourceIndex, &element);
         if (present < 0)
             return -1;
@@ -44769,6 +44798,8 @@ static JSValue js_array_sort(JSContext *ctx, JSValueConst this_val,
 
     /* XXX: should special case fast arrays */
     for (i = 0; i < len; i++) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         if (pos >= array_size) {
             size_t new_size;
             ValueSlot *new_array;
@@ -44816,6 +44847,8 @@ static JSValue js_array_sort(JSContext *ctx, JSValueConst this_val,
             goto fail;
     }
     for (; i < len; i++) {
+        if (js_poll_interrupts(ctx))
+            goto fail;
         if (JS_DeletePropertyInt64(ctx, obj, i, JS_PROP_THROW) < 0)
             goto fail;
     }
