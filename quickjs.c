@@ -49255,7 +49255,11 @@ static JSValue js_compile_regexp(JSContext *ctx, JSValueConst pattern,
                                   sizeof(error_msg), str, len, re_flags, ctx);
     JS_FreeCString(ctx, str);
     if (!re_bytecode_buf) {
-        JS_ThrowSyntaxError(ctx, "%s", error_msg);
+        /* Same uncatchable InternalError the executor raises on timeout. */
+        if (re_bytecode_len == LRE_RET_TIMEOUT)
+            JS_ThrowInterrupted(ctx);
+        else
+            JS_ThrowSyntaxError(ctx, "%s", error_msg);
         return JS_EXCEPTION;
     }
 
