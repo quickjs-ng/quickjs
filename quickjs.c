@@ -8563,6 +8563,7 @@ JSValue JS_ThrowOutOfMemory(JSContext *ctx)
     if (!rt->in_out_of_memory) {
         rt->in_out_of_memory = true;
         JS_ThrowInternalError(ctx, "out of memory");
+        JS_SetUncatchableError(ctx, ctx->rt->current_exception);
         rt->in_out_of_memory = false;
     }
     return JS_EXCEPTION;
@@ -49781,7 +49782,7 @@ static JSValue js_regexp_exec(JSContext *ctx, JSValueConst this_val,
                 JS_ThrowInterrupted(ctx);
                 break;
             case LRE_RET_MEMORY_ERROR:
-                JS_ThrowInternalError(ctx, "out of memory in regexp execution");
+                JS_ThrowOutOfMemory(ctx);
                 break;
             case LRE_RET_BYTECODE_ERROR:
                 JS_ThrowInternalError(ctx, "corrupted bytecode in regexp execution");
