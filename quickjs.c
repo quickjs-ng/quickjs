@@ -53369,6 +53369,18 @@ static JSValueConst map_normalize_key_const(JSContext *ctx, JSValueConst key)
     return safe_const(map_normalize_key(ctx, unsafe_unconst(key)));
 }
 
+/* lowbias32 integer finalizer. A bijection on uint32_t that mixes the high
+   bits into the low bits, which are the ones that select the bucket. */
+static inline uint32_t map_hash_mix(uint32_t h)
+{
+    h ^= h >> 16;
+    h *= 0x7feb352d;
+    h ^= h >> 15;
+    h *= 0x846ca68b;
+    h ^= h >> 16;
+    return h;
+}
+
 /* XXX: better hash ? */
 static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
 {
@@ -53391,6 +53403,8 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     case JS_TAG_OBJECT:
     case JS_TAG_SYMBOL:
         h = (uintptr_t)JS_VALUE_GET_PTR(key) * 3163;
+        /* heap pointers are aligned, their low bits are always zero */
+        h = map_hash_mix(h);
         break;
     case JS_TAG_INT:
         d = JS_VALUE_GET_INT(key);
@@ -53409,7 +53423,8 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
             d = NAN;
     hash_float64:
         u.d = d;
-        h = (u.u32[0] ^ u.u32[1]) * 3163;
+        /* small integers all have the same low bits here */
+        h = map_hash_mix((u.u32[0] ^ u.u32[1]) * 3163);
         tag = JS_TAG_FLOAT64;
         break;
     default:
