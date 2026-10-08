@@ -555,6 +555,9 @@ enum {
    enough to call the interrupt callback often. */
 #define JS_INTERRUPT_COUNTER_INIT 10000
 
+/* number of elements between interrupt polls in fast array loops */
+#define JS_INTERRUPT_POLL_INTERVAL 2048
+
 struct JSContext {
     JSGCObjectHeader header; /* must come first */
     JSRuntime *rt;
@@ -43021,6 +43024,8 @@ static int JS_CopySubArray(JSContext *ctx,
     }
 
     for (i = 0; i < count; ) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         if (dir < 0) {
             from = from_pos + count - i - 1;
             to = to_pos + count - i - 1;
@@ -43034,8 +43039,10 @@ static int JS_CopySubArray(JSContext *ctx,
             int64_t l, j;
             /* Fast path for fast arrays. Since we don't look at the
                prototype chain, we can optimize only the cases where
-               all the elements are present in the array. */
-            l = count - i;
+               all the elements are present in the array. Copy at most
+               JS_INTERRUPT_POLL_INTERVAL elements at a time so that the
+               poll above also runs for long fast arrays. */
+            l = min_int64(count - i, JS_INTERRUPT_POLL_INTERVAL);
             if (dir < 0) {
                 l = min_int64(l, from + 1);
                 l = min_int64(l, to + 1);
@@ -43053,8 +43060,6 @@ static int JS_CopySubArray(JSContext *ctx,
             }
             i += l;
         } else {
-            if (js_poll_interrupts(ctx))
-                goto exception;
             fromPresent = JS_TryGetPropertyInt64(ctx, obj, from, &val);
             if (fromPresent < 0)
                 goto exception;
@@ -44266,13 +44271,17 @@ static JSValue js_array_reverse(JSContext *ctx, JSValueConst this_val,
 
     /* Special case fast arrays */
     if (js_get_fast_array(ctx, obj, &arrp, &count32) && count32 == len) {
+        JSValue tmp;
         uint32_t ll, hh;
 
         if (count32 > 1) {
             for (ll = 0, hh = count32 - 1; ll < hh; ll++, hh--) {
-                lval = arrp[ll];
+                /* tmp, not lval: the exception path frees lval */
+                if (unlikely(ll % JS_INTERRUPT_POLL_INTERVAL == 0) && js_poll_interrupts(ctx))
+                    goto exception;
+                tmp = arrp[ll];
                 arrp[ll] = arrp[hh];
-                arrp[hh] = lval;
+                arrp[hh] = tmp;
             }
         }
         return obj;
@@ -44429,6 +44438,8 @@ static JSValue js_array_slice(JSContext *ctx, JSValueConst this_val,
         js_is_fast_array(ctx, arr)) {
         /* XXX: should share code with fast array constructor */
         for (; k < final && k < count32; k++, n++) {
+            if (unlikely(k % JS_INTERRUPT_POLL_INTERVAL == 0) && js_poll_interrupts(ctx))
+                goto exception;
             if (JS_CreateDataPropertyUint32Const(ctx, arr, n, arrp[k], JS_PROP_THROW) < 0)
                 goto exception;
         }
