@@ -53403,6 +53403,8 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     case JS_TAG_OBJECT:
     case JS_TAG_SYMBOL:
         h = (uintptr_t)JS_VALUE_GET_PTR(key) * 3163;
+        /* heap pointers are aligned, their low bits are always zero */
+        h = map_hash_mix(h);
         break;
     case JS_TAG_INT:
         d = JS_VALUE_GET_INT(key);
