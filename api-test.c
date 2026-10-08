@@ -1085,8 +1085,14 @@ static void large_allocation_accounting(void)
     JS_ComputeMemoryUsage(rt, &before);
     JS_SetMemoryLimit(rt, (size_t)before.malloc_size + 4 * block_size);
     ret = eval(ctx, "globalThis.a = [];\n"
-                    "for (let i = 0; i < 64; i++)\n"
-                    "    a.push(new Uint8Array(1024 * 1024));");
+                    "for (let i = 0; i < 64; i++) {\n"
+                    "    // OOM exception should be uncatchable\n"
+                    "    try {\n"
+                    "        a.push(new Uint8Array(1024 * 1024));"
+                    "    } catch (e) {\n"
+                    "        throw 'unexpected exception';\n"
+                    "    }\n"
+                    "}");
     assert(JS_IsException(ret));
     JS_SetMemoryLimit(rt, 0);
     JS_ComputeMemoryUsage(rt, &after);
