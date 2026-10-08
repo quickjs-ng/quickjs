@@ -111,3 +111,6 @@ Open-source API client with a native C++ load-testing engine. Embeds QuickJS-NG 
 
 JSI runtime for React Native using QuickJS-NG. Replaces Hermes / JSC.
 
+## [DuckDB QuickJS Extension](https://query.farm/products/extensions/quickjs/)
+
+DuckDB extension by Query.Farm that embeds QuickJS-NG, allowing JavaScript to be executed directly inside SQL queries as scalar and table functions.
