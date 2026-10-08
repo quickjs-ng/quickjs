@@ -1554,8 +1554,7 @@ static JSValue JS_InstantiateFunctionListItem2(JSContext *ctx, JSObject *p,
 static JSValue JS_NewObjectProtoList(JSContext *ctx, JSValueConst proto,
                                      const JSCFunctionListEntry *fields, int n_fields);
 
-static void js_set_uncatchable_error(JSContext *ctx, JSValueConst val,
-                                     bool flag);
+static void js_set_uncatchable_error(JSValueConst val, bool flag);
 
 static JSValue js_new_callsite(JSContext *ctx, JSCallSiteData *csd);
 static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFrame *sf);
@@ -8479,31 +8478,35 @@ JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
     X(Type, TYPE)           \
 
 #define X(lc, uc)   \
-    JSValue JS_PRINTF_FORMAT_ATTR(2, 3)                         \
-    JS_New##lc##Error(JSContext *ctx,                           \
-                      JS_PRINTF_FORMAT const char *fmt, ...)    \
-    {                                                           \
-        JSValue val;                                            \
-        va_list ap;                                             \
-                                                                \
-        va_start(ap, fmt);                                      \
-        val = JS_MakeError(ctx, JS_##uc##_ERROR,                \
-                           /*add_backtrace*/true, fmt, ap);     \
-        va_end(ap);                                             \
-        return val;                                             \
-    }                                                           \
-    JSValue JS_PRINTF_FORMAT_ATTR(2, 3)                         \
-    JS_Throw##lc##Error(JSContext *ctx,                         \
-                        JS_PRINTF_FORMAT const char *fmt, ...)  \
-    {                                                           \
-        JSValue val;                                            \
-        va_list ap;                                             \
-                                                                \
-        va_start(ap, fmt);                                      \
-        val = JS_ThrowError(ctx, JS_##uc##_ERROR, fmt, ap);     \
-        va_end(ap);                                             \
-        return val;                                             \
-    }                                                           \
+    JSValue JS_PRINTF_FORMAT_ATTR(2, 3)                                 \
+    JS_New##lc##Error(JSContext *ctx,                                   \
+                      JS_PRINTF_FORMAT const char *fmt, ...)            \
+    {                                                                   \
+        JSValue val;                                                    \
+        va_list ap;                                                     \
+                                                                        \
+        va_start(ap, fmt);                                              \
+        val = JS_MakeError(ctx, JS_##uc##_ERROR,                        \
+                           /*add_backtrace*/true, fmt, ap);             \
+        va_end(ap);                                                     \
+        if (JS_##uc##_ERROR == JS_INTERNAL_ERROR)                       \
+            js_set_uncatchable_error(val, true);                        \
+        return val;                                                     \
+    }                                                                   \
+    JSValue JS_PRINTF_FORMAT_ATTR(2, 3)                                 \
+    JS_Throw##lc##Error(JSContext *ctx,                                 \
+                        JS_PRINTF_FORMAT const char *fmt, ...)          \
+    {                                                                   \
+        JSValue val;                                                    \
+        va_list ap;                                                     \
+                                                                        \
+        va_start(ap, fmt);                                              \
+        val = JS_ThrowError(ctx, JS_##uc##_ERROR, fmt, ap);             \
+        va_end(ap);                                                     \
+        if (JS_##uc##_ERROR == JS_INTERNAL_ERROR)                       \
+            js_set_uncatchable_error(ctx->rt->current_exception, true); \
+        return val;                                                     \
+    }                                                                   \
 
 JS_ERROR_MAP(X)
 
@@ -8563,7 +8566,6 @@ JSValue JS_ThrowOutOfMemory(JSContext *ctx)
     if (!rt->in_out_of_memory) {
         rt->in_out_of_memory = true;
         JS_ThrowInternalError(ctx, "out of memory");
-        JS_SetUncatchableError(ctx, ctx->rt->current_exception);
         rt->in_out_of_memory = false;
     }
     return JS_EXCEPTION;
@@ -12070,7 +12072,7 @@ bool JS_IsUncatchableError(JSValueConst val)
     return p->class_id == JS_CLASS_ERROR && p->is_uncatchable_error;
 }
 
-static void js_set_uncatchable_error(JSContext *ctx, JSValueConst val, bool flag)
+static void js_set_uncatchable_error(JSValueConst val, bool flag)
 {
     JSObject *p;
     if (JS_VALUE_GET_TAG(val) != JS_TAG_OBJECT)
@@ -12082,17 +12084,17 @@ static void js_set_uncatchable_error(JSContext *ctx, JSValueConst val, bool flag
 
 void JS_SetUncatchableError(JSContext *ctx, JSValueConst val)
 {
-    js_set_uncatchable_error(ctx, val, true);
+    js_set_uncatchable_error(val, true);
 }
 
 void JS_ClearUncatchableError(JSContext *ctx, JSValueConst val)
 {
-    js_set_uncatchable_error(ctx, val, false);
+    js_set_uncatchable_error(val, false);
 }
 
 void JS_ResetUncatchableError(JSContext *ctx)
 {
-    js_set_uncatchable_error(ctx, ctx->rt->current_exception, false);
+    js_set_uncatchable_error(ctx->rt->current_exception, false);
 }
 
 int JS_SetOpaque(JSValueConst obj, void *opaque)
@@ -42784,6 +42786,9 @@ static JSValue js_error_constructor(JSContext *ctx, JSValueConst new_target,
         message = argv[2];
         opts = 3;
         break;
+    case JS_INTERNAL_ERROR:
+        js_set_uncatchable_error(obj, true);
+        // fallthru
     default:
         message = argv[0];
         opts = 1;
