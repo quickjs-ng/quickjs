@@ -43130,6 +43130,7 @@ static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(iter))
         goto exception;
     if (!JS_IsUndefined(iter)) {
+        JSValue error;
         JS_FreeValue(ctx, iter);
         if (JS_IsConstructor(ctx, this_val))
             r = JS_CallConstructor(ctx, this_val, 0, NULL);
@@ -43138,8 +43139,12 @@ static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
         if (JS_IsException(r))
             goto exception;
         stack[0] = js_dup(items);
-        if (js_for_of_start(ctx, &stack[1], false))
-            goto exception;
+        if (js_for_of_start(ctx, &stack[1], false)) {
+            error = JS_GetException(ctx);
+            JS_IteratorClose(ctx, stack[0], true);
+            JS_Throw(ctx, error);
+            goto exception_close;
+        }
         for (k = 0;; k++) {
             v = JS_IteratorNext(ctx, stack[0], stack[1], 0, NULL, &done);
             if (JS_IsException(v))
