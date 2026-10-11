@@ -173,6 +173,15 @@ function test()
             caught = e;
         }
         assert(caught === thrown, true, "propertyIsEnumerable converts key before receiver");
+
+        let converted = false;
+        assertThrows(TypeError, () => Object.prototype.propertyIsEnumerable.call(null, {
+            toString() {
+                converted = true;
+                return "x";
+            }
+        }));
+        assert(converted, true, "propertyIsEnumerable converts key before receiver");
     }
 
     r = Error("hello");
