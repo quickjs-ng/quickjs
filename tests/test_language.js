@@ -477,6 +477,15 @@ function test_labels()
     while (0) x: { break x; };
 }
 
+function test_infinite_loop_jump_cycle()
+{
+    /* the jumps of nested infinite loops form a cycle. These functions
+       are never called (they do not terminate), they must only compile */
+    function f() { for (;;) for (;;i++) break; }
+    for (var n = 2; n <= 12; n++)
+        new Function("for (;;) ".repeat(n) + "for (;;i++) break;");
+}
+
 function test_destructuring()
 {
     function * g () { return 0; };
@@ -1136,6 +1145,7 @@ test_template_tostring_order();
 test_object_literal();
 test_regexp_skip();
 test_labels();
+test_infinite_loop_jump_cycle();
 test_destructuring();
 test_spread();
 test_function_length();
