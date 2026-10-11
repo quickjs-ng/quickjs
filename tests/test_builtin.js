@@ -162,6 +162,19 @@ function test()
 {
     var r, a, b, c, err;
 
+    {
+        const thrown = {};
+        let caught;
+        try {
+            Object.prototype.propertyIsEnumerable.call(null, {
+                toString() { throw thrown; }
+            });
+        } catch (e) {
+            caught = e;
+        }
+        assert(caught, thrown, "propertyIsEnumerable converts key before receiver");
+    }
+
     r = Error("hello");
     assert(r.message, "hello", "Error");
 
