@@ -40297,7 +40297,6 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         return JS_ThrowInternalError(ctx, "bad regexp bytecode");
     }
 
-    /* takes ownership of 'pattern' and 'bc' */
     obj = js_regexp_constructor_internal(ctx, JS_UNDEFINED,
                                          JS_MKPTR(JS_TAG_STRING, pattern),
                                          JS_MKPTR(JS_TAG_STRING, bc));
