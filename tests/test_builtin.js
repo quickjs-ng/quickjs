@@ -172,7 +172,7 @@ function test()
         } catch (e) {
             caught = e;
         }
-        assert(caught, thrown, "propertyIsEnumerable converts key before receiver");
+        assert(caught === thrown, true, "propertyIsEnumerable converts key before receiver");
     }
 
     r = Error("hello");
