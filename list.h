@@ -86,6 +86,28 @@ static inline int list_empty(struct list_head *el)
     return el->next == el;
 }
 
+/* move elements from 'el' through the tail of 'src' into 'dst' */
+static inline void list_split(struct list_head *src, struct list_head *el,
+                              struct list_head *dst)
+{
+    dst->prev = src->prev;
+    dst->prev->next = dst;
+    dst->next = el;
+    src->prev = el->prev;
+    src->prev->next = src;
+    el->prev = dst;
+}
+
+/* move all elements from 'src' into 'dst', leaving 'src' empty */
+static inline void list_move(struct list_head *src, struct list_head *dst)
+{
+    if (list_empty(src)) {
+        init_list_head(dst);
+    } else {
+        list_split(src, src->next, dst);
+    }
+}
+
 #define list_for_each(el, head) \
   for(el = (head)->next; el != (head); el = el->next)
 
