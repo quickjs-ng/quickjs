@@ -60,8 +60,8 @@ static FILE *outfile;
 static const char *c_ident_prefix = "qjsc_";
 static int strip;
 
-void namelist_add(namelist_t *lp, const char *name, const char *short_name,
-                  int flags)
+static void namelist_add(namelist_t *lp, const char *name, const char *short_name,
+                         int flags)
 {
     namelist_entry_t *e;
     if (lp->count == lp->size) {
@@ -81,7 +81,7 @@ void namelist_add(namelist_t *lp, const char *name, const char *short_name,
     e->flags = flags;
 }
 
-void namelist_free(namelist_t *lp)
+static void namelist_free(namelist_t *lp)
 {
     while (lp->count > 0) {
         namelist_entry_t *e = &lp->array[--lp->count];
@@ -93,7 +93,7 @@ void namelist_free(namelist_t *lp)
     lp->size = 0;
 }
 
-namelist_entry_t *namelist_find(namelist_t *lp, const char *name)
+static namelist_entry_t *namelist_find(namelist_t *lp, const char *name)
 {
     int i;
     for(i = 0; i < lp->count; i++) {
@@ -216,8 +216,10 @@ static void find_unique_cname(char *cname, size_t cname_size)
     js__pstrcpy(cname, cname_size, cname1);
 }
 
-JSModuleDef *jsc_module_loader(JSContext *ctx,
-                              const char *module_name, void *opaque)
+/* loader for ES6 modules */
+static JSModuleDef *jsc_module_loader(JSContext *ctx,
+                                      const char *module_name,
+                                      void *opaque)
 {
     JSModuleDef *m;
     namelist_entry_t *e;
@@ -239,12 +241,17 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
         JSValue func_val;
         char cname[1000];
 
-        buf = js_load_file(ctx, &buf_len, module_name);
+        char *module_path = JS_GetContextOpaque(ctx);
+        buf = js_load_file(ctx, &buf_len, module_path);
         if (!buf) {
-            JS_ThrowReferenceError(ctx, "could not load module filename '%s'",
-                                   module_name);
+            JS_ThrowReferenceError(ctx, "could not load module '%s' from path '%s'",
+                                   module_name, module_path);
+            JS_SetContextOpaque(ctx, NULL);
+            js_free(ctx, module_path);
             return NULL;
         }
+        JS_SetContextOpaque(ctx, NULL);
+        js_free(ctx, module_path);
 
         /* compile the module */
         func_val = JS_Eval(ctx, (char *)buf, buf_len, module_name,
@@ -265,8 +272,78 @@ JSModuleDef *jsc_module_loader(JSContext *ctx,
     return m;
 }
 
-static void compile_file(JSContext *ctx, FILE *fo,
-                         const char *filename,
+/* copied from quickjs.c:js_default_module_normalize_name */
+static char *jsc_module_normalize_impl(JSContext *ctx,
+                                       const char *base_name,
+                                       const char *name)
+{
+    char *filename, *p;
+    const char *r;
+    int cap;
+    int len;
+
+    if (name[0] != '.') {
+        /* if no initial dot, the module name is not modified */
+        return js_strdup(ctx, name);
+    }
+
+    p = strrchr(base_name, '/');
+    if (p)
+        len = p - base_name;
+    else
+        len = 0;
+
+    cap = len + strlen(name) + 1 + 1;
+    filename = js_malloc(ctx, cap);
+    if (!filename)
+        return NULL;
+    memcpy(filename, base_name, len);
+    filename[len] = '\0';
+
+    /* we only normalize the leading '..' or '.' */
+    r = name;
+    for(;;) {
+        if (r[0] == '.' && r[1] == '/') {
+            r += 2;
+        } else if (r[0] == '.' && r[1] == '.' && r[2] == '/') {
+            /* remove the last path element of filename, except if "."
+               or ".." */
+            if (filename[0] == '\0')
+                break;
+            p = strrchr(filename, '/');
+            if (!p)
+                p = filename;
+            else
+                p++;
+            if (!strcmp(p, ".") || !strcmp(p, ".."))
+                break;
+            if (p > filename)
+                p--;
+            *p = '\0';
+            r += 3;
+        } else {
+            break;
+        }
+    }
+    if (filename[0] != '\0')
+        js__pstrcat(filename, cap, "/");
+    js__pstrcat(filename, cap, r);
+    //    printf("normalize: %s %s -> %s\n", base_name, name, filename);
+    return filename;
+}
+
+static char *jsc_module_normalize(JSContext *ctx,
+                                  const char *base_name,
+                                  const char *name,
+                                  void *opaque)
+{
+    char *base_file_name = opaque;
+    JS_SetContextOpaque(ctx, jsc_module_normalize_impl(ctx, base_file_name, name));
+    return jsc_module_normalize_impl(ctx, base_name, name);
+}
+
+static void compile_file(JSRuntime *rt, JSContext *ctx,
+                         FILE *fo, const char *filename,
                          const char *script_name,
                          const char *c_name1,
                          int module)
@@ -291,11 +368,16 @@ static void compile_file(JSContext *ctx, FILE *fo,
         eval_flags |= JS_EVAL_TYPE_MODULE;
     else
         eval_flags |= JS_EVAL_TYPE_GLOBAL;
+
+    char* filename_dup = js_strdup(ctx, filename);
+    JS_SetModuleLoaderFunc(rt, jsc_module_normalize, jsc_module_loader, filename_dup);
     obj = JS_Eval(ctx, (const char *)buf, buf_len, script_name ? script_name : filename, eval_flags);
     if (JS_IsException(obj)) {
         js_std_dump_error(ctx);
         exit(1);
     }
+    JS_SetModuleLoaderFunc(rt, jsc_module_normalize, jsc_module_loader, NULL);
+    js_free(ctx, filename_dup);
     js_free(ctx, buf);
     if (c_name1) {
         js__pstrcpy(c_name, sizeof(c_name), c_name1);
@@ -331,7 +413,7 @@ static const char main_c_template2[] =
 
 #define PROG_NAME "qjsc"
 
-void help(void)
+static void help(void)
 {
     printf("QuickJS-ng Compiler version %s\n"
            "usage: " PROG_NAME " [options] [files]\n"
@@ -573,9 +655,6 @@ int main(int argc, char **argv)
     rt = JS_NewRuntime();
     ctx = JS_NewContext(rt);
 
-    /* loader for ES6 modules */
-    JS_SetModuleLoaderFunc(rt, NULL, jsc_module_loader, NULL);
-
     if (output_type != OUTPUT_RAW) {
         fprintf(fo, "/* File generated automatically by the QuickJS-ng compiler. */\n"
                 "\n"
@@ -594,11 +673,12 @@ int main(int argc, char **argv)
 
     for(i = optind; i < argc; i++) {
         const char *filename = argv[i];
-        compile_file(ctx, fo, filename, script_name, cname, module);
+        compile_file(rt, ctx, fo, filename, script_name, cname, module);
         cname = NULL;
     }
 
     for(i = 0; i < dynamic_module_list.count; i++) {
+        JS_SetContextOpaque(ctx, js_strdup(ctx, dynamic_module_list.array[i].name));
         if (!jsc_module_loader(ctx, dynamic_module_list.array[i].name, NULL)) {
             fprintf(stderr, "Could not load dynamic module '%s'\n",
                     dynamic_module_list.array[i].name);
