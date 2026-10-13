@@ -1413,11 +1413,6 @@ static void free_property(JSRuntime *rt, JSProperty *pr, int prop_flags);
 static int JS_ToBigInt64Free(JSContext *ctx, int64_t *pres, JSValue val);
 static JSValue JS_ThrowStackOverflow(JSContext *ctx);
 static JSValue JS_ThrowTypeErrorRevokedProxy(JSContext *ctx);
-static JSValue js_proxy_getPrototypeOf(JSContext *ctx, JSValueConst obj);
-static int js_proxy_setPrototypeOf(JSContext *ctx, JSValueConst obj,
-                                   JSValueConst proto_val, bool throw_flag);
-static int js_proxy_isExtensible(JSContext *ctx, JSValueConst obj);
-static int js_proxy_preventExtensions(JSContext *ctx, JSValueConst obj);
 static int js_proxy_isArray(JSContext *ctx, JSValueConst obj);
 static int JS_CreateProperty(JSContext *ctx, JSObject *p,
                              JSAtom prop, JSValueConst val,
@@ -8676,7 +8671,8 @@ static inline __exception int js_poll_interrupts(JSContext *ctx)
     }
 }
 
-/* return -1 (exception) or true/false */
+/* Return -1 (exception) or true/false. 'throw_flag' = false indicates
+   that it is called from Reflect.setPrototypeOf(). */
 static int JS_SetPrototypeInternal(JSContext *ctx, JSValueConst obj,
                                    JSValueConst proto_val, bool throw_flag)
 {
@@ -8706,8 +8702,19 @@ static int JS_SetPrototypeInternal(JSContext *ctx, JSValueConst obj,
     if (throw_flag && JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT)
         return true;
 
-    if (unlikely(p->class_id == JS_CLASS_PROXY))
-        return js_proxy_setPrototypeOf(ctx, obj, proto_val, throw_flag);
+    if (unlikely(p->is_exotic)) {
+        const JSClassExoticMethods *em = ctx->rt->class_array[p->class_id].exotic;
+        int ret;
+        if (em && em->set_prototype) {
+            ret = em->set_prototype(ctx, obj, proto_val);
+            if (ret == 0 && throw_flag) {
+                JS_ThrowTypeError(ctx, "cannot set prototype");
+                return -1;
+            }
+            return ret;
+        }
+    }
+
     sh = p->shape;
     if (sh->proto == proto)
         return true;
@@ -8800,22 +8807,23 @@ static JSValueConst JS_GetPrototypePrimitive(JSContext *ctx, JSValueConst val)
     return ret;
 }
 
-/* Return an Object, JS_NULL or JS_EXCEPTION in case of Proxy object. */
+/* Return an Object, JS_NULL or JS_EXCEPTION in case of exotic object. */
 JSValue JS_GetPrototype(JSContext *ctx, JSValueConst obj)
 {
     JSValue val;
     if (JS_VALUE_GET_TAG(obj) == JS_TAG_OBJECT) {
         JSObject *p;
         p = JS_VALUE_GET_OBJ(obj);
-        if (unlikely(p->class_id == JS_CLASS_PROXY)) {
-            val = js_proxy_getPrototypeOf(ctx, obj);
-        } else {
-            p = p->shape->proto;
-            if (!p)
-                val = JS_NULL;
-            else
-                val = js_dup(JS_MKPTR(JS_TAG_OBJECT, p));
+        if (unlikely(p->is_exotic)) {
+            const JSClassExoticMethods *em = ctx->rt->class_array[p->class_id].exotic;
+            if (em && em->get_prototype)
+                return em->get_prototype(ctx, obj);
         }
+        p = p->shape->proto;
+        if (!p)
+            val = JS_NULL;
+        else
+            val = js_dup(JS_MKPTR(JS_TAG_OBJECT, p));
     } else {
         val = js_dup(JS_GetPrototypePrimitive(ctx, obj));
     }
@@ -8870,8 +8878,8 @@ static int JS_OrdinaryIsInstanceOf(JSContext *ctx, JSValueConst val,
     for(;;) {
         proto1 = p->shape->proto;
         if (!proto1) {
-            /* slow case if proxy in the prototype chain */
-            if (unlikely(p->class_id == JS_CLASS_PROXY)) {
+            /* slow case if exotic object in the prototype chain */
+            if (unlikely(p->is_exotic && !p->fast_array)) {
                 JSValue obj1;
                 obj1 = js_dup(JS_MKPTR(JS_TAG_OBJECT, (JSObject *)p));
                 for(;;) {
@@ -9847,7 +9855,7 @@ void JS_FreePropertyEnum(JSContext *ctx, JSPropertyEnum *tab,
     js_free_prop_enum(ctx, tab, len);
 }
 
-/* return -1 if exception (Proxy object only) or true/false */
+/* return -1 if exception (exotic object only) or true/false */
 int JS_IsExtensible(JSContext *ctx, JSValueConst obj)
 {
     JSObject *p;
@@ -9855,13 +9863,15 @@ int JS_IsExtensible(JSContext *ctx, JSValueConst obj)
     if (unlikely(JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT))
         return false;
     p = JS_VALUE_GET_OBJ(obj);
-    if (unlikely(p->class_id == JS_CLASS_PROXY))
-        return js_proxy_isExtensible(ctx, obj);
-    else
-        return p->extensible;
+    if (unlikely(p->is_exotic)) {
+        const JSClassExoticMethods *em = ctx->rt->class_array[p->class_id].exotic;
+        if (em && em->is_extensible)
+            return em->is_extensible(ctx, obj);
+    }
+    return p->extensible;
 }
 
-/* return -1 if exception (Proxy object only) or true/false */
+/* return -1 if exception (exotic object only) or true/false */
 int JS_PreventExtensions(JSContext *ctx, JSValueConst obj)
 {
     JSObject *p;
@@ -9869,8 +9879,11 @@ int JS_PreventExtensions(JSContext *ctx, JSValueConst obj)
     if (unlikely(JS_VALUE_GET_TAG(obj) != JS_TAG_OBJECT))
         return false;
     p = JS_VALUE_GET_OBJ(obj);
-    if (unlikely(p->class_id == JS_CLASS_PROXY))
-        return js_proxy_preventExtensions(ctx, obj);
+    if (unlikely(p->is_exotic)) {
+        const JSClassExoticMethods *em = ctx->rt->class_array[p->class_id].exotic;
+        if (em && em->prevent_extensions)
+            return em->prevent_extensions(ctx, obj);
+    }
     if (is_typed_array(p->class_id)) {
         JSTypedArray *ta = p->u.typed_array;
         JSArrayBuffer *abuf = ta->buffer->u.array_buffer;
@@ -52126,7 +52139,7 @@ static JSProxyData *get_proxy_method(JSContext *ctx, JSValue *pmethod,
     return s;
 }
 
-static JSValue js_proxy_getPrototypeOf(JSContext *ctx, JSValueConst obj)
+static JSValue js_proxy_get_prototype(JSContext *ctx, JSValueConst obj)
 {
     JSProxyData *s;
     JSValue method, ret, proto1;
@@ -52167,8 +52180,8 @@ static JSValue js_proxy_getPrototypeOf(JSContext *ctx, JSValueConst obj)
     return ret;
 }
 
-static int js_proxy_setPrototypeOf(JSContext *ctx, JSValueConst obj,
-                                   JSValueConst proto_val, bool throw_flag)
+static int js_proxy_set_prototype(JSContext *ctx, JSValueConst obj,
+                                  JSValueConst proto_val)
 {
     JSProxyData *s;
     JSValue method, ret, proto1;
@@ -52180,21 +52193,15 @@ static int js_proxy_setPrototypeOf(JSContext *ctx, JSValueConst obj,
     if (!s)
         return -1;
     if (JS_IsUndefined(method))
-        return JS_SetPrototypeInternal(ctx, s->target, proto_val, throw_flag);
+        return JS_SetPrototypeInternal(ctx, s->target, proto_val, false);
     args[0] = s->target;
     args[1] = proto_val;
     ret = JS_CallFree(ctx, method, s->handler, 2, args);
     if (JS_IsException(ret))
         return -1;
     res = JS_ToBoolFree(ctx, ret);
-    if (!res) {
-        if (throw_flag) {
-            JS_ThrowTypeError(ctx, "proxy: bad prototype");
-            return -1;
-        } else {
-            return false;
-        }
-    }
+    if (!res)
+        return false;
     res2 = JS_IsExtensible(ctx, s->target);
     if (res2 < 0)
         return -1;
@@ -52212,7 +52219,7 @@ static int js_proxy_setPrototypeOf(JSContext *ctx, JSValueConst obj,
     return true;
 }
 
-static int js_proxy_isExtensible(JSContext *ctx, JSValueConst obj)
+static int js_proxy_is_extensible(JSContext *ctx, JSValueConst obj)
 {
     JSProxyData *s;
     JSValue method, ret;
@@ -52238,7 +52245,7 @@ static int js_proxy_isExtensible(JSContext *ctx, JSValueConst obj)
     return res;
 }
 
-static int js_proxy_preventExtensions(JSContext *ctx, JSValueConst obj)
+static int js_proxy_prevent_extensions(JSContext *ctx, JSValueConst obj)
 {
     JSProxyData *s;
     JSValue method, ret;
@@ -52969,6 +52976,10 @@ static const JSClassExoticMethods js_proxy_exotic_methods = {
     .has_property = js_proxy_has,
     .get_property = js_proxy_get,
     .set_property = js_proxy_set,
+    .get_prototype = js_proxy_get_prototype,
+    .set_prototype = js_proxy_set_prototype,
+    .is_extensible = js_proxy_is_extensible,
+    .prevent_extensions = js_proxy_prevent_extensions,
 };
 
 JSValue JS_NewProxy(JSContext *ctx, JSValueConst target, JSValueConst handler)
