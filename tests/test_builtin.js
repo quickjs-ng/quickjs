@@ -145,6 +145,14 @@ function test_function()
         Reflect.apply((function () { return 1; }), null, undefined);
     }));
 
+    // the length goes through ToLength, not ToUint32
+    function argc() { return arguments.length; }
+    assert(argc.apply(null, { length: -1 }), 0);
+    assert(argc.apply(null, { length: -Infinity }), 0);
+    assert(Reflect.apply(argc, null, { length: -1 }), 0);
+    assert(Reflect.construct(constructor1, { length: -1 }).x, undefined);
+    assertThrows(RangeError, () => argc.apply(null, { length: 2 ** 32 + 1 }));
+
     r = new Function("a", "b", "return a + b;");
     assert(r(2,3), 5, "function");
 
