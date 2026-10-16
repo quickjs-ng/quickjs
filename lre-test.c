@@ -104,9 +104,45 @@ static void oom_no_oob_write(void)
     }
 }
 
+// https://github.com/quickjs-ng/quickjs/issues/1828
+// A failed allocation in unicode_script() must make lre_compile() return an
+// error, not spin on the cleanup label (and, for Script_Extensions, free the
+// same CharRange repeatedly).
+static void oom_unicode_script(void)
+{
+    static const char *const patterns[] = {
+        "\\p{sc=Latin}",    // is_ext == 0, the infinite-loop path
+        "\\p{scx=Latin}",   // is_ext == 1, the repeated-free path
+        "\\p{sc=Common}",
+        "\\p{scx=Common}",
+    };
+    char error_msg[128];
+    size_t i;
+    int n, len, persist;
+    uint8_t *bc;
+
+    for (i = 0; i < sizeof(patterns) / sizeof(patterns[0]); i++) {
+        for (n = 0; n < 128; n++) {
+            for (persist = 0; persist < 2; persist++) {
+                alloc_fail_persist = persist;
+                alloc_countdown = n;
+                error_msg[0] = '\0';
+                bc = lre_compile(&len, error_msg, sizeof(error_msg),
+                                 patterns[i], strlen(patterns[i]),
+                                 LRE_FLAG_UNICODE, NULL);
+                alloc_countdown = -1;
+                // Compilation must terminate; a failure carries an error message.
+                assert(bc || error_msg[0] != '\0');
+                lre_realloc(NULL, bc, 0);
+            }
+        }
+    }
+}
+
 int main(void)
 {
     oob_save_index();
     oom_no_oob_write();
+    oom_unicode_script();
     return 0;
 }
