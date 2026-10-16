@@ -43129,16 +43129,26 @@ static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
     iter = JS_GetProperty(ctx, items, JS_ATOM_Symbol_iterator);
     if (JS_IsException(iter))
         goto exception;
-    if (!JS_IsUndefined(iter)) {
-        JS_FreeValue(ctx, iter);
+    if (!JS_IsUndefined(iter) && !JS_IsNull(iter)) {
+        if (!JS_IsFunction(ctx, iter)) {
+            JS_FreeValue(ctx, iter);
+            JS_ThrowTypeError(ctx, "value is not iterable");
+            goto exception;
+        }
         if (JS_IsConstructor(ctx, this_val))
             r = JS_CallConstructor(ctx, this_val, 0, NULL);
         else
             r = JS_NewArray(ctx);
-        if (JS_IsException(r))
+        if (JS_IsException(r)) {
+            JS_FreeValue(ctx, iter);
             goto exception;
-        stack[0] = js_dup(items);
-        if (js_for_of_start(ctx, &stack[1], false))
+        }
+        stack[0] = JS_GetIterator2(ctx, items, iter);
+        JS_FreeValue(ctx, iter);
+        if (JS_IsException(stack[0]))
+            goto exception;
+        stack[1] = JS_GetProperty(ctx, stack[0], JS_ATOM_next);
+        if (JS_IsException(stack[1]))
             goto exception;
         for (k = 0;; k++) {
             v = JS_IteratorNext(ctx, stack[0], stack[1], 0, NULL, &done);
@@ -43160,6 +43170,7 @@ static JSValue js_array_from(JSContext *ctx, JSValueConst this_val,
                 goto exception_close;
         }
     } else {
+        JS_FreeValue(ctx, iter);
         arrayLike = JS_ToObject(ctx, items);
         if (JS_IsException(arrayLike))
             goto exception;
