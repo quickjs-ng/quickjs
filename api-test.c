@@ -858,8 +858,8 @@ static void promise_hook(void)
         assert(1 == JS_ExecutePendingJob(rt, &unused));
         assert(!JS_HasException(ctx));
         assert(4 == cc[JS_PROMISE_HOOK_INIT]);
-        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
-        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(1 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(1 == cc[JS_PROMISE_HOOK_AFTER]);
         assert(4 == cc[JS_PROMISE_HOOK_RESOLVE]);
         assert(!JS_IsJobPending(rt));
         v = JS_GetPropertyStr(ctx, global_object, "count");
@@ -901,6 +901,209 @@ static void promise_hook(void)
     JS_FreeValue(ctx, global_object);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
+}
+
+typedef struct {
+    JSValue active[8];
+    JSValue promises[32];
+    JSValue parents[32];
+    JSValue last_await;
+    int depth, before, after, checks, parent_count;
+} PromiseReactionHookState;
+
+static void promise_reaction_hook_cb(JSContext *ctx, JSPromiseHookType type,
+                                     JSValueConst promise,
+                                     JSValueConst parent_promise, void *opaque)
+{
+    PromiseReactionHookState *s = opaque;
+
+    assert(JS_IsPromise(promise));
+    if (type == JS_PROMISE_HOOK_INIT && !JS_IsUndefined(parent_promise)) {
+        assert(s->parent_count < countof(s->promises));
+        s->promises[s->parent_count] = JS_DupValue(ctx, promise);
+        s->parents[s->parent_count++] = JS_DupValue(ctx, parent_promise);
+    } else if (type == JS_PROMISE_HOOK_BEFORE) {
+        assert(JS_IsUndefined(parent_promise));
+        assert(s->depth < countof(s->active));
+        s->active[s->depth++] = JS_DupValue(ctx, promise);
+        s->before++;
+    } else if (type == JS_PROMISE_HOOK_AFTER) {
+        assert(JS_IsUndefined(parent_promise));
+        assert(s->depth > 0);
+        assert(JS_IsSameValue(ctx, s->active[s->depth - 1], promise));
+        JS_FreeValue(ctx, s->active[--s->depth]);
+        s->after++;
+    }
+}
+
+static JSValue promise_reaction_hook_check(JSContext *ctx, JSValueConst this_val,
+                                           int argc, JSValueConst *argv)
+{
+    PromiseReactionHookState *s = JS_GetContextOpaque(ctx);
+    JSValueConst active;
+    int i;
+
+    assert(argc >= 1);
+    assert(s->depth > 0);
+    active = s->active[s->depth - 1];
+    if (argc == 1) {
+        assert(JS_IsSameValue(ctx, active, argv[0]));
+    } else {
+        assert(JS_ToBool(ctx, argv[1]) == 1);
+        /* An await continuation must have its own promise, even when the
+           awaited promise was created before either async function started. */
+        assert(!JS_IsSameValue(ctx, active, argv[0]));
+        assert(!JS_IsSameValue(ctx, active, s->last_await));
+        for (i = 0; i < s->parent_count; i++) {
+            if (JS_IsSameValue(ctx, s->promises[i], active))
+                break;
+        }
+        assert(i < s->parent_count);
+        assert(JS_IsSameValue(ctx, s->parents[i], argv[0]));
+        JS_FreeValue(ctx, s->last_await);
+        s->last_await = JS_DupValue(ctx, active);
+    }
+    s->checks++;
+    return JS_UNDEFINED;
+}
+
+static int promise_reaction_hook_interrupt(JSContext *ctx, void *opaque)
+{
+    PromiseReactionHookState *s = opaque;
+    return s->checks > 0;
+}
+
+static JSValue promise_reaction_hook_drain(JSContext *ctx, JSValueConst this_val,
+                                           int argc, JSValueConst *argv)
+{
+    PromiseReactionHookState *s = JS_GetContextOpaque(ctx);
+    JSContext *job_ctx;
+    JSValue active;
+
+    assert(s->depth > 0);
+    active = JS_DupValue(ctx, s->active[s->depth - 1]);
+    while (JS_IsJobPending(JS_GetRuntime(ctx)))
+        assert(JS_ExecutePendingJob(JS_GetRuntime(ctx), &job_ctx) > 0);
+    assert(s->depth > 0);
+    assert(JS_IsSameValue(ctx, active, s->active[s->depth - 1]));
+    JS_FreeValue(ctx, active);
+    return JS_UNDEFINED;
+}
+
+static JSValue promise_reaction_hook_native_then(JSContext *ctx,
+                                                 JSValueConst this_val,
+                                                 int argc, JSValueConst *argv)
+{
+    JSValue handler = eval(ctx, "() => checkHook(child)");
+    JSValue result;
+
+    assert(!JS_IsException(handler));
+    assert(argc == 1);
+    result = JS_PromiseThen(ctx, argv[0], handler, JS_UNDEFINED);
+    JS_FreeValue(ctx, handler);
+    return result;
+}
+
+static void promise_reaction_hooks(void)
+{
+    static const struct {
+        const char *code;
+        int checks;
+        bool interrupt;
+    } tests[] = {
+        {"globalThis.child = Promise.resolve().then(() => checkHook(child))", 1},
+        {"Promise.resolve(17).then()", 0},
+        {"globalThis.handled = Promise.reject('expected').then()"
+         ".catch(() => checkHook(handled))", 1},
+        {"let resolve; const source = new Promise(r => resolve = r);"
+         "globalThis.child = source.then(() => checkHook(child)); resolve()", 1},
+        {"globalThis.child = Promise.reject().catch(() => checkHook(child))", 1},
+        {"let reject; const source = new Promise((_, r) => reject = r);"
+         "globalThis.child = source.catch(() => checkHook(child)); reject()", 1},
+        {"globalThis.child = Promise.resolve().then(() => {"
+         "checkHook(child); throw Error('expected'); });"
+         "globalThis.handled = child.catch(() => checkHook(handled))", 2},
+        {"globalThis.child = Promise.resolve().finally(() => checkHook(child))", 1},
+        {"globalThis.child = nativeThen(Promise.resolve())", 1},
+        {"function Capability(executor) { executor(() => {}, () => {}) }"
+         "const source = Promise.resolve();"
+         "source.constructor = { [Symbol.species]: Capability };"
+         "source.then(() => checkHook(source))", 1},
+        {"globalThis.child = Promise.resolve().then(() => { checkHook(child);"
+         "globalThis.nested = Promise.resolve().then(() => checkHook(nested));"
+         "drainJobs(); checkHook(child) })", 3},
+        {"const source = Promise.resolve();"
+         "globalThis.task = (async () => { await source; checkHook(source, true) })()", 1},
+        {"let resolve; const source = new Promise(r => resolve = r);"
+         "globalThis.task = (async () => { await source; checkHook(source, true) })();"
+         "resolve()", 1},
+        {"const source = Promise.reject();"
+         "globalThis.task = (async () => { try { await source }"
+         "catch (_) { checkHook(source, true) } })()", 1},
+        {"const source = Promise.resolve();"
+         "globalThis.first = (async () => { await source; checkHook(source, true) })();"
+         "globalThis.second = (async () => { await source; checkHook(source, true) })()", 2},
+        {"const source = Promise.resolve();"
+         "globalThis.task = (async () => { await source; checkHook(source, true);"
+         "await source; checkHook(source, true) })()", 2},
+        {"globalThis.child = Promise.resolve().then(() => {"
+         "checkHook(child); for (;;) {} })", 1, true},
+        {"const source = Promise.resolve();"
+         "globalThis.task = (async () => { await source;"
+         "checkHook(source, true); for (;;) {} })()", 1, true},
+    };
+    size_t i;
+
+    for (i = 0; i < countof(tests); i++) {
+        PromiseReactionHookState state = { .last_await = JS_UNDEFINED };
+        JSRuntime *rt = new_runtime();
+        JSContext *ctx = JS_NewContext(rt), *job_ctx;
+        JSValue global = JS_GetGlobalObject(ctx), result;
+        int ret = 0, j;
+
+        JS_SetContextOpaque(ctx, &state);
+        JS_SetPromiseHook(rt, promise_reaction_hook_cb, &state);
+        JS_SetPropertyStr(ctx, global, "checkHook",
+                          JS_NewCFunction(ctx, promise_reaction_hook_check,
+                                          "checkHook", 1));
+        JS_SetPropertyStr(ctx, global, "drainJobs",
+                          JS_NewCFunction(ctx, promise_reaction_hook_drain,
+                                          "drainJobs", 0));
+        JS_SetPropertyStr(ctx, global, "nativeThen",
+                          JS_NewCFunction(ctx, promise_reaction_hook_native_then,
+                                          "nativeThen", 1));
+        result = eval(ctx, tests[i].code);
+        assert(!JS_IsException(result));
+        JS_FreeValue(ctx, result);
+        if (tests[i].interrupt)
+            JS_SetInterruptHandler(rt, promise_reaction_hook_interrupt, &state);
+        while (JS_IsJobPending(rt)) {
+            ret = JS_ExecutePendingJob(rt, &job_ctx);
+            if (ret < 0)
+                break;
+        }
+        if (tests[i].interrupt) {
+            assert(ret < 0);
+            result = JS_GetException(job_ctx);
+            assert(JS_IsUncatchableError(result));
+            JS_FreeValue(job_ctx, result);
+        } else {
+            assert(ret >= 0);
+            assert(!JS_HasException(ctx));
+        }
+        assert(state.checks == tests[i].checks);
+        assert(state.before > 0);
+        assert(state.before == state.after);
+        assert(state.depth == 0);
+        for (j = 0; j < state.parent_count; j++) {
+            JS_FreeValue(ctx, state.promises[j]);
+            JS_FreeValue(ctx, state.parents[j]);
+        }
+        JS_FreeValue(ctx, state.last_await);
+        JS_FreeValue(ctx, global);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
 }
 
 static void dump_memory_usage(void)
@@ -2289,6 +2492,7 @@ int main(void)
     utf16_string();
     weak_map_gc_check();
     promise_hook();
+    promise_reaction_hooks();
     dump_memory_usage();
     new_errors();
     dom_exception_added_twice();
