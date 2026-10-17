@@ -1,4 +1,4 @@
-;(function(Array, TypeError, Symbol·asyncIterator, Object·defineProperty, Symbol·iterator) {
+;(function(Array, TypeError, Symbol·asyncIterator, Object·defineProperty, Symbol·iterator, call) {
     "use strict" // result.length=i should throw if .length is not writable
     return async function fromAsync(arrayLike, mapFn=undefined, thisArg=undefined) {
         if (mapFn !== undefined && typeof mapFn !== "function") throw new TypeError("not a function")
@@ -12,18 +12,18 @@
             while (i < length) {
                 let value = arrayLike[i]
                 if (sync) value = await value
-                if (mapFn) value = await mapFn.call(thisArg, value, i)
+                if (mapFn) value = await call(thisArg, mapFn, value, i)
                 Object·defineProperty(result, i++, {value, configurable: true, writable: true, enumerable: true})
             }
         } else {
-            const iter = method.call(arrayLike)
+            const iter = call(arrayLike, method)
             result = isConstructor ? new this() : Array()
             try {
                 for (;;) {
                     let {value, done} = await iter.next()
                     if (done) break
                     if (sync) value = await value
-                    if (mapFn) value = await mapFn.call(thisArg, value, i)
+                    if (mapFn) value = await call(thisArg, mapFn, value, i)
                     Object·defineProperty(result, i++, {value, configurable: true, writable: true, enumerable: true})
                 }
             } finally {
