@@ -2273,6 +2273,236 @@ static void json_stringify_oom(void)
     JS_FreeRuntime(rt);
 }
 
+// An exotic object that forwards to exotic_target, with an immutable
+// prototype and extensibility that cannot be turned off, like an HTML
+// WindowProxy. Every hook throws while exotic_throw is set.
+static JSValue exotic_target;
+static bool exotic_throw;
+
+static JSValue exotic_get_property(JSContext *ctx, JSValueConst obj,
+                                   JSAtom atom, JSValueConst receiver)
+{
+    return JS_GetProperty(ctx, exotic_target, atom);
+}
+
+static int exotic_set_property(JSContext *ctx, JSValueConst obj, JSAtom atom,
+                               JSValueConst value, JSValueConst receiver,
+                               int flags)
+{
+    return JS_SetProperty(ctx, exotic_target, atom, JS_DupValue(ctx, value));
+}
+
+static int exotic_has_property(JSContext *ctx, JSValueConst obj, JSAtom atom)
+{
+    return JS_HasProperty(ctx, exotic_target, atom);
+}
+
+static JSValue exotic_get_prototype(JSContext *ctx, JSValueConst obj)
+{
+    if (exotic_throw)
+        return JS_ThrowRangeError(ctx, "get_prototype");
+    return JS_GetPrototype(ctx, exotic_target);
+}
+
+static int exotic_set_prototype(JSContext *ctx, JSValueConst obj,
+                                JSValueConst proto_val)
+{
+    JSValue proto;
+    int ret;
+
+    if (exotic_throw) {
+        JS_ThrowRangeError(ctx, "set_prototype");
+        return -1;
+    }
+    proto = JS_GetPrototype(ctx, exotic_target);
+    if (JS_IsException(proto))
+        return -1;
+    ret = JS_IsStrictEqual(ctx, proto, proto_val);
+    JS_FreeValue(ctx, proto);
+    return ret;
+}
+
+static int exotic_is_extensible(JSContext *ctx, JSValueConst obj)
+{
+    if (exotic_throw) {
+        JS_ThrowRangeError(ctx, "is_extensible");
+        return -1;
+    }
+    return true;
+}
+
+static int exotic_prevent_extensions(JSContext *ctx, JSValueConst obj)
+{
+    if (exotic_throw) {
+        JS_ThrowRangeError(ctx, "prevent_extensions");
+        return -1;
+    }
+    return false;
+}
+
+// each of the expressions must evaluate to true
+static void eval_checks(JSContext *ctx, const char *const *checks, size_t n)
+{
+    JSValue ret;
+    size_t i;
+
+    for (i = 0; i < n; i++) {
+        ret = eval(ctx, checks[i]);
+        assert(!JS_IsException(ret));
+        if (!JS_IsSameValue(ctx, ret, JS_TRUE)) {
+            fprintf(stderr, "failed: %s\n", checks[i]);
+            assert(0);
+        }
+        JS_FreeValue(ctx, ret);
+    }
+}
+
+static void exotic_prototype_hooks(void)
+{
+    static const char setup_code[] =
+        "globalThis.C = function C() {};\n"
+        "C.prototype = P;\n"
+        "globalThis.o = Object.create(w);\n"
+        "const { get, set } = Object.getOwnPropertyDescriptor(Object.prototype, '__proto__');\n"
+        "globalThis.getProto = (v) => get.call(v);\n"
+        "globalThis.setProto = (v, p) => set.call(v, p);\n"
+        "globalThis.throws = (f, ctor, msg) => {\n"
+        "    try { f(); } catch (e) { return e instanceof ctor && (!msg || e.message === msg); }\n"
+        "    return false;\n"
+        "};\n";
+    static const char *const checks[] = {
+        // get_prototype
+        "Object.getPrototypeOf(w) === P",
+        "Reflect.getPrototypeOf(w) === P",
+        "getProto(w) === P",
+        "P.isPrototypeOf(w)",
+        "w instanceof C",
+        "o instanceof C",
+        "o.x === 42 && w.x === 42",
+        "'x' in w && 'x' in o",
+        "Object.getPrototypeOf(new Proxy(w, {})) === P",
+        // set_prototype
+        "throws(() => Object.setPrototypeOf(w, {}), TypeError)",
+        "throws(() => setProto(w, {}), TypeError)",
+        "Reflect.setPrototypeOf(w, {}) === false",
+        "Reflect.setPrototypeOf(w, P) === true",
+        "Object.setPrototypeOf(w, P) === w",
+        "Reflect.setPrototypeOf(new Proxy(w, {}), {}) === false",
+        "throws(() => Object.setPrototypeOf(new Proxy(w, {}), {}), TypeError)",
+        "Object.getPrototypeOf(w) === P",
+        // is_extensible and prevent_extensions
+        "Object.isExtensible(w) && Reflect.isExtensible(w)",
+        "throws(() => Object.preventExtensions(w), TypeError)",
+        "Reflect.preventExtensions(w) === false",
+        "throws(() => Object.freeze(w), TypeError)",
+        "Object.isExtensible(w) && !Object.isFrozen(w)",
+        "Reflect.preventExtensions(new Proxy(w, {})) === false",
+        "Object.isExtensible(new Proxy(w, {}))",
+    };
+    static const char *const null_proto_checks[] = {
+        "Object.getPrototypeOf(w) === null",
+        "getProto(w) === null",
+        "!(w instanceof Object) && !(o instanceof Object)",
+        "!('x' in o)",
+        "Reflect.setPrototypeOf(w, null) === true",
+        "Reflect.setPrototypeOf(w, P) === false",
+    };
+    static const char *const throw_checks[] = {
+        "throws(() => Object.getPrototypeOf(w), RangeError, 'get_prototype')",
+        "throws(() => o instanceof C, RangeError, 'get_prototype')",
+        "throws(() => P.isPrototypeOf(o), RangeError, 'get_prototype')",
+        "throws(() => Reflect.setPrototypeOf(w, {}), RangeError, 'set_prototype')",
+        "throws(() => Object.setPrototypeOf(w, {}), RangeError, 'set_prototype')",
+        "throws(() => Object.isExtensible(w), RangeError, 'is_extensible')",
+        "throws(() => Reflect.preventExtensions(w), RangeError, 'prevent_extensions')",
+        "throws(() => Object.preventExtensions(w), RangeError, 'prevent_extensions')",
+    };
+    JSClassExoticMethods exotic = (JSClassExoticMethods){
+        .get_property = exotic_get_property,
+        .set_property = exotic_set_property,
+        .has_property = exotic_has_property,
+        .get_prototype = exotic_get_prototype,
+        .set_prototype = exotic_set_prototype,
+        .is_extensible = exotic_is_extensible,
+        .prevent_extensions = exotic_prevent_extensions,
+    };
+    JSClassDef def = (JSClassDef){
+        .class_name = "Exotic",
+        .exotic = &exotic,
+    };
+    JSValue global_object, proto, obj, other, ret, exception;
+    JSClassID class_id;
+    JSRuntime *rt;
+    JSContext *ctx;
+
+    rt = new_runtime();
+    class_id = 0;
+    JS_NewClassID(rt, &class_id);
+    assert(0 == JS_NewClass(rt, class_id, &def));
+    ctx = JS_NewContext(rt);
+
+    proto = JS_NewObject(ctx);
+    assert(JS_IsObject(proto));
+    assert(true == JS_SetPropertyStr(ctx, proto, "x", JS_NewInt32(ctx, 42)));
+    exotic_target = JS_NewObjectProto(ctx, proto);
+    assert(JS_IsObject(exotic_target));
+    exotic_throw = false;
+    obj = JS_NewObjectProtoClass(ctx, JS_NULL, class_id);
+    assert(JS_IsObject(obj));
+
+    global_object = JS_GetGlobalObject(ctx);
+    assert(true == JS_SetPropertyStr(ctx, global_object, "P", JS_DupValue(ctx, proto)));
+    assert(true == JS_SetPropertyStr(ctx, global_object, "w", JS_DupValue(ctx, obj)));
+    JS_FreeValue(ctx, global_object);
+    ret = eval(ctx, setup_code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+
+    eval_checks(ctx, checks, countof(checks));
+
+    // the same through the C API
+    ret = JS_GetPrototype(ctx, obj);
+    assert(JS_IsSameValue(ctx, ret, proto));
+    JS_FreeValue(ctx, ret);
+    other = JS_NewObject(ctx);
+    assert(-1 == JS_SetPrototype(ctx, obj, other));
+    exception = JS_GetException(ctx);
+    assert(JS_IsError(exception));
+    JS_FreeValue(ctx, exception);
+    JS_FreeValue(ctx, other);
+    assert(true == JS_SetPrototype(ctx, obj, proto));
+    assert(true == JS_IsExtensible(ctx, obj));
+    assert(false == JS_PreventExtensions(ctx, obj));
+    assert(true == JS_IsExtensible(ctx, obj));
+
+    // get_prototype returning null
+    assert(true == JS_SetPrototype(ctx, exotic_target, JS_NULL));
+    eval_checks(ctx, null_proto_checks, countof(null_proto_checks));
+    ret = JS_GetPrototype(ctx, obj);
+    assert(JS_IsNull(ret));
+    assert(true == JS_SetPrototype(ctx, exotic_target, proto));
+
+    // exceptions thrown by the hooks propagate
+    exotic_throw = true;
+    eval_checks(ctx, throw_checks, countof(throw_checks));
+    assert(JS_IsException(JS_GetPrototype(ctx, obj)));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+    assert(-1 == JS_SetPrototype(ctx, obj, proto));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+    assert(-1 == JS_IsExtensible(ctx, obj));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+    assert(-1 == JS_PreventExtensions(ctx, obj));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+    exotic_throw = false;
+
+    JS_FreeValue(ctx, obj);
+    JS_FreeValue(ctx, exotic_target);
+    exotic_target = JS_UNDEFINED;
+    JS_FreeValue(ctx, proto);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2316,5 +2546,6 @@ int main(void)
     private_symbols();
     new_context_low_memory();
     json_stringify_oom();
+    exotic_prototype_hooks();
     return 0;
 }
