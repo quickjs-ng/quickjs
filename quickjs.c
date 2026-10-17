@@ -42240,12 +42240,14 @@ static JSValue js_object_propertyIsEnumerable(JSContext *ctx, JSValueConst this_
     int prop_flags;
     int has_prop;
 
-    obj = JS_ToObject(ctx, this_val);
-    if (JS_IsException(obj))
-        goto exception;
     prop = JS_ValueToAtom(ctx, argv[0]);
     if (unlikely(prop == JS_ATOM_NULL))
-        goto exception;
+        return JS_EXCEPTION;
+    obj = JS_ToObject(ctx, this_val);
+    if (JS_IsException(obj)) {
+        JS_FreeAtom(ctx, prop);
+        return obj;
+    }
 
     has_prop = JS_GetOwnPropertyFlagsInternal(ctx, &prop_flags, JS_VALUE_GET_OBJ(obj), prop);
     if (has_prop < 0)
