@@ -477,6 +477,25 @@ jobs:
           cmake -B build -DQJS_BUILD_WERROR=ON -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_WASI_REACTOR=ON
           make -C build qjs_wasi
           ls -lh build/qjs.wasm
+      - name: check wasi reactor exports
+        run: |
+          exports=$(/opt/wasi-sdk/bin/llvm-nm --extern-only --defined-only --just-symbol-name build/qjs.wasm)
+          expected=(
+            # Reactor entry points
+            qjs_init qjs_init_argv qjs_get_context qjs_destroy
+            # libc allocator
+            malloc free realloc calloc
+            # Some of core JS_EXTERN API
+            JS_NewRuntime JS_FreeRuntime JS_NewContext JS_FreeContext
+            JS_Eval JS_FreeValue JS_GetException JS_ToCStringLen2
+            # Some of quickjs-libc JS_LIBC_EXTERN API
+            js_std_add_helpers js_std_init_handlers
+          )
+          missing=0
+          for sym in "${expected[@]}"; do
+            echo "$exports" | grep -qx "$sym" || { echo "missing export: $sym"; missing=1; }
+          done
+          exit $missing
 
   cygwin:
     runs-on: windows-latest
