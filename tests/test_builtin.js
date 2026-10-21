@@ -210,6 +210,36 @@ function test()
     assertThrows(TypeError, () => Object.setPrototypeOf(Object.prototype, {}));
 }
 
+function test_object_integrity_check_proxy_order()
+{
+    var log = [];
+    function logged(target) {
+        return new Proxy(target, {
+            isExtensible(t) {
+                log.push("isExtensible");
+                return Reflect.isExtensible(t);
+            },
+            ownKeys(t) {
+                log.push("ownKeys");
+                return Reflect.ownKeys(t);
+            },
+            getOwnPropertyDescriptor(t, k) {
+                log.push("getOwnPropertyDescriptor " + k);
+                return Reflect.getOwnPropertyDescriptor(t, k);
+            },
+        });
+    }
+
+    Object.isFrozen(logged({ x: 1 }));
+    assert(log.join(", "), "isExtensible", "isFrozen checks extensibility first");
+
+    log = [];
+    Object.isSealed(logged(Object.freeze({ x: 1 })));
+    assert(log.join(", "),
+           "isExtensible, ownKeys, getOwnPropertyDescriptor x",
+           "isSealed checks extensibility first");
+}
+
 function test_enum()
 {
     var a, tab;
@@ -1331,6 +1361,7 @@ function test_cur_pc()
 }
 
 test();
+test_object_integrity_check_proxy_order();
 test_function();
 test_enum();
 test_array();
