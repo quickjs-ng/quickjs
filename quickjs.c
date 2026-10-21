@@ -49502,18 +49502,19 @@ static JSValue js_regexp_get_source(JSContext *ctx, JSValueConst this_val)
         c2 = -1;
         switch (c = string_get(p, i++)) {
         case '\\':
-            if (i < n)
-                c2 = string_get(p, i++);
+            if (i < n) {
+                c2 = string_get(p, i);
+                /* the line terminator is escaped on its own below */
+                if (c2 == '\n' || c2 == '\r' || c2 == CP_LS || c2 == CP_PS)
+                    continue;
+                i++;
+            }
             break;
         case ']':
             bra = 0;
             break;
         case '[':
-            if (!bra) {
-                if (i < n && string_get(p, i) == ']')
-                    c2 = string_get(p, i++);
-                bra = 1;
-            }
+            bra = 1;
             break;
         case '\n':
             c = '\\';
@@ -49523,6 +49524,10 @@ static JSValue js_regexp_get_source(JSContext *ctx, JSValueConst this_val)
             c = '\\';
             c2 = 'r';
             break;
+        case CP_LS:
+        case CP_PS:
+            string_buffer_puts8(b, c == CP_LS ? "\\u2028" : "\\u2029");
+            continue;
         case '/':
             if (!bra) {
                 c = '\\';
