@@ -497,6 +497,32 @@ jobs:
           done
           exit $missing
 
+  cosmopolitan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: setup cosmocc
+        run: |
+          wget -nv https://github.com/jart/cosmopolitan/releases/download/4.0.2/cosmocc-4.0.2.zip -P /tmp
+          mkdir -p "$RUNNER_TEMP/cosmocc"
+          unzip -q /tmp/cosmocc-4.0.2.zip -d "$RUNNER_TEMP/cosmocc"
+          echo "$RUNNER_TEMP/cosmocc/bin" >> "$GITHUB_PATH"
+      - name: setup ape loader
+        run: |
+          sudo cp "$RUNNER_TEMP/cosmocc/bin/ape-x86_64.elf" /usr/bin/ape
+          sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
+          sudo sh -c "echo ':APE-jart:M::jartsr::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
+      - name: build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cosmocc -DCMAKE_AR="$(command -v cosmoar)"
+          cmake --build build -j$(getconf _NPROCESSORS_ONLN)
+      - name: stats
+        run: |
+          build/qjs -qd
+      - name: test
+        run: |
+          build/run-test262 -c tests.conf
+
   cygwin:
     runs-on: windows-latest
     defaults:
