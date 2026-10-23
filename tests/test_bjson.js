@@ -270,6 +270,21 @@ function bjson_test_csum()
     }
 }
 
+function bjson_test_truncated_bigint()
+{
+    var buf = bjson.write(-(2n ** 100n));
+    new DataView(buf).setUint32(1, 0xFFFFFFFF, true); // disable checksum
+    for (var n = 1; n < buf.byteLength; n++) {
+        var caught = false;
+        try {
+            bjson.read(buf, 0, n);
+        } catch (e) {
+            caught = /read after the end of the buffer/.test(e.message);
+        }
+        assert(caught);
+    }
+}
+
 function bjson_test_atom()
 {
     var o = {return:1, with:2, Map:3}; // Map tests LEB128 encoding
@@ -316,6 +331,7 @@ function bjson_test_all()
     bjson_test_fuzz();
     bjson_test_csum();
     bjson_test_atom();
+    bjson_test_truncated_bigint();
 }
 
 bjson_test_all();
