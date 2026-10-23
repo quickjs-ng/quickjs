@@ -420,6 +420,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
             -Wl,--export=free
             -Wl,--export=realloc
             -Wl,--export=calloc
+            # Enable hosts to pass callbacks to JS_SetInterruptHandler,
+            # JS_SetModuleLoaderFunc2, etc.
+            -Wl,--export-table
+            -Wl,--growable-table
         )
     endif()
 endif()
