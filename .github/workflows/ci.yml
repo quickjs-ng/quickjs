@@ -496,6 +496,13 @@ jobs:
             echo "$exports" | grep -qx "$sym" || { echo "missing export: $sym"; missing=1; }
           done
           exit $missing
+      - name: check wasi reactor table is exported and growable
+        shell: node {0}
+        run: |
+          const m = new WebAssembly.Module(require('fs').readFileSync('build/qjs.wasm'));
+          const imports = {};
+          for (const i of WebAssembly.Module.imports(m)) (imports[i.module] ??= {})[i.name] = () => {};
+          new WebAssembly.Instance(m, imports).exports.__indirect_function_table.grow(1);
 
   cygwin:
     runs-on: windows-latest
