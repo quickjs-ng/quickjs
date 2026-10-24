@@ -14720,6 +14720,26 @@ static JSValue JS_ToQuotedString(JSContext *ctx, JSValueConst val1)
     if (string_buffer_putc8(b, '\"'))
         goto fail;
     for(i = 0; i < p->len; ) {
+        /* copy each run of characters that need no escape in one call;
+           only the character that ends the run takes the slow path below */
+        if (!p->is_wide_char) {
+            const uint8_t *s8 = str8(p);
+            int start = i;
+            while (i < p->len && s8[i] >= 32 && s8[i] != '\"' && s8[i] != '\\')
+                i++;
+            if (i > start && string_buffer_write8(b, s8 + start, i - start))
+                goto fail;
+        } else {
+            const uint16_t *s16 = str16(p);
+            int start = i;
+            while (i < p->len && s16[i] >= 32 && s16[i] != '\"' && s16[i] != '\\' &&
+                   !is_surrogate(s16[i]))
+                i++;
+            if (i > start && string_buffer_write16(b, s16 + start, i - start))
+                goto fail;
+        }
+        if (i >= p->len)
+            break;
         c = string_getc(p, &i);
         switch(c) {
         case '\t':

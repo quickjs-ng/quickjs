@@ -748,6 +748,43 @@ function test_json()
     var wide = "é".repeat(600) + "è".repeat(600);
     assert(JSON.stringify({x:1}, null, wide),
            '{\n' + "é".repeat(10) + '"x": 1\n}');
+
+    /* string quoting: every code unit, at the start, middle and end of a
+       one-byte and of a two-byte string, as a value and as a key, against
+       QuoteJSONString written without JSON */
+    function quote(s) {
+        var o = '"', i, c, d;
+        for (i = 0; i < s.length; i++) {
+            c = s.charCodeAt(i);
+            if (c == 0x22) o += '\\"';
+            else if (c == 0x5c) o += '\\\\';
+            else if (c == 0x08) o += '\\b';
+            else if (c == 0x0c) o += '\\f';
+            else if (c == 0x0a) o += '\\n';
+            else if (c == 0x0d) o += '\\r';
+            else if (c == 0x09) o += '\\t';
+            else if (c < 0x20) o += '\\u' + c.toString(16).padStart(4, '0');
+            else if (c >= 0xd800 && c <= 0xdbff) {
+                d = i + 1 < s.length ? s.charCodeAt(i + 1) : -1;
+                if (d >= 0xdc00 && d <= 0xdfff) { o += s[i] + s[i + 1]; i++; }
+                else o += '\\u' + c.toString(16);
+            } else if (c >= 0xdc00 && c <= 0xdfff) o += '\\u' + c.toString(16);
+            else o += s[i];
+        }
+        return o + '"';
+    }
+    var c, ch, k;
+    for (c = 0; c < 0x10000; c++) {
+        ch = String.fromCharCode(c);
+        for (s of [ch, "ab" + ch + "cd" + ch, ch + "\u0100" + ch + "x", "\u0100xyz" + ch]) {
+            k = quote(s);
+            assert(JSON.stringify(s), k);
+            assert(JSON.stringify({[s]: 0}), "{" + k + ":0}");
+        }
+    }
+    assert(JSON.stringify("\ud83d\ude00\ude00\ud83d"), '"\ud83d\ude00\\ude00\\ud83d"');
+    s = "x".repeat(5000) + '"' + "é".repeat(5000) + "\n" + "\u4e2d".repeat(5000);
+    assert(JSON.stringify(s), quote(s));
 }
 
 function test_date()
