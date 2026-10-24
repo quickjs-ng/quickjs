@@ -1,23 +1,14 @@
-import { assert } from "./assert.js";
+import { assert, assertThrows } from "./assert.js";
 
 /* Array.prototype.sort writes every sorted value back with Set(..., true),
    even ones that are already in place. */
 
-function throwsTypeError(f) {
-    try {
-        f();
-    } catch (e) {
-        return e instanceof TypeError;
-    }
-    return false;
-}
-
 /* a String's indices are read-only */
-assert(throwsTypeError(() => Array.prototype.sort.call("aa")), true);
-assert(throwsTypeError(() => Array.prototype.sort.call("ab")), true);
+assertThrows(TypeError, () => Array.prototype.sort.call("aa"));
+assertThrows(TypeError, () => Array.prototype.sort.call("ab"));
 
 /* so are a frozen array's, even when it is already sorted */
-assert(throwsTypeError(() => Object.freeze([1, 2]).sort()), true);
+assertThrows(TypeError, () => Object.freeze([1, 2]).sort());
 
 /* setters see every write */
 {
