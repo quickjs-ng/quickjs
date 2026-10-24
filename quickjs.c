@@ -35636,7 +35636,7 @@ static bool code_has_label(CodeContext *s, int pos, int label)
  */
 static int find_jump_target(JSFunctionDef *s, int label, int *pop)
 {
-    int i, pos, op;
+    int i, pos, op, label0 = label;
 
     update_label(s, label, -1);
     for (i = 0; i < 10; i++) {
@@ -35664,7 +35664,11 @@ static int find_jump_target(JSFunctionDef *s, int label, int *pop)
             break;
         }
     }
-    /* cycle detected, could issue a warning */
+    /* no real opcode within 10 hops: a jump cycle or a chain too long
+       to follow, could issue a warning. Keep the original target: the
+       label reached after the last hop may already have been skipped
+       as dead code and would then never be defined. */
+    label = label0;
  done:
     *pop = op;
     update_label(s, label, +1);
