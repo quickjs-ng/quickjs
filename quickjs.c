@@ -31686,6 +31686,35 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
     return -1;
 }
 
+/* Release the variable references taken by a failed link of 'm', so
+   that linking it again does not leak them. */
+static void js_reset_module_var_refs(JSContext *ctx, JSModuleDef *m)
+{
+    JSVarRef **var_refs;
+    JSObject *p;
+    int i;
+
+    if (m->init_func != NULL)
+        return; /* the exports of a C module are not set by linking */
+    p = JS_VALUE_GET_OBJ(m->func_obj);
+    var_refs = p->u.func.var_refs;
+    for(i = 0; i < m->import_entries_count; i++) {
+        JSImportEntry *mi = &m->import_entries[i];
+        /* a namespace import is a variable of the module itself */
+        if (mi->import_name != JS_ATOM__star_) {
+            free_var_ref(ctx->rt, var_refs[mi->var_idx]);
+            var_refs[mi->var_idx] = NULL;
+        }
+    }
+    for(i = 0; i < m->export_entries_count; i++) {
+        JSExportEntry *me = &m->export_entries[i];
+        if (me->export_type == JS_EXPORT_TYPE_LOCAL) {
+            free_var_ref(ctx->rt, me->u.local.var_ref);
+            me->u.local.var_ref = NULL;
+        }
+    }
+}
+
 /* Prepare a module to be executed by resolving all the imported
    variables. */
 static int js_link_module(JSContext *ctx, JSModuleDef *m)
@@ -31708,6 +31737,7 @@ static int js_link_module(JSContext *ctx, JSModuleDef *m)
             m1 = stack_top;
             assert(m1->status == JS_MODULE_STATUS_LINKING);
             m1->status = JS_MODULE_STATUS_UNLINKED;
+            js_reset_module_var_refs(ctx, m1);
             stack_top = m1->stack_prev;
         }
         return -1;
