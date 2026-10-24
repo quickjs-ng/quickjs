@@ -17,10 +17,14 @@
             }
         } else {
             const iter = method.call(arrayLike)
+            const next = iter.next
             result = isConstructor ? new this() : Array()
             try {
                 for (;;) {
-                    let {value, done} = await iter.next()
+                    const res = await next.call(iter)
+                    if (typeof res !== "object" && typeof res !== "function" || res === null)
+                        throw new TypeError("iterator result is not an object")
+                    let {value, done} = res
                     if (done) break
                     if (sync) value = await value
                     if (mapFn) value = await mapFn.call(thisArg, value, i)
