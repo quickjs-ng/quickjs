@@ -52647,30 +52647,27 @@ static int js_proxy_define_own_property(JSContext *ctx, JSValueConst obj,
                     goto fail1;
                 }
             }
-        } else if (flags & JS_PROP_HAS_VALUE) {
-            if ((desc.flags & (JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE)) ==
-                JS_PROP_WRITABLE && !(flags & JS_PROP_WRITABLE)) {
-                /* missing-proxy-check feature */
-                goto fail1;
-            } else if ((desc.flags & (JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE)) == 0 &&
+        } else {
+            if ((flags & JS_PROP_HAS_VALUE) &&
+                (desc.flags & (JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE)) == 0 &&
                 !js_same_value(ctx, val, desc.value)) {
                 goto fail1;
             }
-        }
-        if (flags & JS_PROP_HAS_WRITABLE) {
-            if ((desc.flags & (JS_PROP_GETSET | JS_PROP_CONFIGURABLE |
-                               JS_PROP_WRITABLE)) == JS_PROP_WRITABLE) {
-                /* proxy-missing-checks */
-            fail1:
-                js_free_desc(ctx, &desc);
-            fail:
-                JS_ThrowTypeError(ctx, "proxy: inconsistent defineProperty");
-                return -1;
+            if ((desc.flags & (JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE)) ==
+                    JS_PROP_WRITABLE &&
+                (flags & JS_PROP_HAS_WRITABLE) &&
+                !(flags & JS_PROP_WRITABLE)) {
+                goto fail1;
             }
         }
         js_free_desc(ctx, &desc);
     }
     return 1;
+ fail1:
+    js_free_desc(ctx, &desc);
+ fail:
+    JS_ThrowTypeError(ctx, "proxy: inconsistent defineProperty");
+    return -1;
 }
 
 static int js_proxy_delete_property(JSContext *ctx, JSValueConst obj,
