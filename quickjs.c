@@ -1448,6 +1448,7 @@ static JSValue js_typed_array_constructor_ta(JSContext *ctx,
                                              JSValueConst src_obj,
                                              int classid, uint32_t len);
 static bool is_typed_array(JSClassID class_id);
+static bool is_typed_array_bigint(JSClassID class_id);
 static bool typed_array_is_immutable(JSObject *p);
 static bool typed_array_is_oob(JSObject *p);
 static uint32_t typed_array_length(JSObject *p);
@@ -59825,6 +59826,11 @@ static bool is_typed_array(JSClassID class_id)
     return class_id >= JS_CLASS_UINT8C_ARRAY && class_id <= JS_CLASS_FLOAT64_ARRAY;
 }
 
+static bool is_typed_array_bigint(JSClassID class_id)
+{
+    return class_id == JS_CLASS_BIG_INT64_ARRAY || class_id == JS_CLASS_BIG_UINT64_ARRAY;
+}
+
 // |p| must be a typed array, *not* a DataView
 static bool typed_array_is_immutable(JSObject *p)
 {
@@ -60314,12 +60320,14 @@ static JSValue js_typed_array___speciesCreate(JSContext *ctx,
     JSValueConst obj;
     JSObject *p;
     JSValue ctor, ret;
+    JSClassID exemplar_class_id;
 
     assert(argc > 0);
     obj = argv[0];
     p = get_typed_array(ctx, obj);
     if (!p)
         return JS_EXCEPTION;
+    exemplar_class_id = p->class_id;
     ctor = JS_SpeciesConstructor(ctx, obj, JS_UNDEFINED);
     if (JS_IsException(ctor))
         return ctor;
@@ -60327,10 +60335,17 @@ static JSValue js_typed_array___speciesCreate(JSContext *ctx,
     argv++;
     if (JS_IsUndefined(ctor)) {
         ret = js_typed_array_constructor(ctx, JS_UNDEFINED, argc, argv,
-                                         p->class_id);
+                                         exemplar_class_id);
     } else {
         ret = js_typed_array_create(ctx, ctor, argc, argv, require_mutable);
         JS_FreeValue(ctx, ctor);
+        if (JS_IsException(ret))
+            return ret;
+        if (is_typed_array_bigint(JS_VALUE_GET_OBJ(ret)->class_id) !=
+            is_typed_array_bigint(exemplar_class_id)) {
+            JS_FreeValue(ctx, ret);
+            return JS_ThrowTypeError(ctx, "Cannot mix BigInt and other types, use explicit conversions");
+        }
     }
     return ret;
 }
@@ -61796,10 +61811,8 @@ static JSValue js_typed_array_constructor_ta(JSContext *ctx,
         JS_ThrowTypeErrorArrayBufferOOB(ctx);
         goto fail;
     }
-    bool src_is_bigint = p->class_id == JS_CLASS_BIG_INT64_ARRAY ||
-                         p->class_id == JS_CLASS_BIG_UINT64_ARRAY;
-    bool dst_is_bigint = classid == JS_CLASS_BIG_INT64_ARRAY ||
-                         classid == JS_CLASS_BIG_UINT64_ARRAY;
+    bool src_is_bigint = is_typed_array_bigint(p->class_id);
+    bool dst_is_bigint = is_typed_array_bigint(classid);
     if (src_is_bigint != dst_is_bigint) {
         JS_ThrowTypeError(ctx, "Cannot mix BigInt and other types, use explicit conversions");
         goto fail;
