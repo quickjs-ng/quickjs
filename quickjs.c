@@ -41245,38 +41245,64 @@ static __exception int JS_ObjectDefineProperties(JSContext *ctx,
     JSValue props, desc;
     JSObject *p;
     JSPropertyEnum *atoms;
-    uint32_t len, i;
-    int ret = -1;
+    struct {
+        JSAtom atom; /* owned by atoms */
+        JSPropertyDescriptor desc;
+    } *tab;
+    uint32_t len, i, count;
+    int ret = -1, res, desc_flags;
 
     if (!JS_IsObject(obj)) {
         JS_ThrowTypeError(ctx, "Object.defineProperties called on non-object");
         return -1;
     }
-    desc = JS_UNDEFINED;
     props = JS_ToObject(ctx, properties);
     if (JS_IsException(props))
         return -1;
     p = JS_VALUE_GET_OBJ(props);
-    if (JS_GetOwnPropertyNamesInternal(ctx, &atoms, &len, p, JS_GPN_ENUM_ONLY | JS_GPN_STRING_MASK | JS_GPN_SYMBOL_MASK) < 0)
+    tab = NULL;
+    count = 0;
+    if (JS_GetOwnPropertyNamesInternal(ctx, &atoms, &len, p, JS_GPN_STRING_MASK | JS_GPN_SYMBOL_MASK) < 0)
         goto exception;
-    // XXX: ECMA specifies that all descriptions should be validated before
-    //      modifying the object. This would require allocating an array
-    //      JSPropertyDescriptor and use 2 separate loops.
+    if (len > 0) {
+        tab = js_malloc(ctx, sizeof(tab[0]) * len);
+        if (!tab)
+            goto exception;
+    }
+    /* ECMA-262 ObjectDefineProperties: look up each key and read its
+       descriptor before the next key, and define the properties only
+       once all the descriptors are valid. */
     for(i = 0; i < len; i++) {
-        JS_FreeValue(ctx, desc);
+        res = JS_GetOwnPropertyFlagsInternal(ctx, &desc_flags, p, atoms[i].atom);
+        if (res < 0)
+            goto exception;
+        if (!res || !(desc_flags & JS_PROP_ENUMERABLE))
+            continue;
         desc = JS_GetProperty(ctx, props, atoms[i].atom);
         if (JS_IsException(desc))
             goto exception;
-        if (JS_DefinePropertyDesc(ctx, obj, atoms[i].atom, desc,
-                                  JS_PROP_THROW | JS_PROP_DEFINE_PROPERTY) < 0)
+        res = js_obj_to_desc(ctx, &tab[count].desc, desc);
+        JS_FreeValue(ctx, desc);
+        if (res < 0)
+            goto exception;
+        tab[count].atom = atoms[i].atom;
+        count++;
+    }
+    for(i = 0; i < count; i++) {
+        if (JS_DefineProperty(ctx, obj, tab[i].atom, tab[i].desc.value,
+                              tab[i].desc.getter, tab[i].desc.setter,
+                              tab[i].desc.flags | JS_PROP_THROW |
+                              JS_PROP_DEFINE_PROPERTY) < 0)
             goto exception;
     }
     ret = 0;
 
 exception:
+    for(i = 0; i < count; i++)
+        js_free_desc(ctx, &tab[i].desc);
+    js_free(ctx, tab);
     js_free_prop_enum(ctx, atoms, len);
     JS_FreeValue(ctx, props);
-    JS_FreeValue(ctx, desc);
     return ret;
 }
 
