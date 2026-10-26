@@ -4950,6 +4950,7 @@ const char *JS_ToCStringLen2(JSContext *ctx, size_t *plen, JSValueConst val1,
         *plen = str_new->len;
     return (const char *)str8(str_new);
 fail:
+    JS_FreeValue(ctx, val);
     if (plen)
         *plen = 0;
     return NULL;

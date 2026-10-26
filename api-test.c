@@ -1281,6 +1281,45 @@ static void slice_string_tocstring(void)
     JS_FreeRuntime(rt);
 }
 
+static void to_cstring_oom(void)
+{
+    /* JS_ToCString must not keep the string alive when it cannot allocate the
+       UTF-8 copy. Each of these needs a buffer of its own for the copy: a
+       one-byte string with a character above 0x7f, a wide string, and a slice
+       (which shares the bytes of its parent). */
+    static const char *sources[] = {
+        "'\\u00e9'.repeat(1024 * 1024)",
+        "'\\u20ac'.repeat(1024 * 1024)",
+        "'x'.repeat(2 * 1024 * 1024).slice(1)",
+    };
+    JSMemoryUsage before, held, after;
+    JSValue str, exception;
+    JSRuntime *rt;
+    JSContext *ctx;
+    const char *cstr;
+    size_t i;
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    JS_ComputeMemoryUsage(rt, &before);
+    for (i = 0; i < countof(sources); i++) {
+        str = eval(ctx, sources[i]);
+        assert(JS_IsString(str));
+        JS_ComputeMemoryUsage(rt, &held);
+        JS_SetMemoryLimit(rt, (size_t)held.malloc_size + 64 * 1024);
+        cstr = JS_ToCString(ctx, str);
+        JS_SetMemoryLimit(rt, 0);
+        assert(cstr == NULL);
+        exception = JS_GetException(ctx);
+        JS_FreeValue(ctx, exception);
+        JS_FreeValue(ctx, str);
+        JS_ComputeMemoryUsage(rt, &after);
+        assert(after.malloc_size - before.malloc_size < 64 * 1024);
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void immutable_array_buffer(void)
 {
     JSValue obj, ret;
@@ -2298,6 +2337,7 @@ int main(void)
     proxy_own_keys_huge_length();
     global_object_prototype();
     slice_string_tocstring();
+    to_cstring_oom();
     immutable_array_buffer();
     shared_array_buffer_growth();
     get_uint8array();
