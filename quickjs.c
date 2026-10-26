@@ -47551,23 +47551,19 @@ static JSValue js_string_match(JSContext *ctx, JSValueConst this_val,
 {
     // match(rx), search(rx), matchAll(rx)
     // atom is JS_ATOM_Symbol_match, JS_ATOM_Symbol_search, or JS_ATOM_Symbol_matchAll
-    JSValueConst O = this_val, regexp = argv[0], args[2];
-    JSValue matcher, S, rx, result, str;
-    int args_len;
+    JSValueConst O = this_val, regexp = argv[0];
+    JSValue matcher, S, rx, result, pattern, flags, bc;
 
     if (JS_IsUndefined(O) || JS_IsNull(O))
         return JS_ThrowTypeError(ctx, "cannot convert to object");
 
     if (JS_IsObject(regexp)) {
+        if (atom == JS_ATOM_Symbol_matchAll &&
+            check_regexp_g_flag(ctx, regexp) < 0)
+            return JS_EXCEPTION;
         matcher = JS_GetProperty(ctx, regexp, atom);
         if (JS_IsException(matcher))
             return JS_EXCEPTION;
-        if (atom == JS_ATOM_Symbol_matchAll) {
-            if (check_regexp_g_flag(ctx, regexp) < 0) {
-                JS_FreeValue(ctx, matcher);
-                return JS_EXCEPTION;
-            }
-        }
         if (!JS_IsUndefined(matcher) && !JS_IsNull(matcher)) {
             return JS_CallFree(ctx, matcher, regexp, 1, &O);
         }
@@ -47575,25 +47571,32 @@ static JSValue js_string_match(JSContext *ctx, JSValueConst this_val,
     S = JS_ToString(ctx, O);
     if (JS_IsException(S))
         return JS_EXCEPTION;
-    args_len = 1;
-    args[0] = regexp;
-    str = JS_UNDEFINED;
+    /* RegExpCreate converts the pattern without consulting Symbol.match. */
+    pattern = JS_IsUndefined(regexp) ? js_empty_string(ctx->rt) :
+        JS_ToString(ctx, regexp);
+    if (JS_IsException(pattern))
+        goto fail;
+    flags = JS_UNDEFINED;
     if (atom == JS_ATOM_Symbol_matchAll) {
-        str = js_new_string8(ctx, "g");
-        if (JS_IsException(str))
-            goto fail;
-        args[args_len++] = str;
+        flags = js_new_string8(ctx, "g");
+        if (JS_IsException(flags))
+            goto fail_pattern;
     }
-    rx = JS_CallConstructor(ctx, ctx->regexp_ctor, args_len, args);
-    JS_FreeValue(ctx, str);
-    if (JS_IsException(rx)) {
-    fail:
-        JS_FreeValue(ctx, S);
-        return JS_EXCEPTION;
-    }
+    bc = js_compile_regexp(ctx, pattern, flags);
+    JS_FreeValue(ctx, flags);
+    if (JS_IsException(bc))
+        goto fail_pattern;
+    rx = js_regexp_constructor_internal(ctx, JS_UNDEFINED, pattern, bc);
+    if (JS_IsException(rx))
+        goto fail;
     result = JS_InvokeFree(ctx, rx, atom, 1, vc(&S));
     JS_FreeValue(ctx, S);
     return result;
+ fail_pattern:
+    JS_FreeValue(ctx, pattern);
+ fail:
+    JS_FreeValue(ctx, S);
+    return JS_EXCEPTION;
 }
 
 static JSValue js_string___GetSubstitution(JSContext *ctx, JSValueConst this_val,
