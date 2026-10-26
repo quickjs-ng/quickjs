@@ -50988,7 +50988,7 @@ static JSONParseRecord *json_parse_record_find(JSONParseRecord *pr, JSAtom key)
     uint32_t h, i;
 
     if (po->hash_size == 0) {
-        for(i = 0; i < po->count; i++) {
+        for(i = po->count; i-- > 0;) {
             if (po->entries[i].atom == key)
                 return &po->entries[i].parse_record;
         }
