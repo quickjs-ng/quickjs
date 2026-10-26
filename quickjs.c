@@ -57836,8 +57836,6 @@ static bool string_get_milliseconds(const uint8_t *sp, int *pp, int *pval) {
             ms += (c - '0') * mul;
             mul /= 10;
             p++;
-            if (p - p_start == 9)
-                break;
         }
         if (p > p_start) {
             /* only consume the separator if digits are present */
@@ -58073,6 +58071,11 @@ static bool js_date_parse_otherstring(const uint8_t *sp,
                 if (sp[p] != '\0' && sp[p] != ' ')
                     return false;
                 has_time = true;
+                /* a UTC offset can follow the time directly, as in
+                   "2000-01-01 10:00:00-05:00": parse it in the next
+                   iteration instead of skipping its sign as a separator */
+                if (sp[p] == '+' || sp[p] == '-')
+                    continue;
             } else {
                 if (p - p_start > 2) {
                     fields[0] = val;
