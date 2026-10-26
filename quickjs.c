@@ -17345,14 +17345,19 @@ static __exception int js_append_enumerate(JSContext *ctx, JSValue *sp)
     iterator = JS_GetProperty(ctx, sp[-1], JS_ATOM_Symbol_iterator);
     if (JS_IsException(iterator))
         return -1;
+    if (!JS_IsFunction(ctx, iterator)) {
+        JS_FreeValue(ctx, iterator);
+        JS_ThrowTypeError(ctx, "value is not iterable");
+        return -1;
+    }
     /* Used to squelch a -Wcast-function-type warning. */
     JSCFunctionType ft = { .generic_magic = js_create_array_iterator };
     is_array_iterator = JS_IsCFunction(ctx, iterator,
                                        ft.generic,
                                        JS_ITERATOR_KIND_VALUE);
-    JS_FreeValue(ctx, iterator);
 
-    enumobj = JS_GetIterator(ctx, sp[-1], false);
+    enumobj = JS_GetIterator2(ctx, sp[-1], iterator);
+    JS_FreeValue(ctx, iterator);
     if (JS_IsException(enumobj))
         return -1;
     method = JS_GetProperty(ctx, enumobj, JS_ATOM_next);
