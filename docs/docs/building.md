@@ -47,6 +47,22 @@ Download quickjs-amalgam.zip from [Releases](https://github.com/quickjs-ng/quick
 To enable the std, os and bjson modules, compile quickjs-amalgam.c with
 `-DQJS_BUILD_LIBC`.
 
+## Cosmopolitan builds
+
+[Cosmopolitan](https://github.com/jart/cosmopolitan) builds produce a single
+`qjs` and `qjsc` binary that runs on Linux, macOS, Windows, FreeBSD, OpenBSD
+and NetBSD, on both x86_64 and arm64. They are built from the amalgamation.
+
+With [cosmocc](https://github.com/jart/cosmopolitan/releases) installed:
+
+```bash
+make -f Makefile.cosmo COSMOCC=/path/to/cosmocc/bin/cosmocc
+```
+
+The binaries are written to `build/cosmo/`. On Windows, rename them to have a
+`.exe` extension. Prebuilt `qjs-cosmo` and `qjsc-cosmo` binaries are available
+from [Releases](https://github.com/quickjs-ng/quickjs/releases).
+
 ## Debug builds
 
 ```bash

@@ -1,0 +1,36 @@
+name: setup-cosmocc
+description: Install the Cosmopolitan toolchain (cosmocc) on Linux and export COSMOCC
+
+inputs:
+  version:
+    description: cosmocc release version
+    default: "4.0.2"
+  sha256:
+    description: SHA-256 of cosmocc-<version>.zip
+    default: "85b8c37a406d862e656ad4ec14be9f6ce474c1b436b9615e91a55208aced3f44"
+
+runs:
+  using: composite
+  steps:
+    - name: install cosmocc
+      shell: bash
+      env:
+        COSMOCC_VERSION: ${{ inputs.version }}
+        COSMOCC_SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/cosmocc"
+        zip="$RUNNER_TEMP/cosmocc.zip"
+        curl -fsSL -o "$zip" "https://github.com/jart/cosmopolitan/releases/download/${COSMOCC_VERSION}/cosmocc-${COSMOCC_VERSION}.zip"
+        echo "${COSMOCC_SHA256}  $zip" | sha256sum -c -
+        unzip -q -d "$dir" "$zip"
+        rm "$zip"
+        # Run Actually Portable Executables through the APE loader so they
+        # can't be picked up by some other binfmt handler for "MZ" binaries.
+        sudo install -m 755 "$dir/bin/ape-$(uname -m).elf" /usr/bin/ape
+        if [ ! -e /proc/sys/fs/binfmt_misc/APE ]; then
+          sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
+          sudo sh -c "echo ':APE-jart:M::jartsr::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
+        fi
+        # cosmocc's bin/ ships its own make, etc. so don't add it to PATH.
+        echo "COSMOCC=$dir/bin/cosmocc" >> "$GITHUB_ENV"

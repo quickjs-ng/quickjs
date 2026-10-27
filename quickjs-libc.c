@@ -66,6 +66,10 @@
 #include <grp.h>
 #endif
 
+#if defined(__COSMOPOLITAN__)
+#include <cosmo.h>
+#endif
+
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
 #include <crt_externs.h>
@@ -4387,7 +4391,9 @@ void js_std_set_worker_new_context_func(JSContext *(*func)(JSRuntime *rt))
 #endif
 }
 
-#if defined(_WIN32)
+#if defined(__COSMOPOLITAN__)
+#define OS_PLATFORM "unknown" // determined at runtime, see js_os_init
+#elif defined(_WIN32)
 #define OS_PLATFORM "win32"
 #elif defined(__APPLE__)
 #define OS_PLATFORM "darwin"
@@ -4544,7 +4550,31 @@ static int js_os_init(JSContext *ctx, JSModuleDef *m)
     }
 #endif /* USE_WORKER */
 
-    return JS_SetModuleExportList(ctx, m, js_os_funcs, countof(js_os_funcs));
+    if (JS_SetModuleExportList(ctx, m, js_os_funcs, countof(js_os_funcs)))
+        return -1;
+
+#if defined(__COSMOPOLITAN__)
+    {
+        // Actually Portable Executables run on many OSes, so check at runtime.
+        const char *platform = "unknown";
+        if (IsLinux())
+            platform = "linux";
+        else if (IsXnu())
+            platform = "darwin";
+        else if (IsWindows())
+            platform = "win32";
+        else if (IsFreebsd())
+            platform = "freebsd";
+        else if (IsOpenbsd())
+            platform = "openbsd";
+        else if (IsNetbsd())
+            platform = "netbsd";
+        if (JS_SetModuleExport(ctx, m, "platform", JS_NewString(ctx, platform)))
+            return -1;
+    }
+#endif
+
+    return 0;
 }
 
 JSModuleDef *js_init_module_os(JSContext *ctx, const char *module_name)

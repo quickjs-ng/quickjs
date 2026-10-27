@@ -663,6 +663,78 @@ jobs:
         run: |
           make test RUN262="$RUNNER_TEMP/run-test262"
 
+  cosmopolitan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-cosmocc
+      - name: build
+        run: |
+          make -f Makefile.cosmo -j$(getconf _NPROCESSORS_ONLN)
+      - name: test
+        run: |
+          make -f Makefile.cosmo test
+      - name: smoke test
+        run: |
+          ./build/cosmo/qjs -e 'console.log("hello from", navigator.userAgent)'
+          ./build/cosmo/qjsc -e -o "$RUNNER_TEMP/hello.c" examples/hello.js
+          grep -q qjsc_hello "$RUNNER_TEMP/hello.c"
+      - name: collect artifacts
+        run: |
+          mkdir dist
+          cp build/cosmo/qjs build/cosmo/qjsc build/cosmo/run-test262 dist
+          # The APE loader is needed to register the binfmt handler on Linux.
+          cp "$RUNNER_TEMP"/cosmocc/bin/ape-*.elf dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qjs-cosmo-ci
+          path: dist
+          retention-days: 1
+
+  # Run the binaries built above on other OSes and architectures.
+  cosmopolitan-portability:
+    needs: cosmopolitan
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: qjs-cosmo-ci
+          path: ${{ runner.temp }}/cosmo
+      - name: setup
+        run: |
+          cd "$RUNNER_TEMP/cosmo"
+          chmod +x qjs qjsc run-test262
+          # Windows only runs executables with a known extension.
+          mv qjs qjs.exe
+          mv qjsc qjsc.exe
+          mv run-test262 run-test262.exe
+      - name: register APE loader
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo install -m 755 "$RUNNER_TEMP/cosmo/ape-$(uname -m).elf" /usr/bin/ape
+          sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
+          sudo sh -c "echo ':APE-jart:M::jartsr::/usr/bin/ape:' > /proc/sys/fs/binfmt_misc/register"
+      - name: smoke test
+        run: |
+          "$RUNNER_TEMP/cosmo/qjs.exe" -e 'console.log("hello from", navigator.userAgent)'
+          "$RUNNER_TEMP/cosmo/qjs.exe" --module -e 'import * as os from "qjs:os"; console.log(os.platform)'
+          "$RUNNER_TEMP/cosmo/qjsc.exe" -e -o hello.c examples/hello.js
+          grep -q qjsc_hello hello.c
+      - name: test
+        # The test suite assumes a POSIX or a native Windows environment, but
+        # Cosmopolitan on Windows is neither.
+        if: ${{ runner.os != 'Windows' }}
+        run: |
+          "$RUNNER_TEMP/cosmo/run-test262.exe" -c tests.conf
+
   jscheck:
     runs-on: ubuntu-latest
     steps:

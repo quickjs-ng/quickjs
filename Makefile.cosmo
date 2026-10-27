@@ -1,0 +1,76 @@
+#
+# QuickJS Javascript Engine
+#
+# Cosmopolitan (Actually Portable Executable) build, based on the amalgamation.
+#
+# Usage:
+#
+#   make -f Makefile.cosmo
+#
+# Requires cosmocc (https://github.com/jart/cosmopolitan) in $PATH, or point
+# COSMOCC at it. The amalgamation is generated with a host qjs build (via
+# `make amalgam`) unless AMALGAM points at an existing quickjs-amalgam.zip.
+#
+# The resulting qjs and qjsc binaries run on Linux, macOS, Windows, FreeBSD,
+# OpenBSD and NetBSD, on both x86_64 and aarch64.
+#
+
+BUILD_DIR?=build
+COSMO_DIR?=$(BUILD_DIR)/cosmo
+DEFAULT_AMALGAM=$(BUILD_DIR)/quickjs-amalgam.zip
+AMALGAM?=$(DEFAULT_AMALGAM)
+
+COSMOCC?=cosmocc
+CFLAGS?=-O2
+QJS_CFLAGS=-std=gnu11 -funsigned-char -D_GNU_SOURCE -DQJS_BUILD_LIBC \
+           -Wall -Wno-implicit-fallthrough -Wno-sign-compare \
+           -Wno-missing-field-initializers -Wno-unused-parameter \
+           -Wno-unused-but-set-variable -Wno-unused-result \
+           -Wno-stringop-truncation -Wno-array-bounds
+LDLIBS=-lm
+
+SRC_DIR=$(COSMO_DIR)/src
+OBJ_DIR=$(COSMO_DIR)/obj
+
+QJS=$(COSMO_DIR)/qjs
+QJSC=$(COSMO_DIR)/qjsc
+RUN262=$(COSMO_DIR)/run-test262
+
+all: $(QJS) $(QJSC)
+
+ifeq ($(AMALGAM),$(DEFAULT_AMALGAM))
+$(AMALGAM): amalgam.js $(wildcard *.c *.h)
+	$(MAKE) BUILD_DIR=$(BUILD_DIR) amalgam
+endif
+
+$(SRC_DIR)/quickjs-amalgam.c: $(AMALGAM)
+	@mkdir -p $(SRC_DIR)
+	unzip -o -d $(SRC_DIR) $(AMALGAM)
+	@touch $@
+
+# The amalgamation provides the engine and libc; the frontends come from the
+# source tree (they need cutils.h and the generated gen/*.c files).
+$(OBJ_DIR)/quickjs-amalgam.o: $(SRC_DIR)/quickjs-amalgam.c
+	@mkdir -p $(OBJ_DIR)
+	$(COSMOCC) $(CFLAGS) $(QJS_CFLAGS) -I$(SRC_DIR) -c -o $@ $<
+
+$(OBJ_DIR)/%.o: %.c $(SRC_DIR)/quickjs-amalgam.c
+	@mkdir -p $(dir $@)
+	$(COSMOCC) $(CFLAGS) $(QJS_CFLAGS) -I$(SRC_DIR) -I. -c -o $@ $<
+
+$(QJS): $(OBJ_DIR)/qjs.o $(OBJ_DIR)/gen/repl.o $(OBJ_DIR)/gen/standalone.o $(OBJ_DIR)/quickjs-amalgam.o
+	$(COSMOCC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+$(QJSC): $(OBJ_DIR)/qjsc.o $(OBJ_DIR)/quickjs-amalgam.o
+	$(COSMOCC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+$(RUN262): $(OBJ_DIR)/run-test262.o $(OBJ_DIR)/quickjs-amalgam.o
+	$(COSMOCC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test: $(RUN262)
+	$(RUN262) -c tests.conf
+
+clean:
+	$(RM) -r $(COSMO_DIR)
+
+.PHONY: all test clean

@@ -165,8 +165,33 @@ jobs:
             build/qjs-wasi.wasm
             build/qjs-wasi-reactor.wasm
 
+  cosmo:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-cosmocc
+      - name: build
+        run: |
+          make -f Makefile.cosmo -j$(getconf _NPROCESSORS_ONLN)
+      - name: test
+        run: |
+          make -f Makefile.cosmo test
+      - name: rename
+        run: |
+          mv build/cosmo/qjs build/cosmo/qjs-cosmo
+          mv build/cosmo/qjsc build/cosmo/qjsc-cosmo
+      - name: check
+        run: |
+          file build/cosmo/qjs-cosmo build/cosmo/qjsc-cosmo
+          ./build/cosmo/qjs-cosmo -e 'console.log(navigator.userAgent)'
+      - name: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: qjs-cosmo
+          path: build/cosmo/*-cosmo
+
   upload-to-release:
-    needs: [linux, macos, windows, wasi, check_meson_version]
+    needs: [linux, macos, windows, wasi, cosmo, check_meson_version]
     runs-on: ubuntu-22.04
     steps:
       - name: get assets
