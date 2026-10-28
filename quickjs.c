@@ -23758,6 +23758,9 @@ static __exception int json_next_token(JSParseState *s)
         JS_ThrowStackOverflow(s->ctx);
         return -1;
     }
+    /* must check for timeout: the source can be arbitrarily long */
+    if (js_poll_interrupts(s->ctx))
+        return -1;
 
     json_free_token(s, &s->token);
 
@@ -43387,11 +43390,16 @@ static JSValue js_array_with(JSContext *ctx, JSValueConst this_val,
         for (i++, pval++; i < len; i++, pval++)
             *pval = js_dup(arrp[i]);
     } else {
-        for (; i < idx; i++, pval++)
+        for (; i < idx; i++, pval++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                 goto exception;
+        }
         *pval = js_dup(argv[1]);
         for (i++, pval++; i < len; i++, pval++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                 goto exception;
         }
@@ -44338,6 +44346,8 @@ static JSValue js_array_toReversed(JSContext *ctx, JSValueConst this_val,
         } else {
             // Query order is observable; test262 expects descending order.
             for (; i >= 0; i--, pval++) {
+                if (js_poll_interrupts(ctx))
+                    goto exception;
                 if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                     goto exception;
             }
@@ -44515,14 +44525,20 @@ static JSValue js_array_toSpliced(JSContext *ctx, JSValueConst this_val,
         for (i += del; i < len; i++, pval++)
             *pval = js_dup(arrp[i]);
     } else {
-        for (i = 0; i < start; i++, pval++)
+        for (i = 0; i < start; i++, pval++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                 goto exception;
+        }
         for (j = 0; j < add; j++, pval++)
             *pval = js_dup(argv[2 + j]);
-        for (i += del; i < len; i++, pval++)
+        for (i += del; i < len; i++, pval++) {
+            if (js_poll_interrupts(ctx))
+                goto exception;
             if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                 goto exception;
+        }
     }
 
     assert(pval == last);
@@ -44723,6 +44739,8 @@ static int js_array_cmp_generic(const void *a, const void *b, void *opaque) {
             cmp = (val > 0) - (val < 0);
         }
     } else {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         /* Not supposed to bypass ToString even for identical objects as
          * tested in test262/test/built-ins/Array/prototype/sort/bug_596_1.js
          */
@@ -44870,6 +44888,8 @@ static JSValue js_array_toSorted(JSContext *ctx, JSValueConst this_val,
                 *pval = js_dup(arrp[i]);
         } else {
             for (; i < len; i++, pval++) {
+                if (js_poll_interrupts(ctx))
+                    goto exception;
                 if (-1 == JS_TryGetPropertyInt64(ctx, obj, i, pval))
                     goto exception;
             }
@@ -47049,6 +47069,8 @@ static JSValue js_string_raw(JSContext *ctx, JSValueConst this_val,
         goto exception;
 
     for (i = 0; i < n; i++) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         val = JS_ToStringFree(ctx, JS_GetPropertyInt64(ctx, raw, i));
         if (JS_IsException(val))
             goto exception;
@@ -51443,6 +51465,9 @@ static JSValue js_json_rawJSON(JSContext *ctx, JSValueConst this_val,
     }
     res = js_json_parse(ctx, JS_UNDEFINED, 1, (JSValueConst *)&str);
     if (JS_IsException(res)) {
+        /* keep an interrupt from becoming a SyntaxError */
+        if (JS_IsUncatchableError(ctx->rt->current_exception))
+            goto fail;
     syntax_error:
         JS_ThrowSyntaxError(ctx, "invalid rawJSON string");
         goto fail;
@@ -51613,6 +51638,8 @@ static int js_json_to_str(JSContext *ctx, JSONStringifyContext *jsc,
                 goto exception;
             string_buffer_putc8(jsc->b, '[');
             for(i = 0; i < len; i++) {
+                if (js_poll_interrupts(ctx))
+                    goto exception;
                 if (i > 0)
                     string_buffer_putc8(jsc->b, ',');
                 string_buffer_concat_value(jsc->b, sep);
@@ -60095,6 +60122,8 @@ static JSValue js_typed_array_set_internal(JSContext *ctx,
         }
     }
     for(i = 0; i < src_len; i++) {
+        if (js_poll_interrupts(ctx))
+            goto fail;
         val = JS_GetPropertyUint32(ctx, src_obj, i);
         if (JS_IsException(val))
             goto fail;
@@ -60407,6 +60436,8 @@ static JSValue js_typed_array_from(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(r))
         goto exception;
     for(k = 0; k < len; k++) {
+        if (js_poll_interrupts(ctx))
+            goto exception;
         v = JS_GetPropertyInt64(ctx, arr, k);
         if (JS_IsException(v))
             goto exception;
@@ -60999,6 +61030,8 @@ static JSValue js_typed_array_join(JSContext *ctx, JSValueConst this_val,
 
     /* XXX: optimize with direct access */
     for(i = 0; i < len; i++) {
+        if (js_poll_interrupts(ctx))
+            goto fail;
         if (i > 0) {
             if (c >= 0) {
                 if (string_buffer_putc8(b, c))
@@ -61190,6 +61223,8 @@ static JSValue js_typed_array_slice(JSContext *ctx, JSValueConst this_val,
             space = max_int(0, p->u.array.count - start);
             count = min_int(count, space);
             for (n = 0; n < count; n++) {
+                if (js_poll_interrupts(ctx))
+                    goto exception;
                 val = JS_GetPropertyValue(ctx, this_val, js_int32(start + n));
                 if (JS_IsException(val))
                     goto exception;
@@ -61762,6 +61797,8 @@ static JSValue js_typed_array_constructor_obj(JSContext *ctx,
         goto fail;
 
     for(i = 0; i < len; i++) {
+        if (js_poll_interrupts(ctx))
+            goto fail;
         val = JS_GetPropertyUint32(ctx, arr, i);
         if (JS_IsException(val))
             goto fail;
@@ -61832,6 +61869,8 @@ static JSValue js_typed_array_constructor_ta(JSContext *ctx,
     } else {
         for(i = 0; i < len; i++) {
             JSValue val;
+            if (js_poll_interrupts(ctx))
+                goto fail;
             val = JS_GetPropertyUint32(ctx, src_obj, i);
             if (JS_IsException(val))
                 goto fail;
