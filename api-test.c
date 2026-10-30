@@ -1287,7 +1287,7 @@ static void to_cstring_oom(void)
        UTF-8 copy. Each of these needs a buffer of its own for the copy: a
        one-byte string with a character above 0x7f, a wide string, and a slice
        (which shares the bytes of its parent). */
-    static const char *sources[] = {
+    static const char *const sources[] = {
         "'\\u00e9'.repeat(1024 * 1024)",
         "'\\u20ac'.repeat(1024 * 1024)",
         "'x'.repeat(2 * 1024 * 1024).slice(1)",
@@ -1311,6 +1311,11 @@ static void to_cstring_oom(void)
         JS_SetMemoryLimit(rt, 0);
         assert(cstr == NULL);
         exception = JS_GetException(ctx);
+        assert(JS_IsError(exception));
+        cstr = JS_ToCString(ctx, exception);
+        assert(cstr);
+        assert(strstr(cstr, "out of memory"));
+        JS_FreeCString(ctx, cstr);
         JS_FreeValue(ctx, exception);
         JS_FreeValue(ctx, str);
         JS_ComputeMemoryUsage(rt, &after);
