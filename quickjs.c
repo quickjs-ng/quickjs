@@ -59726,20 +59726,20 @@ static JSValue js_array_buffer_resize(JSContext *ctx, JSValueConst this_val,
 {
     JSArrayBuffer *abuf;
     uint8_t *data;
-    int64_t len;
+    uint64_t len;
 
     abuf = JS_GetOpaque2(ctx, this_val, class_id);
     if (!abuf)
         return JS_EXCEPTION;
     if (abuf->immutable)
         return JS_ThrowTypeErrorImmutableArrayBuffer(ctx);
-    if (JS_ToInt64(ctx, &len, argv[0]))
+    if (!array_buffer_is_resizable(abuf))
+        return JS_ThrowTypeError(ctx, "array buffer is not resizable");
+    if (JS_ToIndex(ctx, &len, argv[0]))
         return JS_EXCEPTION;
     if (abuf->detached)
         return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
-    if (!array_buffer_is_resizable(abuf))
-        return JS_ThrowTypeError(ctx, "array buffer is not resizable");
-    if (len < 0 || len > abuf->max_byte_length) {
+    if (len > abuf->max_byte_length) {
     bad_length:
         return JS_ThrowRangeError(ctx, "invalid array buffer length");
     }
