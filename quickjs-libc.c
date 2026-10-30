@@ -4123,7 +4123,7 @@ static void worker_func(void *opaque)
 
     js_std_add_helpers(ctx, -1, NULL);
 
-    val = JS_LoadModule(ctx, args->basename, args->filename);
+    val = JS_LoadModule(ctx, args->basename, args->filename, JS_UNDEFINED);
     free(args->filename);
     free(args->basename);
     free(args);

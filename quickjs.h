@@ -1211,6 +1211,35 @@ typedef char *JSModuleNormalizeFunc2(JSContext *ctx,
 typedef JSModuleDef *JSModuleLoaderFunc(JSContext *ctx,
                                         const char *module_name, void *opaque);
 
+// Dynamic module loading in detail:
+//
+// 1. JS code calls `import(url, {with: /*...*/})`
+//
+// 2. If there are import attributes, JSModuleCheckSupportedImportAttributes
+//    runs synchronously (with the |opaque| passed to JS_SetModuleLoaderFunc2)
+//
+// 3. An unfulfilled promise is returned to the JS caller
+//
+// 4. A job is posted to the microtask queue that runs when something
+//    calls JS_ExecutePendingJob or js_std_await
+//
+// 5. The JSDynamicImportFunc callback is called
+//
+// 6. You, the embedder, load the resource at your convenience and eventually
+//    call JS_LoadModule(). Pass the result to JS_FinishDynamicImport().
+//
+// Step 6 means the non-dynamic module loader needs to be aware of resources
+// loaded by the dynamic module loader. How to implement that is up to you.
+//
+// Ownership of |token| passes to JSDynamicImportFunc. If you need to hold
+// on to |basename|, |filename| or |attributes|, strdup or JS_DupValue them.
+//
+// You must *always* call JS_FinishDynamicImport(), even on error, otherwise
+// the resources associated with |token| leak.
+typedef void JSDynamicImportFunc(JSContext *ctx, const char *basename,
+                                 const char *filename, JSValue token,
+                                 JSValueConst attributes, void *opaque);
+
 /* module loader with import attributes support */
 typedef JSModuleDef *JSModuleLoaderFunc2(JSContext *ctx,
                                          const char *module_name, void *opaque,
@@ -1233,9 +1262,17 @@ JS_EXTERN void JS_SetModuleLoaderFunc2(JSRuntime *rt,
                                        JSModuleCheckSupportedImportAttributes *module_check_attrs,
                                        void *opaque);
 
+JS_EXTERN void JS_SetDynamicImportFunc(JSRuntime *rt, JSDynamicImportFunc *func,
+                                       void *opaque);
+
 /* Set an attributes-aware module normalizer. Call after JS_SetModuleLoaderFunc2. */
 JS_EXTERN void JS_SetModuleNormalizeFunc2(JSRuntime *rt,
                                           JSModuleNormalizeFunc2 *module_normalize);
+
+// pass promise=JS_EXCEPTION and exception=<something> if an exception
+// occurred during module loading; pass exception=JS_UNDEFINED otherwise
+JS_EXTERN int JS_FinishDynamicImport(JSContext *ctx, JSValue token,
+                                     JSValue promise, JSValue exception);
 
 /* return the import.meta object of a module */
 JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
@@ -1295,9 +1332,9 @@ JS_EXTERN int JS_ResolveModule(JSContext *ctx, JSValueConst obj);
 
 /* only exported for os.Worker() */
 JS_EXTERN JSAtom JS_GetScriptOrModuleName(JSContext *ctx, int n_stack_levels);
-/* only exported for os.Worker() */
+/* don't call this recursively */
 JS_EXTERN JSValue JS_LoadModule(JSContext *ctx, const char *basename,
-                                const char *filename);
+                                const char *filename, JSValueConst attributes);
 
 /* C function definition */
 typedef enum JSCFunctionEnum {  /* XXX: should rename for namespace isolation */
