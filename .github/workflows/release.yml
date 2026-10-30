@@ -145,8 +145,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: setup wasi-sdk
         run: |
-          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-x86_64-linux.deb -P /tmp
-          sudo apt install /tmp/wasi-sdk*.deb
+          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-x86_64-linux.deb -P "$RUNNER_TEMP"
+          sudo apt install "$RUNNER_TEMP/wasi-sdk-29.0-x86_64-linux.deb"
       - name: build
         run: |
           cmake -B build -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake -DQJS_BUILD_WERROR=ON
@@ -171,9 +171,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: setup cosmocc
         run: |
-          wget -nv https://github.com/jart/cosmopolitan/releases/download/4.0.2/cosmocc-4.0.2.zip -P /tmp
+          wget -nv https://github.com/jart/cosmopolitan/releases/download/4.0.2/cosmocc-4.0.2.zip -P "$RUNNER_TEMP"
           mkdir -p "$RUNNER_TEMP/cosmocc"
-          unzip -q /tmp/cosmocc-4.0.2.zip -d "$RUNNER_TEMP/cosmocc"
+          unzip -q "$RUNNER_TEMP/cosmocc-4.0.2.zip" -d "$RUNNER_TEMP/cosmocc"
           echo "$RUNNER_TEMP/cosmocc/bin" >> "$GITHUB_PATH"
       - name: setup ape loader
         run: |

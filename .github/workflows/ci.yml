@@ -74,7 +74,7 @@ jobs:
       - name: install TCC
         if: ${{ matrix.config.configType == 'tcc' }}
         run: |
-          pushd /tmp
+          pushd "$RUNNER_TEMP"
           git clone https://repo.or.cz/tinycc.git
           cd tinycc
           git checkout c21576f8a32715ab439690d18184b0e02022bbbd
@@ -461,8 +461,8 @@ jobs:
       - uses: jcbhmr/setup-wasmtime@v2
       - name: setup wasi-sdk
         run: |
-          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-x86_64-linux.deb -P /tmp
-          sudo apt install /tmp/wasi-sdk*.deb
+          wget -nv https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-29/wasi-sdk-29.0-x86_64-linux.deb -P "$RUNNER_TEMP"
+          sudo apt install "$RUNNER_TEMP/wasi-sdk-29.0-x86_64-linux.deb"
       - name: test
         run: |
           cmake -B build -DQJS_BUILD_WERROR=ON -DCMAKE_TOOLCHAIN_FILE=/opt/wasi-sdk/share/cmake/wasi-sdk.cmake
@@ -510,9 +510,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: setup cosmocc
         run: |
-          wget -nv https://github.com/jart/cosmopolitan/releases/download/4.0.2/cosmocc-4.0.2.zip -P /tmp
+          wget -nv https://github.com/jart/cosmopolitan/releases/download/4.0.2/cosmocc-4.0.2.zip -P "$RUNNER_TEMP"
           mkdir -p "$RUNNER_TEMP/cosmocc"
-          unzip -q /tmp/cosmocc-4.0.2.zip -d "$RUNNER_TEMP/cosmocc"
+          unzip -q "$RUNNER_TEMP/cosmocc-4.0.2.zip" -d "$RUNNER_TEMP/cosmocc"
           echo "$RUNNER_TEMP/cosmocc/bin" >> "$GITHUB_PATH"
       - name: setup ape loader
         run: |
