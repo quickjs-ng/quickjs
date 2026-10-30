@@ -812,6 +812,13 @@ function test_date()
            '1999-12-31T23:00:00.000Z');
     assert((new Date('Sat Jan 1 2000 00:00:00 GMT+0200')).toISOString(),
            '1999-12-31T22:00:00.000Z');
+    assert(Date.parse('2000-01-01 10:00:00-05:00'), 946738800000);
+    assert(Date.parse('2000-01-01 10:00:00.250-05:00'), 946738800250);
+    assert(Date.parse('2000-01-01 10:00:00-0500'), 946738800000);
+    assert(Date.parse('2000-01-01 10:00:00-05'), 946738800000);
+    assert(Date.parse('2000-01-01 10:00:00+05:00'), 946702800000);
+    assert(Date.parse('Jan 1 2000 10:00:00-0500'), 946738800000);
+    assert(Date.parse('2000-01-01 10:00:00.123456789123+05:00'), 946702800123);
 
     /* accept U+202F "narrow no-break space" in legacy date strings */
     assert(new Date('Apr 7 2024 1:00\u202fPM GMT').toISOString(),
@@ -842,6 +849,8 @@ function test_date()
                      "2020-01-01T01:01:01.123Z");
     assert((new Date("2020-01-01T01:01:01.9999Z")).toISOString(),
                      "2020-01-01T01:01:01.999Z");
+    assert((new Date("2020-01-01T01:01:01.1234567891Z")).toISOString(),
+                     "2020-01-01T01:01:01.123Z");
 
     assert(Date.UTC(2017), 1483228800000);
     assert(Date.UTC(2017, 9), 1506816000000);
