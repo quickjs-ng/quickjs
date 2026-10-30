@@ -66,6 +66,10 @@
 #include <grp.h>
 #endif
 
+#if defined(__COSMOPOLITAN__)
+#include <cosmo.h>
+#endif
+
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
 #include <crt_externs.h>
@@ -4544,7 +4548,29 @@ static int js_os_init(JSContext *ctx, JSModuleDef *m)
     }
 #endif /* USE_WORKER */
 
-    return JS_SetModuleExportList(ctx, m, js_os_funcs, countof(js_os_funcs));
+    if (JS_SetModuleExportList(ctx, m, js_os_funcs, countof(js_os_funcs)))
+        return -1;
+
+#ifdef __COSMOPOLITAN__
+    const char *platform;
+    if (IsLinux()) {
+        platform = "linux";
+    } else if (IsNetbsd()) {
+        platform = "netbsd";
+    } else if (IsOpenbsd()) {
+        platform = "openbsd";
+    } else if (IsWindows()) {
+        platform = "win32";
+    } else if (IsXnu()) {
+        platform = "darwin";
+    } else {
+        platform = "unknown";
+    }
+    if (JS_SetModuleExport(ctx, m, "platform", JS_NewString(ctx, platform)))
+        return -1;
+#endif /* __COSMOPOLITAN__ */
+
+    return 0;
 }
 
 JSModuleDef *js_init_module_os(JSContext *ctx, const char *module_name)
