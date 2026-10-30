@@ -2273,6 +2273,177 @@ static void json_stringify_oom(void)
     JS_FreeRuntime(rt);
 }
 
+struct dynamic_import_state {
+    int import_calls;
+    int attribute_calls;
+    bool defer;
+    char *basename;
+    char *filename;
+    JSValue token;
+    JSValue attributes;
+};
+
+static JSModuleDef *dynamic_import_loader(JSContext *ctx, const char *name,
+                                          void *opaque, JSValueConst attributes)
+{
+    struct dynamic_import_state *s = opaque;
+    if (!strcmp(name, "missing")) {
+        JS_ThrowReferenceError(ctx, "no such module");
+        return NULL;
+    }
+    if (JS_IsObject(attributes)) {
+        JSValue type = JS_GetPropertyStr(ctx, attributes, "type");
+        const char *str = JS_ToCString(ctx, type);
+        assert(str);
+        assert(!strcmp(str, "x"));
+        JS_FreeCString(ctx, str);
+        JS_FreeValue(ctx, type);
+        s->attribute_calls++;
+    }
+    static const char code[] = "export const v = 42";
+    JSValue ret = JS_Eval(ctx, code, strlen(code), name,
+                          JS_EVAL_TYPE_MODULE|JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(!JS_IsException(ret));
+    JSModuleDef *m = JS_VALUE_GET_PTR(ret);
+    JS_FreeValue(ctx, ret);
+    return m;
+}
+
+static void dynamic_import_func(JSContext *ctx, const char *basename,
+                                const char *filename, JSValue token,
+                                JSValueConst attributes, void *opaque)
+{
+    struct dynamic_import_state *s = opaque;
+    s->import_calls++;
+    if (s->defer) {
+        s->basename = strdup(basename);
+        s->filename = strdup(filename);
+        assert(s->basename);
+        assert(s->filename);
+        s->token = token;
+        s->attributes = JS_DupValue(ctx, attributes);
+        return;
+    }
+    JSValue exception = JS_UNDEFINED;
+    JSValue promise = JS_LoadModule(ctx, basename, filename, attributes);
+    if (JS_IsException(promise))
+        exception = JS_GetException(ctx);
+    assert(0 == JS_FinishDynamicImport(ctx, token, promise, exception));
+}
+
+static JSRuntime *dynamic_import_runtime(struct dynamic_import_state *s)
+{
+    JSRuntime *rt = new_runtime();
+    JS_SetModuleLoaderFunc2(rt, NULL, dynamic_import_loader, NULL, s);
+    JS_SetDynamicImportFunc(rt, dynamic_import_func, s);
+    return rt;
+}
+
+static void dynamic_import_drain_jobs(JSRuntime *rt)
+{
+    JSContext *ctx;
+    while (JS_ExecutePendingJob(rt, &ctx) > 0)
+        ;
+}
+
+static void dynamic_import_assert_namespace(JSContext *ctx, JSValueConst promise)
+{
+    assert(JS_PROMISE_FULFILLED == JS_PromiseState(ctx, promise));
+    JSValue ns = JS_PromiseResult(ctx, promise);
+    JSValue v = JS_GetPropertyStr(ctx, ns, "v");
+    assert(JS_IsNumber(v));
+    assert(42 == JS_VALUE_GET_INT(v));
+    JS_FreeValue(ctx, v);
+    JS_FreeValue(ctx, ns);
+}
+
+static void dynamic_import_sync_ok(void)
+{
+    struct dynamic_import_state s = {0};
+    JSRuntime *rt = dynamic_import_runtime(&s);
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue promise = eval(ctx, "import('dep', {with: {type: 'x'}})");
+    assert(JS_PROMISE_PENDING == JS_PromiseState(ctx, promise));
+    dynamic_import_drain_jobs(rt);
+    assert(1 == s.import_calls);
+    assert(1 == s.attribute_calls);
+    dynamic_import_assert_namespace(ctx, promise);
+    JS_FreeValue(ctx, promise);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void dynamic_import_sync_missing(void)
+{
+    struct dynamic_import_state s = {0};
+    JSRuntime *rt = dynamic_import_runtime(&s);
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue promise = eval(ctx, "import('missing')");
+    dynamic_import_drain_jobs(rt);
+    assert(1 == s.import_calls);
+    assert(JS_PROMISE_REJECTED == JS_PromiseState(ctx, promise));
+    JSValue reason = JS_PromiseResult(ctx, promise);
+    assert(JS_IsError(reason));
+    JS_FreeValue(ctx, reason);
+    JS_FreeValue(ctx, promise);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void dynamic_import_deferred(void)
+{
+    struct dynamic_import_state s = {.defer = true};
+    JSRuntime *rt = dynamic_import_runtime(&s);
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue promise = eval(ctx, "import('dep', {with: {type: 'x'}})");
+    dynamic_import_drain_jobs(rt);
+    assert(1 == s.import_calls);
+    assert(0 == s.attribute_calls);
+    assert(JS_PROMISE_PENDING == JS_PromiseState(ctx, promise));
+    // token and attributes must survive a collection while the import is parked
+    JS_RunGC(rt);
+    JSValue module_promise = JS_LoadModule(ctx, s.basename, s.filename,
+                                           s.attributes);
+    assert(!JS_IsException(module_promise));
+    assert(0 == JS_FinishDynamicImport(ctx, s.token, module_promise,
+                                       JS_UNDEFINED));
+    JS_FreeValue(ctx, s.attributes);
+    free(s.basename);
+    free(s.filename);
+    dynamic_import_drain_jobs(rt);
+    assert(1 == s.attribute_calls);
+    dynamic_import_assert_namespace(ctx, promise);
+    JS_FreeValue(ctx, promise);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void dynamic_import_deferred_reject(void)
+{
+    struct dynamic_import_state s = {.defer = true};
+    JSRuntime *rt = dynamic_import_runtime(&s);
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue promise = eval(ctx, "import('dep')");
+    dynamic_import_drain_jobs(rt);
+    assert(JS_PROMISE_PENDING == JS_PromiseState(ctx, promise));
+    JSValue error = JS_NewError(ctx);
+    assert(1 == JS_SetPropertyStr(ctx, error, "tag", JS_NewInt32(ctx, 7)));
+    assert(0 == JS_FinishDynamicImport(ctx, s.token, JS_EXCEPTION, error));
+    JS_FreeValue(ctx, s.attributes);
+    free(s.basename);
+    free(s.filename);
+    dynamic_import_drain_jobs(rt);
+    assert(JS_PROMISE_REJECTED == JS_PromiseState(ctx, promise));
+    JSValue reason = JS_PromiseResult(ctx, promise);
+    JSValue tag = JS_GetPropertyStr(ctx, reason, "tag");
+    assert(7 == JS_VALUE_GET_INT(tag));
+    JS_FreeValue(ctx, tag);
+    JS_FreeValue(ctx, reason);
+    JS_FreeValue(ctx, promise);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2283,6 +2454,10 @@ int main(void)
     is_array();
     module_serde();
     module_unhandled_rejection();
+    dynamic_import_sync_ok();
+    dynamic_import_sync_missing();
+    dynamic_import_deferred();
+    dynamic_import_deferred_reject();
     promise_mark_as_handled();
     promise_then();
     runtime_cstring_free();

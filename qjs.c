@@ -149,6 +149,20 @@ end:
     return ret;
 }
 
+static void js_dynamic_import(JSContext *ctx, const char *basename,
+                              const char *filename, JSValue token,
+                              JSValueConst attributes, void *opaque)
+{
+    JSValue exception, promise;
+
+    exception = JS_UNDEFINED;
+    promise = JS_LoadModule(ctx, basename, filename, attributes);
+    if (JS_IsException(promise))
+        exception = JS_GetException(ctx);
+    if (JS_FinishDynamicImport(ctx, token, promise, exception))
+        js_std_dump_error(ctx);
+}
+
 static int eval_file(JSContext *ctx, const char *filename, int module)
 {
     uint8_t *buf;
@@ -636,6 +650,7 @@ start:
 
     /* loader for ES6 modules */
     JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, js_module_check_attributes, NULL);
+    JS_SetDynamicImportFunc(rt, js_dynamic_import, NULL);
 
     /* exit on unhandled promise rejections */
     JS_SetHostPromiseRejectionTracker(rt, js_std_promise_rejection_tracker, NULL);
