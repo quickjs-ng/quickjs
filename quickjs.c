@@ -6190,14 +6190,14 @@ static JSValue JS_NewObjectFromShape(JSContext *ctx, JSShape *sh, JSClassID clas
                 if (likely(sh == ctx->array_shape)) {
                     pr = &p->prop[0];
                 } else {
-                    /* the shape is not ctx->array_shape */
                     pr = add_property(ctx, p, JS_ATOM_length,
                                       JS_PROP_WRITABLE | JS_PROP_LENGTH);
                     if (unlikely(!pr)) {
+                        /* add_property() may have replaced the shape */
+                        sh = p->shape;
                         js_free(ctx, p->prop);
-                        js_free_shape(ctx->rt, p->shape);
                         js_free(ctx, p);
-                        return JS_EXCEPTION;
+                        goto fail;
                     }
                 }
                 pr->u.value = js_int32(0);
