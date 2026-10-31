@@ -42035,7 +42035,7 @@ static JSValue js_object_seal(JSContext *ctx, JSValueConst this_val,
     if (freeze_flag && is_typed_array(p->class_id)) {
         ta = p->u.typed_array;
         abuf = ta->buffer->u.array_buffer;
-        if (array_buffer_is_resizable(abuf) || typed_array_is_oob(p))
+        if (array_buffer_is_resizable(abuf))
             return JS_ThrowTypeError(ctx, "cannot freeze resizable typed array");
     }
 
