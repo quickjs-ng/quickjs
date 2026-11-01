@@ -817,6 +817,177 @@ static void promise_then(void)
     JS_FreeRuntime(rt);
 }
 
+struct promise_subscription_state {
+    int calls, rejects, handled, hook_jobs;
+    bool enqueue_from_hook;
+};
+
+static JSValue subscription_hook_job(JSContext *ctx, int argc,
+                                      JSValueConst *argv)
+{
+    struct promise_subscription_state *s = JS_GetContextOpaque(ctx);
+    assert(s->calls == 0);
+    assert(++s->hook_jobs == 1);
+    return JS_UNDEFINED;
+}
+
+static void subscription_tracker(JSContext *ctx, JSValueConst promise,
+                                  JSValueConst reason, bool handled, void *opaque)
+{
+    struct promise_subscription_state *s = opaque;
+    if (!handled) {
+        s->rejects++;
+        return;
+    }
+    s->handled++;
+    /* The host hook runs before this reaction is visible in the job queue.
+       Work it enqueues must remain ahead of the reaction. */
+    assert(!JS_IsJobPending(JS_GetRuntime(ctx)));
+    if (s->enqueue_from_hook)
+        assert(JS_EnqueueJob(ctx, subscription_hook_job, 0, NULL) == 0);
+}
+
+static JSValue subscription_handler(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv)
+{
+    struct promise_subscription_state *s = JS_GetContextOpaque(ctx);
+    assert(argc == 1);
+    assert(++s->calls == 1);
+    if (s->enqueue_from_hook)
+        assert(s->hook_jobs == 1);
+    return JS_DupValue(ctx, argv[0]);
+}
+
+static JSValue subscribe(JSContext *ctx, int guest, JSValueConst promise,
+                          JSValueConst method, JSValueConst handler)
+{
+    JSValueConst args[] = { handler, handler };
+    return guest ? JS_Call(ctx, method, promise, 2, args)
+                 : JS_PromiseThen(ctx, promise, handler, handler);
+}
+
+/* state: pending, fulfilled, rejected, or already-handled rejection.
+   Earlier pending values and hook ordering use unlimited-memory controls. */
+static bool promise_subscription_trial(int guest, int state, int headroom,
+                                        int previous_kind, bool hook)
+{
+    struct promise_subscription_state s = { .enqueue_from_hook = hook };
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue resolvers[2], promise, handler, method, ret, pending, previous;
+    JSValue value = state == 1 ? JS_FALSE : JS_TRUE;
+    JSMemoryUsage before, after;
+    bool failed;
+    int i, handled, jobs = 0;
+
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    JS_SetHostPromiseRejectionTracker(rt, subscription_tracker, &s);
+    promise = JS_NewPromiseCapability(ctx, resolvers);
+    assert(!JS_IsException(promise));
+    if (state) {
+        ret = JS_Call(ctx, resolvers[state >= 2], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    if (state == 3)
+        JS_PromiseMarkAsHandled(ctx, promise);
+    handled = s.handled;
+    handler = JS_NewCFunction(ctx, subscription_handler, "subscription", 1);
+    method = JS_GetPropertyStr(ctx, promise, "then");
+    ret = eval(ctx, "Promise.prototype.constructor; Promise[Symbol.species]");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    assert(!JS_IsException(handler) && !JS_IsException(method));
+    previous = previous_kind == 0 ? JS_NewError(ctx)
+             : previous_kind == 1 ? JS_NULL : JS_UNDEFINED;
+    assert(!JS_HasException(ctx) && !JS_IsJobPending(rt));
+    JS_ComputeMemoryUsage(rt, &before);
+    if (previous_kind >= 0)
+        JS_Throw(ctx, JS_DupValue(ctx, previous));
+    if (headroom >= 0)
+        JS_SetMemoryLimit(rt, before.malloc_size + headroom);
+    ret = subscribe(ctx, guest, promise, method, handler);
+    /* Inspection and retry need memory too; they must not move the
+       constrained subscription's allocation boundary. */
+    JS_SetMemoryLimit(rt, 0);
+    failed = JS_IsException(ret);
+    if (previous_kind >= 0) {
+        assert(!failed);
+        pending = JS_GetException(ctx);
+        assert(JS_IsSameValue(ctx, pending, previous));
+        JS_FreeValue(ctx, pending);
+    }
+    if (failed) {
+        assert(JS_HasException(ctx));
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        assert(!JS_IsJobPending(rt) && s.calls == 0 && s.handled == handled);
+        JS_RunGC(rt);
+        JS_ComputeMemoryUsage(rt, &after);
+        assert(after.obj_count == before.obj_count);
+        ret = subscribe(ctx, guest, promise, method, handler);
+        assert(!JS_IsException(ret));
+    } else if (JS_HasException(ctx)) {
+        fprintf(stderr, "promise_subscription: guest=%d state=%d headroom=%d jobs=%d\n",
+                guest, state, headroom, JS_IsJobPending(rt));
+    }
+    assert(!JS_HasException(ctx) && JS_IsPromise(ret));
+    assert(s.calls == 0 && JS_PromiseState(ctx, ret) == JS_PROMISE_PENDING);
+    assert(JS_PromiseState(ctx, promise) == (state == 3 ? JS_PROMISE_REJECTED : state));
+    assert(s.handled == handled + (state == 2));
+    if (!state) {
+        assert(!JS_IsJobPending(rt));
+        pending = JS_Call(ctx, resolvers[headroom & 1], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(pending));
+        JS_FreeValue(ctx, pending);
+    }
+    while (JS_IsJobPending(rt)) {
+        assert(JS_ExecutePendingJob(rt, &job_ctx) > 0);
+        jobs++;
+    }
+    assert(jobs == 1 + hook && s.calls == 1 && s.hook_jobs == hook);
+    assert(s.rejects == (state >= 2));
+    assert(JS_PromiseState(ctx, ret) == JS_PROMISE_FULFILLED);
+    pending = JS_PromiseResult(ctx, ret);
+    assert(JS_IsSameValue(ctx, pending, value));
+    JS_FreeValue(ctx, pending);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, previous);
+    JS_FreeValue(ctx, method);
+    JS_FreeValue(ctx, handler);
+    JS_FreeValue(ctx, promise);
+    for (i = 0; i < 2; i++)
+        JS_FreeValue(ctx, resolvers[i]);
+    assert(!JS_HasException(ctx));
+    JS_FreeContext(ctx);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &after);
+    assert(after.obj_count == 0);
+    JS_FreeRuntime(rt);
+    return failed;
+}
+
+static void promise_subscription_oom(int guest, int state)
+{
+    int headroom, failures = 0;
+    for (headroom = 0; headroom < 2048; headroom++)
+        failures += promise_subscription_trial(guest, state, headroom, -1, false);
+    assert(failures > 0 && failures < 2048);
+}
+
+static void promise_subscription(void)
+{
+    int guest, state, previous;
+    for (guest = 0; guest < 2; guest++) {
+        for (state = 0; state < 4; state++) {
+            promise_subscription_oom(guest, state);
+            for (previous = 0; previous < 3; previous++)
+                assert(!promise_subscription_trial(guest, state, -1, previous, false));
+        }
+        assert(!promise_subscription_trial(guest, 2, -1, -1, true));
+    }
+}
+
 static void runtime_cstring_free(void)
 {
     JSRuntime *rt = new_runtime();
@@ -2688,6 +2859,7 @@ static void dynamic_import_deferred_reject(void)
 
 int main(void)
 {
+    promise_subscription();
     function_metadata();
     function_metadata_pending();
     cfunctions();

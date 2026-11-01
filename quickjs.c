@@ -2486,9 +2486,8 @@ void JS_SetSharedArrayBufferFunctions(JSRuntime *rt,
     rt->sab_funcs = *sf;
 }
 
-/* return 0 if OK, < 0 if exception */
-int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
-                  int argc, JSValueConst *argv)
+static JSJobEntry *js_new_job(JSContext *ctx, JSJobFunc *job_func,
+                              int argc, JSValueConst *argv)
 {
     JSRuntime *rt = ctx->rt;
     JSJobEntry *e;
@@ -2498,14 +2497,24 @@ int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
 
     e = js_malloc(ctx, sizeof(*e) + argc * sizeof(JSValue));
     if (!e)
-        return -1;
+        return NULL;
     e->ctx = ctx;
     e->job_func = job_func;
     e->argc = argc;
     for(i = 0; i < argc; i++) {
         e->argv[i] = js_dup(argv[i]);
     }
-    list_add_tail(&e->link, &rt->job_list);
+    return e;
+}
+
+/* return 0 if OK, < 0 if exception */
+int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
+                  int argc, JSValueConst *argv)
+{
+    JSJobEntry *e = js_new_job(ctx, job_func, argc, argv);
+    if (!e)
+        return -1;
+    list_add_tail(&e->link, &ctx->rt->job_list);
     return 0;
 }
 
@@ -56599,7 +56608,7 @@ static __exception int perform_promise_then(JSContext *ctx,
             list_add_tail(&rd_array[i]->link, &s->promise_reactions[i]);
     } else {
         JSValueConst args[5];
-        call_promise_rejection_tracker(ctx, promise, true);
+        JSJobEntry *job;
         i = s->promise_state - JS_PROMISE_FULFILLED;
         rd = rd_array[i];
         args[0] = rd->resolving_funcs[0];
@@ -56607,9 +56616,17 @@ static __exception int perform_promise_then(JSContext *ctx,
         args[2] = rd->handler;
         args[3] = js_bool(i);
         args[4] = s->promise_result;
-        JS_EnqueueJob(ctx, promise_reaction_job, 5, args);
+        /* Reserve the job before reporting the rejection as handled. Publish
+           after the hook so jobs it enqueues still precede this reaction. */
+        job = js_new_job(ctx, promise_reaction_job, 5, args);
+        if (job) {
+            call_promise_rejection_tracker(ctx, promise, true);
+            list_add_tail(&job->link, &ctx->rt->job_list);
+        }
         for(i = 0; i < 2; i++)
             promise_reaction_data_free(ctx->rt, rd_array[i]);
+        if (!job)
+            return -1;
     }
     s->is_handled = true;
     return 0;
