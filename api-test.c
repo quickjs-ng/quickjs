@@ -350,7 +350,7 @@ static void function_metadata_oom(int kind, const char *name)
     }
     assert(failures > 0 && successes > 0);
     /* Cached names need not allocate after opaque ownership is installed.
-       Numeric atom conversion exercises that late failure and its finalizer. */
+       Numeric names still allocate during atom creation after that transfer. */
     if (kind == META_CCLOSURE && !strcmp(name, "123"))
         assert(finalized_failures > 0);
 }
