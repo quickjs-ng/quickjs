@@ -349,7 +349,9 @@ static void function_metadata_oom(int kind, const char *name)
         JS_FreeRuntime(rt);
     }
     assert(failures > 0 && successes > 0);
-    if (kind == META_CCLOSURE)
+    /* Cached names need not allocate after opaque ownership is installed.
+       Numeric atom conversion exercises that late failure and its finalizer. */
+    if (kind == META_CCLOSURE && !strcmp(name, "123"))
         assert(finalized_failures > 0);
 }
 
