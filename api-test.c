@@ -2444,6 +2444,124 @@ static void dynamic_import_deferred_reject(void)
     JS_FreeRuntime(rt);
 }
 
+// An allocator that refuses one request: the Nth since it was armed.
+typedef struct {
+    unsigned requests;  // counted from the moment the allocator is armed
+    unsigned refuse;    // the request to refuse, or 0 to refuse none
+    bool armed;
+} RefuseNth;
+
+static bool refuse_nth(RefuseNth *r)
+{
+    return r->armed && ++r->requests == r->refuse;
+}
+
+static void *refuse_nth_calloc(void *opaque, size_t count, size_t size)
+{
+    return refuse_nth(opaque) ? NULL : calloc(count, size);
+}
+
+static void *refuse_nth_malloc(void *opaque, size_t size)
+{
+    return refuse_nth(opaque) ? NULL : malloc(size);
+}
+
+static void refuse_nth_free(void *opaque, void *ptr)
+{
+    (void)opaque;
+    free(ptr);
+}
+
+static void *refuse_nth_realloc(void *opaque, void *ptr, size_t size)
+{
+    if (!ptr)
+        return refuse_nth_malloc(opaque, size);
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
+    return refuse_nth(opaque) ? NULL : realloc(ptr, size);
+}
+
+// An array whose shape is not the context's initial array shape (new Array(),
+// Array.from(), the result of map() and the like) gets its "length" property
+// from add_property(), which can fail. That was assumed not to happen, and a
+// failure was dereferenced. Two of its requests are tested:
+//
+// - the realloc that shrinks the property array, which f and g reach. An
+//   arena returns the same block for a shrink, so it is only a request when
+//   every allocation is sent to the allocator (build with
+//   -DFORCE_GC_AT_MALLOC or -D__SANITIZE_ADDRESS__);
+// - the clone of a shared shape, which h reaches. The arrays of a class that
+//   extends Array start from the empty shape of its prototype, which is
+//   shared with an object made before from the same prototype until a shape
+//   with a "length" exists for it. The clone is an allocation in any build,
+//   and in the default build a request when it needs a new arena: h keeps its
+//   arrays alive, so that the clones fill an arena and one of them needs one.
+//
+// The functions are made first, so that only the call is under test, and
+// every request of the call is refused in turn, each in a new runtime. f and
+// g fail without the fix only in a build where every allocation is a request,
+// h in either build, and all pass with it.
+static void array_species_oom(void)
+{
+    static const JSMallocFunctions mf = {
+        refuse_nth_calloc, refuse_nth_malloc, refuse_nth_free,
+        refuse_nth_realloc, NULL,
+    };
+    static const char setup_code[] =
+        "globalThis.f = () => [1, 2, 3].map((x) => x);\n"
+        "globalThis.g = () => Array.from({ length: 4 });\n"
+        "globalThis.kept = [];\n"
+        "globalThis.h = () => {\n"
+        "    for (let i = 0; i < 50; i++) {\n"
+        "        const C = class extends Array {};\n"
+        "        kept.push(Object.create(C.prototype), new C());\n"
+        "    }\n"
+        "};\n";
+    static const char *const names[] = { "f", "g", "h" };
+    JSValue global_object, func, ret;
+    unsigned refuse, requests;
+    RefuseNth state;
+    JSRuntime *rt;
+    JSContext *ctx;
+    size_t i;
+
+    for (i = 0; i < countof(names); i++) {
+        requests = 0; // the call is run once with no refusal to count them
+        for (refuse = 0; refuse <= requests; refuse++) {
+            memset(&state, 0, sizeof(state));
+            rt = JS_NewRuntime2(&mf, &state);
+            assert(rt);
+            JS_SetDumpFlags(rt, JS_ABORT_ON_LEAKS);
+            ctx = JS_NewContext(rt);
+            assert(ctx);
+            global_object = JS_GetGlobalObject(ctx);
+
+            ret = eval(ctx, setup_code);
+            assert(!JS_IsException(ret));
+            JS_FreeValue(ctx, ret);
+
+            func = JS_GetPropertyStr(ctx, global_object, names[i]);
+            assert(JS_IsFunction(ctx, func));
+
+            state.refuse = refuse;
+            state.armed = true;
+            ret = JS_Call(ctx, func, JS_UNDEFINED, 0, NULL); // expected to fail, not to crash
+            state.armed = false;
+            if (refuse == 0)
+                requests = state.requests;
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, JS_GetException(ctx));
+
+            JS_FreeValue(ctx, func);
+            JS_FreeValue(ctx, global_object);
+            JS_FreeContext(ctx);
+            JS_FreeRuntime(rt);
+        }
+    }
+}
+
 int main(void)
 {
     cfunctions();
@@ -2491,5 +2609,6 @@ int main(void)
     private_symbols();
     new_context_low_memory();
     json_stringify_oom();
+    array_species_oom();
     return 0;
 }
