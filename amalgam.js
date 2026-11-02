@@ -3,6 +3,7 @@ import {loadFile, writeFile} from "qjs:std"
 const cutils_h = loadFile("cutils.h")
 const dtoa_c = loadFile("dtoa.c")
 const dtoa_h = loadFile("dtoa.h")
+const dtoa_ryu_table_h = loadFile("dtoa-ryu-table.h")
 const libregexp_c = loadFile("libregexp.c")
 const libregexp_h = loadFile("libregexp.h")
 const libregexp_opcode_h = loadFile("libregexp-opcode.h")
@@ -43,6 +44,7 @@ let source = "#if defined(QJS_BUILD_LIBC) && defined(__linux__) && !defined(_GNU
 source = source.replace(/#include "quickjs-atom.h"/g, quickjs_atom_h)
 source = source.replace(/#include "quickjs-opcode.h"/g, quickjs_opcode_h)
 source = source.replace(/#include "libregexp-opcode.h"/g, libregexp_opcode_h)
+source = source.replace(/#include "dtoa-ryu-table.h"/g, dtoa_ryu_table_h)
 source = source.replace(/#include "builtin-array-fromasync.h"/g,
                         gen_builtin_array_fromasync_h)
 source = source.replace(/#include "builtin-iterator-zip.h"/g,
