@@ -2486,9 +2486,8 @@ void JS_SetSharedArrayBufferFunctions(JSRuntime *rt,
     rt->sab_funcs = *sf;
 }
 
-/* return 0 if OK, < 0 if exception */
-int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
-                  int argc, JSValueConst *argv)
+static JSJobEntry *js_new_job(JSContext *ctx, JSJobFunc *job_func,
+                              int argc, JSValueConst *argv)
 {
     JSRuntime *rt = ctx->rt;
     JSJobEntry *e;
@@ -2498,14 +2497,24 @@ int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
 
     e = js_malloc(ctx, sizeof(*e) + argc * sizeof(JSValue));
     if (!e)
-        return -1;
+        return NULL;
     e->ctx = ctx;
     e->job_func = job_func;
     e->argc = argc;
     for(i = 0; i < argc; i++) {
         e->argv[i] = js_dup(argv[i]);
     }
-    list_add_tail(&e->link, &rt->job_list);
+    return e;
+}
+
+/* return 0 if OK, < 0 if exception */
+int JS_EnqueueJob(JSContext *ctx, JSJobFunc *job_func,
+                  int argc, JSValueConst *argv)
+{
+    JSJobEntry *e = js_new_job(ctx, job_func, argc, argv);
+    if (!e)
+        return -1;
+    list_add_tail(&e->link, &ctx->rt->job_list);
     return 0;
 }
 
@@ -6420,14 +6429,22 @@ JSValue JS_NewObject(JSContext *ctx)
     return JS_NewObjectProtoClass(ctx, ctx->class_proto[JS_CLASS_OBJECT], JS_CLASS_OBJECT);
 }
 
-static void js_function_set_properties(JSContext *ctx, JSValue func_obj,
-                                       JSAtom name, int len)
+/* Callers discard the function on failure, releasing installed opaque data
+   and captured references through the normal finalizers. */
+static int js_function_set_properties(JSContext *ctx, JSValue func_obj,
+                                      JSAtom name, int len)
 {
+    JSValue name_str;
+
     /* ES6 feature non compatible with ES5.1: length is configurable */
-    JS_DefinePropertyValue(ctx, func_obj, JS_ATOM_length, js_int32(len),
-                           JS_PROP_CONFIGURABLE);
-    JS_DefinePropertyValue(ctx, func_obj, JS_ATOM_name,
-                           JS_AtomToString(ctx, name), JS_PROP_CONFIGURABLE);
+    if (JS_DefinePropertyValue(ctx, func_obj, JS_ATOM_length, js_int32(len),
+                               JS_PROP_CONFIGURABLE) < 0)
+        return -1;
+    name_str = JS_AtomToString(ctx, name);
+    if (JS_IsException(name_str))
+        return -1;
+    return JS_DefinePropertyValue(ctx, func_obj, JS_ATOM_name, name_str,
+                                   JS_PROP_CONFIGURABLE);
 }
 
 static bool js_class_has_bytecode(JSClassID class_id)
@@ -6546,7 +6563,10 @@ JSValue JS_NewCFunction3(JSContext *ctx, JSCFunction *func,
             return JS_EXCEPTION;
         }
     }
-    js_function_set_properties(ctx, func_obj, name_atom, length);
+    if (js_function_set_properties(ctx, func_obj, name_atom, length) < 0) {
+        JS_FreeValue(ctx, func_obj);
+        func_obj = JS_EXCEPTION;
+    }
     JS_FreeAtom(ctx, name_atom);
     return func_obj;
 }
@@ -6669,7 +6689,10 @@ JSValue JS_NewCFunctionData2(JSContext *ctx, JSCFunctionData *func,
             return JS_EXCEPTION;
         }
     }
-    js_function_set_properties(ctx, func_obj, name_atom, length);
+    if (js_function_set_properties(ctx, func_obj, name_atom, length) < 0) {
+        JS_FreeValue(ctx, func_obj);
+        func_obj = JS_EXCEPTION;
+    }
     JS_FreeAtom(ctx, name_atom);
     return func_obj;
 }
@@ -6793,7 +6816,10 @@ JSValue JS_NewCClosure(JSContext *ctx, JSCClosure *func, const char *name,
             return JS_EXCEPTION;
         }
     }
-    js_function_set_properties(ctx, func_obj, name_atom, length);
+    if (js_function_set_properties(ctx, func_obj, name_atom, length) < 0) {
+        JS_FreeValue(ctx, func_obj);
+        func_obj = JS_EXCEPTION;
+    }
     JS_FreeAtom(ctx, name_atom);
     return func_obj;
 }
@@ -17677,8 +17703,9 @@ static JSValue js_closure(JSContext *ctx, JSValue bfunc,
     name_atom = b->func_name;
     if (name_atom == JS_ATOM_NULL)
         name_atom = JS_ATOM_empty_string;
-    js_function_set_properties(ctx, func_obj, name_atom,
-                               b->defined_arg_count);
+    if (js_function_set_properties(ctx, func_obj, name_atom,
+                                    b->defined_arg_count) < 0)
+        goto fail;
 
     if (b->func_kind & JS_FUNC_GENERATOR) {
         JSValue proto;
@@ -17692,16 +17719,18 @@ static JSValue js_closure(JSContext *ctx, JSValue bfunc,
         proto = JS_NewObjectProto(ctx, ctx->class_proto[proto_class_id]);
         if (JS_IsException(proto))
             goto fail;
-        JS_DefinePropertyValue(ctx, func_obj, JS_ATOM_prototype, proto,
-                               JS_PROP_WRITABLE);
+        if (JS_DefinePropertyValue(ctx, func_obj, JS_ATOM_prototype, proto,
+                                   JS_PROP_WRITABLE) < 0)
+            goto fail;
     } else if (b->has_prototype) {
         /* add the 'prototype' property: delay instantiation to avoid
            creating cycles for every javascript function. The prototype
            object is created on the fly when first accessed */
         JS_SetConstructorBit(ctx, func_obj, true);
-        JS_DefineAutoInitProperty(ctx, func_obj, JS_ATOM_prototype,
-                                  JS_AUTOINIT_ID_PROTOTYPE, NULL,
-                                  JS_PROP_WRITABLE);
+        if (JS_DefineAutoInitProperty(ctx, func_obj, JS_ATOM_prototype,
+                                       JS_AUTOINIT_ID_PROTOTYPE, NULL,
+                                       JS_PROP_WRITABLE) < 0)
+            goto fail;
     }
     return func_obj;
  fail:
@@ -55861,7 +55890,10 @@ static int js_create_resolving_functions(JSContext *ctx,
         s->presolved = sr;
         s->promise = js_dup(promise);
         JS_SetOpaqueInternal(obj, s);
-        js_function_set_properties(ctx, obj, JS_ATOM_empty_string, 1);
+        if (js_function_set_properties(ctx, obj, JS_ATOM_empty_string, 1) < 0) {
+            JS_FreeValue(ctx, obj);
+            goto fail;
+        }
         resolving_funcs[i] = obj;
     }
     js_promise_resolve_function_free_resolved(ctx->rt, sr);
@@ -56584,7 +56616,7 @@ static __exception int perform_promise_then(JSContext *ctx,
             list_add_tail(&rd_array[i]->link, &s->promise_reactions[i]);
     } else {
         JSValueConst args[5];
-        call_promise_rejection_tracker(ctx, promise, true);
+        JSJobEntry *job;
         i = s->promise_state - JS_PROMISE_FULFILLED;
         rd = rd_array[i];
         args[0] = rd->resolving_funcs[0];
@@ -56592,9 +56624,17 @@ static __exception int perform_promise_then(JSContext *ctx,
         args[2] = rd->handler;
         args[3] = js_bool(i);
         args[4] = s->promise_result;
-        JS_EnqueueJob(ctx, promise_reaction_job, 5, args);
+        /* Reserve the job before reporting the rejection as handled. Publish
+           after the hook so jobs it enqueues still precede this reaction. */
+        job = js_new_job(ctx, promise_reaction_job, 5, args);
+        if (job) {
+            call_promise_rejection_tracker(ctx, promise, true);
+            list_add_tail(&job->link, &ctx->rt->job_list);
+        }
         for(i = 0; i < 2; i++)
             promise_reaction_data_free(ctx->rt, rd_array[i]);
+        if (!job)
+            return -1;
     }
     s->is_handled = true;
     return 0;
