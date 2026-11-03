@@ -21924,14 +21924,17 @@ static int js_async_generator_resume_next(JSContext *ctx,
     JSValue func_ret, value;
     int ret;
 
+    /* Only the await callback enters while executing, with its result ready.
+       A resolver can reenter and leave a new await behind; the outer loop
+       must not resume that frame before its own callback supplies the value. */
+    if (s->state == JS_ASYNC_GENERATOR_STATE_EXECUTING)
+        goto resume_exec;
     for(;;) {
         if (list_empty(&s->queue))
             break;
         next = list_entry(s->queue.next, JSAsyncGeneratorRequest, link);
         switch(s->state) {
         case JS_ASYNC_GENERATOR_STATE_EXECUTING:
-            /* only happens when restarting execution after await() */
-            goto resume_exec;
         case JS_ASYNC_GENERATOR_STATE_AWAITING_RETURN:
             goto done;
         case JS_ASYNC_GENERATOR_STATE_SUSPENDED_START:
@@ -21993,15 +21996,12 @@ static int js_async_generator_resume_next(JSContext *ctx,
                 switch(func_ret_code) {
                 case FUNC_RET_YIELD:
                 case FUNC_RET_YIELD_STAR:
-                    /* Resolving the result can reenter through a then getter.
-                       Keep executing so it queues requests instead of resuming
-                       this frame before the current delivery has returned. */
-                    ret = js_async_generator_resolve(ctx, s, value, false);
-                    JS_FreeValue(ctx, value);
                     if (func_ret_code == FUNC_RET_YIELD_STAR)
                         s->state = JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD_STAR;
                     else
                         s->state = JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD;
+                    ret = js_async_generator_resolve(ctx, s, value, false);
+                    JS_FreeValue(ctx, value);
                     if (ret < 0)
                         return -1;
                     break;
