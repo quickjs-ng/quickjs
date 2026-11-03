@@ -21986,7 +21986,7 @@ static int js_async_generator_resume_next(JSContext *ctx,
                 if (ret < 0)
                     return -1;
             } else if (JS_VALUE_GET_TAG(func_ret) == JS_TAG_INT) {
-                int func_ret_code, ret;
+                int func_ret_code;
                 value = s->func_state.frame.cur_sp[-1];
                 s->func_state.frame.cur_sp[-1] = JS_UNDEFINED;
                 func_ret_code = JS_VALUE_GET_INT(func_ret);

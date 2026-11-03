@@ -3411,9 +3411,68 @@ static void generator_delivery(void)
     assert(failures > 0 && successes > 0);
 }
 
+static JSValue generator_delivery_reject_null(JSContext *ctx, JSValueConst this_val,
+                                               int argc, JSValueConst *argv,
+                                               int magic, JSValueConst *data)
+{
+    return JS_Throw(ctx, JS_NULL);
+}
+
+static void generator_delivery_controls(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue global, ret, result;
+    int jobs = 0;
+
+    global = JS_GetGlobalObject(ctx);
+    assert(JS_SetPropertyStr(ctx, global, "rejectNull",
+        JS_NewCFunctionData(ctx, generator_delivery_reject_null, 0, 0, 0, NULL)) >= 0);
+    JS_FreeValue(ctx, global);
+    ret = eval(ctx,
+        "(async () => {"
+        "function check(v) { if (!v) throw Error('generator delivery control'); }"
+        "let g = (async function* () { yield 1; return 2; })();"
+        "let r = await g.next(); check(r.value === 1 && !r.done);"
+        "r = await g.next(); check(r.value === 2 && r.done);"
+        "r = await g.next(); check(r.value === undefined && r.done);"
+        "r = await g.return(3); check(r.value === 3 && r.done);"
+        "try { await g.throw(null); check(false); } catch(e) { check(e === null); }"
+        "g = (async function* () { await 0; throw null; })();"
+        "try { await g.next(); check(false); } catch(e) { check(e === null); }"
+        "g = (async function* () {})();"
+        "const p = Promise.resolve(1);"
+        "Object.defineProperty(p, 'constructor', {get() { throw null; }});"
+        "try { await g.return(p); check(false); } catch(e) { check(e === null); }"
+        "try { await Promise.resolve(0).then(rejectNull); check(false); }"
+        "catch(e) { check(e === null); }"
+        "g = (async function* () { yield 1; yield 2; })();"
+        "let entered = false, second;"
+        "Object.defineProperty(Object.prototype, 'then', {configurable:true,"
+        "get() { if (!entered) { entered = true; second = g.next(); } }});"
+        "r = await g.next(); const q = await second;"
+        "delete Object.prototype.then;"
+        "check(r.value === 1 && !r.done && q.value === 2 && !q.done);"
+        "await g.return(); return 42; })()");
+    assert(!JS_IsException(ret));
+    while (JS_IsJobPending(rt)) {
+        assert(++jobs < 100);
+        assert(JS_ExecutePendingJob(rt, &job_ctx) > 0 && job_ctx == ctx);
+    }
+    assert(!JS_HasException(ctx));
+    assert(JS_PromiseState(ctx, ret) == JS_PROMISE_FULFILLED);
+    result = JS_PromiseResult(ctx, ret);
+    assert(JS_IsNumber(result) && JS_VALUE_GET_INT(result) == 42);
+    JS_FreeValue(ctx, result);
+    JS_FreeValue(ctx, ret);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     generator_delivery();
+    generator_delivery_controls();
     promise_adoption();
     promise_settlement();
     promise_subscription();
