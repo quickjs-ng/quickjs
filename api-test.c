@@ -3128,7 +3128,8 @@ static JSValue adoption_getter(JSContext *ctx, JSValueConst this_val,
     return JS_DupValue(ctx, s->then);
 }
 
-/* mode: native resolver, Promise.resolve, async return, queued-job preparation.
+/* mode: native resolver, Promise.resolve, async return, queued-job preparation,
+   resumed async return.
    The getter constrains only enqueue, after every producer has its capability. */
 static int promise_adoption_trial(int mode, int headroom, int previous_kind, int outcome)
 {
@@ -3155,6 +3156,8 @@ static int promise_adoption_trial(int mode, int headroom, int previous_kind, int
         factory = eval(ctx, "value => Promise.resolve(value)");
     if (mode == 2)
         factory = eval(ctx, "async value => value");
+    if (mode == 4)
+        factory = eval(ctx, "async value => { await 0; return value; }");
     assert(!JS_IsException(source) && !JS_IsException(s.then));
     assert(!JS_IsException(factory) && !JS_HasException(ctx));
     if (previous_kind >= 0) {
@@ -3162,23 +3165,26 @@ static int promise_adoption_trial(int mode, int headroom, int previous_kind, int
                  : previous_kind == 1 ? JS_NULL : JS_UNDEFINED;
         JS_Throw(ctx, JS_DupValue(ctx, previous));
     }
-    ret = JS_Call(ctx, mode == 1 || mode == 2 ? factory : s.resolvers[0],
+    ret = JS_Call(ctx, mode == 1 || mode == 2 || mode == 4 ? factory : s.resolvers[0],
                   JS_UNDEFINED, 1, (JSValueConst *)&thenable);
     JS_SetMemoryLimit(rt, 0);
     failed = JS_IsException(ret);
-    assert(s.getter_calls == 1 && s.body_calls == 0);
-    if (mode == 3) {
+    assert(s.getter_calls == (mode != 4) && s.body_calls == 0);
+    if (mode == 3 || mode == 4) {
         assert(!failed && JS_IsJobPending(rt));
-        JS_FreeValue(ctx, ret);
+        if (mode == 3) {
+            JS_FreeValue(ctx, ret);
+            ret = JS_UNDEFINED;
+        }
         JS_ComputeMemoryUsage(rt, &usage);
-        if (headroom >= 0)
+        if (mode == 3 && headroom >= 0)
             JS_SetMemoryLimit(rt, usage.malloc_size + headroom);
         i = JS_ExecutePendingJob(rt, &job_ctx);
         JS_SetMemoryLimit(rt, 0);
         assert(job_ctx == ctx);
         failed = i < 0;
-        ret = JS_UNDEFINED;
         jobs++;
+        assert(s.getter_calls == 1);
     }
     if (failed) {
         assert(JS_HasException(ctx) && !JS_IsJobPending(rt));
@@ -3200,7 +3206,7 @@ static int promise_adoption_trial(int mode, int headroom, int previous_kind, int
             assert(JS_ExecutePendingJob(rt, &job_ctx) > 0 && job_ctx == ctx);
         }
         assert(s.body_calls == 1 && !JS_HasException(ctx));
-        if (mode == 1 || mode == 2) {
+        if (mode == 1 || mode == 2 || mode == 4) {
             assert(JS_PromiseState(ctx, ret) == JS_PROMISE_FULFILLED + (outcome == 1));
             error = JS_PromiseResult(ctx, ret);
         } else {
@@ -3248,7 +3254,7 @@ static void promise_adoption(void)
         }
         assert(failures > 0 && successes > 0);
     }
-    for (mode = 0; mode < 4; mode++) {
+    for (mode = 0; mode < 5; mode++) {
         assert(promise_adoption_trial(mode, 0, -1, 0));
         for (outcome = 0; outcome < 3; outcome++)
             assert(!promise_adoption_trial(mode, -1, -1, outcome));
