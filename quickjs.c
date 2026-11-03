@@ -10956,7 +10956,10 @@ int JS_SetPropertyValue(JSContext *ctx, JSValueConst this_obj,
             if (JS_ToFloat64Free(ctx, &d, val)) {
             ta_cvt_fail:
                 if (flags & JS_PROP_REFLECT_DEFINE_PROPERTY) {
-                    JS_FreeValue(ctx, JS_GetException(ctx));
+                    JSValue err = js_get_catchable_exception(ctx);
+                    if (JS_IsException(err))
+                        return -1;
+                    JS_FreeValue(ctx, err);
                     return false;
                 }
                 return -1;
@@ -17119,7 +17122,14 @@ static int JS_IteratorClose(JSContext *ctx, JSValueConst enum_obj,
     JS_FreeValue(ctx, ret);
  done:
     if (is_exception_pending) {
-        JS_Throw(ctx, ex_obj);
+        /* an exception from return() is dropped, unless uncatchable */
+        ret = js_get_catchable_exception(ctx);
+        if (JS_IsException(ret)) {
+            JS_FreeValue(ctx, ex_obj);
+        } else {
+            JS_FreeValue(ctx, ret);
+            JS_Throw(ctx, ex_obj);
+        }
     }
     return res;
 }
@@ -20964,6 +20974,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     JS_FreeValue(ctx, sp[-1]); /* drop the next method */
                     sp--;
                     JS_IteratorClose(ctx, sp[-1], true);
+                    if (JS_IsUncatchableError(rt->current_exception))
+                        break;
                 } else {
                     *sp++ = rt->current_exception;
                     rt->current_exception = JS_UNINITIALIZED;

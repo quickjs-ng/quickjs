@@ -2773,6 +2773,28 @@ static const struct uncatchable_case uncatchable_cases[] = {
       "  (async function* () {}).prototype));"
       "proto[Symbol.asyncDispose].call({ get return() { throw new E('boom'); } })"
       CATCH },
+    { "for-of close on throw, return() throws",
+      "try {"
+      "  for (const x of { [Symbol.iterator]() {"
+      "    return { next() { return { value: 1, done: false }; },"
+      "             return() { throw new E('boom'); } }; } }) {"
+      "    throw 1;"
+      "  }"
+      "} catch (e) { mark(0); }"
+      "mark(2);" },
+    { "Array.from close on throw, return() throws",
+      "try {"
+      "  Array.from({ [Symbol.iterator]() {"
+      "    return { next() { return { value: 1, done: false }; },"
+      "             return() { throw new E('boom'); } }; } },"
+      "    () => { throw 1; });"
+      "} catch (e) { mark(0); }"
+      "mark(2);" },
+    { "Reflect.defineProperty on a typed array",
+      "if (!Reflect.defineProperty(new Float64Array(1), 0,"
+      "                            { value: { valueOf() { throw new E('boom'); } } }))"
+      "  mark(0);"
+      "mark(2);" },
 };
 
 #undef THEN_TRAP
