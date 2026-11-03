@@ -3085,8 +3085,183 @@ static void dynamic_import_deferred_reject(void)
     JS_FreeRuntime(rt);
 }
 
+struct adoption_state {
+    JSValue then, resolvers[2];
+    int headroom, getter_calls, body_calls, outcome, reenter;
+};
+
+static JSValue adoption_then(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
+{
+    struct adoption_state *s = JS_GetContextOpaque(ctx);
+    JSValue value = JS_TRUE, ret;
+    assert(argc == 2 && JS_IsObject(this_val));
+    s->body_calls++;
+    ret = JS_Call(ctx, argv[s->outcome == 1], JS_UNDEFINED, 1, &value);
+    if (s->outcome == 2) {
+        JS_FreeValue(ctx, ret);
+        return JS_Throw(ctx, JS_FALSE);
+    }
+    return ret;
+}
+
+static JSValue adoption_getter(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    struct adoption_state *s = JS_GetContextOpaque(ctx);
+    JSMemoryUsage usage;
+    JSValue ret, value = JS_FALSE;
+    int i;
+
+    s->getter_calls++;
+    /* The original pair is already locked before reading then. Reentry must
+       not replace the adoption, including when its enqueue later fails. */
+    for (i = 0; s->reenter && i < 2; i++) {
+        ret = JS_Call(ctx, s->resolvers[i], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    if (s->headroom >= 0) {
+        JS_ComputeMemoryUsage(JS_GetRuntime(ctx), &usage);
+        JS_SetMemoryLimit(JS_GetRuntime(ctx), usage.malloc_size + s->headroom);
+    }
+    return JS_DupValue(ctx, s->then);
+}
+
+/* mode: native resolver, Promise.resolve, async return, queued-job preparation.
+   The getter constrains only enqueue, after every producer has its capability. */
+static int promise_adoption_trial(int mode, int headroom, int previous_kind, int outcome)
+{
+    struct adoption_state s = {.headroom = mode == 3 ? -1 : headroom,
+                                .outcome = outcome, .reenter = mode == 0 || mode == 3};
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue source, thenable, getter, factory = JS_UNDEFINED, ret, error;
+    JSValue previous = JS_UNDEFINED, value = JS_FALSE;
+    JSMemoryUsage usage;
+    JSAtom atom;
+    int failed, jobs = 0, i;
+
+    JS_SetContextOpaque(ctx, &s);
+    source = JS_NewPromiseCapability(ctx, s.resolvers);
+    s.then = JS_NewCFunction(ctx, adoption_then, "then", 2);
+    thenable = JS_NewObject(ctx);
+    getter = JS_NewCFunction(ctx, adoption_getter, "get then", 0);
+    atom = JS_NewAtom(ctx, "then");
+    assert(JS_DefinePropertyGetSet(ctx, thenable, atom, getter,
+                                  JS_UNDEFINED, JS_PROP_CONFIGURABLE) >= 0);
+    JS_FreeAtom(ctx, atom);
+    if (mode == 1)
+        factory = eval(ctx, "value => Promise.resolve(value)");
+    if (mode == 2)
+        factory = eval(ctx, "async value => value");
+    assert(!JS_IsException(source) && !JS_IsException(s.then));
+    assert(!JS_IsException(factory) && !JS_HasException(ctx));
+    if (previous_kind >= 0) {
+        previous = previous_kind == 0 ? JS_NewError(ctx)
+                 : previous_kind == 1 ? JS_NULL : JS_UNDEFINED;
+        JS_Throw(ctx, JS_DupValue(ctx, previous));
+    }
+    ret = JS_Call(ctx, mode == 1 || mode == 2 ? factory : s.resolvers[0],
+                  JS_UNDEFINED, 1, (JSValueConst *)&thenable);
+    JS_SetMemoryLimit(rt, 0);
+    failed = JS_IsException(ret);
+    assert(s.getter_calls == 1 && s.body_calls == 0);
+    if (mode == 3) {
+        assert(!failed && JS_IsJobPending(rt));
+        JS_FreeValue(ctx, ret);
+        JS_ComputeMemoryUsage(rt, &usage);
+        if (headroom >= 0)
+            JS_SetMemoryLimit(rt, usage.malloc_size + headroom);
+        i = JS_ExecutePendingJob(rt, &job_ctx);
+        JS_SetMemoryLimit(rt, 0);
+        assert(job_ctx == ctx);
+        failed = i < 0;
+        ret = JS_UNDEFINED;
+        jobs++;
+    }
+    if (failed) {
+        assert(JS_HasException(ctx) && !JS_IsJobPending(rt));
+        error = JS_GetException(ctx);
+        assert(JS_IsNull(error) || JS_IsUncatchableError(error));
+        assert(previous_kind != 0 || !JS_IsSameValue(ctx, previous, error));
+        JS_FreeValue(ctx, error);
+        assert(s.body_calls == 0);
+    } else {
+        if (previous_kind >= 0) {
+            assert(JS_HasException(ctx));
+            error = JS_GetException(ctx);
+            assert(JS_IsSameValue(ctx, previous, error));
+            JS_FreeValue(ctx, error);
+        }
+        assert(!JS_HasException(ctx));
+        while (JS_IsJobPending(rt)) {
+            assert(++jobs < 10);
+            assert(JS_ExecutePendingJob(rt, &job_ctx) > 0 && job_ctx == ctx);
+        }
+        assert(s.body_calls == 1 && !JS_HasException(ctx));
+        if (mode == 1 || mode == 2) {
+            assert(JS_PromiseState(ctx, ret) == JS_PROMISE_FULFILLED + (outcome == 1));
+            error = JS_PromiseResult(ctx, ret);
+        } else {
+            assert(JS_PromiseState(ctx, source) == JS_PROMISE_FULFILLED + (outcome == 1));
+            error = JS_PromiseResult(ctx, source);
+        }
+        assert(JS_IsSameValue(ctx, error, JS_TRUE));
+        JS_FreeValue(ctx, error);
+    }
+    JS_FreeValue(ctx, ret);
+    /* Failure consumes the original resolver too. It is never a retry path. */
+    for (i = 0; s.reenter && i < 2; i++) {
+        ret = JS_Call(ctx, s.resolvers[i], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    JS_FreeValue(ctx, s.resolvers[0]);
+    JS_FreeValue(ctx, s.resolvers[1]);
+    if (failed)
+        assert(JS_PromiseState(ctx, source) == JS_PROMISE_PENDING);
+    assert(!JS_IsJobPending(rt) && !JS_HasException(ctx));
+    JS_FreeValue(ctx, previous);
+    JS_FreeValue(ctx, factory);
+    JS_FreeValue(ctx, thenable);
+    JS_FreeValue(ctx, s.then);
+    JS_FreeValue(ctx, source);
+    JS_FreeContext(ctx);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &usage);
+    assert(usage.obj_count == 0);
+    JS_FreeRuntime(rt);
+    return failed;
+}
+
+static void promise_adoption(void)
+{
+    int mode, headroom, failures, successes, previous, outcome;
+    for (mode = 0; mode < 4; mode += 3) {
+        failures = successes = 0;
+        for (headroom = 0; headroom < 2048; headroom++) {
+            if (promise_adoption_trial(mode, headroom, -1, 0))
+                failures++;
+            else
+                successes++;
+        }
+        assert(failures > 0 && successes > 0);
+    }
+    for (mode = 0; mode < 4; mode++) {
+        assert(promise_adoption_trial(mode, 0, -1, 0));
+        for (outcome = 0; outcome < 3; outcome++)
+            assert(!promise_adoption_trial(mode, -1, -1, outcome));
+    }
+    for (previous = 0; previous < 3; previous++) {
+        assert(promise_adoption_trial(0, 0, previous, 0));
+        assert(!promise_adoption_trial(0, -1, previous, 0));
+    }
+}
+
 int main(void)
 {
+    promise_adoption();
     promise_settlement();
     promise_subscription();
     function_metadata();

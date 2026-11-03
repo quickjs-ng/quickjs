@@ -21565,11 +21565,9 @@ static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
             JS_FreeValue(ctx, error);
         resolved:
             if (unlikely(JS_IsException(ret2))) {
-                if (JS_IsUncatchableError(ctx->rt->current_exception)) {
-                    is_success = false;
-                } else {
-                    abort(); /* BUG */
-                }
+                /* Intrinsic resolution can fail while enqueueing adoption.
+                   Exhaustion can leave a null exception, without an Error flag. */
+                is_success = false;
             }
             JS_FreeValue(ctx, ret2);
         }
@@ -55955,7 +55953,10 @@ static JSValue js_promise_resolve_function_call(JSContext *ctx,
         args[0] = s->promise;
         args[1] = resolution;
         args[2] = then;
-        JS_EnqueueJob(ctx, js_promise_resolve_thenable_job, 3, args);
+        if (JS_EnqueueJob(ctx, js_promise_resolve_thenable_job, 3, args) < 0) {
+            JS_FreeValue(ctx, then);
+            return JS_EXCEPTION;
+        }
         JS_FreeValue(ctx, then);
     }
     return JS_UNDEFINED;
