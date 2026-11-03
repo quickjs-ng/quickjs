@@ -2657,12 +2657,275 @@ static void uncatchable_promise_rejection(void)
     JS_FreeRuntime(rt);
 }
 
+/* Native paths that catch a pending exception must leave an uncatchable
+   one for the host. Each case runs twice: with E = InternalError, which is
+   uncatchable, nothing may run the script's catch (mark(0)) or success
+   (mark(2)) handlers and the error must reach the host. With E = Error, the
+   control, both handlers run once. 'after' runs once the host has taken
+   the error and must mark(1). */
+struct uncatchable_state {
+    int caught, after, success;
+};
+
+struct uncatchable_case {
+    const char *name;
+    const char *script;
+    const char *after;
+    bool import_func; /* resolve import() with JS_SetDynamicImportFunc */
+};
+
+/* make the first iterator result resolved after 'armed = true' throw */
+#define THEN_TRAP                                                       \
+    "var armed = false;"                                                \
+    "Object.defineProperty(Object.prototype, 'then', {"                 \
+    "  configurable: true,"                                             \
+    "  get() {"                                                         \
+    "    if (armed && Object.hasOwn(this, 'done')) {"                   \
+    "      armed = false;"                                              \
+    "      throw new E('boom');"                                        \
+    "    }"                                                             \
+    "  }"                                                               \
+    "});"
+#define CATCH ".catch(() => mark(0)).then(() => mark(2));"
+#define AFTER_DONE "it.next().then(r => r.done && mark(1));"
+
+static const struct uncatchable_case uncatchable_cases[] = {
+    { "async generator body",
+      "var it = (async function* () { throw new E('boom'); })();"
+      "it.next()" CATCH, AFTER_DONE },
+    { "async generator body after await",
+      "(async function* () { await 0; throw new E('boom'); })().next()" CATCH },
+    { "async generator return, constructor getter",
+      "var it = (async function* () {})();"
+      "var p = Promise.resolve();"
+      "Object.defineProperty(p, 'constructor',"
+      "                      { get() { throw new E('boom'); } });"
+      "it.return(p)" CATCH, AFTER_DONE },
+    { "async generator yield, result then getter",
+      THEN_TRAP "armed = true;"
+      "(async function* () { yield 1; })().next()" CATCH },
+    { "async generator end, result then getter",
+      THEN_TRAP "armed = true;"
+      "(async function* () {})().next()" CATCH },
+    { "async generator completed next, result then getter",
+      THEN_TRAP "var it = (async function* () {})(); it.next();"
+      "armed = true; it.next()" CATCH },
+    { "async generator completed return, result then getter",
+      THEN_TRAP "var it = (async function* () {})(); it.next();"
+      "armed = true; it.return(1)" CATCH },
+    { "async-from-sync iterator next",
+      "(async () => {"
+      "  try {"
+      "    for await (const x of { [Symbol.iterator]() {"
+      "      return { next() { throw new E('boom'); } }; } }) {}"
+      "  } catch (e) { mark(0); }"
+      "})();"
+      "mark(2);" },
+    { "async-from-sync iterator throw, return() throws",
+      "var it = (async function* () {"
+      "  yield* { [Symbol.iterator]() {"
+      "    return { next() { return { value: 1, done: false }; },"
+      "             return() { throw new E('boom'); } }; } };"
+      "})();"
+      "it.next().then(() => { it.throw(1).catch(() => mark(0)); mark(2); });" },
+    { "import() specifier",
+      "import({ toString() { throw new E('boom'); } })" CATCH },
+    { "import() module body", "import('throws')" CATCH },
+    { "import() module body before await", "import('throws-tla')" CATCH },
+    { "import() module body, import func", "import('throws')" CATCH, NULL,
+      true },
+    { "import() module body before await, import func",
+      "import('throws-tla')" CATCH, NULL, true },
+    { "import() module body after async dependency", "import('parent')" CATCH },
+    { "import() module body before await after async dependency",
+      "import('parent-tla')" CATCH },
+    { "using dispose",
+      "try {"
+      "  using x = { [Symbol.dispose]() { throw new E('boom'); } };"
+      "  throw 1;"
+      "} catch (e) { mark(0); }"
+      "mark(2);" },
+    { "DisposableStack dispose",
+      "try {"
+      "  const s = new DisposableStack();"
+      "  s.defer(() => { throw new E('boom'); });"
+      "  s.defer(() => { throw 1; });"
+      "  s.dispose();"
+      "} catch (e) { mark(0); }"
+      "mark(2);" },
+    { "AsyncDisposableStack disposeAsync, first resource",
+      "var s = new AsyncDisposableStack();"
+      "s.defer(() => { throw new E('boom'); });"
+      "s.disposeAsync().catch(() => mark(0));"
+      "mark(2);" },
+    { "AsyncDisposableStack disposeAsync, later resource",
+      "var s = new AsyncDisposableStack();"
+      "s.defer(() => { throw new E('boom'); });"
+      "s.defer(() => { throw 1; });"
+      "s.disposeAsync()" CATCH },
+    { "AsyncIterator dispose, return() throws",
+      "var proto = Object.getPrototypeOf(Object.getPrototypeOf("
+      "  (async function* () {}).prototype));"
+      "proto[Symbol.asyncDispose].call({ return() { throw new E('boom'); } })"
+      CATCH },
+    { "AsyncIterator dispose, return getter throws",
+      "var proto = Object.getPrototypeOf(Object.getPrototypeOf("
+      "  (async function* () {}).prototype));"
+      "proto[Symbol.asyncDispose].call({ get return() { throw new E('boom'); } })"
+      CATCH },
+};
+
+#undef THEN_TRAP
+#undef CATCH
+#undef AFTER_DONE
+
+static JSValue uncatchable_mark(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    struct uncatchable_state *s = JS_GetContextOpaque(ctx);
+    int32_t kind = -1;
+    JS_ToInt32(ctx, &kind, argv[0]);
+    if (kind == 0)
+        s->caught++;
+    else if (kind == 1)
+        s->after++;
+    else if (kind == 2)
+        s->success++;
+    return JS_UNDEFINED;
+}
+
+static JSModuleDef *uncatchable_loader(JSContext *ctx, const char *name,
+                                       void *opaque)
+{
+    static const char *const modules[][2] = {
+        { "throws", "throw new E('boom');" },
+        { "throws-tla", "throw new E('boom'); await 0;" },
+        { "tla-dep", "await 0;" },
+        { "parent", "import 'tla-dep'; throw new E('boom');" },
+        { "parent-tla", "import 'tla-dep'; throw new E('boom'); await 0;" },
+    };
+    JSModuleDef *m;
+    JSValue ret;
+    size_t i;
+
+    for (i = 0; i < countof(modules); i++) {
+        if (strcmp(name, modules[i][0]))
+            continue;
+        ret = JS_Eval(ctx, modules[i][1], strlen(modules[i][1]), name,
+                      JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+        assert(!JS_IsException(ret));
+        m = JS_VALUE_GET_PTR(ret);
+        JS_FreeValue(ctx, ret);
+        return m;
+    }
+    JS_ThrowReferenceError(ctx, "no such module");
+    return NULL;
+}
+
+/* what qjs does */
+static void uncatchable_import_func(JSContext *ctx, const char *basename,
+                                    const char *filename, JSValue token,
+                                    JSValueConst attributes, void *opaque)
+{
+    JSValue exception = JS_UNDEFINED;
+    JSValue promise = JS_LoadModule(ctx, basename, filename, attributes);
+    if (JS_IsException(promise))
+        exception = JS_GetException(ctx);
+    assert(0 == JS_FinishDynamicImport(ctx, token, promise, exception));
+}
+
+/* return true if the host got an exception */
+static bool uncatchable_run(JSContext *ctx, const char *code)
+{
+    JSRuntime *rt = JS_GetRuntime(ctx);
+    JSContext *job_ctx;
+    JSValue ret;
+    int steps = 0;
+
+    ret = eval(ctx, code);
+    if (JS_IsException(ret))
+        return true;
+    JS_FreeValue(ctx, ret);
+    while (JS_IsJobPending(rt)) {
+        assert(++steps < 50);
+        if (JS_ExecutePendingJob(rt, &job_ctx) < 0)
+            return true;
+    }
+    return false;
+}
+
+static void uncatchable_case_run(const struct uncatchable_case *c,
+                                 bool control)
+{
+    struct uncatchable_state s = {0};
+    JSRuntime *rt;
+    JSContext *ctx;
+    JSValue global, err;
+    const char *str;
+    bool host;
+
+    rt = new_runtime();
+    JS_SetModuleLoaderFunc(rt, NULL, uncatchable_loader, NULL);
+    if (c->import_func)
+        JS_SetDynamicImportFunc(rt, uncatchable_import_func, NULL);
+    ctx = JS_NewContext(rt);
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    global = JS_GetGlobalObject(ctx);
+    assert(JS_SetPropertyStr(ctx, global, "mark",
+                             JS_NewCFunction(ctx, uncatchable_mark, "mark", 1)) >= 0);
+    assert(JS_SetPropertyStr(ctx, global, "E",
+                             JS_GetPropertyStr(ctx, global,
+                                               control ? "Error" : "InternalError")) >= 0);
+    JS_FreeValue(ctx, global);
+
+    host = uncatchable_run(ctx, c->script);
+    if (control) {
+        if (host || JS_HasException(ctx) || s.caught != 1 || s.success != 1) {
+            fprintf(stderr, "%s: ordinary error: host=%d caught=%d success=%d\n",
+                    c->name, host, s.caught, s.success);
+            assert(0);
+        }
+    } else {
+        if (!host || s.caught || s.success) {
+            fprintf(stderr, "%s: uncatchable error: host=%d caught=%d success=%d\n",
+                    c->name, host, s.caught, s.success);
+            assert(0);
+        }
+        err = JS_GetException(ctx);
+        assert(JS_IsUncatchableError(err));
+        str = JS_ToCString(ctx, err);
+        assert(str && !strcmp(str, "InternalError: boom"));
+        JS_FreeCString(ctx, str);
+        JS_FreeValue(ctx, err);
+        if (c->after) {
+            assert(!uncatchable_run(ctx, c->after));
+            if (s.after != 1) {
+                fprintf(stderr, "%s: did not recover\n", c->name);
+                assert(0);
+            }
+        }
+    }
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void uncatchable_error_routes(void)
+{
+    size_t i;
+    for (i = 0; i < countof(uncatchable_cases); i++) {
+        uncatchable_case_run(&uncatchable_cases[i], true);
+        uncatchable_case_run(&uncatchable_cases[i], false);
+    }
+}
+
 int main(void)
 {
     cfunctions();
     sync_call();
     async_call();
     uncatchable_promise_rejection();
+    uncatchable_error_routes();
     async_call_stack_overflow();
     raw_context_global_var();
     is_array();

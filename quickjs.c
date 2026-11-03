@@ -8017,6 +8017,16 @@ JSValue JS_GetException(JSContext *ctx)
     return val;
 }
 
+/* Take the pending exception to turn it into a promise rejection or to
+   wrap it in another error. An uncatchable exception must reach the host
+   instead, so it is left pending and JS_EXCEPTION is returned. */
+static JSValue js_get_catchable_exception(JSContext *ctx)
+{
+    if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+        return JS_EXCEPTION;
+    return JS_GetException(ctx);
+}
+
 bool JS_HasException(JSContext *ctx)
 {
     return !JS_IsUninitialized(ctx->rt->current_exception);
@@ -19405,18 +19415,20 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 sf->cur_pc = pc;
                 ret = JS_Call(ctx, method, val, 0, NULL);
                 if (JS_IsException(ret)) {
-                    JSValue new_error = JS_GetException(ctx);
+                    JSValue new_error = js_get_catchable_exception(ctx);
+                    if (JS_IsException(new_error))
+                        goto exception;
                     if (!JS_IsUninitialized(error_state)) {
                         JSValue se;
                         se = js_new_suppressed_error(ctx, new_error,
                                                      error_state);
                         JS_FreeValue(ctx, new_error);
                         JS_FreeValue(ctx, error_state);
-                        if (JS_IsException(se)) {
-                            sp[-1] = JS_GetException(ctx);
-                        } else {
-                            sp[-1] = se;
-                        }
+                        if (JS_IsException(se))
+                            se = js_get_catchable_exception(ctx);
+                        sp[-1] = se;
+                        if (JS_IsException(se))
+                            goto exception;
                     } else {
                         sp[-1] = new_error;
                     }
@@ -19462,11 +19474,11 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                                                          error_state);
                     JS_FreeValue(ctx, new_error);
                     JS_FreeValue(ctx, error_state);
-                    if (JS_IsException(se)) {
-                        sp[-1] = JS_GetException(ctx);
-                    } else {
-                        sp[-1] = se;
-                    }
+                    if (JS_IsException(se))
+                        se = js_get_catchable_exception(ctx);
+                    sp[-1] = se;
+                    if (JS_IsException(se))
+                        goto exception;
                 } else {
                     sp[-1] = new_error;
                 }
@@ -21517,15 +21529,15 @@ static int js_async_function_resolve_create(JSContext *ctx,
 static bool js_async_function_resume(JSContext *ctx, JSAsyncFunctionData *s)
 {
     bool is_success = true;
-    JSValue func_ret, ret2;
+    JSValue func_ret, ret2, error;
 
     func_ret = async_func_resume(ctx, &s->func_state);
     if (JS_IsException(func_ret)) {
     fail:
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
+        error = js_get_catchable_exception(ctx);
+        if (JS_IsException(error)) {
             is_success = false;
         } else {
-            JSValue error = JS_GetException(ctx);
             ret2 = JS_Call(ctx, s->resolving_funcs[1], JS_UNDEFINED,
                            1, vc(&error));
             JS_FreeValue(ctx, error);
@@ -21677,19 +21689,23 @@ typedef struct JSAsyncGeneratorData {
     struct list_head queue; /* list of JSAsyncGeneratorRequest.link */
 } JSAsyncGeneratorData;
 
+static void js_async_generator_free_request(JSRuntime *rt,
+                                            JSAsyncGeneratorRequest *req)
+{
+    JS_FreeValueRT(rt, req->result);
+    JS_FreeValueRT(rt, req->promise);
+    JS_FreeValueRT(rt, req->resolving_funcs[0]);
+    JS_FreeValueRT(rt, req->resolving_funcs[1]);
+    js_free_rt(rt, req);
+}
+
 static void js_async_generator_free(JSRuntime *rt,
                                     JSAsyncGeneratorData *s)
 {
     struct list_head *el, *el1;
-    JSAsyncGeneratorRequest *req;
 
     list_for_each_safe(el, el1, &s->queue) {
-        req = list_entry(el, JSAsyncGeneratorRequest, link);
-        JS_FreeValueRT(rt, req->result);
-        JS_FreeValueRT(rt, req->promise);
-        JS_FreeValueRT(rt, req->resolving_funcs[0]);
-        JS_FreeValueRT(rt, req->resolving_funcs[1]);
-        js_free_rt(rt, req);
+        js_async_generator_free_request(rt, list_entry(el, JSAsyncGeneratorRequest, link));
     }
     if (s->state != JS_ASYNC_GENERATOR_STATE_COMPLETED &&
         s->state != JS_ASYNC_GENERATOR_STATE_AWAITING_RETURN) {
@@ -21791,10 +21807,23 @@ static int js_async_generator_await(JSContext *ctx,
     return -1;
 }
 
-static void js_async_generator_resolve_or_reject(JSContext *ctx,
-                                                 JSAsyncGeneratorData *s,
-                                                 JSValueConst result,
-                                                 int is_reject)
+/* Unlink the request at the head of the queue without settling it: the
+   uncatchable exception that ended it goes to the host instead. */
+static void js_async_generator_drop_request(JSContext *ctx,
+                                            JSAsyncGeneratorData *s)
+{
+    JSAsyncGeneratorRequest *next;
+
+    next = list_entry(s->queue.next, JSAsyncGeneratorRequest, link);
+    list_del(&next->link);
+    js_async_generator_free_request(ctx->rt, next);
+}
+
+/* return < 0 if settling the request threw an uncatchable exception */
+static int js_async_generator_resolve_or_reject(JSContext *ctx,
+                                                JSAsyncGeneratorData *s,
+                                                JSValueConst result,
+                                                int is_reject)
 {
     JSAsyncGeneratorRequest *next;
     JSValue ret;
@@ -21803,31 +21832,32 @@ static void js_async_generator_resolve_or_reject(JSContext *ctx,
     list_del(&next->link);
     ret = JS_Call(ctx, next->resolving_funcs[is_reject], JS_UNDEFINED, 1,
                   &result);
+    js_async_generator_free_request(ctx->rt, next);
+    if (JS_IsException(ret))
+        return -1;
     JS_FreeValue(ctx, ret);
-    JS_FreeValue(ctx, next->result);
-    JS_FreeValue(ctx, next->promise);
-    JS_FreeValue(ctx, next->resolving_funcs[0]);
-    JS_FreeValue(ctx, next->resolving_funcs[1]);
-    js_free(ctx, next);
+    return 0;
 }
 
-static void js_async_generator_resolve(JSContext *ctx,
-                                       JSAsyncGeneratorData *s,
-                                       JSValueConst value,
-                                       bool done)
+static int js_async_generator_resolve(JSContext *ctx,
+                                      JSAsyncGeneratorData *s,
+                                      JSValueConst value,
+                                      bool done)
 {
     JSValue result;
+    int ret;
     result = js_create_iterator_result(ctx, js_dup(value), done);
     /* XXX: better exception handling ? */
-    js_async_generator_resolve_or_reject(ctx, s, result, 0);
+    ret = js_async_generator_resolve_or_reject(ctx, s, result, 0);
     JS_FreeValue(ctx, result);
+    return ret;
  }
 
-static void js_async_generator_reject(JSContext *ctx,
-                                       JSAsyncGeneratorData *s,
-                                       JSValueConst exception)
+static int js_async_generator_reject(JSContext *ctx,
+                                     JSAsyncGeneratorData *s,
+                                     JSValueConst exception)
 {
-    js_async_generator_resolve_or_reject(ctx, s, exception, 1);
+    return js_async_generator_resolve_or_reject(ctx, s, exception, 1);
 }
 
 static void js_async_generator_complete(JSContext *ctx,
@@ -21852,7 +21882,9 @@ static int js_async_generator_completed_return(JSContext *ctx,
     // A poisoned .constructor property is observable and the resulting
     // exception should be delivered to the catch handler.
     if (JS_IsException(promise)) {
-        JSValue err = JS_GetException(ctx);
+        JSValue err = js_get_catchable_exception(ctx);
+        if (JS_IsException(err))
+            return -1;
         promise = js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&err),
                                      /*is_reject*/1);
         JS_FreeValue(ctx, err);
@@ -21877,11 +21909,13 @@ static int js_async_generator_completed_return(JSContext *ctx,
     return res;
 }
 
-static void js_async_generator_resume_next(JSContext *ctx,
-                                           JSAsyncGeneratorData *s)
+/* return < 0 if an uncatchable exception is pending */
+static int js_async_generator_resume_next(JSContext *ctx,
+                                          JSAsyncGeneratorData *s)
 {
     JSAsyncGeneratorRequest *next;
     JSValue func_ret, value;
+    int ret;
 
     for(;;) {
         if (list_empty(&s->queue))
@@ -21902,12 +21936,18 @@ static void js_async_generator_resume_next(JSContext *ctx,
             break;
         case JS_ASYNC_GENERATOR_STATE_COMPLETED:
             if (next->completion_type == GEN_MAGIC_NEXT) {
-                js_async_generator_resolve(ctx, s, JS_UNDEFINED, true);
+                if (js_async_generator_resolve(ctx, s, JS_UNDEFINED, true))
+                    return -1;
             } else if (next->completion_type == GEN_MAGIC_RETURN) {
                 s->state = JS_ASYNC_GENERATOR_STATE_AWAITING_RETURN;
-                js_async_generator_completed_return(ctx, s, next->result);
+                if (js_async_generator_completed_return(ctx, s, next->result)) {
+                    s->state = JS_ASYNC_GENERATOR_STATE_COMPLETED;
+                    js_async_generator_drop_request(ctx, s);
+                    return -1;
+                }
             } else {
-                js_async_generator_reject(ctx, s, next->result);
+                if (js_async_generator_reject(ctx, s, next->result))
+                    return -1;
             }
             goto done;
         case JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD:
@@ -21931,12 +21971,18 @@ static void js_async_generator_resume_next(JSContext *ctx,
         resume_exec:
             func_ret = async_func_resume(ctx, &s->func_state);
             if (JS_IsException(func_ret)) {
-                value = JS_GetException(ctx);
+                value = js_get_catchable_exception(ctx);
                 js_async_generator_complete(ctx, s);
-                js_async_generator_reject(ctx, s, value);
+                if (JS_IsException(value)) {
+                    js_async_generator_drop_request(ctx, s);
+                    return -1;
+                }
+                ret = js_async_generator_reject(ctx, s, value);
                 JS_FreeValue(ctx, value);
+                if (ret)
+                    return -1;
             } else if (JS_VALUE_GET_TAG(func_ret) == JS_TAG_INT) {
-                int func_ret_code, ret;
+                int func_ret_code;
                 value = s->func_state.frame.cur_sp[-1];
                 s->func_state.frame.cur_sp[-1] = JS_UNDEFINED;
                 func_ret_code = JS_VALUE_GET_INT(func_ret);
@@ -21947,8 +21993,10 @@ static void js_async_generator_resume_next(JSContext *ctx,
                         s->state = JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD_STAR;
                     else
                         s->state = JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD;
-                    js_async_generator_resolve(ctx, s, value, false);
+                    ret = js_async_generator_resolve(ctx, s, value, false);
                     JS_FreeValue(ctx, value);
+                    if (ret)
+                        return -1;
                     break;
                 case FUNC_RET_AWAIT:
                     ret = js_async_generator_await(ctx, s, value);
@@ -21968,15 +22016,18 @@ static void js_async_generator_resume_next(JSContext *ctx,
                 value = s->func_state.frame.cur_sp[-1];
                 s->func_state.frame.cur_sp[-1] = JS_UNDEFINED;
                 js_async_generator_complete(ctx, s);
-                js_async_generator_resolve(ctx, s, value, true);
+                ret = js_async_generator_resolve(ctx, s, value, true);
                 JS_FreeValue(ctx, value);
+                if (ret)
+                    return -1;
             }
             break;
         default:
             abort();
         }
     }
- done: ;
+ done:
+    return 0;
 }
 
 static JSValue js_async_generator_resolve_function(JSContext *ctx,
@@ -21996,9 +22047,11 @@ static JSValue js_async_generator_resolve_function(JSContext *ctx,
                s->state == JS_ASYNC_GENERATOR_STATE_COMPLETED);
         s->state = JS_ASYNC_GENERATOR_STATE_COMPLETED;
         if (is_reject) {
-            js_async_generator_reject(ctx, s, arg);
+            if (js_async_generator_reject(ctx, s, arg))
+                return JS_EXCEPTION;
         } else {
-            js_async_generator_resolve(ctx, s, arg, true);
+            if (js_async_generator_resolve(ctx, s, arg, true))
+                return JS_EXCEPTION;
         }
     } else if (s->state == JS_ASYNC_GENERATOR_STATE_EXECUTING) {
         /* restart function execution after await() */
@@ -22009,7 +22062,8 @@ static JSValue js_async_generator_resolve_function(JSContext *ctx,
             /* return value of await */
             s->func_state.frame.cur_sp[-1] = js_dup(arg);
         }
-        js_async_generator_resume_next(ctx, s);
+        if (js_async_generator_resume_next(ctx, s))
+            return JS_EXCEPTION;
     }
     return JS_UNDEFINED;
 }
@@ -22029,7 +22083,9 @@ static JSValue js_async_generator_next(JSContext *ctx, JSValueConst this_val,
     if (!s) {
         JSValue err, res2;
         JS_ThrowTypeError(ctx, "not an AsyncGenerator object");
-        err = JS_GetException(ctx);
+        err = js_get_catchable_exception(ctx);
+        if (JS_IsException(err))
+            goto fail;
         res2 = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED,
                        1, vc(&err));
         JS_FreeValue(ctx, err);
@@ -22048,7 +22104,10 @@ static JSValue js_async_generator_next(JSContext *ctx, JSValueConst this_val,
     req->resolving_funcs[1] = resolving_funcs[1];
     list_add_tail(&req->link, &s->queue);
     if (s->state != JS_ASYNC_GENERATOR_STATE_EXECUTING) {
-        js_async_generator_resume_next(ctx, s);
+        if (js_async_generator_resume_next(ctx, s)) {
+            JS_FreeValue(ctx, promise);
+            return JS_EXCEPTION;
+        }
     }
     return promise;
  fail:
@@ -31830,7 +31889,9 @@ static JSValue js_load_module_fulfilled(JSContext *ctx, JSValueConst this_val,
     /* return the module namespace */
     ns = JS_GetModuleNamespace(ctx, m);
     if (JS_IsException(ns)) {
-        JSValue err = JS_GetException(ctx);
+        JSValue err = js_get_catchable_exception(ctx);
+        if (JS_IsException(err))
+            return JS_EXCEPTION;
         js_load_module_rejected(ctx, JS_UNDEFINED, 1, vc(&err), 0, func_data);
         return JS_UNDEFINED;
     }
@@ -31840,10 +31901,11 @@ static JSValue js_load_module_fulfilled(JSContext *ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
-                                  const char *filename,
-                                  JSValueConst *resolving_funcs,
-                                  JSValueConst attributes)
+/* return < 0 if an uncatchable exception is pending */
+static int JS_LoadModuleInternal(JSContext *ctx, const char *basename,
+                                 const char *filename,
+                                 JSValueConst *resolving_funcs,
+                                 JSValueConst attributes)
 {
     JSValue evaluate_promise;
     JSModuleDef *m;
@@ -31864,11 +31926,13 @@ static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
     evaluate_promise = JS_EvalFunction(ctx, func_obj);
     if (JS_IsException(evaluate_promise)) {
     fail:
-        err = JS_GetException(ctx);
+        err = js_get_catchable_exception(ctx);
+        if (JS_IsException(err))
+            return -1;
         ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
         JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
         JS_FreeValue(ctx, err);
-        return;
+        return 0;
     }
 
     func_obj = JS_NewModuleValue(ctx, m);
@@ -31883,6 +31947,7 @@ static void JS_LoadModuleInternal(JSContext *ctx, const char *basename,
     JS_FreeValue(ctx, evaluate_resolving_funcs[0]);
     JS_FreeValue(ctx, evaluate_resolving_funcs[1]);
     JS_FreeValue(ctx, evaluate_promise);
+    return 0;
 }
 
 /* Return a promise or an exception in case of memory error. */
@@ -31894,8 +31959,11 @@ JSValue JS_LoadModule(JSContext *ctx, const char *basename,
     promise = JS_NewPromiseCapability(ctx, resolving_funcs);
     if (JS_IsException(promise))
         return JS_EXCEPTION;
-    JS_LoadModuleInternal(ctx, basename, filename, vc(resolving_funcs),
-                          attributes);
+    if (JS_LoadModuleInternal(ctx, basename, filename, vc(resolving_funcs),
+                              attributes) < 0) {
+        JS_FreeValue(ctx, promise);
+        promise = JS_EXCEPTION;
+    }
     JS_FreeValue(ctx, resolving_funcs[0]);
     JS_FreeValue(ctx, resolving_funcs[1]);
     return promise;
@@ -31909,7 +31977,7 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
     JSValueConst basename_val = argv[2];
     JSValueConst specifier = argv[3];
     JSValueConst attributes = argv[4];
-    JSValue ret, err, token = JS_UNDEFINED;
+    JSValue ret = JS_UNDEFINED, err, token = JS_UNDEFINED;
     const char *basename = NULL, *filename = NULL;
 
     if (!JS_IsString(basename_val)) {
@@ -31938,21 +32006,27 @@ static JSValue js_dynamic_import_job(JSContext *ctx,
                            rt->dynamic_import_opaque);
     } else {
         // fallback for legacy code
-        JS_LoadModuleInternal(ctx, basename, filename, resolving_funcs,
-                              attributes);
+        if (JS_LoadModuleInternal(ctx, basename, filename, resolving_funcs,
+                                  attributes) < 0)
+            ret = JS_EXCEPTION;
     }
     JS_FreeCString(ctx, filename);
     JS_FreeCString(ctx, basename);
-    return JS_UNDEFINED;
+    return ret;
  exception:
-    err = JS_GetException(ctx);
-    ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
-    JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
-    JS_FreeValue(ctx, err);
+    err = js_get_catchable_exception(ctx);
+    if (JS_IsException(err)) {
+        ret = JS_EXCEPTION;
+    } else {
+        ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
+        JS_FreeValue(ctx, ret); /* XXX: what to do if exception ? */
+        JS_FreeValue(ctx, err);
+        ret = JS_UNDEFINED;
+    }
     JS_FreeValue(ctx, token);
     JS_FreeCString(ctx, basename);
     JS_FreeCString(ctx, filename);
-    return JS_UNDEFINED;
+    return ret;
 }
 
 static JSValue js_dynamic_import(JSContext *ctx, JSValueConst specifier,
@@ -32052,7 +32126,12 @@ done:
     return promise;
  exception:
     JS_FreeValue(ctx, attributes_obj);
-    err = JS_GetException(ctx);
+    err = js_get_catchable_exception(ctx);
+    if (JS_IsException(err)) {
+        JS_FreeValue(ctx, promise);
+        promise = JS_EXCEPTION;
+        goto done;
+    }
     ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&err));
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, err);
@@ -32069,7 +32148,11 @@ static JSValue js_finish_dynamic_import_job(JSContext *ctx,
 
     resolve = JS_GetProperty(ctx, token, JS_ATOM_resolve);
     reject = JS_GetProperty(ctx, token, JS_ATOM_reject);
-    if (JS_IsException(promise)) {
+    if (JS_IsUncatchableError(exception)) {
+        /* do not reject: leave it to the host, like
+           js_get_catchable_exception() */
+        ret = JS_Throw(ctx, js_dup(exception));
+    } else if (JS_IsException(promise)) {
         ret = JS_Call(ctx, reject, JS_UNDEFINED, 1, &exception);
     } else {
         ret = JS_PromiseThen(ctx, promise, resolve, reject);
@@ -32171,6 +32254,21 @@ static int js_execute_sync_module(JSContext *ctx, JSModuleDef *m,
                                   JSValue *pvalue);
 static void js_promise_set_handled(JSContext *ctx, JSValueConst promise);
 
+/* An uncatchable evaluation error goes to the host instead of rejecting
+   the module's promise, like js_get_catchable_exception(). The promise is
+   dropped so that a later import rethrows the error. */
+static JSValue js_module_throw_uncatchable(JSContext *ctx, JSModuleDef *m,
+                                           JSValue error)
+{
+    JS_FreeValue(ctx, m->resolving_funcs[0]);
+    JS_FreeValue(ctx, m->resolving_funcs[1]);
+    JS_FreeValue(ctx, m->promise);
+    m->resolving_funcs[0] = JS_UNDEFINED;
+    m->resolving_funcs[1] = JS_UNDEFINED;
+    m->promise = JS_UNDEFINED;
+    return JS_Throw(ctx, error);
+}
+
 static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst this_val,
                                                   int argc, JSValueConst *argv, int magic,
                                                   JSValueConst *func_data)
@@ -32203,6 +32301,8 @@ static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst t
         JS_FreeValue(ctx, m_obj);
     }
 
+    if (JS_IsUncatchableError(error))
+        return js_module_throw_uncatchable(ctx, module, js_dup(error));
     if (!JS_IsUndefined(module->promise)) {
         JSValue ret_val;
         assert(module->cycle_root == module);
@@ -32248,19 +32348,27 @@ static JSValue js_async_module_execution_fulfilled(JSContext *ctx, JSValueConst 
         JSModuleDef *m = exec_list->tab[i];
         if (m->status == JS_MODULE_STATUS_EVALUATED) {
             assert(m->eval_has_exception);
-        } else if (m->has_tla) {
-            js_execute_async_module(ctx, m);
         } else {
-            JSValue error;
-            if (js_execute_sync_module(ctx, m, &error) < 0) {
-                JSValue m_obj = JS_NewModuleValue(ctx, m);
-                js_async_module_execution_rejected(ctx, JS_UNDEFINED,
-                                                   1, vc(&error),
-                                                   0, vc(&m_obj));
-                JS_FreeValue(ctx, m_obj);
-                JS_FreeValue(ctx, error);
+            JSValue error, ret, m_obj;
+            if (m->has_tla) {
+                if (js_execute_async_module(ctx, m) == 0)
+                    continue;
+                error = JS_GetException(ctx);
             } else {
-                js_set_module_evaluated(ctx, m);
+                if (js_execute_sync_module(ctx, m, &error) == 0) {
+                    js_set_module_evaluated(ctx, m);
+                    continue;
+                }
+            }
+            m_obj = JS_NewModuleValue(ctx, m);
+            ret = js_async_module_execution_rejected(ctx, JS_UNDEFINED,
+                                                     1, vc(&error),
+                                                     0, vc(&m_obj));
+            JS_FreeValue(ctx, m_obj);
+            JS_FreeValue(ctx, error);
+            if (JS_IsException(ret)) {
+                js_free(ctx, exec_list->tab);
+                return JS_EXCEPTION;
             }
         }
     }
@@ -32412,7 +32520,10 @@ static int js_inner_module_evaluation(JSContext *ctx, JSModuleDef *m,
         m->async_evaluation = true;
         m->async_evaluation_timestamp =
             ctx->rt->module_async_evaluation_next_timestamp++;
-        js_execute_async_module(ctx, m);
+        if (js_execute_async_module(ctx, m) < 0) {
+            *pvalue = JS_GetException(ctx);
+            return -1;
+        }
     } else {
         if (js_execute_sync_module(ctx, m, pvalue) < 0)
             return -1;
@@ -32471,6 +32582,8 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
             m1->cycle_root = m; /* spec bug: should be present */
             stack_top = m1->stack_prev;
         }
+        if (JS_IsUncatchableError(result))
+            return js_module_throw_uncatchable(ctx, m, result);
         JS_FreeValue(ctx, result);
         assert(m->status == JS_MODULE_STATUS_EVALUATED);
         assert(m->eval_has_exception);
@@ -46048,20 +46161,20 @@ static JSValue js_async_iterator_proto_dispose(JSContext *ctx,
     JSValue undef = JS_UNDEFINED;
 
     method = JS_GetProperty(ctx, this_val, JS_ATOM_return);
-    if (JS_IsException(method)) {
-        JSValue exc = JS_GetException(ctx);
-        JSValue p = js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&exc), 1);
-        JS_FreeValue(ctx, exc);
-        return p;
-    }
+    if (JS_IsException(method))
+        goto reject;
     if (JS_IsUndefined(method)) {
         return js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&undef), 0);
     }
     ret = JS_Call(ctx, method, this_val, 0, NULL);
     JS_FreeValue(ctx, method);
     if (JS_IsException(ret)) {
-        JSValue exc = JS_GetException(ctx);
-        JSValue p = js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&exc), 1);
+        JSValue exc, p;
+    reject:
+        exc = js_get_catchable_exception(ctx);
+        if (JS_IsException(exc))
+            return JS_EXCEPTION;
+        p = js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&exc), 1);
         JS_FreeValue(ctx, exc);
         return p;
     }
@@ -55000,16 +55113,21 @@ static int js_dispose_resources(JSContext *ctx, JSDisposableStack *ds,
         res->value = JS_UNDEFINED;
         res->method = JS_UNDEFINED;
         if (JS_IsException(ret)) {
-            JSValue new_error = JS_GetException(ctx);
+            JSValue new_error = js_get_catchable_exception(ctx);
+            if (JS_IsException(new_error)) {
+                /* the remaining resources are freed with the stack */
+                JS_FreeValue(ctx, error);
+                return -1;
+            }
             if (has_error) {
                 JSValue suppressed = js_new_suppressed_error(ctx, new_error, error);
                 JS_FreeValue(ctx, new_error);
                 JS_FreeValue(ctx, error);
-                if (JS_IsException(suppressed)) {
-                    error = JS_GetException(ctx);
-                } else {
-                    error = suppressed;
-                }
+                if (JS_IsException(suppressed))
+                    suppressed = js_get_catchable_exception(ctx);
+                error = suppressed;
+                if (JS_IsException(error))
+                    return -1;
             } else {
                 error = new_error;
                 has_error = true;
@@ -55313,7 +55431,9 @@ static JSValue js_async_dispose_step(JSContext *ctx, JSValueConst this_val,
     }
 
     if (JS_IsException(ret)) {
-        JSValue new_err = JS_GetException(ctx);
+        JSValue new_err = js_get_catchable_exception(ctx);
+        if (JS_IsException(new_err))
+            return JS_EXCEPTION;
         if (has_prev_err) {
             JSValue se = js_new_suppressed_error(ctx, new_err, argv[0]);
             JS_FreeValue(ctx, new_err);
@@ -55362,9 +55482,12 @@ static JSValue js_disposable_stack_dispose(JSContext *ctx,
     s = JS_GetOpaque2(ctx, this_val, class_id);
     if (!s) {
         if (class_id == JS_CLASS_ASYNC_DISPOSABLE_STACK) {
-            JSValue exc = JS_GetException(ctx);
-            JSValue p = js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&exc),
-                                           /*is_reject*/1);
+            JSValue exc = js_get_catchable_exception(ctx);
+            JSValue p;
+            if (JS_IsException(exc))
+                return JS_EXCEPTION;
+            p = js_promise_resolve(ctx, ctx->promise_ctor, 1, vc(&exc),
+                                   /*is_reject*/1);
             JS_FreeValue(ctx, exc);
             return p;
         }
@@ -55417,9 +55540,11 @@ static JSValue js_disposable_stack_dispose(JSContext *ctx,
                     break;
                 }
                 if (JS_IsException(ret)) {
-                    JSValue err = JS_GetException(ctx);
-                    chain = js_promise_resolve(ctx, ctx->promise_ctor, 1,
-                                               vc(&err), /*is_reject*/1);
+                    JSValue err = js_get_catchable_exception(ctx);
+                    chain = JS_EXCEPTION;
+                    if (!JS_IsException(err))
+                        chain = js_promise_resolve(ctx, ctx->promise_ctor, 1,
+                                                   vc(&err), /*is_reject*/1);
                     JS_FreeValue(ctx, err);
                 } else {
                     chain = js_promise_resolve(ctx, ctx->promise_ctor, 1,
@@ -55706,9 +55831,9 @@ static JSValue promise_reaction_job(JSContext *ctx, int argc,
     }
     is_reject = JS_IsException(res);
     if (is_reject) {
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+        res = js_get_catchable_exception(ctx);
+        if (JS_IsException(res))
             return JS_EXCEPTION;
-        res = JS_GetException(ctx);
     }
     func = argv[is_reject];
     /* as an extension, we support undefined as value to avoid
@@ -55808,17 +55933,11 @@ static JSValue js_promise_resolve_thenable_job(JSContext *ctx,
                          rt->promise_hook_opaque);
     }
     if (JS_IsException(res)) {
-        JSValue error;
-        /* Rejecting would let a user catch handler continue after an
-           uncatchable exception. Leave it pending for the host. */
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
-            JS_FreeValue(ctx, args[0]);
-            JS_FreeValue(ctx, args[1]);
-            return JS_EXCEPTION;
+        JSValue error = js_get_catchable_exception(ctx);
+        if (!JS_IsException(error)) {
+            res = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
+            JS_FreeValue(ctx, error);
         }
-        error = JS_GetException(ctx);
-        res = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
-        JS_FreeValue(ctx, error);
     }
     JS_FreeValue(ctx, args[0]);
     JS_FreeValue(ctx, args[1]);
@@ -55934,10 +56053,10 @@ static JSValue js_promise_resolve_function_call(JSContext *ctx,
     then = JS_GetProperty(ctx, resolution, JS_ATOM_then);
     if (JS_IsException(then)) {
         JSValue error;
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
-            return JS_EXCEPTION;
     fail_reject:
-        error = JS_GetException(ctx);
+        error = js_get_catchable_exception(ctx);
+        if (JS_IsException(error))
+            return JS_EXCEPTION;
         fulfill_or_reject_promise(ctx, s->promise, error, true);
         JS_FreeValue(ctx, error);
     } else if (!JS_IsFunction(ctx, then)) {
@@ -56048,9 +56167,9 @@ static JSValue js_promise_constructor(JSContext *ctx, JSValueConst new_target,
     ret = JS_Call(ctx, executor, JS_UNDEFINED, 2, vc(args));
     if (JS_IsException(ret)) {
         JSValue ret2, error;
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+        error = js_get_catchable_exception(ctx);
+        if (JS_IsException(error))
             goto fail;
-        error = JS_GetException(ctx);
         ret2 = JS_Call(ctx, args[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
         if (JS_IsException(ret2))
@@ -56242,16 +56361,13 @@ static JSValue js_promise_try(JSContext *ctx, JSValueConst this_val,
         return result_promise;
     ret = JS_Call(ctx, argv[0], JS_UNDEFINED, argc - 1, argv + 1);
     if (JS_IsException(ret)) {
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception))) {
-            JS_FreeValue(ctx, result_promise);
-            JS_FreeValue(ctx, resolving_funcs[0]);
-            JS_FreeValue(ctx, resolving_funcs[1]);
-            return JS_EXCEPTION;
-        }
         is_reject = 1;
-        ret = JS_GetException(ctx);
+        ret = js_get_catchable_exception(ctx);
     }
-    ret2 = JS_Call(ctx, resolving_funcs[is_reject], JS_UNDEFINED, 1, vc(&ret));
+    if (JS_IsException(ret))
+        ret2 = JS_EXCEPTION;
+    else
+        ret2 = JS_Call(ctx, resolving_funcs[is_reject], JS_UNDEFINED, 1, vc(&ret));
     JS_FreeValue(ctx, resolving_funcs[0]);
     JS_FreeValue(ctx, resolving_funcs[1]);
     JS_FreeValue(ctx, ret);
@@ -56381,9 +56497,9 @@ static JSValue js_promise_all(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(iter)) {
         JSValue error;
     fail_reject:
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+        error = js_get_catchable_exception(ctx);
+        if (JS_IsException(error))
             goto fail;
-        error = JS_GetException(ctx);
         ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
         if (JS_IsException(ret))
@@ -56524,9 +56640,9 @@ static JSValue js_promise_race(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(iter)) {
         JSValue error;
     fail_reject:
-        if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
+        error = js_get_catchable_exception(ctx);
+        if (JS_IsException(error))
             goto fail;
-        error = JS_GetException(ctx);
         ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, vc(&error));
         JS_FreeValue(ctx, error);
         if (JS_IsException(ret))
@@ -56888,8 +57004,7 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
                 err = js_create_iterator_result(ctx, js_dup(argv[0]), true);
                 is_reject = 0;
             } else if (JS_IteratorClose(ctx, s->sync_iter, false)) {
-                err = JS_GetException(ctx);
-                is_reject = 1;
+                goto reject;
             } else {
                 err = JS_MakeError2(ctx, JS_TYPE_ERROR, /*add_backtrace*/true,
                                     "throw is not a method");
@@ -56914,7 +57029,13 @@ static JSValue js_async_from_sync_iterator_next(JSContext *ctx, JSValueConst thi
     if (JS_IsException(value)) {
         JSValue res2;
     reject:
-        err = JS_GetException(ctx);
+        err = js_get_catchable_exception(ctx);
+        if (JS_IsException(err)) {
+            JS_FreeValue(ctx, resolving_funcs[0]);
+            JS_FreeValue(ctx, resolving_funcs[1]);
+            JS_FreeValue(ctx, promise);
+            return JS_EXCEPTION;
+        }
         is_reject = 1;
     done_resolve:
         res2 = JS_Call(ctx, resolving_funcs[is_reject], JS_UNDEFINED,
