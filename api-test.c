@@ -3216,6 +3216,8 @@ static int promise_adoption_trial(int mode, int headroom, int previous_kind, int
         assert(JS_IsSameValue(ctx, error, JS_TRUE));
         JS_FreeValue(ctx, error);
     }
+    if (failed && mode == 4)
+        assert(JS_PromiseState(ctx, ret) == JS_PROMISE_PENDING);
     JS_FreeValue(ctx, ret);
     /* Failure consumes the original resolver too. It is never a retry path. */
     for (i = 0; s.reenter && i < 2; i++) {

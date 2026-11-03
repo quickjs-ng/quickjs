@@ -55715,6 +55715,12 @@ static JSValue promise_reaction_job(JSContext *ctx, int argc,
     }
     is_reject = JS_IsException(res);
     if (is_reject) {
+        /* Async resumption already rejects ordinary guest exceptions. Its
+           exception return is a host failure, including a null-valued OOM. */
+        JSClassID class_id = JS_GetClassID(handler);
+        if (class_id == JS_CLASS_ASYNC_FUNCTION_RESOLVE ||
+            class_id == JS_CLASS_ASYNC_FUNCTION_REJECT)
+            return JS_EXCEPTION;
         if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
             return JS_EXCEPTION;
         res = JS_GetException(ctx);
