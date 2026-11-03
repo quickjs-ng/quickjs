@@ -817,6 +817,229 @@ static void promise_then(void)
     JS_FreeRuntime(rt);
 }
 
+struct settlement_state {
+    int order[8], calls;
+    JSValue source, extra;
+};
+
+static JSValue settlement_handler(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv, int magic,
+                                   JSValueConst *data)
+{
+    struct settlement_state *s = JS_GetContextOpaque(ctx);
+    assert(argc == 1 && JS_IsSameValue(ctx, argv[0], JS_TRUE));
+    assert(s->calls < countof(s->order));
+    s->order[s->calls++] = magic;
+    return JS_TRUE;
+}
+
+static JSValue settlement_subscribe(JSContext *ctx, JSValueConst source, int id)
+{
+    JSValue fn, method, ret;
+    JSValueConst args[2];
+    fn = JS_NewCFunctionData(ctx, settlement_handler, 1, id, 0, NULL);
+    assert(!JS_IsException(fn));
+    args[0] = args[1] = fn;
+    if (id & 1) {
+        method = JS_GetPropertyStr(ctx, source, "then");
+        ret = JS_Call(ctx, method, source, 2, args);
+        JS_FreeValue(ctx, method);
+    } else {
+        ret = JS_PromiseThen(ctx, source, fn, fn);
+    }
+    JS_FreeValue(ctx, fn);
+    assert(!JS_IsException(ret) && !JS_HasException(ctx));
+    return ret;
+}
+
+static void promise_settlement_trial(int reject, int limited, int previous_kind)
+{
+    struct settlement_state state = {0};
+    JSRuntime *rt = new_runtime();
+    JSContext *a = JS_NewContext(rt), *b = JS_NewContext(rt), *c = JS_NewContext(rt), *job_ctx;
+    JSValue resolvers[2], source, derived[4], previous, ret, value = JS_TRUE;
+    JSMemoryUsage usage;
+    int i, jobs = 0;
+
+    assert(a && b && c);
+    JS_SetContextOpaque(b, &state);
+    source = JS_NewPromiseCapability(a, resolvers);
+    assert(!JS_IsException(source));
+    for(i = 0; i < countof(derived); i++)
+        derived[i] = settlement_subscribe(b, source, i);
+    JS_RunGC(rt);
+    assert(!JS_IsJobPending(rt));
+    previous = previous_kind == 0 ? JS_NewError(c)
+             : previous_kind == 1 ? JS_NULL : JS_UNDEFINED;
+    if (previous_kind >= 0)
+        JS_Throw(c, JS_DupValue(c, previous));
+    JS_ComputeMemoryUsage(rt, &usage);
+    if (limited)
+        JS_SetMemoryLimit(rt, usage.malloc_size);
+    ret = JS_Call(c, resolvers[reject], JS_UNDEFINED, 1, &value);
+    /* Restore only after settlement: every accepted reaction must publish
+       even when no further engine allocation is permitted. */
+    JS_SetMemoryLimit(rt, 0);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(c, ret);
+    if (previous_kind >= 0) {
+        ret = JS_GetException(c);
+        assert(JS_IsSameValue(c, ret, previous));
+        JS_FreeValue(c, ret);
+    }
+    assert(!JS_HasException(c));
+    assert(JS_PromiseState(c, source) == JS_PROMISE_FULFILLED + reject);
+    assert(state.calls == 0 && JS_IsJobPending(rt));
+    ret = JS_Call(c, resolvers[1 - reject], JS_UNDEFINED, 1, &value);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(c, ret);
+    JS_RunGC(rt);
+    while (JS_IsJobPending(rt)) {
+        assert(JS_GetPendingJobContext(rt) == c);
+        assert(JS_ExecutePendingJob(rt, &job_ctx) == 1 && job_ctx == c);
+        jobs++;
+    }
+    assert(jobs == countof(derived) && state.calls == jobs);
+    for(i = 0; i < countof(derived); i++) {
+        assert(state.order[i] == i);
+        assert(JS_PromiseState(b, derived[i]) == JS_PROMISE_FULFILLED);
+        ret = JS_PromiseResult(b, derived[i]);
+        assert(JS_IsSameValue(b, ret, JS_TRUE));
+        JS_FreeValue(b, ret);
+        JS_FreeValue(b, derived[i]);
+    }
+    JS_FreeValue(c, previous);
+    JS_FreeValue(a, source);
+    for(i = 0; i < 2; i++)
+        JS_FreeValue(a, resolvers[i]);
+    JS_FreeContext(a);
+    JS_FreeContext(b);
+    JS_FreeContext(c);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &usage);
+    assert(usage.obj_count == 0);
+    JS_FreeRuntime(rt);
+}
+
+static void settlement_hook(JSContext *ctx, JSPromiseHookType type,
+                              JSValueConst promise, JSValueConst parent,
+                              void *opaque)
+{
+    struct settlement_state *s = opaque;
+    if (type == JS_PROMISE_HOOK_RESOLVE && JS_IsSameValue(ctx, promise, s->source)) {
+        assert(!JS_IsJobPending(JS_GetRuntime(ctx)));
+        JS_RunGC(JS_GetRuntime(ctx));
+        s->extra = settlement_subscribe(ctx, promise, 7);
+        JS_RunGC(JS_GetRuntime(ctx));
+    }
+}
+
+static void promise_settlement_lifecycle(int mode)
+{
+    struct settlement_state state = {0};
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue resolvers[2], derived, ret, value = JS_TRUE;
+    JSMemoryUsage usage;
+    int i, jobs = 0;
+
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &state);
+    state.source = JS_NewPromiseCapability(ctx, resolvers);
+    state.extra = JS_UNDEFINED;
+    derived = settlement_subscribe(ctx, state.source, 0);
+    if (mode) {
+        JS_SetPromiseHook(rt, settlement_hook, &state);
+        ret = JS_Call(ctx, resolvers[0], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        if (mode == 2) {
+            while (JS_IsJobPending(rt)) {
+                assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+                jobs++;
+            }
+            assert(jobs == 2 && state.calls == 2);
+            assert(state.order[0] == 7 && state.order[1] == 0);
+        }
+        JS_SetPromiseHook(rt, NULL, NULL);
+    }
+    JS_FreeValue(ctx, state.extra);
+    JS_FreeValue(ctx, derived);
+    JS_FreeValue(ctx, state.source);
+    for(i = 0; i < 2; i++)
+        JS_FreeValue(ctx, resolvers[i]);
+    /* Pending and abandoned queued jobs must each release their ownership. */
+    if (mode == 1) {
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+        return;
+    }
+    ret = eval(ctx, "(()=>{const p=new Promise(()=>{});"
+                    "const f=()=>p;p.then(f,f)})()");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_RunGC(rt);
+    JS_FreeContext(ctx);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &usage);
+    assert(usage.obj_count == 0);
+    JS_FreeRuntime(rt);
+}
+
+static void promise_settlement_async(int reject)
+{
+    struct settlement_state state = {0};
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue source, derived, resolver, ret, global;
+    JSMemoryUsage usage;
+    int jobs = 0;
+
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &state);
+    ret = eval(ctx, "var settle;var pending=new Promise(r=>settle=r)");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    source = eval(ctx, reject ? "(async()=>{await pending;throw true})()"
+                             : "(async()=>{await pending;return true})()");
+    assert(!JS_IsException(source));
+    derived = settlement_subscribe(ctx, source, 0);
+    global = JS_GetGlobalObject(ctx);
+    resolver = JS_GetPropertyStr(ctx, global, "settle");
+    JS_FreeValue(ctx, global);
+    ret = JS_Call(ctx, resolver, JS_UNDEFINED, 1, (JSValueConst[]){JS_TRUE});
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, resolver);
+    JS_ComputeMemoryUsage(rt, &usage);
+    JS_SetMemoryLimit(rt, usage.malloc_size);
+    /* The await job settles its outer Promise while the cap is still tight. */
+    while (JS_IsJobPending(rt)) {
+        assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+        assert(!JS_HasException(ctx));
+        jobs++;
+    }
+    JS_SetMemoryLimit(rt, 0);
+    assert(jobs == 2 && state.calls == 1);
+    assert(JS_PromiseState(ctx, source) == JS_PROMISE_FULFILLED + reject);
+    JS_FreeValue(ctx, derived);
+    JS_FreeValue(ctx, source);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void promise_settlement(void)
+{
+    for(int reject = 0; reject < 2; reject++) {
+        for(int limited = 0; limited < 2; limited++)
+            for(int previous = -1; previous < 3; previous++)
+                promise_settlement_trial(reject, limited, previous);
+        promise_settlement_async(reject);
+    }
+    for(int mode = 0; mode < 3; mode++)
+        promise_settlement_lifecycle(mode);
+}
+
 struct promise_subscription_state {
     int calls, rejects, handled, hook_jobs;
     bool enqueue_from_hook;
@@ -2859,6 +3082,7 @@ static void dynamic_import_deferred_reject(void)
 
 int main(void)
 {
+    promise_settlement();
     promise_subscription();
     function_metadata();
     function_metadata_pending();
