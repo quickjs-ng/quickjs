@@ -21823,43 +21823,51 @@ static int js_async_generator_await(JSContext *ctx,
     return -1;
 }
 
-static void js_async_generator_resolve_or_reject(JSContext *ctx,
+static int js_async_generator_resolve_or_reject(JSContext *ctx,
                                                  JSAsyncGeneratorData *s,
                                                  JSValueConst result,
                                                  int is_reject)
 {
     JSAsyncGeneratorRequest *next;
     JSValue ret;
+    int res;
 
     next = list_entry(s->queue.next, JSAsyncGeneratorRequest, link);
     list_del(&next->link);
-    ret = JS_Call(ctx, next->resolving_funcs[is_reject], JS_UNDEFINED, 1,
-                  &result);
+    /* A failed iterator-result allocation must release the request without
+       passing the exception sentinel to its resolver as a guest value. */
+    ret = JS_EXCEPTION;
+    if (!JS_IsException(result))
+        ret = JS_Call(ctx, next->resolving_funcs[is_reject], JS_UNDEFINED, 1,
+                      &result);
+    res = JS_IsException(ret) ? -1 : 0;
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, next->result);
     JS_FreeValue(ctx, next->promise);
     JS_FreeValue(ctx, next->resolving_funcs[0]);
     JS_FreeValue(ctx, next->resolving_funcs[1]);
     js_free(ctx, next);
+    return res;
 }
 
-static void js_async_generator_resolve(JSContext *ctx,
+static int js_async_generator_resolve(JSContext *ctx,
                                        JSAsyncGeneratorData *s,
                                        JSValueConst value,
                                        bool done)
 {
     JSValue result;
+    int res;
     result = js_create_iterator_result(ctx, js_dup(value), done);
-    /* XXX: better exception handling ? */
-    js_async_generator_resolve_or_reject(ctx, s, result, 0);
+    res = js_async_generator_resolve_or_reject(ctx, s, result, 0);
     JS_FreeValue(ctx, result);
- }
+    return res;
+}
 
-static void js_async_generator_reject(JSContext *ctx,
+static int js_async_generator_reject(JSContext *ctx,
                                        JSAsyncGeneratorData *s,
                                        JSValueConst exception)
 {
-    js_async_generator_resolve_or_reject(ctx, s, exception, 1);
+    return js_async_generator_resolve_or_reject(ctx, s, exception, 1);
 }
 
 static void js_async_generator_complete(JSContext *ctx,
@@ -21909,11 +21917,12 @@ static int js_async_generator_completed_return(JSContext *ctx,
     return res;
 }
 
-static void js_async_generator_resume_next(JSContext *ctx,
+static int js_async_generator_resume_next(JSContext *ctx,
                                            JSAsyncGeneratorData *s)
 {
     JSAsyncGeneratorRequest *next;
     JSValue func_ret, value;
+    int ret;
 
     for(;;) {
         if (list_empty(&s->queue))
@@ -21934,12 +21943,19 @@ static void js_async_generator_resume_next(JSContext *ctx,
             break;
         case JS_ASYNC_GENERATOR_STATE_COMPLETED:
             if (next->completion_type == GEN_MAGIC_NEXT) {
-                js_async_generator_resolve(ctx, s, JS_UNDEFINED, true);
+                return js_async_generator_resolve(ctx, s, JS_UNDEFINED, true);
             } else if (next->completion_type == GEN_MAGIC_RETURN) {
                 s->state = JS_ASYNC_GENERATOR_STATE_AWAITING_RETURN;
-                js_async_generator_completed_return(ctx, s, next->result);
+                ret = js_async_generator_completed_return(ctx, s, next->result);
+                if (ret < 0) {
+                    /* This state already has no frame. No continuation was
+                       installed, so release the failed request and reset it. */
+                    s->state = JS_ASYNC_GENERATOR_STATE_COMPLETED;
+                    return js_async_generator_resolve_or_reject(ctx, s,
+                                                                JS_EXCEPTION, 0);
+                }
             } else {
-                js_async_generator_reject(ctx, s, next->result);
+                return js_async_generator_reject(ctx, s, next->result);
             }
             goto done;
         case JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD:
@@ -21965,8 +21981,10 @@ static void js_async_generator_resume_next(JSContext *ctx,
             if (JS_IsException(func_ret)) {
                 value = JS_GetException(ctx);
                 js_async_generator_complete(ctx, s);
-                js_async_generator_reject(ctx, s, value);
+                ret = js_async_generator_reject(ctx, s, value);
                 JS_FreeValue(ctx, value);
+                if (ret < 0)
+                    return -1;
             } else if (JS_VALUE_GET_TAG(func_ret) == JS_TAG_INT) {
                 int func_ret_code, ret;
                 value = s->func_state.frame.cur_sp[-1];
@@ -21979,8 +21997,10 @@ static void js_async_generator_resume_next(JSContext *ctx,
                         s->state = JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD_STAR;
                     else
                         s->state = JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD;
-                    js_async_generator_resolve(ctx, s, value, false);
+                    ret = js_async_generator_resolve(ctx, s, value, false);
                     JS_FreeValue(ctx, value);
+                    if (ret < 0)
+                        return -1;
                     break;
                 case FUNC_RET_AWAIT:
                     ret = js_async_generator_await(ctx, s, value);
@@ -22000,15 +22020,18 @@ static void js_async_generator_resume_next(JSContext *ctx,
                 value = s->func_state.frame.cur_sp[-1];
                 s->func_state.frame.cur_sp[-1] = JS_UNDEFINED;
                 js_async_generator_complete(ctx, s);
-                js_async_generator_resolve(ctx, s, value, true);
+                ret = js_async_generator_resolve(ctx, s, value, true);
                 JS_FreeValue(ctx, value);
+                if (ret < 0)
+                    return -1;
             }
             break;
         default:
             abort();
         }
     }
- done: ;
+ done:
+    return 0;
 }
 
 static JSValue js_async_generator_resolve_function(JSContext *ctx,
@@ -22019,6 +22042,7 @@ static JSValue js_async_generator_resolve_function(JSContext *ctx,
     bool is_reject = magic & 1;
     JSAsyncGeneratorData *s = JS_GetOpaque(func_data[0], JS_CLASS_ASYNC_GENERATOR);
     JSValueConst arg = argv[0];
+    int ret;
 
     /* XXX: what if s == NULL */
 
@@ -22028,10 +22052,12 @@ static JSValue js_async_generator_resolve_function(JSContext *ctx,
                s->state == JS_ASYNC_GENERATOR_STATE_COMPLETED);
         s->state = JS_ASYNC_GENERATOR_STATE_COMPLETED;
         if (is_reject) {
-            js_async_generator_reject(ctx, s, arg);
+            ret = js_async_generator_reject(ctx, s, arg);
         } else {
-            js_async_generator_resolve(ctx, s, arg, true);
+            ret = js_async_generator_resolve(ctx, s, arg, true);
         }
+        if (ret < 0)
+            return JS_EXCEPTION;
     } else if (s->state == JS_ASYNC_GENERATOR_STATE_EXECUTING) {
         /* restart function execution after await() */
         s->func_state.throw_flag = is_reject;
@@ -22041,7 +22067,8 @@ static JSValue js_async_generator_resolve_function(JSContext *ctx,
             /* return value of await */
             s->func_state.frame.cur_sp[-1] = js_dup(arg);
         }
-        js_async_generator_resume_next(ctx, s);
+        if (js_async_generator_resume_next(ctx, s) < 0)
+            return JS_EXCEPTION;
     }
     return JS_UNDEFINED;
 }
@@ -22080,7 +22107,12 @@ static JSValue js_async_generator_next(JSContext *ctx, JSValueConst this_val,
     req->resolving_funcs[1] = resolving_funcs[1];
     list_add_tail(&req->link, &s->queue);
     if (s->state != JS_ASYNC_GENERATOR_STATE_EXECUTING) {
-        js_async_generator_resume_next(ctx, s);
+        if (js_async_generator_resume_next(ctx, s) < 0) {
+            /* The request owns the resolvers now; fail below would free them
+               twice after settlement already released the request. */
+            JS_FreeValue(ctx, promise);
+            return JS_EXCEPTION;
+        }
     }
     return promise;
  fail:
@@ -55719,7 +55751,10 @@ static JSValue promise_reaction_job(JSContext *ctx, int argc,
            exception return is a host failure, including a null-valued OOM. */
         JSClassID class_id = JS_GetClassID(handler);
         if (class_id == JS_CLASS_ASYNC_FUNCTION_RESOLVE ||
-            class_id == JS_CLASS_ASYNC_FUNCTION_REJECT)
+            class_id == JS_CLASS_ASYNC_FUNCTION_REJECT ||
+            (class_id == JS_CLASS_C_FUNCTION_DATA &&
+             JS_VALUE_GET_OBJ(handler)->u.c_function_data_record->func ==
+                 js_async_generator_resolve_function))
             return JS_EXCEPTION;
         if (unlikely(JS_IsUncatchableError(ctx->rt->current_exception)))
             return JS_EXCEPTION;

@@ -3270,8 +3270,150 @@ static void promise_adoption(void)
     }
 }
 
+struct generator_delivery_state {
+    int headroom, getter_calls, body_calls, caps;
+    JSValue then;
+};
+
+static JSValue generator_delivery_cap(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv)
+{
+    struct generator_delivery_state *s = JS_GetContextOpaque(ctx);
+    JSMemoryUsage usage;
+    s->caps++;
+    if (s->headroom >= 0) {
+        JS_ComputeMemoryUsage(JS_GetRuntime(ctx), &usage);
+        JS_SetMemoryLimit(JS_GetRuntime(ctx), usage.malloc_size + s->headroom);
+    }
+    return JS_UNDEFINED;
+}
+
+static JSValue generator_delivery_then(JSContext *ctx, JSValueConst this_val,
+                                       int argc, JSValueConst *argv)
+{
+    struct generator_delivery_state *s = JS_GetContextOpaque(ctx);
+    JSValue value = JS_TRUE;
+    s->body_calls++;
+    return JS_Call(ctx, argv[0], JS_UNDEFINED, 1, &value);
+}
+
+static JSValue generator_delivery_getter(JSContext *ctx, JSValueConst this_val,
+                                         int argc, JSValueConst *argv)
+{
+    struct generator_delivery_state *s = JS_GetContextOpaque(ctx);
+    s->getter_calls++;
+    generator_delivery_cap(ctx, this_val, argc, argv);
+    return JS_DupValue(ctx, s->then);
+}
+
+/* Modes 0..4 exhaust thenable enqueue during iterator-result delivery;
+   5..7 exhaust iterator-result allocation; 8 exhausts completed-return setup. */
+static int generator_delivery_trial(int mode, int headroom)
+{
+    static const char *const setup[] = {
+        "const g = (async function* () {})(); () => g.next()",
+        "const g = (async function* () { yield 1; })(); () => g.next()",
+        "const g = (async function* () { await 0; })(); () => g.next()",
+        "const g = (async function* () { try { await Promise.reject(null); }"
+        "catch {} })(); () => g.next()",
+        "const g = (async function* () {})(); () => g.return(1)",
+        "const g = (async function* () { cap(); })(); () => g.next()",
+        "const g = (async function* () { yield 1; })(); () => g.next()",
+        "const g = (async function* () {})(); () => g.return(1)",
+        "const g = (async function* () {})(), p = Promise.resolve(1);"
+        "Object.defineProperty(p, 'constructor', {get() { cap(); return Promise; }});"
+        "() => g.return(p)",
+    };
+    struct generator_delivery_state s = {.headroom = headroom};
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue global, proto, getter, call, ret, error;
+    JSAtom atom;
+    JSMemoryUsage usage;
+    int failed, jobs = 0;
+
+    JS_SetContextOpaque(ctx, &s);
+    global = JS_GetGlobalObject(ctx);
+    assert(JS_SetPropertyStr(ctx, global, "cap",
+                             JS_NewCFunction(ctx, generator_delivery_cap, "cap", 0)) >= 0);
+    JS_FreeValue(ctx, global);
+    s.then = JS_NewCFunction(ctx, generator_delivery_then, "then", 2);
+    call = eval(ctx, setup[mode]);
+    assert(!JS_IsException(call));
+    if (mode < 5) {
+        proto = eval(ctx, "Object.prototype");
+        getter = JS_NewCFunction(ctx, generator_delivery_getter, "get then", 0);
+        atom = JS_NewAtom(ctx, "then");
+        assert(JS_DefinePropertyGetSet(ctx, proto, atom, getter,
+                                      JS_UNDEFINED, JS_PROP_CONFIGURABLE) >= 0);
+        JS_FreeAtom(ctx, atom);
+        JS_FreeValue(ctx, proto);
+    }
+    ret = JS_Call(ctx, call, JS_UNDEFINED, 0, NULL);
+    failed = JS_IsException(ret);
+    JS_SetMemoryLimit(rt, 0);
+    if (mode == 6 || mode == 7)
+        generator_delivery_cap(ctx, JS_UNDEFINED, 0, NULL);
+    while (!failed && JS_IsJobPending(rt)) {
+        assert(++jobs < 10);
+        failed = JS_ExecutePendingJob(rt, &job_ctx) < 0;
+        assert(job_ctx == ctx);
+        JS_SetMemoryLimit(rt, 0);
+    }
+    JS_SetMemoryLimit(rt, 0);
+    if (failed) {
+        assert(JS_HasException(ctx));
+        error = JS_GetException(ctx);
+        assert(JS_IsNull(error) || JS_IsUncatchableError(error));
+        JS_FreeValue(ctx, error);
+        if (!JS_IsException(ret))
+            assert(JS_PromiseState(ctx, ret) == JS_PROMISE_PENDING);
+        assert(s.body_calls == 0);
+    } else {
+        if (JS_HasException(ctx))
+            fprintf(stderr, "generator delivery mode=%d headroom=%d lost host error\n",
+                    mode, headroom);
+        assert(!JS_HasException(ctx));
+        assert(JS_PromiseState(ctx, ret) == JS_PROMISE_FULFILLED);
+        error = JS_PromiseResult(ctx, ret);
+        if (mode < 5) {
+            assert(JS_IsSameValue(ctx, error, JS_TRUE));
+            assert(s.getter_calls == 1 && s.body_calls == 1);
+        } else {
+            assert(JS_IsObject(error));
+        }
+        JS_FreeValue(ctx, error);
+    }
+    JS_FreeValue(ctx, call);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, s.then);
+    JS_FreeContext(ctx);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &usage);
+    assert(usage.obj_count == 0);
+    JS_FreeRuntime(rt);
+    return failed;
+}
+
+static void generator_delivery(void)
+{
+    int mode, headroom, failures = 0, successes = 0;
+    for (mode = 0; mode < 9; mode++) {
+        assert(generator_delivery_trial(mode, 0));
+        assert(!generator_delivery_trial(mode, -1));
+    }
+    for (headroom = 0; headroom < 512; headroom++) {
+        if (generator_delivery_trial(0, headroom))
+            failures++;
+        else
+            successes++;
+    }
+    assert(failures > 0 && successes > 0);
+}
+
 int main(void)
 {
+    generator_delivery();
     promise_adoption();
     promise_settlement();
     promise_subscription();
