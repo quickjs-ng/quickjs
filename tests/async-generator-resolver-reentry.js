@@ -23,11 +23,15 @@ async function testReentry() {
                 return 4;
             }
             const g = delegated ? (async function* () { return yield* body(); })() : body();
-            let second, entered = false;
+            let second, entered = false, lookups = 0;
             Object.defineProperty(Object.prototype, "then", {
                 configurable: true,
                 get() {
-                    if (!entered) {
+                    /* Delegation resolves the inner iterator result first;
+                       reenter only while delivering the outer yield* result. */
+                    if (!entered && ++lookups === (delegated ? 2 : 1)) {
+                        assert(this.value, 1);
+                        assert(this.done, false);
                         entered = true;
                         events.push("getter");
                         second = g[operation](operation === "throw" ? reason : 9);
@@ -37,6 +41,7 @@ async function testReentry() {
             });
             try {
                 const first = await g.next();
+                assert(lookups, delegated ? 2 : 1);
                 const next = await second;
                 assert(first.value, 1);
                 assert(first.done, false);
