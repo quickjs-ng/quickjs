@@ -3432,7 +3432,10 @@ static void generator_delivery(void)
 {
     int mode, headroom, failures = 0, successes = 0;
     for (mode = 0; mode < 9; mode++) {
-        assert(generator_delivery_trial(mode, 0));
+        int failed = generator_delivery_trial(mode, 0);
+        if (!failed)
+            fprintf(stderr, "generator delivery mode=%d did not exhaust allocation\n", mode);
+        assert(failed);
         assert(!generator_delivery_trial(mode, -1));
     }
     for (headroom = 0; headroom < 512; headroom++) {
