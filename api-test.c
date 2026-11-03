@@ -862,7 +862,9 @@ static void promise_settlement_trial(int reject, int limited, int previous_kind)
     int i, jobs = 0;
 
     assert(a && b && c);
+    JS_SetContextOpaque(a, &state);
     JS_SetContextOpaque(b, &state);
+    JS_SetContextOpaque(c, &state);
     source = JS_NewPromiseCapability(a, resolvers);
     assert(!JS_IsException(source));
     for(i = 0; i < countof(derived); i++)
