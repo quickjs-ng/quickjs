@@ -3381,7 +3381,40 @@ static int generator_delivery_trial(int mode, int headroom)
             assert(s.getter_calls == 1 && s.body_calls == 1);
         } else {
             assert(JS_IsObject(error));
+            global = JS_GetPropertyStr(ctx, error, "done");
+            assert(JS_IsBool(global) && JS_VALUE_GET_BOOL(global) == (mode != 6));
+            JS_FreeValue(ctx, global);
+            global = JS_GetPropertyStr(ctx, error, "value");
+            assert(mode == 5 ? JS_IsUndefined(global)
+                            : JS_IsNumber(global) && JS_VALUE_GET_INT(global) == 1);
+            JS_FreeValue(ctx, global);
         }
+        JS_FreeValue(ctx, error);
+    }
+    if (failed && headroom == 0 && (mode == 1 || mode == 6 || mode == 8)) {
+        /* The failed request was consumed, not left at the queue head. A new
+           next resumes after the yield or observes the completed generator. */
+        s.headroom = -1;
+        error = eval(ctx, "g.next()");
+        assert(!JS_IsException(error));
+        while (JS_IsJobPending(rt)) {
+            assert(++jobs < 20);
+            assert(JS_ExecutePendingJob(rt, &job_ctx) > 0 && job_ctx == ctx);
+        }
+        assert(!JS_HasException(ctx));
+        assert(JS_PromiseState(ctx, error) == JS_PROMISE_FULFILLED);
+        global = JS_PromiseResult(ctx, error);
+        if (mode == 1) {
+            assert(JS_IsSameValue(ctx, global, JS_TRUE));
+        } else {
+            proto = JS_GetPropertyStr(ctx, global, "done");
+            assert(JS_IsBool(proto) && JS_VALUE_GET_BOOL(proto));
+            JS_FreeValue(ctx, proto);
+            proto = JS_GetPropertyStr(ctx, global, "value");
+            assert(JS_IsUndefined(proto));
+            JS_FreeValue(ctx, proto);
+        }
+        JS_FreeValue(ctx, global);
         JS_FreeValue(ctx, error);
     }
     JS_FreeValue(ctx, call);
