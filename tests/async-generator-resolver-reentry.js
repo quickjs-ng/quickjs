@@ -47,6 +47,9 @@ async function testReentry() {
                 assert(events.filter(x => x === "getter-return").length, 1);
                 if (operation === "next")
                     assert(events.filter(x => x === "after-first:9").length, 1);
+                if (!delegated && operation === "next")
+                    assert(events.slice(0, 4).join(","),
+                           "start,getter,after-first:9,getter-return");
                 if (operation === "throw")
                     assert(events.filter(x => x === "caught").length, 1);
                 const end = operation === "next" ? await g.next() : await g.return(4);
