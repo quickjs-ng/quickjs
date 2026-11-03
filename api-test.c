@@ -171,6 +171,248 @@ static void cfunctions(void)
     assert(closure_finalized);
 }
 
+static void assert_function_metadata(JSContext *ctx, JSValueConst func,
+                                     const char *name, int length)
+{
+    static const char *keys[] = { "name", "length" };
+    JSPropertyDescriptor desc;
+    JSAtom atom;
+    const char *str;
+    int i, n;
+
+    assert(JS_IsFunction(ctx, func));
+    for (i = 0; i < 2; i++) {
+        atom = JS_NewAtom(ctx, keys[i]);
+        assert(JS_GetOwnProperty(ctx, &desc, func, atom) == 1);
+        JS_FreeAtom(ctx, atom);
+        assert((desc.flags & JS_PROP_C_W_E) == JS_PROP_CONFIGURABLE);
+        if (i == 0) {
+            str = JS_ToCString(ctx, desc.value);
+            assert(str && !strcmp(str, name));
+            JS_FreeCString(ctx, str);
+        } else {
+            assert(JS_ToInt32(ctx, &n, desc.value) == 0 && n == length);
+        }
+        JS_FreeValue(ctx, desc.value);
+        JS_FreeValue(ctx, desc.getter);
+        JS_FreeValue(ctx, desc.setter);
+    }
+}
+
+enum {
+    META_CFUNCTION, META_CDATA, META_CCLOSURE,
+    META_ARROW, META_FUNCTION, META_GENERATOR, META_ASYNC, META_ASYNC_GENERATOR,
+    META_PROMISE, META_PROMISE_THEN, META_GUEST_PROMISE,
+};
+
+static void metadata_opaque_finalize(void *opaque)
+{
+    int *count = opaque;
+    assert(++*count == 1);
+}
+
+static void function_metadata_oom(int kind, const char *name)
+{
+    static const char *factories[] = {
+        "(() => { const data = {}; return () => (x) => data; })()",
+        "(() => { const data = {}; return () => function named(x) { return data; }; })()",
+        "(() => { const data = {}; return () => function* named(x) { yield data; }; })()",
+        "(() => { const data = {}; return () => async function named(x) { return data; }; })()",
+        "(() => { const data = {}; return () => async function* named(x) { yield data; }; })()",
+    };
+    unsigned headroom, failures = 0, successes = 0, finalized_failures = 0;
+
+    for (headroom = 0; headroom < 2048; headroom++) {
+        JSRuntime *rt = new_runtime();
+        JSContext *ctx = JS_NewContext(rt);
+        JSValue data = JS_UNDEFINED, factory = JS_UNDEFINED;
+        JSValue input = JS_UNDEFINED, initial[2] = { JS_UNDEFINED, JS_UNDEFINED };
+        JSValue resolvers[2] = { JS_UNDEFINED, JS_UNDEFINED }, ret, value;
+        JSMemoryUsage stats;
+        int finalized = 0, i;
+
+        assert(ctx);
+        if (kind == META_CDATA) {
+            data = JS_NewObject(ctx);
+            assert(JS_DefinePropertyValueStr(ctx, data, "sentinel", JS_TRUE, 0) >= 0);
+        }
+        if (kind >= META_ARROW && kind <= META_ASYNC_GENERATOR)
+            factory = eval(ctx, factories[kind - META_ARROW]);
+        if (kind == META_GUEST_PROMISE)
+            factory = eval(ctx, "() => new Promise(resolve => resolve(true))");
+        assert(!JS_IsException(factory));
+        if (kind == META_PROMISE_THEN) {
+            input = JS_NewPromiseCapability(ctx, initial);
+            assert(!JS_IsException(input));
+        }
+        assert(!JS_HasException(ctx));
+        JS_ComputeMemoryUsage(rt, &stats);
+        JS_SetMemoryLimit(rt, stats.malloc_size + headroom);
+        switch (kind) {
+        case META_CFUNCTION:
+            ret = JS_NewCFunction(ctx, cfunc_callback, name, 42);
+            break;
+        case META_CDATA:
+            ret = JS_NewCFunctionData2(ctx, cfuncdata_callback, name, 42, 0, 1, &data);
+            break;
+        case META_CCLOSURE:
+            ret = JS_NewCClosure(ctx, cclosure_callback, name,
+                                 metadata_opaque_finalize, 42, 0, &finalized);
+            break;
+        case META_PROMISE:
+            ret = JS_NewPromiseCapability(ctx, resolvers);
+            break;
+        case META_PROMISE_THEN:
+            ret = JS_PromiseThen(ctx, input, JS_UNDEFINED, JS_UNDEFINED);
+            break;
+        default:
+            ret = JS_Call(ctx, factory, JS_UNDEFINED, 0, NULL);
+            break;
+        }
+        /* Restore ample memory before inspecting results or releasing ownership.
+           A fresh context keeps earlier shapes/errors out of the next trial. */
+        JS_SetMemoryLimit(rt, 0);
+        if (JS_IsException(ret)) {
+            failures++;
+            finalized_failures += finalized;
+            assert(JS_HasException(ctx));
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        } else {
+            successes++;
+            if (JS_HasException(ctx))
+                fprintf(stderr, "function_metadata_oom: kind=%d name=%s headroom=%u\n",
+                        kind, name, headroom);
+            assert(!JS_HasException(ctx));
+            if (kind < META_ARROW) {
+                assert_function_metadata(ctx, ret, name, 42);
+            } else if (kind <= META_ASYNC_GENERATOR) {
+                JSPropertyDescriptor desc;
+                JSAtom atom = JS_NewAtom(ctx, "prototype");
+                bool has_proto = kind == META_FUNCTION || kind == META_GENERATOR ||
+                                 kind == META_ASYNC_GENERATOR;
+                assert_function_metadata(ctx, ret, kind == META_ARROW ? "" : "named", 1);
+                assert(JS_GetOwnProperty(ctx, &desc, ret, atom) == has_proto);
+                JS_FreeAtom(ctx, atom);
+                if (has_proto) {
+                    assert(JS_IsObject(desc.value));
+                    assert((desc.flags & JS_PROP_C_W_E) == JS_PROP_WRITABLE);
+                    JS_FreeValue(ctx, desc.value);
+                    JS_FreeValue(ctx, desc.getter);
+                    JS_FreeValue(ctx, desc.setter);
+                }
+            } else {
+                assert(JS_IsPromise(ret));
+                if (kind == META_PROMISE) {
+                    JSValue first = JS_TRUE, second = JS_FALSE;
+                    int reject = headroom & 1;
+                    for (i = 0; i < 2; i++)
+                        assert_function_metadata(ctx, resolvers[i], "", 1);
+                    value = JS_Call(ctx, resolvers[reject], JS_UNDEFINED, 1, &first);
+                    assert(!JS_IsException(value));
+                    JS_FreeValue(ctx, value);
+                    value = JS_Call(ctx, resolvers[1 - reject], JS_UNDEFINED, 1, &second);
+                    assert(!JS_IsException(value));
+                    JS_FreeValue(ctx, value);
+                    assert(JS_PromiseState(ctx, ret) == (reject ? JS_PROMISE_REJECTED : JS_PROMISE_FULFILLED));
+                } else if (kind == META_PROMISE_THEN) {
+                    JSContext *job_ctx;
+                    value = JS_TRUE;
+                    JS_FreeValue(ctx, JS_Call(ctx, initial[0], JS_UNDEFINED, 1, &value));
+                    while (JS_IsJobPending(rt))
+                        assert(JS_ExecutePendingJob(rt, &job_ctx) > 0);
+                }
+                value = JS_PromiseResult(ctx, ret);
+                assert(JS_IsSameValue(ctx, value, JS_TRUE));
+                JS_FreeValue(ctx, value);
+            }
+        }
+        JS_FreeValue(ctx, ret);
+        if (kind == META_CCLOSURE && !JS_IsException(ret))
+            assert(finalized == 1);
+        for (i = 0; i < 2; i++) {
+            JS_FreeValue(ctx, resolvers[i]);
+            JS_FreeValue(ctx, initial[i]);
+        }
+        if (kind == META_CDATA) {
+            value = JS_GetPropertyStr(ctx, data, "sentinel");
+            assert(JS_IsSameValue(ctx, value, JS_TRUE));
+            JS_FreeValue(ctx, value);
+        }
+        JS_FreeValue(ctx, input);
+        JS_FreeValue(ctx, factory);
+        JS_FreeValue(ctx, data);
+        assert(!JS_HasException(ctx));
+        JS_FreeContext(ctx);
+        JS_RunGC(rt);
+        JS_ComputeMemoryUsage(rt, &stats);
+        assert(stats.obj_count == 0);
+        JS_FreeRuntime(rt);
+    }
+    assert(failures > 0 && successes > 0);
+    /* Cached names need not allocate after opaque ownership is installed.
+       Numeric names still allocate during atom creation after that transfer. */
+    if (kind == META_CCLOSURE && !strcmp(name, "123"))
+        assert(finalized_failures > 0);
+}
+
+static void function_metadata(void)
+{
+    static const char *names[] = { "", "m\xc3\xa9tadata", "123" };
+    int kind, i;
+
+    for (kind = META_CFUNCTION; kind <= META_GUEST_PROMISE; kind++)
+        for (i = 0; i < (kind < META_ARROW ? countof(names) : 1); i++)
+            function_metadata_oom(kind, names[i]);
+}
+
+static void function_metadata_pending(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue previous[] = { JS_NewError(ctx), JS_NULL, JS_UNDEFINED };
+    JSValue resolvers[2], ret, pending;
+    int kind, i, finalized;
+
+    for (kind = META_CFUNCTION; kind <= META_PROMISE; kind++) {
+        if (kind >= META_ARROW && kind < META_PROMISE)
+            continue;
+        for (i = 0; i < countof(previous); i++) {
+            finalized = 0;
+            resolvers[0] = resolvers[1] = JS_UNDEFINED;
+            JS_Throw(ctx, JS_DupValue(ctx, previous[i]));
+            switch (kind) {
+            case META_CFUNCTION:
+                ret = JS_NewCFunction(ctx, cfunc_callback, "123", 42);
+                break;
+            case META_CDATA:
+                ret = JS_NewCFunctionData2(ctx, cfuncdata_callback, "123", 42, 0, 1, &previous[i]);
+                break;
+            case META_CCLOSURE:
+                ret = JS_NewCClosure(ctx, cclosure_callback, "123",
+                                     metadata_opaque_finalize, 42, 0, &finalized);
+                break;
+            default:
+                ret = JS_NewPromiseCapability(ctx, resolvers);
+                break;
+            }
+            assert(!JS_IsException(ret) && JS_HasException(ctx));
+            pending = JS_GetException(ctx);
+            assert(JS_IsSameValue(ctx, pending, previous[i]));
+            JS_FreeValue(ctx, pending);
+            if (kind != META_PROMISE)
+                assert_function_metadata(ctx, ret, "123", 42);
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, resolvers[0]);
+            JS_FreeValue(ctx, resolvers[1]);
+            if (kind == META_CCLOSURE)
+                assert(finalized == 1);
+        }
+    }
+    JS_FreeValue(ctx, previous[0]);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 #define MAX_TIME 10
 
 static int timeout_interrupt_handler(JSContext *ctx, void *opaque)
@@ -573,6 +815,405 @@ static void promise_then(void)
 
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
+}
+
+struct settlement_state {
+    int order[8], calls;
+    JSValue source, extra;
+};
+
+static JSValue settlement_handler(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv, int magic,
+                                   JSValueConst *data)
+{
+    struct settlement_state *s = JS_GetContextOpaque(ctx);
+    assert(argc == 1 && JS_IsSameValue(ctx, argv[0], JS_TRUE));
+    assert(s->calls < countof(s->order));
+    s->order[s->calls++] = magic;
+    return JS_TRUE;
+}
+
+static JSValue settlement_subscribe(JSContext *ctx, JSValueConst source, int id)
+{
+    JSValue fn, method, ret;
+    JSValueConst args[2];
+    fn = JS_NewCFunctionData(ctx, settlement_handler, 1, id, 0, NULL);
+    assert(!JS_IsException(fn));
+    args[0] = args[1] = fn;
+    if (id & 1) {
+        method = JS_GetPropertyStr(ctx, source, "then");
+        ret = JS_Call(ctx, method, source, 2, args);
+        JS_FreeValue(ctx, method);
+    } else {
+        ret = JS_PromiseThen(ctx, source, fn, fn);
+    }
+    JS_FreeValue(ctx, fn);
+    assert(!JS_IsException(ret) && !JS_HasException(ctx));
+    return ret;
+}
+
+static void promise_settlement_trial(int reject, int limited, int previous_kind)
+{
+    struct settlement_state state = {0};
+    JSRuntime *rt = new_runtime();
+    JSContext *a = JS_NewContext(rt), *b = JS_NewContext(rt), *c = JS_NewContext(rt), *job_ctx;
+    JSValue resolvers[2], source, derived[4], previous, ret, value = JS_TRUE;
+    JSMemoryUsage usage;
+    int i, jobs = 0;
+
+    assert(a && b && c);
+    JS_SetContextOpaque(a, &state);
+    JS_SetContextOpaque(b, &state);
+    JS_SetContextOpaque(c, &state);
+    source = JS_NewPromiseCapability(a, resolvers);
+    assert(!JS_IsException(source));
+    for(i = 0; i < countof(derived); i++)
+        derived[i] = settlement_subscribe(b, source, i);
+    JS_RunGC(rt);
+    assert(!JS_IsJobPending(rt));
+    previous = previous_kind == 0 ? JS_NewError(c)
+             : previous_kind == 1 ? JS_NULL : JS_UNDEFINED;
+    if (previous_kind >= 0)
+        JS_Throw(c, JS_DupValue(c, previous));
+    JS_ComputeMemoryUsage(rt, &usage);
+    if (limited)
+        JS_SetMemoryLimit(rt, usage.malloc_size);
+    ret = JS_Call(c, resolvers[reject], JS_UNDEFINED, 1, &value);
+    /* Restore only after settlement: every accepted reaction must publish
+       even when no further engine allocation is permitted. */
+    JS_SetMemoryLimit(rt, 0);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(c, ret);
+    if (previous_kind >= 0) {
+        ret = JS_GetException(c);
+        assert(JS_IsSameValue(c, ret, previous));
+        JS_FreeValue(c, ret);
+    }
+    assert(!JS_HasException(c));
+    assert(JS_PromiseState(c, source) == JS_PROMISE_FULFILLED + reject);
+    assert(state.calls == 0 && JS_IsJobPending(rt));
+    ret = JS_Call(c, resolvers[1 - reject], JS_UNDEFINED, 1, &value);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(c, ret);
+    JS_RunGC(rt);
+    while (JS_IsJobPending(rt)) {
+        assert(JS_GetPendingJobContext(rt) == c);
+        assert(JS_ExecutePendingJob(rt, &job_ctx) == 1 && job_ctx == c);
+        jobs++;
+    }
+    assert(jobs == countof(derived) && state.calls == jobs);
+    for(i = 0; i < countof(derived); i++) {
+        assert(state.order[i] == i);
+        assert(JS_PromiseState(b, derived[i]) == JS_PROMISE_FULFILLED);
+        ret = JS_PromiseResult(b, derived[i]);
+        assert(JS_IsSameValue(b, ret, JS_TRUE));
+        JS_FreeValue(b, ret);
+        JS_FreeValue(b, derived[i]);
+    }
+    JS_FreeValue(c, previous);
+    JS_FreeValue(a, source);
+    for(i = 0; i < 2; i++)
+        JS_FreeValue(a, resolvers[i]);
+    JS_FreeContext(a);
+    JS_FreeContext(b);
+    JS_FreeContext(c);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &usage);
+    assert(usage.obj_count == 0);
+    JS_FreeRuntime(rt);
+}
+
+static void settlement_hook(JSContext *ctx, JSPromiseHookType type,
+                              JSValueConst promise, JSValueConst parent,
+                              void *opaque)
+{
+    struct settlement_state *s = opaque;
+    if (type == JS_PROMISE_HOOK_RESOLVE && JS_IsSameValue(ctx, promise, s->source)) {
+        assert(!JS_IsJobPending(JS_GetRuntime(ctx)));
+        JS_RunGC(JS_GetRuntime(ctx));
+        s->extra = settlement_subscribe(ctx, promise, 7);
+        JS_RunGC(JS_GetRuntime(ctx));
+    }
+}
+
+static void promise_settlement_lifecycle(int mode)
+{
+    struct settlement_state state = {0};
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue resolvers[2], derived, ret, value = JS_TRUE;
+    JSMemoryUsage usage;
+    int i, jobs = 0;
+
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &state);
+    state.source = JS_NewPromiseCapability(ctx, resolvers);
+    state.extra = JS_UNDEFINED;
+    derived = settlement_subscribe(ctx, state.source, 0);
+    if (mode) {
+        JS_SetPromiseHook(rt, settlement_hook, &state);
+        ret = JS_Call(ctx, resolvers[0], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        if (mode == 2) {
+            while (JS_IsJobPending(rt)) {
+                assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+                jobs++;
+            }
+            assert(jobs == 2 && state.calls == 2);
+            assert(state.order[0] == 7 && state.order[1] == 0);
+        }
+        JS_SetPromiseHook(rt, NULL, NULL);
+    }
+    JS_FreeValue(ctx, state.extra);
+    JS_FreeValue(ctx, derived);
+    JS_FreeValue(ctx, state.source);
+    for(i = 0; i < 2; i++)
+        JS_FreeValue(ctx, resolvers[i]);
+    /* Pending and abandoned queued jobs must each release their ownership. */
+    if (mode == 1) {
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+        return;
+    }
+    ret = eval(ctx, "(()=>{const p=new Promise(()=>{});"
+                    "const f=()=>p;p.then(f,f)})()");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_RunGC(rt);
+    JS_FreeContext(ctx);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &usage);
+    assert(usage.obj_count == 0);
+    JS_FreeRuntime(rt);
+}
+
+static void promise_settlement_async(int reject)
+{
+    struct settlement_state state = {0};
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue source, derived, resolver, ret, global;
+    JSMemoryUsage usage;
+    int jobs = 0;
+
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &state);
+    ret = eval(ctx, "var settle;var pending=new Promise(r=>settle=r)");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    source = eval(ctx, reject ? "(async()=>{await pending;throw true})()"
+                             : "(async()=>{await pending;return true})()");
+    assert(!JS_IsException(source));
+    derived = settlement_subscribe(ctx, source, 0);
+    global = JS_GetGlobalObject(ctx);
+    resolver = JS_GetPropertyStr(ctx, global, "settle");
+    JS_FreeValue(ctx, global);
+    ret = JS_Call(ctx, resolver, JS_UNDEFINED, 1, (JSValueConst[]){JS_TRUE});
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, resolver);
+    JS_ComputeMemoryUsage(rt, &usage);
+    /* Bytecode throw builds a backtrace, which allocates independently of
+       reaction publication. Primitive rejection is capped in the trial above. */
+    if (!reject)
+        JS_SetMemoryLimit(rt, usage.malloc_size);
+    /* The return job settles its outer Promise while the cap is still tight. */
+    while (JS_IsJobPending(rt)) {
+        assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
+        assert(!JS_HasException(ctx));
+        jobs++;
+    }
+    JS_SetMemoryLimit(rt, 0);
+    assert(jobs == 2 && state.calls == 1);
+    assert(JS_PromiseState(ctx, source) == JS_PROMISE_FULFILLED + reject);
+    JS_FreeValue(ctx, derived);
+    JS_FreeValue(ctx, source);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void promise_settlement(void)
+{
+    for(int reject = 0; reject < 2; reject++) {
+        for(int limited = 0; limited < 2; limited++)
+            for(int previous = -1; previous < 3; previous++)
+                promise_settlement_trial(reject, limited, previous);
+        promise_settlement_async(reject);
+    }
+    for(int mode = 0; mode < 3; mode++)
+        promise_settlement_lifecycle(mode);
+}
+
+struct promise_subscription_state {
+    int calls, rejects, handled, hook_jobs;
+    bool enqueue_from_hook;
+};
+
+static JSValue subscription_hook_job(JSContext *ctx, int argc,
+                                      JSValueConst *argv)
+{
+    struct promise_subscription_state *s = JS_GetContextOpaque(ctx);
+    assert(s->calls == 0);
+    assert(++s->hook_jobs == 1);
+    return JS_UNDEFINED;
+}
+
+static void subscription_tracker(JSContext *ctx, JSValueConst promise,
+                                  JSValueConst reason, bool handled, void *opaque)
+{
+    struct promise_subscription_state *s = opaque;
+    if (!handled) {
+        s->rejects++;
+        return;
+    }
+    s->handled++;
+    /* The host hook runs before this reaction is visible in the job queue.
+       Work it enqueues must remain ahead of the reaction. */
+    assert(!JS_IsJobPending(JS_GetRuntime(ctx)));
+    if (s->enqueue_from_hook)
+        assert(JS_EnqueueJob(ctx, subscription_hook_job, 0, NULL) == 0);
+}
+
+static JSValue subscription_handler(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv)
+{
+    struct promise_subscription_state *s = JS_GetContextOpaque(ctx);
+    assert(argc == 1);
+    assert(++s->calls == 1);
+    if (s->enqueue_from_hook)
+        assert(s->hook_jobs == 1);
+    return JS_DupValue(ctx, argv[0]);
+}
+
+static JSValue subscribe(JSContext *ctx, int guest, JSValueConst promise,
+                          JSValueConst method, JSValueConst handler)
+{
+    JSValueConst args[] = { handler, handler };
+    return guest ? JS_Call(ctx, method, promise, 2, args)
+                 : JS_PromiseThen(ctx, promise, handler, handler);
+}
+
+/* state: pending, fulfilled, rejected, or already-handled rejection.
+   Earlier pending values and hook ordering use unlimited-memory controls. */
+static bool promise_subscription_trial(int guest, int state, int headroom,
+                                        int previous_kind, bool hook)
+{
+    struct promise_subscription_state s = { .enqueue_from_hook = hook };
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue resolvers[2], promise, handler, method, ret, pending, previous;
+    JSValue value = state == 1 ? JS_FALSE : JS_TRUE;
+    JSMemoryUsage before, after;
+    bool failed;
+    int i, handled, jobs = 0;
+
+    assert(ctx);
+    JS_SetContextOpaque(ctx, &s);
+    JS_SetHostPromiseRejectionTracker(rt, subscription_tracker, &s);
+    promise = JS_NewPromiseCapability(ctx, resolvers);
+    assert(!JS_IsException(promise));
+    if (state) {
+        ret = JS_Call(ctx, resolvers[state >= 2], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    if (state == 3)
+        JS_PromiseMarkAsHandled(ctx, promise);
+    handled = s.handled;
+    handler = JS_NewCFunction(ctx, subscription_handler, "subscription", 1);
+    method = JS_GetPropertyStr(ctx, promise, "then");
+    ret = eval(ctx, "Promise.prototype.constructor; Promise[Symbol.species]");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    assert(!JS_IsException(handler) && !JS_IsException(method));
+    previous = previous_kind == 0 ? JS_NewError(ctx)
+             : previous_kind == 1 ? JS_NULL : JS_UNDEFINED;
+    assert(!JS_HasException(ctx) && !JS_IsJobPending(rt));
+    JS_ComputeMemoryUsage(rt, &before);
+    if (previous_kind >= 0)
+        JS_Throw(ctx, JS_DupValue(ctx, previous));
+    if (headroom >= 0)
+        JS_SetMemoryLimit(rt, before.malloc_size + headroom);
+    ret = subscribe(ctx, guest, promise, method, handler);
+    /* Inspection and retry need memory too; they must not move the
+       constrained subscription's allocation boundary. */
+    JS_SetMemoryLimit(rt, 0);
+    failed = JS_IsException(ret);
+    if (previous_kind >= 0) {
+        assert(!failed);
+        pending = JS_GetException(ctx);
+        assert(JS_IsSameValue(ctx, pending, previous));
+        JS_FreeValue(ctx, pending);
+    }
+    if (failed) {
+        assert(JS_HasException(ctx));
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        assert(!JS_IsJobPending(rt) && s.calls == 0 && s.handled == handled);
+        JS_RunGC(rt);
+        JS_ComputeMemoryUsage(rt, &after);
+        assert(after.obj_count == before.obj_count);
+        ret = subscribe(ctx, guest, promise, method, handler);
+        assert(!JS_IsException(ret));
+    } else if (JS_HasException(ctx)) {
+        fprintf(stderr, "promise_subscription: guest=%d state=%d headroom=%d jobs=%d\n",
+                guest, state, headroom, JS_IsJobPending(rt));
+    }
+    assert(!JS_HasException(ctx) && JS_IsPromise(ret));
+    assert(s.calls == 0 && JS_PromiseState(ctx, ret) == JS_PROMISE_PENDING);
+    assert(JS_PromiseState(ctx, promise) == (state == 3 ? JS_PROMISE_REJECTED : state));
+    assert(s.handled == handled + (state == 2));
+    if (!state) {
+        assert(!JS_IsJobPending(rt));
+        pending = JS_Call(ctx, resolvers[headroom & 1], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(pending));
+        JS_FreeValue(ctx, pending);
+    }
+    while (JS_IsJobPending(rt)) {
+        assert(JS_ExecutePendingJob(rt, &job_ctx) > 0);
+        jobs++;
+    }
+    assert(jobs == 1 + hook && s.calls == 1 && s.hook_jobs == hook);
+    assert(s.rejects == (state >= 2));
+    assert(JS_PromiseState(ctx, ret) == JS_PROMISE_FULFILLED);
+    pending = JS_PromiseResult(ctx, ret);
+    assert(JS_IsSameValue(ctx, pending, value));
+    JS_FreeValue(ctx, pending);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, previous);
+    JS_FreeValue(ctx, method);
+    JS_FreeValue(ctx, handler);
+    JS_FreeValue(ctx, promise);
+    for (i = 0; i < 2; i++)
+        JS_FreeValue(ctx, resolvers[i]);
+    assert(!JS_HasException(ctx));
+    JS_FreeContext(ctx);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &after);
+    assert(after.obj_count == 0);
+    JS_FreeRuntime(rt);
+    return failed;
+}
+
+static void promise_subscription_oom(int guest, int state)
+{
+    int headroom, failures = 0;
+    for (headroom = 0; headroom < 2048; headroom++)
+        failures += promise_subscription_trial(guest, state, headroom, -1, false);
+    assert(failures > 0 && failures < 2048);
+}
+
+static void promise_subscription(void)
+{
+    int guest, state, previous;
+    for (guest = 0; guest < 2; guest++) {
+        for (state = 0; state < 4; state++) {
+            promise_subscription_oom(guest, state);
+            for (previous = 0; previous < 3; previous++)
+                assert(!promise_subscription_trial(guest, state, -1, previous, false));
+        }
+        assert(!promise_subscription_trial(guest, 2, -1, -1, true));
+    }
 }
 
 static void runtime_cstring_free(void)
@@ -2444,8 +3085,198 @@ static void dynamic_import_deferred_reject(void)
     JS_FreeRuntime(rt);
 }
 
+struct adoption_state {
+    JSValue then, resolvers[2];
+    int headroom, getter_calls, body_calls, outcome, reenter;
+};
+
+static JSValue adoption_then(JSContext *ctx, JSValueConst this_val,
+                              int argc, JSValueConst *argv)
+{
+    struct adoption_state *s = JS_GetContextOpaque(ctx);
+    JSValue value = JS_TRUE, ret;
+    assert(argc == 2 && JS_IsObject(this_val));
+    s->body_calls++;
+    ret = JS_Call(ctx, argv[s->outcome == 1], JS_UNDEFINED, 1, &value);
+    if (s->outcome == 2) {
+        JS_FreeValue(ctx, ret);
+        return JS_Throw(ctx, JS_FALSE);
+    }
+    return ret;
+}
+
+static JSValue adoption_getter(JSContext *ctx, JSValueConst this_val,
+                                int argc, JSValueConst *argv)
+{
+    struct adoption_state *s = JS_GetContextOpaque(ctx);
+    JSMemoryUsage usage;
+    JSValue ret, value = JS_FALSE;
+    int i;
+
+    s->getter_calls++;
+    /* The original pair is already locked before reading then. Reentry must
+       not replace the adoption, including when its enqueue later fails. */
+    for (i = 0; s->reenter && i < 2; i++) {
+        ret = JS_Call(ctx, s->resolvers[i], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    if (s->headroom >= 0) {
+        JS_ComputeMemoryUsage(JS_GetRuntime(ctx), &usage);
+        JS_SetMemoryLimit(JS_GetRuntime(ctx), usage.malloc_size + s->headroom);
+    }
+    return JS_DupValue(ctx, s->then);
+}
+
+/* mode: native resolver, Promise.resolve, async return, queued-job preparation,
+   async return resumed through fulfillment or rejection.
+   The getter constrains only enqueue, after every producer has its capability. */
+static int promise_adoption_trial(int mode, int headroom, int previous_kind, int outcome)
+{
+    struct adoption_state s = {.headroom = mode == 3 ? -1 : headroom,
+                                .outcome = outcome, .reenter = mode == 0 || mode == 3};
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt), *job_ctx;
+    JSValue source, thenable, getter, factory = JS_UNDEFINED, ret, error;
+    JSValue previous = JS_UNDEFINED, value = JS_FALSE;
+    JSMemoryUsage usage;
+    JSAtom atom;
+    int failed, jobs = 0, i;
+
+    JS_SetContextOpaque(ctx, &s);
+    source = JS_NewPromiseCapability(ctx, s.resolvers);
+    s.then = JS_NewCFunction(ctx, adoption_then, "then", 2);
+    thenable = JS_NewObject(ctx);
+    getter = JS_NewCFunction(ctx, adoption_getter, "get then", 0);
+    atom = JS_NewAtom(ctx, "then");
+    assert(JS_DefinePropertyGetSet(ctx, thenable, atom, getter,
+                                  JS_UNDEFINED, JS_PROP_CONFIGURABLE) >= 0);
+    JS_FreeAtom(ctx, atom);
+    if (mode == 1)
+        factory = eval(ctx, "value => Promise.resolve(value)");
+    if (mode == 2)
+        factory = eval(ctx, "async value => value");
+    if (mode == 4)
+        factory = eval(ctx, "async value => { await 0; return value; }");
+    if (mode == 5)
+        factory = eval(ctx, "async value => { try { await Promise.reject(false); }"
+                            "catch { return value; } }");
+    assert(!JS_IsException(source) && !JS_IsException(s.then));
+    assert(!JS_IsException(factory) && !JS_HasException(ctx));
+    if (previous_kind >= 0) {
+        previous = previous_kind == 0 ? JS_NewError(ctx)
+                 : previous_kind == 1 ? JS_NULL : JS_UNDEFINED;
+        JS_Throw(ctx, JS_DupValue(ctx, previous));
+    }
+    ret = JS_Call(ctx, mode == 1 || mode == 2 || mode >= 4 ? factory : s.resolvers[0],
+                  JS_UNDEFINED, 1, (JSValueConst *)&thenable);
+    JS_SetMemoryLimit(rt, 0);
+    failed = JS_IsException(ret);
+    assert(s.getter_calls == (mode < 4) && s.body_calls == 0);
+    if (mode >= 3) {
+        assert(!failed && JS_IsJobPending(rt));
+        if (mode == 3) {
+            JS_FreeValue(ctx, ret);
+            ret = JS_UNDEFINED;
+        }
+        JS_ComputeMemoryUsage(rt, &usage);
+        if (mode == 3 && headroom >= 0)
+            JS_SetMemoryLimit(rt, usage.malloc_size + headroom);
+        i = JS_ExecutePendingJob(rt, &job_ctx);
+        JS_SetMemoryLimit(rt, 0);
+        assert(job_ctx == ctx);
+        failed = i < 0;
+        jobs++;
+        assert(s.getter_calls == 1);
+    }
+    if (failed) {
+        assert(JS_HasException(ctx) && !JS_IsJobPending(rt));
+        error = JS_GetException(ctx);
+        assert(JS_IsNull(error) || JS_IsUncatchableError(error));
+        assert(previous_kind != 0 || !JS_IsSameValue(ctx, previous, error));
+        JS_FreeValue(ctx, error);
+        assert(s.body_calls == 0);
+    } else {
+        if (previous_kind >= 0) {
+            assert(JS_HasException(ctx));
+            error = JS_GetException(ctx);
+            assert(JS_IsSameValue(ctx, previous, error));
+            JS_FreeValue(ctx, error);
+        }
+        assert(!JS_HasException(ctx));
+        while (JS_IsJobPending(rt)) {
+            assert(++jobs < 10);
+            assert(JS_ExecutePendingJob(rt, &job_ctx) > 0 && job_ctx == ctx);
+        }
+        assert(s.body_calls == 1 && !JS_HasException(ctx));
+        if (mode == 1 || mode == 2 || mode >= 4) {
+            assert(JS_PromiseState(ctx, ret) == JS_PROMISE_FULFILLED + (outcome == 1));
+            error = JS_PromiseResult(ctx, ret);
+        } else {
+            assert(JS_PromiseState(ctx, source) == JS_PROMISE_FULFILLED + (outcome == 1));
+            error = JS_PromiseResult(ctx, source);
+        }
+        assert(JS_IsSameValue(ctx, error, JS_TRUE));
+        JS_FreeValue(ctx, error);
+    }
+    if (failed && mode >= 4)
+        assert(JS_PromiseState(ctx, ret) == JS_PROMISE_PENDING);
+    JS_FreeValue(ctx, ret);
+    /* Failure consumes the original resolver too. It is never a retry path. */
+    for (i = 0; s.reenter && i < 2; i++) {
+        ret = JS_Call(ctx, s.resolvers[i], JS_UNDEFINED, 1, &value);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+    }
+    JS_FreeValue(ctx, s.resolvers[0]);
+    JS_FreeValue(ctx, s.resolvers[1]);
+    if (failed)
+        assert(JS_PromiseState(ctx, source) == JS_PROMISE_PENDING);
+    assert(!JS_IsJobPending(rt) && !JS_HasException(ctx));
+    JS_FreeValue(ctx, previous);
+    JS_FreeValue(ctx, factory);
+    JS_FreeValue(ctx, thenable);
+    JS_FreeValue(ctx, s.then);
+    JS_FreeValue(ctx, source);
+    JS_FreeContext(ctx);
+    JS_RunGC(rt);
+    JS_ComputeMemoryUsage(rt, &usage);
+    assert(usage.obj_count == 0);
+    JS_FreeRuntime(rt);
+    return failed;
+}
+
+static void promise_adoption(void)
+{
+    int mode, headroom, failures, successes, previous, outcome;
+    for (mode = 0; mode < 4; mode += 3) {
+        failures = successes = 0;
+        for (headroom = 0; headroom < 2048; headroom++) {
+            if (promise_adoption_trial(mode, headroom, -1, 0))
+                failures++;
+            else
+                successes++;
+        }
+        assert(failures > 0 && successes > 0);
+    }
+    for (mode = 0; mode < 6; mode++) {
+        assert(promise_adoption_trial(mode, 0, -1, 0));
+        for (outcome = 0; outcome < 3; outcome++)
+            assert(!promise_adoption_trial(mode, -1, -1, outcome));
+    }
+    for (previous = 0; previous < 3; previous++) {
+        assert(promise_adoption_trial(0, 0, previous, 0));
+        assert(!promise_adoption_trial(0, -1, previous, 0));
+    }
+}
+
 int main(void)
 {
+    promise_adoption();
+    promise_settlement();
+    promise_subscription();
+    function_metadata();
+    function_metadata_pending();
     cfunctions();
     sync_call();
     async_call();
