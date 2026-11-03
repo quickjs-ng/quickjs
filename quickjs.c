@@ -21993,12 +21993,15 @@ static int js_async_generator_resume_next(JSContext *ctx,
                 switch(func_ret_code) {
                 case FUNC_RET_YIELD:
                 case FUNC_RET_YIELD_STAR:
+                    /* Resolving the result can reenter through a then getter.
+                       Keep executing so it queues requests instead of resuming
+                       this frame before the current delivery has returned. */
+                    ret = js_async_generator_resolve(ctx, s, value, false);
+                    JS_FreeValue(ctx, value);
                     if (func_ret_code == FUNC_RET_YIELD_STAR)
                         s->state = JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD_STAR;
                     else
                         s->state = JS_ASYNC_GENERATOR_STATE_SUSPENDED_YIELD;
-                    ret = js_async_generator_resolve(ctx, s, value, false);
-                    JS_FreeValue(ctx, value);
                     if (ret < 0)
                         return -1;
                     break;
