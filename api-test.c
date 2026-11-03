@@ -3273,6 +3273,7 @@ static void promise_adoption(void)
 struct generator_delivery_state {
     int headroom, getter_calls, body_calls, caps;
     JSValue then;
+    int absolute_cap;
 };
 
 static JSValue generator_delivery_cap(JSContext *ctx, JSValueConst this_val,
@@ -3283,7 +3284,8 @@ static JSValue generator_delivery_cap(JSContext *ctx, JSValueConst this_val,
     s->caps++;
     if (s->headroom >= 0) {
         JS_ComputeMemoryUsage(JS_GetRuntime(ctx), &usage);
-        JS_SetMemoryLimit(JS_GetRuntime(ctx), usage.malloc_size + s->headroom);
+        JS_SetMemoryLimit(JS_GetRuntime(ctx), s->absolute_cap ? 1
+                          : usage.malloc_size + s->headroom);
     }
     return JS_UNDEFINED;
 }
@@ -3324,7 +3326,8 @@ static int generator_delivery_trial(int mode, int headroom)
         "Object.defineProperty(p, 'constructor', {get() { cap(); return Promise; }});"
         "() => g.return(p)",
     };
-    struct generator_delivery_state s = {.headroom = headroom};
+    struct generator_delivery_state s = {.headroom = headroom,
+                                         .absolute_cap = mode == 5};
     JSRuntime *rt = new_runtime();
     JSContext *ctx = JS_NewContext(rt), *job_ctx;
     JSValue global, proto, getter, call, ret, error;
@@ -3468,25 +3471,31 @@ static void generator_delivery_controls(void)
     ret = eval(ctx,
         "(async () => {"
         "function check(v) { if (!v) throw Error('generator delivery control'); }"
+        "globalThis.controlPhase = 0;"
         "let g = (async function* () { yield 1; return 2; })();"
         "let r = await g.next(); check(r.value === 1 && !r.done);"
         "r = await g.next(); check(r.value === 2 && r.done);"
         "r = await g.next(); check(r.value === undefined && r.done);"
+        "globalThis.controlPhase = 1;"
         "r = await g.return(3); check(r.value === 3 && r.done);"
         "try { await g.throw(null); check(false); } catch(e) { check(e === null); }"
+        "globalThis.controlPhase = 2;"
         "g = (async function* () { await 0; throw null; })();"
         "try { await g.next(); check(false); } catch(e) { check(e === null); }"
+        "globalThis.controlPhase = 3;"
         "g = (async function* () {})();"
         "const p = Promise.resolve(1);"
         "Object.defineProperty(p, 'constructor', {get() { throw null; }});"
         "try { await g.return(p); check(false); } catch(e) { check(e === null); }"
+        "globalThis.controlPhase = 4;"
         "try { await Promise.resolve(0).then(rejectNull); check(false); }"
         "catch(e) { check(e === null); }"
+        "globalThis.controlPhase = 5;"
         "g = (async function* () { yield 1; yield 2; })();"
         "let entered = false, second;"
         "Object.defineProperty(Object.prototype, 'then', {configurable:true,"
         "get() { if (!entered) { entered = true; second = g.next(); } }});"
-        "r = await g.next(); const q = await second;"
+        "r = await g.next(); globalThis.controlPhase = 6; const q = await second;"
         "delete Object.prototype.then;"
         "check(r.value === 1 && !r.done && q.value === 2 && !q.done);"
         "await g.return(); return 42; })()");
@@ -3496,6 +3505,12 @@ static void generator_delivery_controls(void)
         assert(JS_ExecutePendingJob(rt, &job_ctx) > 0 && job_ctx == ctx);
     }
     assert(!JS_HasException(ctx));
+    if (JS_PromiseState(ctx, ret) != JS_PROMISE_FULFILLED) {
+        result = eval(ctx, "controlPhase");
+        fprintf(stderr, "generator control phase=%d state=%d\n",
+                JS_VALUE_GET_INT(result), JS_PromiseState(ctx, ret));
+        JS_FreeValue(ctx, result);
+    }
     assert(JS_PromiseState(ctx, ret) == JS_PROMISE_FULFILLED);
     result = JS_PromiseResult(ctx, ret);
     assert(JS_IsNumber(result) && JS_VALUE_GET_INT(result) == 42);
