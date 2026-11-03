@@ -3284,6 +3284,8 @@ static JSValue generator_delivery_cap(JSContext *ctx, JSValueConst this_val,
     s->caps++;
     if (s->headroom >= 0) {
         JS_ComputeMemoryUsage(JS_GetRuntime(ctx), &usage);
+        /* Ending the body releases its frame before allocating the result.
+           Keep that allocation closed even after those bytes are freed. */
         JS_SetMemoryLimit(JS_GetRuntime(ctx), s->absolute_cap ? 1
                           : usage.malloc_size + s->headroom);
     }
@@ -3491,13 +3493,13 @@ static void generator_delivery_controls(void)
         "try { await Promise.resolve(0).then(rejectNull); check(false); }"
         "catch(e) { check(e === null); }"
         "globalThis.controlPhase = 5;"
-        "g = (async function* () { yield 1; yield 2; })();"
+        "g = (async function* () {})();"
         "let entered = false, second;"
         "Object.defineProperty(Object.prototype, 'then', {configurable:true,"
         "get() { if (!entered) { entered = true; second = g.next(); } }});"
         "r = await g.next(); globalThis.controlPhase = 6; const q = await second;"
         "delete Object.prototype.then;"
-        "check(r.value === 1 && !r.done && q.value === 2 && !q.done);"
+        "check(r.value === undefined && r.done && q.value === undefined && q.done);"
         "await g.return(); return 42; })()");
     assert(!JS_IsException(ret));
     while (JS_IsJobPending(rt)) {
