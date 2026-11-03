@@ -1014,8 +1014,11 @@ static void promise_settlement_async(int reject)
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, resolver);
     JS_ComputeMemoryUsage(rt, &usage);
-    JS_SetMemoryLimit(rt, usage.malloc_size);
-    /* The await job settles its outer Promise while the cap is still tight. */
+    /* Bytecode throw builds a backtrace, which allocates independently of
+       reaction publication. Primitive rejection is capped in the trial above. */
+    if (!reject)
+        JS_SetMemoryLimit(rt, usage.malloc_size);
+    /* The return job settles its outer Promise while the cap is still tight. */
     while (JS_IsJobPending(rt)) {
         assert(JS_ExecutePendingJob(rt, &job_ctx) == 1);
         assert(!JS_HasException(ctx));
