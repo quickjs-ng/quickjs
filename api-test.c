@@ -3316,13 +3316,13 @@ static int generator_delivery_trial(int mode, int headroom)
 {
     static const char *const setup[] = {
         "const g = (async function* () {})(); () => g.next()",
-        "const g = (async function* () { yield 1; })(); () => g.next()",
+        "const g = (async function* () { yield 1; cap(); })(); () => g.next()",
         "const g = (async function* () { await 0; })(); () => g.next()",
         "const g = (async function* () { try { await Promise.reject(null); }"
         "catch {} })(); () => g.next()",
         "const g = (async function* () {})(); () => g.return(1)",
         "const g = (async function* () { cap(); })(); () => g.next()",
-        "const g = (async function* () { yield 1; })(); () => g.next()",
+        "const g = (async function* () { yield 1; cap(); })(); () => g.next()",
         "const g = (async function* () {})(); () => g.return(1)",
         "const g = (async function* () {})(), p = Promise.resolve(1);"
         "Object.defineProperty(p, 'constructor', {get() { cap(); return Promise; }});"
@@ -3421,6 +3421,10 @@ static int generator_delivery_trial(int mode, int headroom)
         }
         JS_FreeValue(ctx, global);
         JS_FreeValue(ctx, error);
+        if (!JS_IsException(ret))
+            assert(JS_PromiseState(ctx, ret) == JS_PROMISE_PENDING);
+        if (mode == 1 || mode == 6)
+            assert(s.caps == (mode == 1 ? 3 : 2));
     }
     JS_FreeValue(ctx, call);
     JS_FreeValue(ctx, ret);
