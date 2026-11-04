@@ -7174,7 +7174,12 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
         }
         break;
     case JS_TAG_MODULE:
-        abort(); /* never freed here */
+        {
+            JSModuleDef *m = JS_VALUE_GET_PTR(v);
+            if (m->link.prev != NULL)
+                abort(); /* the module list holds a reference */
+            js_free_rt(rt, m);
+        }
         break;
     case JS_TAG_BIG_INT:
         {
@@ -30381,7 +30386,8 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
     JS_FreeValue(ctx, m->private_value);
     JS_FreeValue(ctx, m->attributes);
     list_del(&m->link);
-    js_free(ctx, m);
+    /* pending promise reactions can still hold a reference */
+    JS_FreeValueRT(ctx->rt, JS_MKPTR(JS_TAG_MODULE, m));
 }
 
 #ifndef QJS_DISABLE_PARSER
@@ -40008,7 +40014,6 @@ static JSValue JS_ReadFunctionTag(BCReaderState *s)
 static JSValue JS_ReadModule(BCReaderState *s)
 {
     JSContext *ctx = s->ctx;
-    JSValue obj;
     JSModuleDef *m = NULL;
     JSAtom module_name;
     int i;
@@ -40026,10 +40031,8 @@ static JSValue JS_ReadModule(BCReaderState *s)
     m = js_new_module_def(ctx, module_name);
     if (!m)
         goto fail;
-    obj = js_dup(JS_MKPTR(JS_TAG_MODULE, m));
     if (bc_get_leb128_int(s, &m->req_module_entries_count))
         goto fail;
-    obj = JS_NewModuleValue(ctx, m);
     if (m->req_module_entries_count != 0) {
         m->req_module_entries_size = m->req_module_entries_count;
         m->req_module_entries = js_mallocz(ctx, sizeof(m->req_module_entries[0]) * m->req_module_entries_size);
@@ -40122,7 +40125,7 @@ static JSValue JS_ReadModule(BCReaderState *s)
     m->func_obj = JS_ReadObjectRec(s);
     if (JS_IsException(m->func_obj))
         goto fail;
-    return obj;
+    return JS_NewModuleValue(ctx, m);
  fail:
     if (m) {
         js_free_module_def(ctx, m);

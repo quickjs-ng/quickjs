@@ -406,6 +406,11 @@ static void module_serde(void)
     assert(len > 0);
     JS_FreeValue(ctx, mod);
     assert(loader_calls == 1);
+    // skip the checksum, so that a truncated read fails in JS_ReadModule()
+    memset(&buf[1], 0xff, 4);
+    assert(JS_IsException(JS_ReadObject(ctx, buf, len - 1,
+                                        JS_READ_OBJ_BYTECODE)));
+    JS_FreeValue(ctx, JS_GetException(ctx));
     mod = JS_ReadObject(ctx, buf, len, JS_READ_OBJ_BYTECODE);
     js_free(ctx, buf);
     assert(loader_calls == 1); // 'b' is returned from cache
@@ -418,7 +423,6 @@ static void module_serde(void)
     assert(JS_IsUndefined(result));
     JS_FreeValue(ctx, result);
     JS_FreeValue(ctx, ret);
-    JS_FreeValue(ctx, mod);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
@@ -2300,7 +2304,9 @@ static JSModuleDef *dynamic_import_loader(JSContext *ctx, const char *name,
         JS_FreeValue(ctx, type);
         s->attribute_calls++;
     }
-    static const char code[] = "export const v = 42";
+    const char *code = "export const v = 42";
+    if (!strcmp(name, "hung"))
+        code = "await new Promise(() => {})";
     JSValue ret = JS_Eval(ctx, code, strlen(code), name,
                           JS_EVAL_TYPE_MODULE|JS_EVAL_FLAG_COMPILE_ONLY);
     assert(!JS_IsException(ret));
@@ -2368,6 +2374,19 @@ static void dynamic_import_sync_ok(void)
     assert(1 == s.import_calls);
     assert(1 == s.attribute_calls);
     dynamic_import_assert_namespace(ctx, promise);
+    JS_FreeValue(ctx, promise);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void dynamic_import_pending_await(void)
+{
+    struct dynamic_import_state s = {0};
+    JSRuntime *rt = dynamic_import_runtime(&s);
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue promise = eval(ctx, "import('hung')");
+    dynamic_import_drain_jobs(rt);
+    assert(JS_PROMISE_PENDING == JS_PromiseState(ctx, promise));
     JS_FreeValue(ctx, promise);
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
@@ -2455,6 +2474,7 @@ int main(void)
     module_serde();
     module_unhandled_rejection();
     dynamic_import_sync_ok();
+    dynamic_import_pending_await();
     dynamic_import_sync_missing();
     dynamic_import_deferred();
     dynamic_import_deferred_reject();
