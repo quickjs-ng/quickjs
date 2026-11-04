@@ -29616,7 +29616,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
         break;
     case TOK_FOR:
         {
-            int label_cont, label_break, label_body, label_test;
+            int label_cont, label_break, label_body, label_test, label_close;
             int pos_cont, pos_body, block_scope_level;
             int for_scope_level;
             BlockEnv break_entry;
@@ -29773,13 +29773,18 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             if (js_parse_expect(s, ')'))
                 goto fail;
 
+            /* 'continue' jumps to the end of the body so that it closes the
+               lexical variables of this iteration like a normal completion */
+            label_close = new_label(s);
+            break_entry.label_cont = label_close;
+
             pos_body = s->cur_func->byte_code.size;
             emit_label(s, label_body);
             if (js_parse_statement(s))
                 goto fail;
 
             /* close the closures before the next iteration */
-            /* XXX: check continue case */
+            emit_label(s, label_close);
             close_scopes(s, s->cur_func->scope_level, block_scope_level);
 
             if (label_test != label_body && label_cont != label_test) {
