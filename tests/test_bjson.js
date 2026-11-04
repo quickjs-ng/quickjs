@@ -256,6 +256,23 @@ function bjson_test_bytecode()
     for (i = 0; i < 42; i++) o({i}); // exercise o.i IC
 }
 
+function bjson_test_template_object()
+{
+    var buf, o, t;
+
+    /* template objects read back from bytecode must be frozen */
+    o = std.evalScript(";(function f(){ return (s => s)`a${1}b`; })",
+                       {compile_only: true});
+    buf = bjson.write(o, bjson.WRITE_OBJ_BYTECODE);
+    o = bjson.read(buf, 0, buf.byteLength, bjson.READ_OBJ_BYTECODE);
+    o = std.evalScript(o, {eval_function: true});
+    t = o();
+    assert(t === o(), true);
+    assert(Object.isFrozen(t), true);
+    assert(Object.isFrozen(t.raw), true);
+    assert(t.raw.join(), "a,b");
+}
+
 function bjson_test_fuzz()
 {
     var corpus = [
@@ -357,6 +374,7 @@ function bjson_test_all()
     bjson_test_set();
     bjson_test_symbol();
     bjson_test_bytecode();
+    bjson_test_template_object();
     bjson_test_fuzz();
     bjson_test_csum();
     bjson_test_atom();
