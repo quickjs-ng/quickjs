@@ -8488,9 +8488,18 @@ JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
         va_list ap;                                                     \
                                                                         \
         va_start(ap, fmt);                                              \
-        val = JS_MakeError(ctx, JS_##uc##_ERROR,                        \
-                           /*add_backtrace*/true, fmt, ap);             \
+        val = JS_New##lc##ErrorV(ctx, fmt, ap);                         \
         va_end(ap);                                                     \
+                                                                        \
+        return val;                                                     \
+    }                                                                   \
+    JSValue JS_PRINTF_FORMAT_ATTR(2, 0)                                 \
+    JS_New##lc##ErrorV(JSContext *ctx,                                  \
+                       JS_PRINTF_FORMAT const char *fmt,                \
+                       va_list ap)                                      \
+    {                                                                   \
+        JSValue val = JS_MakeError(ctx, JS_##uc##_ERROR,                \
+                                   /*add_backtrace*/true, fmt, ap);     \
         if (JS_##uc##_ERROR == JS_INTERNAL_ERROR)                       \
             js_set_uncatchable_error(val, true);                        \
         return val;                                                     \
@@ -8503,8 +8512,17 @@ JS_ThrowError(JSContext *ctx, JSErrorEnum error_num,
         va_list ap;                                                     \
                                                                         \
         va_start(ap, fmt);                                              \
-        val = JS_ThrowError(ctx, JS_##uc##_ERROR, fmt, ap);             \
+        val = JS_Throw##lc##ErrorV(ctx, fmt, ap);                       \
         va_end(ap);                                                     \
+                                                                        \
+        return val;                                                     \
+    }                                                                   \
+    JSValue JS_PRINTF_FORMAT_ATTR(2, 0)                                 \
+    JS_Throw##lc##ErrorV(JSContext *ctx,                                \
+                         JS_PRINTF_FORMAT const char *fmt,              \
+                         va_list ap)                                    \
+    {                                                                   \
+        JSValue val = JS_ThrowError(ctx, JS_##uc##_ERROR, fmt, ap);     \
         if (JS_##uc##_ERROR == JS_INTERNAL_ERROR)                       \
             js_set_uncatchable_error(ctx->rt->current_exception, true); \
         return val;                                                     \
