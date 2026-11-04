@@ -881,6 +881,21 @@ function test_date()
     assert(new Date("2024 Apr 7 2:00 PM").toLocaleString(), "04/07/2024, 02:00:00 PM");
     assert(new Date("2024 Apr 7 11:00 PM").toLocaleString(), "04/07/2024, 11:00:00 PM");
     assert(new Date("2024 Apr 7 12:00 PM").toLocaleString(), "04/07/2024, 12:00:00 PM");
+
+    /* a non-finite argument makes the time value NaN */
+    a = new Date(0);
+    assert(a.setHours(NaN), NaN);
+    assert(a.getTime(), NaN);
+    a = new Date(0);
+    assert(a.setUTCMonth(0, Infinity), NaN);
+    assert(a.getTime(), NaN);
+    a = new Date(0);
+    assert(a.setMilliseconds(-Infinity), NaN);
+    assert(a.getTime(), NaN);
+    /* an invalid date stays invalid */
+    a = new Date(NaN);
+    assert(a.setHours(1), NaN);
+    assert(a.getTime(), NaN);
 }
 
 function test_regexp()
