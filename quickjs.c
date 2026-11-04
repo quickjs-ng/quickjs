@@ -25083,6 +25083,7 @@ static bool is_regexp_allowed(int tok)
     case ')':
     case ']':
     case '}': /* XXX: regexp may occur after */
+    case TOK_TEMPLATE: /* complete template literal; "${" is handled by the caller */
     case TOK_IDENT:
         return false;
     default:
@@ -25190,6 +25191,9 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, bool no_line_
             (token_is_pseudo_keyword(s, JS_ATOM_of) ||
              token_is_pseudo_keyword(s, JS_ATOM_yield))) {
             last_tok = TOK_OF;
+        } else if (s->token.val == TOK_TEMPLATE && s->token.u.str.sep != '`') {
+            /* "${": an expression, hence possibly a regexp, follows */
+            last_tok = '(';
         } else {
             last_tok = s->token.val;
         }
