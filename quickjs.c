@@ -2654,6 +2654,27 @@ void JS_FreeRuntime(JSRuntime *rt)
     }
     init_list_head(&rt->job_list);
 
+    /* Reset the weak references keyed by atoms (e.g. a symbol used as
+       a WeakMap key) before the final garbage collection. Unlike
+       object keys, atoms are not part of the GC object list, so the
+       cycle collector never traverses their weak reference lists, and
+       a cycle through such a weak value (e.g. a WeakMap referencing
+       itself via a symbol key) would survive the collection and fail
+       the leak check below. The atoms themselves are only freed after
+       that check, but no code can run once the runtime is being freed,
+       so resetting their weak references here only anticipates what
+       JS_FreeAtomStruct() does when freeing each atom. The list is
+       detached first because freeing a weak value may release the
+       last reference to the atom itself. */
+    for(i = 0; i < rt->atom_size; i++) {
+        JSAtomStruct *p = rt->atom_array[i];
+        if (!atom_is_free(p) && p->first_weak_ref) {
+            JSWeakRefRecord *first_weak_ref = p->first_weak_ref;
+            p->first_weak_ref = NULL;
+            reset_weak_ref(rt, &first_weak_ref);
+        }
+    }
+
     JS_RunGC(rt);
 
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
