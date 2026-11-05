@@ -990,6 +990,14 @@ function test_map()
     for (var i = 0; i < n; i++) {
         a.set(i, i);
     }
+    for (var i = 0; i < n; i++) {
+        assert(a.get(i), i);
+    }
+    assert(a.get(-0), 0);
+    assert(a.get(1.0), 1);
+    a.set(NaN, 2);
+    assert(a.get(0 / 0), 2);
+    assert(a.size, n + 1);
     a.set(-2147483648, 1);
     assert(a.get(-2147483648), 1);
     assert(a.get(-2147483647 - 1), 1);
