@@ -329,6 +329,27 @@ function test_string()
     assert("aaa".indexOf("", 4), 3);
     assert("aaa".indexOf("", Infinity), 3);
 
+    // mixed 8-bit/16-bit haystack and needle
+    assert("abcabc".indexOf("cā"), -1);
+    assert("abācabāc".indexOf("bāc", 2), 5);
+    assert("abācabāc".indexOf("bc"), -1);
+    assert("xéāy".indexOf("é"), 1);
+    assert("a\u{1F600}b".indexOf("\u{1F600}"), 1);
+    assert("a\u{1F600}b".indexOf("\uDE00"), 2);
+    assert("\uD83D😀".indexOf("😀"), 1);
+    assert("aab".indexOf("ab", 1), 1);
+    assert("aab".indexOf("ab", 2), -1);
+    assert("aab".indexOf("aabā"), -1);
+    assert("abc".includes("cā"), false);
+    assert("abāc".includes("āc"), true);
+    assert("abāc".includes("āc", 3), false);
+    assert("aab".includes("ab", 1), true);
+    assert("aab".includes("", 3), true);
+    assert("aab".includes("", 9), true);
+    assert("abc".startsWith("bā", 1), false);
+    assert("abā".startsWith("bā", 1), true);
+    assert("abā".endsWith("bā"), true);
+
     assert("aaa".lastIndexOf("a"), 2);
     assert("aaa".lastIndexOf("a", NaN), 2);
     assert("aaa".lastIndexOf("a", -Infinity), 0);
