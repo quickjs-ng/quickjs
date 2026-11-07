@@ -42090,6 +42090,12 @@ static JSValue js_object_isSealed(JSContext *ctx, JSValueConst this_val,
         return JS_TRUE;
 
     p = JS_VALUE_GET_OBJ(obj);
+    res = JS_IsExtensible(ctx, obj);
+    if (res < 0)
+        return JS_EXCEPTION;
+    if (res)
+        return JS_FALSE;
+
     flags = JS_GPN_STRING_MASK | JS_GPN_SYMBOL_MASK;
     if (JS_GetOwnPropertyNamesInternal(ctx, &props, &len, p, flags))
         return JS_EXCEPTION;
@@ -42109,10 +42115,7 @@ static JSValue js_object_isSealed(JSContext *ctx, JSValueConst this_val,
             }
         }
     }
-    res = JS_IsExtensible(ctx, obj);
-    if (res < 0)
-        return JS_EXCEPTION;
-    res ^= 1;
+    res = true;
 done:
     js_free_prop_enum(ctx, props, len);
     return js_bool(res);
