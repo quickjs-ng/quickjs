@@ -17,6 +17,30 @@ test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-reje
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/iterator-result-rejected-promise-close.js:74: strict mode: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: TypeError: $DONE() not called
 test262/test/built-ins/AsyncFromSyncIteratorPrototype/throw/throw-result-poisoned-wrapper.js:81: strict mode: TypeError: $DONE() not called
+test262/test/built-ins/DataView/prototype/byteLength/detached-buffer.js:24: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteLength/detached-buffer.js:24: strict mode: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteLength/resizable-array-buffer-auto.js:63: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteLength/resizable-array-buffer-auto.js:63: strict mode: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteLength/resizable-array-buffer-fixed.js:56: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteLength/resizable-array-buffer-fixed.js:56: strict mode: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteOffset/detached-buffer.js:24: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteOffset/detached-buffer.js:24: strict mode: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteOffset/resizable-array-buffer-auto.js:60: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteOffset/resizable-array-buffer-auto.js:60: strict mode: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteOffset/resizable-array-buffer-fixed.js:56: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/DataView/prototype/byteOffset/resizable-array-buffer-fixed.js:56: strict mode: TypeError: ArrayBuffer is detached or resized
+test262/test/built-ins/Promise/try/avoids-wrap-for-subclass.js:10: Test262Error: Expected SameValue(«[object Promise]», «[object Promise]») to be true
+test262/test/built-ins/Promise/try/avoids-wrap-for-subclass.js:10: strict mode: Test262Error: Expected SameValue(«[object Promise]», «[object Promise]») to be true
+test262/test/built-ins/Promise/try/avoids-wrap.js:10: Test262Error: Expected SameValue(«[object Promise]», «[object Promise]») to be true
+test262/test/built-ins/Promise/try/avoids-wrap.js:10: strict mode: Test262Error: Expected SameValue(«[object Promise]», «[object Promise]») to be true
+test262/test/built-ins/TypedArray/prototype/with/BigInt/index-coercion-shrinks.js:12: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all (Testing with BigInt64Array and makePassthrough.)
+test262/test/built-ins/TypedArray/prototype/with/BigInt/index-coercion-shrinks.js:12: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all (Testing with BigInt64Array and makePassthrough.)
+test262/test/built-ins/TypedArray/prototype/with/BigInt/value-coercion-shrinks.js:12: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all (Testing with BigInt64Array and makePassthrough.)
+test262/test/built-ins/TypedArray/prototype/with/BigInt/value-coercion-shrinks.js:12: strict mode: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all (Testing with BigInt64Array and makePassthrough.)
+test262/test/built-ins/TypedArray/prototype/with/index-coercion-shrinks.js:12: Test262Error: Actual [9, 0, 0] and expected [9, NaN, NaN] should have the same contents.  (Testing with Float64Array and makePassthrough.)
+test262/test/built-ins/TypedArray/prototype/with/index-coercion-shrinks.js:12: strict mode: Test262Error: Actual [9, 0, 0] and expected [9, NaN, NaN] should have the same contents.  (Testing with Float64Array and makePassthrough.)
+test262/test/built-ins/TypedArray/prototype/with/value-coercion-shrinks.js:12: Test262Error: Actual [9, 0, 0] and expected [9, NaN, NaN] should have the same contents.  (Testing with Float64Array and makePassthrough.)
+test262/test/built-ins/TypedArray/prototype/with/value-coercion-shrinks.js:12: strict mode: Test262Error: Actual [9, 0, 0] and expected [9, NaN, NaN] should have the same contents.  (Testing with Float64Array and makePassthrough.)
 test262/test/language/destructuring/binding/keyed-destructuring-property-reference-target-evaluation-order-with-bindings.js:73: Test262Error: Actual [binding::source, binding::sourceKey, sourceKey, get source, binding::defaultValue, binding::varTarget] and expected [binding::source, binding::sourceKey, sourceKey, binding::varTarget, get source, binding::defaultValue] should have the same contents. 
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: unexpected error type: Test262: This statement should not be evaluated.
 test262/test/language/expressions/in/private-field-invalid-assignment-target.js:23: strict mode: unexpected error type: Test262: This statement should not be evaluated.
