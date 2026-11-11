@@ -773,6 +773,44 @@ function test_parse_semicolon()
     }
 }
 
+function test_arrow_function()
+{
+    var a = 1, b = 2;
+    var async = (x, y) => x + y;
+
+    /* arrow function parameters */
+    assert((() => 1)(), 1);
+    assert(((a, b,) => a + b)(1, 2), 3);
+    assert(((a = 1, b = [a, 2], c = (a, 3)) => a + b[1] + c)(), 6);
+    assert((({a, b}, [c, d] = [3, 4], ...e) => a + b + c + d + e.length)({a: 1, b: 2}), 10);
+    assert(((a, ...[b, c]) => a + b + c)(1, 2, 3), 6);
+    assert(((a = b => b, c = (d, e) => d + e) => a(1) + c(2, 3))(), 6);
+    assert(((a = `${[1, 2]}`, b = /[,)]/) => a + b.source)(), "1,2[,)]");
+    assert((async (a, b = 1) => a + b).length, 1);
+
+    /* parenthesized expressions that start like a parameter list */
+    assert((a), 1);
+    assert((a, b), 2);
+    assert((a, b) + 1, 3);
+    assert((a = 5, b), 2);
+    assert(a, 5);
+    assert(([a, b] = [6, 7], a + b), 13);
+    assert(({a, b} = {a: 8, b: 9}, a + b), 17);
+    assert(async(a, b), 17);
+    assert(async (a + 1, b), 18);
+
+    assert_throws(SyntaxError, "(a, b)\n=> 1");
+    assert_throws(SyntaxError, "(a + b) => 1");
+    assert_throws(SyntaxError, "(a, b.c) => 1");
+    assert_throws(SyntaxError, "(a, 1) => 1");
+    assert_throws(SyntaxError, "((a)) => 1");
+    assert_throws(SyntaxError, "(a,, b) => 1");
+    assert_throws(SyntaxError, "(a = 1 b) => 1");
+    assert_throws(SyntaxError, "(...a, b) => 1");
+    assert_throws(SyntaxError, "(this) => 1");
+    assert_throws(SyntaxError, "async (a + b) => 1");
+}
+
 function test_non_extensible_receiver_existing_property_set()
 {
     var proto, receiver, ret;
@@ -1146,6 +1184,7 @@ test_number_literals();
 test_syntax();
 test_optional_chaining();
 test_parse_semicolon();
+test_arrow_function();
 test_non_extensible_receiver_existing_property_set();
 test_using();
 test_await_using().catch(e => { throw e; });

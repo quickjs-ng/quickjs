@@ -25094,9 +25094,17 @@ static bool is_regexp_allowed(int tok)
 #define SKIP_HAS_ELLIPSIS   (1 << 1)
 #define SKIP_HAS_ASSIGNMENT (1 << 2)
 
-/* XXX: improve speed with early bailout */
 /* XXX: no longer works if regexps are present. Could use previous
    regexp parsing heuristics to handle most cases */
+/* 'no_line_terminator' is set when looking for the '=>' of an arrow
+   function. In that case the scan stops as soon as the tokens directly
+   inside the parentheses cannot be a formal parameter list:
+
+       ( [BindingIdentifier | BindingPattern] [= Initializer] , ... )
+
+   so that `(function(){ ... })()`, `(a + b)` or `(0, f)(x)` are rejected
+   after one or two tokens instead of scanning up to the matching ')'.
+   XXX: improve speed with early bailout in the other cases */
 static int js_parse_skip_parens_token(JSParseState *s, int *pbits, bool no_line_terminator)
 {
     char state[256];
@@ -25104,6 +25112,11 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, bool no_line_
     JSParsePos pos;
     int last_tok, tok = TOK_EOF;
     int c, tok_len, bits = 0;
+    enum {
+        PARAM_START, /* after '(' or ',': expect a binding name or pattern */
+        PARAM_END,   /* after a name or pattern: expect ',', '=' or ')' */
+        PARAM_INIT,  /* inside an initializer: anything until ',' */
+    } param_state = PARAM_START;
 
     /* protect from underflow */
     state[level++] = 0;
@@ -25111,6 +25124,32 @@ static int js_parse_skip_parens_token(JSParseState *s, int *pbits, bool no_line_
     js_parse_get_pos(s, &pos);
     last_tok = 0;
     for (;;) {
+        if (no_line_terminator && level == 2) {
+            int t = s->token.val;
+            switch(param_state) {
+            case PARAM_START:
+                /* reserved words are accepted here: they are rejected by
+                   the next token (`(this.x)`, `(function(){})`) or later
+                   when the parameters are parsed */
+                if (token_is_ident(t) || t == '{' || t == '[')
+                    param_state = PARAM_END;
+                else if (t != TOK_ELLIPSIS && t != ')')
+                    goto done;
+                break;
+            case PARAM_END:
+                if (t == ',')
+                    param_state = PARAM_START;
+                else if (t == '=')
+                    param_state = PARAM_INIT;
+                else if (t != ')')
+                    goto done;
+                break;
+            case PARAM_INIT:
+                if (t == ',')
+                    param_state = PARAM_START;
+                break;
+            }
+        }
         switch(s->token.val) {
         case '(':
         case '[':
