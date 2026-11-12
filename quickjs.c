@@ -17446,10 +17446,8 @@ static __exception int JS_CopyDataProperties(JSContext *ctx,
         }
     }
     if (JS_GetOwnPropertyNamesInternal(ctx, &tab_atom, &tab_atom_count, p,
-                                       gpn_flags)) {
-        JS_FreeValue(ctx, source);
-        return -1;
-    }
+                                       gpn_flags))
+        goto exception;
 
     for (i = 0; i < tab_atom_count; i++) {
         if (pexcl) {
