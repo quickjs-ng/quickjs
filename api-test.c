@@ -754,6 +754,13 @@ static void promise_hook_cb(JSContext *ctx, JSPromiseHookType type,
            type == JS_PROMISE_HOOK_RESOLVE);
     promise_hook_state.hook_type_call_count[type]++;
     assert(opaque == (void *)&promise_hook_state);
+    if (type == JS_PROMISE_HOOK_BEFORE || type == JS_PROMISE_HOOK_AFTER) {
+        JSValue global_object = JS_GetGlobalObject(ctx);
+        JS_SetPropertyStr(ctx, global_object,
+                          type == JS_PROMISE_HOOK_BEFORE ? "before_promise" : "after_promise",
+                          JS_DupValue(ctx, promise));
+        JS_FreeValue(ctx, global_object);
+    }
     if (!JS_IsUndefined(parent_promise)) {
         JSValue global_object = JS_GetGlobalObject(ctx);
         JS_SetPropertyStr(ctx, global_object, "actual",
@@ -858,8 +865,8 @@ static void promise_hook(void)
         assert(1 == JS_ExecutePendingJob(rt, &unused));
         assert(!JS_HasException(ctx));
         assert(4 == cc[JS_PROMISE_HOOK_INIT]);
-        assert(0 == cc[JS_PROMISE_HOOK_BEFORE]);
-        assert(0 == cc[JS_PROMISE_HOOK_AFTER]);
+        assert(1 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(1 == cc[JS_PROMISE_HOOK_AFTER]);
         assert(4 == cc[JS_PROMISE_HOOK_RESOLVE]);
         assert(!JS_IsJobPending(rt));
         v = JS_GetPropertyStr(ctx, global_object, "count");
@@ -874,6 +881,42 @@ static void promise_hook(void)
         assert(JS_IsSameValue(ctx, actual, expected));
         JS_FreeValue(ctx, actual);
         JS_FreeValue(ctx, expected);
+    }
+    memset(&promise_hook_state, 0, sizeof(promise_hook_state));
+    {
+        // await continuation has its own promise, parented by the awaited promise
+        static const char code[] =
+            "globalThis.actual = undefined;"
+            "globalThis.before_promise = undefined;"
+            "globalThis.after_promise = undefined;"
+            "globalThis.awaited = Promise.resolve();"
+            "(async () => { await awaited; })()";
+        JSValue ret = eval(ctx, code);
+        assert(!JS_IsException(ret));
+        assert(JS_IsPromise(ret));
+        assert(JS_IsJobPending(rt));
+        while (JS_IsJobPending(rt))
+            assert(1 == JS_ExecutePendingJob(rt, &unused));
+        assert(1 == cc[JS_PROMISE_HOOK_BEFORE]);
+        assert(1 == cc[JS_PROMISE_HOOK_AFTER]);
+        JSValue parent = JS_GetPropertyStr(ctx, global_object, "actual");
+        JSValue awaited = JS_GetPropertyStr(ctx, global_object, "awaited");
+        JSValue before_promise = JS_GetPropertyStr(ctx, global_object, "before_promise");
+        JSValue after_promise = JS_GetPropertyStr(ctx, global_object, "after_promise");
+        assert(!JS_IsException(parent));
+        assert(!JS_IsException(awaited));
+        assert(!JS_IsException(before_promise));
+        assert(!JS_IsException(after_promise));
+        assert(JS_IsSameValue(ctx, parent, awaited));
+        assert(JS_IsPromise(before_promise));
+        assert(JS_IsSameValue(ctx, before_promise, after_promise));
+        assert(!JS_IsSameValue(ctx, before_promise, awaited));
+        assert(!JS_IsSameValue(ctx, before_promise, ret));
+        JS_FreeValue(ctx, parent);
+        JS_FreeValue(ctx, awaited);
+        JS_FreeValue(ctx, before_promise);
+        JS_FreeValue(ctx, after_promise);
+        JS_FreeValue(ctx, ret);
     }
     memset(&promise_hook_state, 0, sizeof(promise_hook_state));
     {
