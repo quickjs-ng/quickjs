@@ -903,6 +903,213 @@ static void promise_hook(void)
     JS_FreeRuntime(rt);
 }
 
+static JSValue get_continuation_data(JSContext *ctx, JSValueConst this_val,
+                                      int argc, JSValueConst *argv)
+{
+    return JS_GetContinuationData(JS_GetRuntime(ctx));
+}
+
+static JSValue set_continuation_data(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv)
+{
+    JS_SetContinuationData(JS_GetRuntime(ctx), argv[0]);
+    return JS_UNDEFINED;
+}
+
+static JSContext *continuation_context(JSRuntime *rt)
+{
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue global_object = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global_object, "getCD",
+                      JS_NewCFunction(ctx, get_continuation_data, "getCD", 0));
+    JS_SetPropertyStr(ctx, global_object, "setCD",
+                      JS_NewCFunction(ctx, set_continuation_data, "setCD", 1));
+    JS_FreeValue(ctx, global_object);
+    // note() records the data that the running job or reaction sees
+    JSValue ret = eval(ctx,
+                       "const log = [];"
+                       "const note = (name) => log.push(name + '=' + getCD());");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    return ctx;
+}
+
+// runs the code and its jobs, checks that no data is left, then compares the
+// sorted log of note() with the expected one
+static void continuation_log(JSRuntime *rt, JSContext *ctx, const char *code,
+                             const char *expected)
+{
+    JSContext *c1;
+    JSValue ret = eval(ctx, code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    while (JS_ExecutePendingJob(rt, &c1) > 0)
+        ;
+    assert(JS_IsUndefined(JS_GetContinuationData(rt)));
+    JSValue str = eval(ctx, "log.sort().join(',')");
+    const char *s = JS_ToCString(ctx, str);
+    assert(s);
+    assert(!strcmp(s, expected));
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, str);
+}
+
+static void continuation_data(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = continuation_context(rt);
+    // every job and reaction sees the data of where it was queued or
+    // registered: then, await, queueMicrotask, a reaction registered before
+    // the promise settles and a thenable that is awaited
+    continuation_log(rt, ctx,
+                     "setCD('A');"
+                     "Promise.resolve().then(() => note('then'));"
+                     "(async () => {"
+                     "  await null; note('await');"
+                     "  await Promise.resolve(); note('await2');"
+                     "})();"
+                     "setCD('B');"
+                     "queueMicrotask(() => note('microtask'));"
+                     "setCD('C');"
+                     "let resolve;"
+                     "new Promise(r => { resolve = r; }).then(() => note('pending'));"
+                     "setCD('D');"
+                     "resolve();" // settled with D current, registered with C
+                     "setCD('E');"
+                     "(async () => { await { then(r) { r(); } }; note('thenable'); })();"
+                     "setCD(undefined);",
+                     "await2=A,await=A,microtask=B,pending=C,then=A,thenable=E");
+
+    // the runtime holds one reference to the data and drops it with the runtime
+    JSValue data = JS_NewObject(ctx);
+    JS_SetContinuationData(rt, data);
+    JS_FreeValue(ctx, data);
+    JSValue got = JS_GetContinuationData(rt);
+    assert(JS_IsObject(got));
+    JS_FreeValue(ctx, got);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void continuation_data_registry(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = continuation_context(rt);
+    // the callback of a finalization registry runs without data, not with the
+    // data of the code that frees the object
+    continuation_log(rt, ctx,
+                     "const registry = new FinalizationRegistry(() => note('cleanup'));"
+                     "let frame = {};"
+                     "registry.register(frame, 'frame');"
+                     "setCD('X');"
+                     "frame = null;"
+                     "setCD(undefined);",
+                     "cleanup=undefined");
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void continuation_data_cycle(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = continuation_context(rt);
+    // the data of a reaction refers back to its pending promise. no job runs
+    // and the log stays empty, JS_FreeRuntime asserts that the collector frees
+    // the cycle
+    continuation_log(rt, ctx,
+                     "const holder = {};"
+                     "setCD(holder);"
+                     "holder.promise = new Promise(() => {});"
+                     "holder.promise.then(() => {});"
+                     "setCD(undefined);",
+                     "");
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static JSContext *queueing_ctx;
+static int queued_job_count;
+
+static JSValue queued_job(JSContext *ctx, int argc, JSValueConst *argv)
+{
+    // a job queued by a finalizer does not get the data that is being freed
+    JSValue data = JS_GetContinuationData(JS_GetRuntime(ctx));
+    assert(JS_IsUndefined(data));
+    queued_job_count++;
+    return JS_UNDEFINED;
+}
+
+static void queueing_finalizer(JSRuntime *rt, JSValueConst val)
+{
+    JS_EnqueueJob(queueing_ctx, queued_job, 0, NULL);
+}
+
+static JSValue empty_job(JSContext *ctx, int argc, JSValueConst *argv)
+{
+    return JS_UNDEFINED;
+}
+
+static void continuation_data_finalizer(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSContext *c1;
+    JSClassID class_id = 0;
+    JSClassDef def = (JSClassDef){
+        .class_name = "Queueing",
+        .finalizer = queueing_finalizer,
+    };
+    JS_NewClassID(rt, &class_id);
+    assert(0 == JS_NewClass(rt, class_id, &def));
+    queueing_ctx = ctx;
+    queued_job_count = 0;
+
+    // the last reference to the data is the one of a queued job, and freeing
+    // the data after the job queues another job
+    JSValue data = JS_NewObjectClass(ctx, class_id);
+    JS_SetContinuationData(rt, data);
+    JS_FreeValue(ctx, data);
+    assert(0 == JS_EnqueueJob(ctx, empty_job, 0, NULL));
+    JS_SetContinuationData(rt, JS_UNDEFINED);
+    assert(0 == queued_job_count);
+    while (JS_ExecutePendingJob(rt, &c1) > 0)
+        ;
+    assert(1 == queued_job_count);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static int freed_data_seen = -1;
+
+static void reading_finalizer(JSRuntime *rt, JSValueConst val)
+{
+    // JS_FreeRuntime has let go of the value before it is freed
+    JSValue data = JS_GetContinuationData(rt);
+    freed_data_seen = !JS_IsUndefined(data);
+    JS_FreeValueRT(rt, data);
+}
+
+static void continuation_data_free_runtime(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSClassID class_id = 0;
+    JSClassDef def = (JSClassDef){
+        .class_name = "Reading",
+        .finalizer = reading_finalizer,
+    };
+    JS_NewClassID(rt, &class_id);
+    assert(0 == JS_NewClass(rt, class_id, &def));
+    JSValue data = JS_NewObjectClass(ctx, class_id);
+    JS_SetContinuationData(rt, data);
+    JS_FreeValue(ctx, data);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+    assert(0 == freed_data_seen);
+}
+
 static void dump_memory_usage(void)
 {
     JSMemoryUsage stats;
@@ -2464,6 +2671,11 @@ int main(void)
     utf16_string();
     weak_map_gc_check();
     promise_hook();
+    continuation_data();
+    continuation_data_registry();
+    continuation_data_cycle();
+    continuation_data_finalizer();
+    continuation_data_free_runtime();
     dump_memory_usage();
     new_errors();
     dom_exception_added_twice();
