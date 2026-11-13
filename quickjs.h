@@ -1167,15 +1167,18 @@ JS_EXTERN JSValue JS_NewPrivateSymbol(JSContext *ctx, const char *description);
 
 typedef enum JSPromiseHookType {
     JS_PROMISE_HOOK_INIT,     // emitted when a new promise is created
-    JS_PROMISE_HOOK_BEFORE,   // runs right before promise.then is invoked
-    JS_PROMISE_HOOK_AFTER,    // runs right after promise.then is invoked
+    JS_PROMISE_HOOK_BEFORE,   // runs right before a reaction or thenable job
+    JS_PROMISE_HOOK_AFTER,    // runs right after a reaction or thenable job
     JS_PROMISE_HOOK_RESOLVE,  // not emitted for rejected promises
 } JSPromiseHookType;
 
 // parent_promise is only passed in when type == JS_PROMISE_HOOK_INIT and
 // is then either a promise object or JS_UNDEFINED if the new promise does
-// not have a parent promise; only promises created with promise.then have
-// a parent promise
+// not have a parent promise. Promises created with promise.then and await
+// continuation promises have a parent promise.
+// For a reaction, promise is the resulting native promise, or the source
+// promise if a custom capability has no native promise. Await continuations
+// use a distinct native promise when hooks are enabled.
 typedef void JSPromiseHook(JSContext *ctx, JSPromiseHookType type,
                            JSValueConst promise, JSValueConst parent_promise,
                            void *opaque);
