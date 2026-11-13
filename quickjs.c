@@ -33920,15 +33920,23 @@ static void var_object_test(JSContext *ctx, JSFunctionDef *s,
     s->jump_size++;
 }
 
-static inline void capture_var(JSFunctionDef *s, JSVarDef *vd)
+static __exception int capture_var(JSContext *ctx, JSFunctionDef *s,
+                                   JSVarDef *vd)
 {
     if (!vd->is_captured) {
+        /* the var_ref indexes are currently stored on 16 bits */
+        if (s->var_ref_count >= JS_MAX_LOCAL_VARS) {
+            JS_ThrowSyntaxError(ctx, "too many captured variables (only %d allowed)",
+                                JS_MAX_LOCAL_VARS);
+            return -1;
+        }
         vd->is_captured = 1;
         vd->var_ref_idx = s->var_ref_count++;
     }
+    return 0;
 }
 
-/* return the position of the next opcode */
+/* return the position of the next opcode or -1 if error */
 static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
                              JSAtom var_name, int scope_level, int op,
                              DynBuf *bc, uint8_t *bc_buf,
@@ -34037,12 +34045,14 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
                 /* Create a dummy object with a named slot that is
                    a reference to the local variable */
                 if (var_idx & ARGUMENT_VAR_OFFSET) {
-                    capture_var(s, &s->args[var_idx - ARGUMENT_VAR_OFFSET]);
+                    if (capture_var(ctx, s, &s->args[var_idx - ARGUMENT_VAR_OFFSET]))
+                        return -1;
                     dbuf_putc(bc, OP_make_arg_ref);
                     dbuf_put_u32(bc, JS_DupAtom(ctx, var_name));
                     dbuf_put_u16(bc, var_idx - ARGUMENT_VAR_OFFSET);
                 } else {
-                    capture_var(s, &s->vars[var_idx]);
+                    if (capture_var(ctx, s, &s->vars[var_idx]))
+                        return -1;
                     dbuf_putc(bc, OP_make_loc_ref);
                     dbuf_put_u32(bc, JS_DupAtom(ctx, var_name));
                     dbuf_put_u16(bc, var_idx);
@@ -34130,7 +34140,8 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
                 var_idx = idx;
                 break;
             } else if (vd->var_name == JS_ATOM__with_ && !is_pseudo_var) {
-                capture_var(fd, vd);
+                if (capture_var(ctx, fd, vd))
+                    return -1;
                 idx = get_closure_var(ctx, s, fd, JS_CLOSURE_LOCAL, idx, vd->var_name, false, false, JS_VAR_NORMAL);
                 if (idx >= 0) {
                     dbuf_putc(bc, OP_get_var_ref);
@@ -34167,7 +34178,8 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
         /* check eval object */
         if (!is_arg_scope && fd->var_object_idx >= 0 && !is_pseudo_var) {
             vd = &fd->vars[fd->var_object_idx];
-            capture_var(fd, vd);
+            if (capture_var(ctx, fd, vd))
+                return -1;
             idx = get_closure_var(ctx, s, fd, JS_CLOSURE_LOCAL,
                                   fd->var_object_idx, vd->var_name,
                                   false, false, JS_VAR_NORMAL);
@@ -34179,7 +34191,8 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
         /* check eval object in argument scope */
         if (fd->arg_var_object_idx >= 0 && !is_pseudo_var) {
             vd = &fd->vars[fd->arg_var_object_idx];
-            capture_var(fd, vd);
+            if (capture_var(ctx, fd, vd))
+                return -1;
             idx = get_closure_var(ctx, s, fd, JS_CLOSURE_LOCAL,
                                   fd->arg_var_object_idx, vd->var_name,
                                   false, false, JS_VAR_NORMAL);
@@ -34234,12 +34247,14 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
     if (var_idx >= 0) {
         /* find the corresponding closure variable */
         if (var_idx & ARGUMENT_VAR_OFFSET) {
-            capture_var(fd, &fd->args[var_idx - ARGUMENT_VAR_OFFSET]);
+            if (capture_var(ctx, fd, &fd->args[var_idx - ARGUMENT_VAR_OFFSET]))
+                return -1;
             idx = get_closure_var(ctx, s, fd,
                                   JS_CLOSURE_ARG, var_idx - ARGUMENT_VAR_OFFSET,
                                   var_name, false, false, JS_VAR_NORMAL);
         } else {
-            capture_var(fd, &fd->vars[var_idx]);
+            if (capture_var(ctx, fd, &fd->vars[var_idx]))
+                return -1;
             idx = get_closure_var(ctx, s, fd,
                                   JS_CLOSURE_LOCAL, var_idx,
                                   var_name,
@@ -34420,7 +34435,8 @@ static int resolve_scope_private_field1(JSContext *ctx,
         if (idx >= 0) {
             var_kind = fd->vars[idx].var_kind;
             if (is_ref) {
-                capture_var(fd, &fd->vars[idx]);
+                if (capture_var(ctx, fd, &fd->vars[idx]))
+                    return -1;
                 idx = get_closure_var(ctx, s, fd, JS_CLOSURE_LOCAL, idx, var_name,
                                       true, true, JS_VAR_NORMAL);
                 if (idx < 0)
@@ -34568,17 +34584,20 @@ static int resolve_scope_private_field(JSContext *ctx, JSFunctionDef *s,
     return 0;
 }
 
-static void mark_eval_captured_variables(JSContext *ctx, JSFunctionDef *s,
-                                         int scope_level)
+static __exception int mark_eval_captured_variables(JSContext *ctx,
+                                                    JSFunctionDef *s,
+                                                    int scope_level)
 {
     int idx;
     JSVarDef *vd;
 
     for (idx = s->scopes[scope_level].first; idx >= 0;) {
         vd = &s->vars[idx];
-        capture_var(s, vd);
+        if (capture_var(ctx, s, vd))
+            return -1;
         idx = vd->scope_next;
     }
+    return 0;
 }
 
 /* XXX: should handle the argument scope generically */
@@ -34592,7 +34611,7 @@ static bool is_var_in_arg_scope(const JSVarDef *vd)
             vd->var_kind == JS_VAR_FUNCTION_NAME);
 }
 
-static void add_eval_variables(JSContext *ctx, JSFunctionDef *s)
+static __exception int add_eval_variables(JSContext *ctx, JSFunctionDef *s)
 {
     JSFunctionDef *fd;
     JSVarDef *vd;
@@ -34643,10 +34662,12 @@ static void add_eval_variables(JSContext *ctx, JSFunctionDef *s)
     /* mark all local variables as captured since eval can access any of them */
     if (!s->is_eval) {
         for (i = 0; i < s->arg_count; i++) {
-            capture_var(s, &s->args[i]);
+            if (capture_var(ctx, s, &s->args[i]))
+                return -1;
         }
         for (i = 0; i < s->var_count; i++) {
-            capture_var(s, &s->vars[i]);
+            if (capture_var(ctx, s, &s->vars[i]))
+                return -1;
         }
     }
 
@@ -34682,7 +34703,8 @@ static void add_eval_variables(JSContext *ctx, JSFunctionDef *s)
         scope_idx = fd->scopes[scope_level].first;
         while (scope_idx >= 0) {
             vd = &fd->vars[scope_idx];
-            capture_var(fd, vd);
+            if (capture_var(ctx, fd, vd))
+                return -1;
             get_closure_var(ctx, s, fd, JS_CLOSURE_LOCAL, scope_idx,
                             vd->var_name, vd->is_const, vd->is_lexical, vd->var_kind);
             scope_idx = vd->scope_next;
@@ -34694,7 +34716,8 @@ static void add_eval_variables(JSContext *ctx, JSFunctionDef *s)
             for(i = 0; i < fd->arg_count; i++) {
                 vd = &fd->args[i];
                 if (vd->var_name != JS_ATOM_NULL) {
-                    capture_var(fd, vd);
+                    if (capture_var(ctx, fd, vd))
+                        return -1;
                     get_closure_var(ctx, s, fd,
                                     JS_CLOSURE_ARG, i, vd->var_name, false,
                                     vd->is_lexical, JS_VAR_NORMAL);
@@ -34706,7 +34729,8 @@ static void add_eval_variables(JSContext *ctx, JSFunctionDef *s)
                 if (vd->scope_level == 0 &&
                     vd->var_name != JS_ATOM__ret_ &&
                     vd->var_name != JS_ATOM_NULL) {
-                    capture_var(fd, vd);
+                    if (capture_var(ctx, fd, vd))
+                        return -1;
                     get_closure_var(ctx, s, fd,
                                     JS_CLOSURE_LOCAL, i, vd->var_name, false,
                                     vd->is_lexical, JS_VAR_NORMAL);
@@ -34717,7 +34741,8 @@ static void add_eval_variables(JSContext *ctx, JSFunctionDef *s)
                 vd = &fd->vars[i];
                 /* do not close top level last result */
                 if (vd->scope_level == 0 && is_var_in_arg_scope(vd)) {
-                    capture_var(fd, vd);
+                    if (capture_var(ctx, fd, vd))
+                        return -1;
                     get_closure_var(ctx, s, fd,
                                     JS_CLOSURE_LOCAL, i, vd->var_name, false,
                                     vd->is_lexical, JS_VAR_NORMAL);
@@ -34737,6 +34762,7 @@ static void add_eval_variables(JSContext *ctx, JSFunctionDef *s)
             }
         }
     }
+    return 0;
 }
 
 static void set_closure_from_var(JSContext *ctx, JSClosureVar *cv,
@@ -35243,7 +35269,8 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
             {
                 int call_argc = get_u16(bc_buf + pos + 1);
                 scope = get_u16(bc_buf + pos + 1 + 2);
-                mark_eval_captured_variables(ctx, s, scope);
+                if (mark_eval_captured_variables(ctx, s, scope))
+                    goto fail;
                 dbuf_putc(&bc_out, op);
                 dbuf_put_u16(&bc_out, call_argc);
                 dbuf_put_u16(&bc_out, s->scopes[scope].first + 1);
@@ -35251,7 +35278,8 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
             break;
         case OP_apply_eval: /* convert scope index to adjusted variable index */
             scope = get_u16(bc_buf + pos + 1);
-            mark_eval_captured_variables(ctx, s, scope);
+            if (mark_eval_captured_variables(ctx, s, scope))
+                goto fail;
             dbuf_putc(&bc_out, op);
             dbuf_put_u16(&bc_out, s->scopes[scope].first + 1);
             break;
@@ -35265,6 +35293,8 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
             scope = get_u16(bc_buf + pos + 5);
             pos_next = resolve_scope_var(ctx, s, var_name, scope, op, &bc_out,
                                          NULL, NULL, pos_next);
+            if (pos_next < 0)
+                goto fail;
             JS_FreeAtom(ctx, var_name);
             break;
         case OP_scope_make_ref:
@@ -35278,6 +35308,8 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
                 ls->ref_count--;  /* always remove label reference */
                 pos_next = resolve_scope_var(ctx, s, var_name, scope, op, &bc_out,
                                              bc_buf, ls, pos_next);
+                if (pos_next < 0)
+                    goto fail;
                 JS_FreeAtom(ctx, var_name);
             }
             break;
@@ -35886,7 +35918,8 @@ static __exception int resolve_labels(JSContext *ctx, JSFunctionDef *s)
         } else {
             /* mapped arguments need all args to be captured */
             for (i = 0; i < s->arg_count; i++) {
-                capture_var(s, &s->args[i]);
+                if (capture_var(ctx, s, &s->args[i]))
+                    goto fail;
             }
             dbuf_putc(&bc_out, OP_special_object);
             dbuf_putc(&bc_out, OP_SPECIAL_OBJECT_MAPPED_ARGUMENTS);
@@ -37058,8 +37091,10 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
        so it is necessary to create the closure variables before any
        other variable lookup is done. */
 #ifndef QJS_DISABLE_PARSER
-    if (fd->has_eval_call)
-        add_eval_variables(ctx, fd);
+    if (fd->has_eval_call) {
+        if (add_eval_variables(ctx, fd))
+            goto fail;
+    }
 #endif // QJS_DISABLE_PARSER
 
     /* add the module global variables in the closure */
