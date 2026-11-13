@@ -17411,12 +17411,12 @@ exception:
 
 static __exception int JS_CopyDataProperties(JSContext *ctx,
                                              JSValue target,
-                                             JSValue source,
+                                             JSValue source0,
                                              JSValue excluded,
                                              bool setprop)
 {
     JSPropertyEnum *tab_atom;
-    JSValue val;
+    JSValue val, source;
     uint32_t i, tab_atom_count;
     JSObject *p;
     JSObject *pexcl = NULL;
@@ -17424,8 +17424,12 @@ static __exception int JS_CopyDataProperties(JSContext *ctx,
     int desc_flags;
     bool is_enumerable;
 
-    if (JS_VALUE_GET_TAG(source) != JS_TAG_OBJECT)
+    if (JS_IsNull(source0) || JS_IsUndefined(source0))
         return 0;
+    /* CopyDataProperties applies ToObject: { ..."ab" } copies "0" and "1" */
+    source = JS_ToObject(ctx, source0);
+    if (JS_IsException(source))
+        return -1;
 
     if (JS_VALUE_GET_TAG(excluded) == JS_TAG_OBJECT)
         pexcl = JS_VALUE_GET_OBJ(excluded);
@@ -17443,7 +17447,7 @@ static __exception int JS_CopyDataProperties(JSContext *ctx,
     }
     if (JS_GetOwnPropertyNamesInternal(ctx, &tab_atom, &tab_atom_count, p,
                                        gpn_flags))
-        return -1;
+        goto exception;
 
     for (i = 0; i < tab_atom_count; i++) {
         if (pexcl) {
@@ -17477,9 +17481,11 @@ static __exception int JS_CopyDataProperties(JSContext *ctx,
             goto exception;
     }
     js_free_prop_enum(ctx, tab_atom, tab_atom_count);
+    JS_FreeValue(ctx, source);
     return 0;
  exception:
     js_free_prop_enum(ctx, tab_atom, tab_atom_count);
+    JS_FreeValue(ctx, source);
     return -1;
 }
 
