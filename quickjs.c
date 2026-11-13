@@ -22210,6 +22210,9 @@ enum {
 
 typedef struct BlockEnv {
     struct BlockEnv *prev;
+    /* loop directly labelled by this label statement (a: b: for ...), so
+       that `continue a` targets that loop */
+    struct BlockEnv *cont_alias;
     JSAtom label_name; /* JS_ATOM_NULL if none */
     int label_break; /* -1 if none */
     int label_cont; /* -1 if none */
@@ -22219,6 +22222,7 @@ typedef struct BlockEnv {
     uint8_t has_iterator : 1;
     uint8_t is_async_iterator : 1;
     uint8_t is_regular_stmt : 1; // i.e. not a loop statement
+    uint8_t labels_next : 1; /* label statement whose body is another label */
     uint8_t has_using : 1; /* scope has using declarations needing disposal */
     int using_scope_level; /* scope level for OP_dispose_scope (-1 if none) */
 } BlockEnv;
@@ -28549,8 +28553,11 @@ static void push_break_entry(JSFunctionDef *fd, BlockEnv *be,
                              int label_break, int label_cont,
                              int drop_count)
 {
+    BlockEnv *p;
     be->prev = fd->top_break;
     fd->top_break = be;
+    be->cont_alias = NULL;
+    be->labels_next = 0;
     be->label_name = label_name;
     be->label_break = label_break;
     be->label_cont = label_cont;
@@ -28562,6 +28569,10 @@ static void push_break_entry(JSFunctionDef *fd, BlockEnv *be,
     be->is_regular_stmt = false;
     be->has_using = false;
     be->using_scope_level = -1;
+    if (label_cont != -1) {
+        for (p = be->prev; p && p->is_regular_stmt && p->labels_next; p = p->prev)
+            p->cont_alias = be;
+    }
 }
 
 static void pop_break_entry(JSFunctionDef *fd)
@@ -28616,6 +28627,15 @@ static __exception int emit_break(JSParseState *s, JSAtom name, int is_cont)
     int i, scope_level;
 
     scope_level = s->cur_func->scope_level;
+    if (is_cont && name != JS_ATOM_NULL) {
+        for (top = s->cur_func->top_break; top; top = top->prev) {
+            if (top->label_name == name) {
+                if (top->cont_alias)
+                    name = top->cont_alias->label_name;
+                break;
+            }
+        }
+    }
     top = s->cur_func->top_break;
     while (top != NULL) {
         close_scopes(s, scope_level, top->scope_level);
@@ -29382,7 +29402,6 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
     int tok;
 
     /* specific label handling */
-    /* XXX: support multiple labels on loop statements */
     label_name = JS_ATOM_NULL;
     if (is_label(s)) {
         BlockEnv *be;
@@ -29411,6 +29430,7 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
             label_break = new_label(s);
             push_break_entry(fd, &break_entry, label_name, label_break, -1, 0);
             fd->top_break->is_regular_stmt = 1;
+            s->cur_func->top_break->labels_next = is_label(s);
             if (!fd->is_strict_mode &&
                 (decl_mask & DECL_MASK_FUNC_WITH_LABEL)) {
                 mask = DECL_MASK_FUNC | DECL_MASK_FUNC_WITH_LABEL;
