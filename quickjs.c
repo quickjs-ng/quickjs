@@ -60062,7 +60062,7 @@ JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValueConst obj,
     if (pbyte_offset)
         *pbyte_offset = ta->offset;
     if (pbyte_length)
-        *pbyte_length = ta->length;
+        *pbyte_length = (size_t)p->u.array.count << typed_array_size_log2(p->class_id);
     if (pbytes_per_element) {
         *pbytes_per_element = 1 << typed_array_size_log2(p->class_id);
     }
@@ -60090,7 +60090,7 @@ uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj)
     ta = p->u.typed_array;
     abuf = ta->buffer->u.array_buffer;
 
-    *psize = ta->length;
+    *psize = p->u.array.count;
     return abuf->data + ta->offset;
  fail:
     *psize = 0;

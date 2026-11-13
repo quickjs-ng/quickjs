@@ -1447,6 +1447,34 @@ static void get_uint8array(void)
     JS_FreeRuntime(rt);
 }
 
+// https://github.com/quickjs-ng/quickjs/issues/1894
+static void typed_array_track_rab_length(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue val, ab;
+    size_t off, len;
+    uint8_t *p;
+
+    val = eval(ctx, "ab = new ArrayBuffer(64, {maxByteLength: 1024});"
+                    "u8 = new Uint8Array(ab);"
+                    "ab.resize(7);"
+                    "u8");
+    assert(!JS_IsException(val));
+    ab = JS_GetTypedArrayBuffer(ctx, val, &off, &len, NULL);
+    assert(!JS_IsException(ab));
+    JS_FreeValue(ctx, ab);
+    assert(off == 0);
+    assert(len == 7);
+    p = JS_GetUint8Array(ctx, &len, val);
+    assert(p != NULL);
+    assert(len == 7);
+    JS_FreeValue(ctx, val);
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 static void new_symbol(void)
 {
     JSRuntime *rt = new_runtime();
@@ -2476,6 +2504,7 @@ int main(void)
     immutable_array_buffer();
     shared_array_buffer_growth();
     get_uint8array();
+    typed_array_track_rab_length();
     new_symbol();
     bulk_free_macros();
     detach_array_buffer_free_once();
