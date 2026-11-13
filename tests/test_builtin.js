@@ -404,6 +404,39 @@ function test_string()
            /*JS_STRING_KIND_NORMAL*/0);
     assert(qjs.getStringKind("xyzzy".repeat(512).slice(1)),
            /*JS_STRING_KIND_SLICE*/1);
+
+    assert("a".localeCompare("b"), -1);
+    assert("b".localeCompare("a"), 1);
+    assert("abc".localeCompare("abc"), 0);
+    assert("ab".localeCompare("abc"), -1);
+    assert("".localeCompare(""), 0);
+    assert("\x00".localeCompare(""), 1);
+    assert("\xfe".localeCompare("\xff"), -1);
+    assert("\xe9".localeCompare("e\u0301"), 0);
+    assert("e\u0301".localeCompare("\xe9"), 0);
+    assert("\xc5".localeCompare("\u212b"), 0);
+    assert("\xff".localeCompare("\u0100"), -1);
+
+    for (const f of [undefined, "NFC", "NFD", "NFKC", "NFKD"])
+        assert("Hello, World! 0123456789~".normalize(f), "Hello, World! 0123456789~");
+    assert("\xe9\xc5\xa0".normalize(), "\xe9\xc5\xa0");
+    assert("\xe9\xc5\xa0".normalize("NFC"), "\xe9\xc5\xa0");
+    assert("\xe9".normalize("NFD"), "e\u0301");
+    assert("\xe9".normalize("NFKD"), "e\u0301");
+    assert("\xe9".normalize("NFKC"), "\xe9");
+    assert("\xa0\xaa\xb2".normalize("NFKC"), " a2");
+    assert("\xbd".normalize("NFKD"), "1\u20442");
+    assert("e\u0301".normalize(), "\xe9");
+    assertThrows(RangeError, () => "abc".normalize("nfc"));
+    assertThrows(RangeError, () => "\xe9".normalize("NFX"));
+    assertThrows(TypeError, () => String.prototype.normalize.call(null));
+    {
+        const log = [];
+        assertThrows(RangeError, () => String.prototype.normalize.call(
+            { toString() { log.push("this"); return "abc"; } },
+            { toString() { log.push("form"); return "bad"; } }));
+        assert(log.join(), "this,form");
+    }
 }
 
 function rope_concat(n, dir)
@@ -463,6 +496,22 @@ function test_rope()
     assert(s.includes("test"), true);
     assert(s.slice(0, 8), "testtest");
     assert(s.substring(0, 8), "testtest");
+
+    /* test rope with normalize and localeCompare */
+    s = "";
+    s2 = "";
+    for (i = 0; i < 1000; i++) {
+        s += "ab\xe9";
+        s2 += "abe\u0301";
+    }
+    assert(s.normalize(), s);
+    assert(s.normalize("NFD"), s2);
+    assert(s.localeCompare(s2), 0);
+    assert(s.localeCompare(s + "a"), -1);
+    s = "";
+    for (i = 0; i < 1000; i++)
+        s += "abc";
+    assert(s.normalize("NFKD"), "abc".repeat(1000));
 }
 
 function test_math()

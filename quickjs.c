@@ -48294,6 +48294,7 @@ static JSValue js_string_localeCompare(JSContext *ctx, JSValueConst this_val,
 {
     int i, n, an, bn, cmp;
     uint32_t *as, *bs, *ts;
+    JSString *pa, *pb;
     JSValue a, b, ret;
 
     ret = JS_EXCEPTION;
@@ -48308,29 +48309,40 @@ static JSValue js_string_localeCompare(JSContext *ctx, JSValueConst this_val,
     if (JS_IsException(b))
         goto exception;
 
-    an = to_utf32_buf(ctx, JS_VALUE_GET_STRING(a), &as);
+    // latin1 strings are always in NFC form, no need to normalize them
+    pa = JS_VALUE_GET_STRING(a);
+    pb = JS_VALUE_GET_STRING(b);
+    if (!pa->is_wide_char && !pb->is_wide_char) {
+        cmp = js_string_compare(pa, pb);
+        ret = js_int32((cmp > 0) - (cmp < 0));
+        goto exception;
+    }
+
+    an = to_utf32_buf(ctx, pa, &as);
     if (an == -1)
         goto exception;
 
-    bn = to_utf32_buf(ctx, JS_VALUE_GET_STRING(b), &bs);
+    bn = to_utf32_buf(ctx, pb, &bs);
     if (bn == -1)
         goto exception;
 
-    // TODO(bnoordhuis) skip normalization when input is latin1
-    an = unicode_normalize(&ts, as, an, UNICODE_NFC, ctx,
-                           (DynBufReallocFunc *)js_realloc);
-    if (an == -1)
-        goto exception;
-    js_free(ctx, as);
-    as = ts;
+    if (pa->is_wide_char) {
+        an = unicode_normalize(&ts, as, an, UNICODE_NFC, ctx,
+                               (DynBufReallocFunc *)js_realloc);
+        if (an == -1)
+            goto exception;
+        js_free(ctx, as);
+        as = ts;
+    }
 
-    // TODO(bnoordhuis) skip normalization when input is latin1
-    bn = unicode_normalize(&ts, bs, bn, UNICODE_NFC, ctx,
-                           (DynBufReallocFunc *)js_realloc);
-    if (bn == -1)
-        goto exception;
-    js_free(ctx, bs);
-    bs = ts;
+    if (pb->is_wide_char) {
+        bn = unicode_normalize(&ts, bs, bn, UNICODE_NFC, ctx,
+                               (DynBufReallocFunc *)js_realloc);
+        if (bn == -1)
+            goto exception;
+        js_free(ctx, bs);
+        bs = ts;
+    }
 
     n = min_int(an, bn);
     for (i = 0; i < n; i++)
@@ -48423,19 +48435,16 @@ static JSValue js_string_normalize(JSContext *ctx, JSValueConst this_val,
 {
     const char *form, *p;
     size_t form_len;
-    int is_compat, buf_len, out_len;
+    int i, is_compat, buf_len, out_len;
     UnicodeNormalizationEnum n_type;
+    JSString *str;
     JSValue val;
     uint32_t *buf, *out_buf;
+    uint8_t c;
 
     val = JS_ToStringCheckObject(ctx, this_val);
     if (JS_IsException(val))
         return val;
-    buf = NULL; // appease bogus -Wmaybe-uninitialized warning
-    buf_len = JS_ToUTF32String(ctx, &buf, val);
-    JS_FreeValue(ctx, val);
-    if (buf_len < 0)
-        return JS_EXCEPTION;
 
     if (argc == 0 || JS_IsUndefined(argv[0])) {
         n_type = UNICODE_NFC;
@@ -48461,11 +48470,29 @@ static JSValue js_string_normalize(JSContext *ctx, JSValueConst this_val,
             JS_FreeCString(ctx, form);
             JS_ThrowRangeError(ctx, "bad normalization form");
         fail1:
-            js_free(ctx, buf);
+            JS_FreeValue(ctx, val);
             return JS_EXCEPTION;
         }
         JS_FreeCString(ctx, form);
     }
+
+    // ASCII is invariant under all normalization forms, latin1 under NFC
+    str = JS_VALUE_GET_STRING(val);
+    if (!str->is_wide_char) {
+        if (n_type == UNICODE_NFC)
+            return val;
+        c = 0;
+        for (i = 0; i < str->len; i++)
+            c |= str8(str)[i];
+        if (c < 0x80)
+            return val;
+    }
+
+    buf = NULL; // appease bogus -Wmaybe-uninitialized warning
+    buf_len = JS_ToUTF32String(ctx, &buf, val);
+    JS_FreeValue(ctx, val);
+    if (buf_len < 0)
+        return JS_EXCEPTION;
 
     out_len = unicode_normalize(&out_buf, buf, buf_len, n_type,
                                 ctx->rt, (DynBufReallocFunc *)js_realloc_rt);
