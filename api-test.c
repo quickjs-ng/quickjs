@@ -171,6 +171,248 @@ static void cfunctions(void)
     assert(closure_finalized);
 }
 
+static void assert_function_metadata(JSContext *ctx, JSValueConst func,
+                                     const char *name, int length)
+{
+    static const char *keys[] = { "name", "length" };
+    JSPropertyDescriptor desc;
+    JSAtom atom;
+    const char *str;
+    int i, n;
+
+    assert(JS_IsFunction(ctx, func));
+    for (i = 0; i < 2; i++) {
+        atom = JS_NewAtom(ctx, keys[i]);
+        assert(JS_GetOwnProperty(ctx, &desc, func, atom) == 1);
+        JS_FreeAtom(ctx, atom);
+        assert((desc.flags & JS_PROP_C_W_E) == JS_PROP_CONFIGURABLE);
+        if (i == 0) {
+            str = JS_ToCString(ctx, desc.value);
+            assert(str && !strcmp(str, name));
+            JS_FreeCString(ctx, str);
+        } else {
+            assert(JS_ToInt32(ctx, &n, desc.value) == 0 && n == length);
+        }
+        JS_FreeValue(ctx, desc.value);
+        JS_FreeValue(ctx, desc.getter);
+        JS_FreeValue(ctx, desc.setter);
+    }
+}
+
+enum {
+    META_CFUNCTION, META_CDATA, META_CCLOSURE,
+    META_ARROW, META_FUNCTION, META_GENERATOR, META_ASYNC, META_ASYNC_GENERATOR,
+    META_PROMISE, META_PROMISE_THEN, META_GUEST_PROMISE,
+};
+
+static void metadata_opaque_finalize(void *opaque)
+{
+    int *count = opaque;
+    assert(++*count == 1);
+}
+
+static void function_metadata_oom(int kind, const char *name)
+{
+    static const char *factories[] = {
+        "(() => { const data = {}; return () => (x) => data; })()",
+        "(() => { const data = {}; return () => function named(x) { return data; }; })()",
+        "(() => { const data = {}; return () => function* named(x) { yield data; }; })()",
+        "(() => { const data = {}; return () => async function named(x) { return data; }; })()",
+        "(() => { const data = {}; return () => async function* named(x) { yield data; }; })()",
+    };
+    unsigned headroom, failures = 0, successes = 0, finalized_failures = 0;
+
+    for (headroom = 0; headroom < 2048; headroom++) {
+        JSRuntime *rt = new_runtime();
+        JSContext *ctx = JS_NewContext(rt);
+        JSValue data = JS_UNDEFINED, factory = JS_UNDEFINED;
+        JSValue input = JS_UNDEFINED, initial[2] = { JS_UNDEFINED, JS_UNDEFINED };
+        JSValue resolvers[2] = { JS_UNDEFINED, JS_UNDEFINED }, ret, value;
+        JSMemoryUsage stats;
+        int finalized = 0, i;
+
+        assert(ctx);
+        if (kind == META_CDATA) {
+            data = JS_NewObject(ctx);
+            assert(JS_DefinePropertyValueStr(ctx, data, "sentinel", JS_TRUE, 0) >= 0);
+        }
+        if (kind >= META_ARROW && kind <= META_ASYNC_GENERATOR)
+            factory = eval(ctx, factories[kind - META_ARROW]);
+        if (kind == META_GUEST_PROMISE)
+            factory = eval(ctx, "() => new Promise(resolve => resolve(true))");
+        assert(!JS_IsException(factory));
+        if (kind == META_PROMISE_THEN) {
+            input = JS_NewPromiseCapability(ctx, initial);
+            assert(!JS_IsException(input));
+        }
+        assert(!JS_HasException(ctx));
+        JS_ComputeMemoryUsage(rt, &stats);
+        JS_SetMemoryLimit(rt, stats.malloc_size + headroom);
+        switch (kind) {
+        case META_CFUNCTION:
+            ret = JS_NewCFunction(ctx, cfunc_callback, name, 42);
+            break;
+        case META_CDATA:
+            ret = JS_NewCFunctionData2(ctx, cfuncdata_callback, name, 42, 0, 1, &data);
+            break;
+        case META_CCLOSURE:
+            ret = JS_NewCClosure(ctx, cclosure_callback, name,
+                                 metadata_opaque_finalize, 42, 0, &finalized);
+            break;
+        case META_PROMISE:
+            ret = JS_NewPromiseCapability(ctx, resolvers);
+            break;
+        case META_PROMISE_THEN:
+            ret = JS_PromiseThen(ctx, input, JS_UNDEFINED, JS_UNDEFINED);
+            break;
+        default:
+            ret = JS_Call(ctx, factory, JS_UNDEFINED, 0, NULL);
+            break;
+        }
+        /* Restore ample memory before inspecting results or releasing ownership.
+           A fresh context keeps earlier shapes/errors out of the next trial. */
+        JS_SetMemoryLimit(rt, 0);
+        if (JS_IsException(ret)) {
+            failures++;
+            finalized_failures += finalized;
+            assert(JS_HasException(ctx));
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        } else {
+            successes++;
+            if (JS_HasException(ctx))
+                fprintf(stderr, "function_metadata_oom: kind=%d name=%s headroom=%u\n",
+                        kind, name, headroom);
+            assert(!JS_HasException(ctx));
+            if (kind < META_ARROW) {
+                assert_function_metadata(ctx, ret, name, 42);
+            } else if (kind <= META_ASYNC_GENERATOR) {
+                JSPropertyDescriptor desc;
+                JSAtom atom = JS_NewAtom(ctx, "prototype");
+                bool has_proto = kind == META_FUNCTION || kind == META_GENERATOR ||
+                                 kind == META_ASYNC_GENERATOR;
+                assert_function_metadata(ctx, ret, kind == META_ARROW ? "" : "named", 1);
+                assert(JS_GetOwnProperty(ctx, &desc, ret, atom) == has_proto);
+                JS_FreeAtom(ctx, atom);
+                if (has_proto) {
+                    assert(JS_IsObject(desc.value));
+                    assert((desc.flags & JS_PROP_C_W_E) == JS_PROP_WRITABLE);
+                    JS_FreeValue(ctx, desc.value);
+                    JS_FreeValue(ctx, desc.getter);
+                    JS_FreeValue(ctx, desc.setter);
+                }
+            } else {
+                assert(JS_IsPromise(ret));
+                if (kind == META_PROMISE) {
+                    JSValue first = JS_TRUE, second = JS_FALSE;
+                    int reject = headroom & 1;
+                    for (i = 0; i < 2; i++)
+                        assert_function_metadata(ctx, resolvers[i], "", 1);
+                    value = JS_Call(ctx, resolvers[reject], JS_UNDEFINED, 1, &first);
+                    assert(!JS_IsException(value));
+                    JS_FreeValue(ctx, value);
+                    value = JS_Call(ctx, resolvers[1 - reject], JS_UNDEFINED, 1, &second);
+                    assert(!JS_IsException(value));
+                    JS_FreeValue(ctx, value);
+                    assert(JS_PromiseState(ctx, ret) == (reject ? JS_PROMISE_REJECTED : JS_PROMISE_FULFILLED));
+                } else if (kind == META_PROMISE_THEN) {
+                    JSContext *job_ctx;
+                    value = JS_TRUE;
+                    JS_FreeValue(ctx, JS_Call(ctx, initial[0], JS_UNDEFINED, 1, &value));
+                    while (JS_IsJobPending(rt))
+                        assert(JS_ExecutePendingJob(rt, &job_ctx) > 0);
+                }
+                value = JS_PromiseResult(ctx, ret);
+                assert(JS_IsSameValue(ctx, value, JS_TRUE));
+                JS_FreeValue(ctx, value);
+            }
+        }
+        JS_FreeValue(ctx, ret);
+        if (kind == META_CCLOSURE && !JS_IsException(ret))
+            assert(finalized == 1);
+        for (i = 0; i < 2; i++) {
+            JS_FreeValue(ctx, resolvers[i]);
+            JS_FreeValue(ctx, initial[i]);
+        }
+        if (kind == META_CDATA) {
+            value = JS_GetPropertyStr(ctx, data, "sentinel");
+            assert(JS_IsSameValue(ctx, value, JS_TRUE));
+            JS_FreeValue(ctx, value);
+        }
+        JS_FreeValue(ctx, input);
+        JS_FreeValue(ctx, factory);
+        JS_FreeValue(ctx, data);
+        assert(!JS_HasException(ctx));
+        JS_FreeContext(ctx);
+        JS_RunGC(rt);
+        JS_ComputeMemoryUsage(rt, &stats);
+        assert(stats.obj_count == 0);
+        JS_FreeRuntime(rt);
+    }
+    assert(failures > 0 && successes > 0);
+    /* Cached names need not allocate after opaque ownership is installed.
+       Numeric names still allocate during atom creation after that transfer. */
+    if (kind == META_CCLOSURE && !strcmp(name, "123"))
+        assert(finalized_failures > 0);
+}
+
+static void function_metadata(void)
+{
+    static const char *names[] = { "", "m\xc3\xa9tadata", "123" };
+    int kind, i;
+
+    for (kind = META_CFUNCTION; kind <= META_GUEST_PROMISE; kind++)
+        for (i = 0; i < (kind < META_ARROW ? countof(names) : 1); i++)
+            function_metadata_oom(kind, names[i]);
+}
+
+static void function_metadata_pending(void)
+{
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue previous[] = { JS_NewError(ctx), JS_NULL, JS_UNDEFINED };
+    JSValue resolvers[2], ret, pending;
+    int kind, i, finalized;
+
+    for (kind = META_CFUNCTION; kind <= META_PROMISE; kind++) {
+        if (kind >= META_ARROW && kind < META_PROMISE)
+            continue;
+        for (i = 0; i < countof(previous); i++) {
+            finalized = 0;
+            resolvers[0] = resolvers[1] = JS_UNDEFINED;
+            JS_Throw(ctx, JS_DupValue(ctx, previous[i]));
+            switch (kind) {
+            case META_CFUNCTION:
+                ret = JS_NewCFunction(ctx, cfunc_callback, "123", 42);
+                break;
+            case META_CDATA:
+                ret = JS_NewCFunctionData2(ctx, cfuncdata_callback, "123", 42, 0, 1, &previous[i]);
+                break;
+            case META_CCLOSURE:
+                ret = JS_NewCClosure(ctx, cclosure_callback, "123",
+                                     metadata_opaque_finalize, 42, 0, &finalized);
+                break;
+            default:
+                ret = JS_NewPromiseCapability(ctx, resolvers);
+                break;
+            }
+            assert(!JS_IsException(ret) && JS_HasException(ctx));
+            pending = JS_GetException(ctx);
+            assert(JS_IsSameValue(ctx, pending, previous[i]));
+            JS_FreeValue(ctx, pending);
+            if (kind != META_PROMISE)
+                assert_function_metadata(ctx, ret, "123", 42);
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, resolvers[0]);
+            JS_FreeValue(ctx, resolvers[1]);
+            if (kind == META_CCLOSURE)
+                assert(finalized == 1);
+        }
+    }
+    JS_FreeValue(ctx, previous[0]);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 #define MAX_TIME 10
 
 static int timeout_interrupt_handler(JSContext *ctx, void *opaque)
@@ -2474,6 +2716,8 @@ static void dynamic_import_deferred_reject(void)
 
 int main(void)
 {
+    function_metadata();
+    function_metadata_pending();
     cfunctions();
     sync_call();
     async_call();
