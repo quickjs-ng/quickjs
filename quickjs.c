@@ -480,11 +480,13 @@ typedef struct JSVarRef {
        var_ref -> coroutine edge and keep the suspended coroutine (hence the
        captured variable it points into) alive. The coroutine is recovered
        as stack_frame->cur_gc_obj (valid while open). This is a *snapshot* of
-       cur_gc_obj != NULL taken at creation, NOT rederived at read time:
-       cur_gc_obj transitions NULL -> owner (it is set only after a
-       generator's initial resume), so var_refs created during the prologue
-       (e.g. mapped `arguments`) must stay non-coro even though cur_gc_obj is
-       later set. Cleared when the var_ref is detached; the ref is released on
+       cur_gc_obj != NULL taken at creation, NOT rederived at read time.
+       cur_gc_obj transitions NULL -> owner: for an async function it is set
+       before the body runs, but for a generator / async generator it is set
+       only after the initial resume, so var_refs the prologue creates (e.g.
+       mapped `arguments` or a closure in a default parameter) are born
+       non-coro and are promoted afterwards by coro_adopt_prologue_var_refs().
+       Cleared when the var_ref is detached; the ref is released on
        detach/free. */
     uint8_t is_coro;
     JSValue *pvalue; /* pointer to the value, either on the stack or
@@ -17842,6 +17844,35 @@ static void close_var_refs(JSRuntime *rt, JSStackFrame *sf)
     }
 }
 
+/* A generator or async generator runs its prologue (default parameter
+   expressions, mapped `arguments`, destructuring, ...) during the initial
+   resume, which happens before its owning GC object exists and thus before
+   sf->cur_gc_obj is set. Any open var_ref the prologue creates to capture a
+   frame local is therefore born non-coro (see get_var_ref()): it neither
+   holds a reference to the coroutine nor is a GC object, so the cycle
+   collector cannot see the closure -> var_ref -> coroutine edge. A closure
+   that escapes such a var_ref can then outlive the coroutine and the
+   collector may free the frame the var_ref points into (use-after-free).
+   Once the owner is known, adopt those orphaned var_refs: promote each to a
+   GC object holding a counted reference to the coroutine, exactly as
+   get_var_ref() would have, so the edge becomes visible to the collector. */
+static void coro_adopt_prologue_var_refs(JSRuntime *rt, JSStackFrame *sf)
+{
+    JSGCObjectHeader *coro = sf->cur_gc_obj;
+    JSVarRef *var_ref;
+    int i;
+
+    assert(coro != NULL);
+    for (i = 0; i < sf->var_ref_count; i++) {
+        var_ref = sf->var_refs[i];
+        if (var_ref && !var_ref->is_detached && !var_ref->is_coro) {
+            var_ref->is_coro = true;
+            JS_REF_COUNT(coro)++;
+            add_gc_object(rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
+        }
+    }
+}
+
 static void close_lexical_var(JSContext *ctx, JSFunctionBytecode *b,
                               JSStackFrame *sf, int var_idx)
 {
@@ -21432,10 +21463,12 @@ static JSValue js_call_generator_function(JSContext *ctx, JSValueConst func_obj,
     if (JS_IsException(obj))
         goto fail;
     JS_SetOpaqueInternal(obj, s);
-    /* the body only starts running on the first next(); root captured
-       locals against the generator object from now on (the initial resume
-       above only reaches OP_initial_yield, before any user code) */
+    /* Root captured locals against the generator object. The prologue has
+       already run during the initial resume above, and it can execute user
+       code (default parameter expressions, mapped `arguments`, ...) that
+       creates var_refs before the owner existed, so adopt them now. */
     s->func_state.frame.cur_gc_obj = &JS_VALUE_GET_OBJ(obj)->header;
+    coro_adopt_prologue_var_refs(ctx->rt, &s->func_state.frame);
     return obj;
  fail:
     free_generator_stack_rt(ctx->rt, s);
@@ -22088,9 +22121,12 @@ static JSValue js_async_generator_function_call(JSContext *ctx,
     if (JS_IsException(obj))
         goto fail;
     s->generator = JS_VALUE_GET_OBJ(obj);
-    /* root captured locals against the async generator object (the initial
-       resume above only reaches OP_initial_yield, before any user code) */
+    /* Root captured locals against the async generator object. The prologue
+       may have created var_refs (default parameter expressions, `arguments`,
+       ...) during the initial resume above, before the owner existed, so
+       adopt them now. */
     s->func_state.frame.cur_gc_obj = &s->generator->header;
+    coro_adopt_prologue_var_refs(ctx->rt, &s->func_state.frame);
     JS_SetOpaqueInternal(obj, s);
     return obj;
  fail:
