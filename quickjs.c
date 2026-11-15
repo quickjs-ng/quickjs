@@ -269,6 +269,14 @@ typedef struct JSMallocState {
 #define JS_ARENA_MAX_SMALL_SIZE    512
 #define JS_ARENA_FREE_NIL          0xffff
 
+// gcc defines __SANITIZE_ADDRESS__ under -fsanitize=address, clang only
+// answers __has_feature(address_sanitizer)
+#if !defined(__SANITIZE_ADDRESS__) && defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define __SANITIZE_ADDRESS__ 1
+#endif
+#endif
+
 #if defined(__SANITIZE_ADDRESS__) || defined(FORCE_GC_AT_MALLOC)
 /* Route every allocation through the backing malloc so each block is seen
    individually: ASan can then poison a freed block, and a GC-stress build
