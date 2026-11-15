@@ -7194,7 +7194,15 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
         }
         break;
     case JS_TAG_MODULE:
-        abort(); /* never freed here */
+        {
+            // The module list of the context holds a reference, so the
+            // last one can only go away after js_free_module_def() has
+            // released the contents and unlinked the definition.
+            JSModuleDef *m = JS_VALUE_GET_PTR(v);
+            if (m->link.next != NULL)
+                abort();
+            js_free_rt(rt, m);
+        }
         break;
     case JS_TAG_BIG_INT:
         {
@@ -30445,7 +30453,15 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
     JS_FreeValue(ctx, m->private_value);
     JS_FreeValue(ctx, m->attributes);
     list_del(&m->link);
-    js_free(ctx, m);
+    // JS_TAG_MODULE values hold references to the definition and can
+    // outlive it: the reactions attached to the evaluation promise of a
+    // module with a pending top-level await are only freed with the
+    // runtime, after the context and its module list. Drop the reference
+    // of the list; the memory goes with the last one. Until then leave
+    // nothing dangling behind.
+    memset(m, 0, sizeof(*m));
+    if (--JS_REF_COUNT(m) == 0)
+        js_free(ctx, m);
 }
 
 #ifndef QJS_DISABLE_PARSER
@@ -40150,10 +40166,9 @@ static JSValue JS_ReadModule(BCReaderState *s)
     m = js_new_module_def(ctx, module_name);
     if (!m)
         goto fail;
-    obj = js_dup(JS_MKPTR(JS_TAG_MODULE, m));
+    obj = JS_NewModuleValue(ctx, m);
     if (bc_get_leb128_int(s, &m->req_module_entries_count))
         goto fail;
-    obj = JS_NewModuleValue(ctx, m);
     if (m->req_module_entries_count != 0) {
         m->req_module_entries_size = m->req_module_entries_count;
         m->req_module_entries = js_mallocz(ctx, sizeof(m->req_module_entries[0]) * m->req_module_entries_size);
@@ -40250,6 +40265,7 @@ static JSValue JS_ReadModule(BCReaderState *s)
  fail:
     if (m) {
         js_free_module_def(ctx, m);
+        JS_FreeValue(ctx, obj);
     }
     return JS_EXCEPTION;
 }
