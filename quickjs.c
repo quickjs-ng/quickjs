@@ -3555,12 +3555,16 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
     }
 
     if (str) {
-        if (str->atom_type == 0) {
+        if (str->atom_type == 0 && str->kind == JS_STRING_KIND_NORMAL) {
             p = str;
             p->atom_type = atom_type;
         } else {
-            p = js_malloc_rt(rt, sizeof(JSString) +
-                             (str->len << str->is_wide_char) +
+            // 'str' is already an atom of another type, or it is a slice
+            // of another string. Make a flat copy: an atom owns its
+            // characters, and JS_FreeAtomStruct() would not release the
+            // parent of a slice.
+            size_t size = (size_t)str->len << str->is_wide_char;
+            p = js_malloc_rt(rt, sizeof(JSString) + size +
                              1 - str->is_wide_char);
             if (unlikely(!p))
                 goto fail;
@@ -3571,8 +3575,10 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
             list_add_tail(&p->link, &rt->string_list);
 #endif
-            memcpy(str8(p), str8(str), (str->len << str->is_wide_char) +
-                   1 - str->is_wide_char);
+            memcpy(str8(p), str8(str), size);
+            // the characters of a slice are not followed by a null byte
+            if (!str->is_wide_char)
+                str8(p)[size] = '\0';
             js_free_string(rt, str);
         }
     } else {
