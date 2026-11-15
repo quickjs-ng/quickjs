@@ -63641,7 +63641,19 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
     JSObject *p;
 
     csd->constructor = sf->is_constructor;
-    csd->func = js_dup(sf->cur_func);
+    p = JS_VALUE_GET_OBJ(sf->cur_func);
+    // Do not hand out functions that script cannot obtain otherwise and
+    // that are not meant to be called by it: the engine's own closures
+    // (promise reactions, async generator continuations, ...) and the
+    // body of a module, which is async bytecode in a plain function
+    // object and only runs correctly through js_async_function_call().
+    if (p->class_id == JS_CLASS_C_FUNCTION_DATA ||
+        (p->class_id == JS_CLASS_BYTECODE_FUNCTION &&
+         p->u.func.function_bytecode->func_kind != JS_FUNC_NORMAL)) {
+        csd->func = JS_UNDEFINED;
+    } else {
+        csd->func = js_dup(sf->cur_func);
+    }
     /* func_name_str is UTF-8 encoded if needed */
     func_name_str = get_func_name(ctx, sf->cur_func);
     if (!func_name_str || func_name_str[0] == '\0')
@@ -63652,7 +63664,6 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
     if (JS_IsException(csd->func_name))
         csd->func_name = JS_NULL;
 
-    p = JS_VALUE_GET_OBJ(sf->cur_func);
     if (js_class_has_bytecode(p->class_id)) {
         JSFunctionBytecode *b = p->u.func.function_bytecode;
         int line_num1, col_num1;
