@@ -29104,6 +29104,10 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     bool is_await_using = false;
     if (tok == TOK_AWAIT) {
         int u;
+        // 'await' is also a token in the plain functions of a module and
+        // in class static blocks, where there is nothing to await in
+        if (!(s->cur_func->func_kind & JS_FUNC_ASYNC))
+            return js_parse_error(s, "unexpected 'await' keyword");
         if (next_token(s))
             return -1;
         u = is_using(s, false);
