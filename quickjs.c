@@ -32285,7 +32285,7 @@ static int js_execute_async_module(JSContext *ctx, JSModuleDef *m)
         return -1;
     m_obj = JS_NewModuleValue(ctx, m);
     resolve_funcs[0] = JS_NewCFunctionData(ctx, js_async_module_execution_fulfilled, 0, 0, 1, vc(&m_obj));
-    resolve_funcs[1] = JS_NewCFunctionData(ctx, js_async_module_execution_rejected, 0, 0, 1, vc(&m_obj));
+    resolve_funcs[1] = JS_NewCFunctionData(ctx, js_async_module_execution_rejected, 1, 0, 1, vc(&m_obj));
     ret_val = js_promise_then(ctx, promise, 2, vc(resolve_funcs));
     JS_FreeValue(ctx, ret_val);
     JS_FreeValue(ctx, m_obj);
