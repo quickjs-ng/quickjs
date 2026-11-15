@@ -33955,6 +33955,17 @@ static void var_object_test(JSContext *ctx, JSFunctionDef *s,
 static inline void capture_var(JSFunctionDef *s, JSVarDef *vd)
 {
     if (!vd->is_captured) {
+        // the variable reference indexes and their count are stored on
+        // 16 bits. Arguments and variables are limited separately, so
+        // together they can exceed that.
+        if (s->var_ref_count >= JS_MAX_LOCAL_VARS) {
+            if (!s->has_compile_error) {
+                JS_ThrowSyntaxError(s->ctx, "too many captured variables (only %d allowed)",
+                                    JS_MAX_LOCAL_VARS);
+                s->has_compile_error = true;
+            }
+            return;
+        }
         vd->is_captured = 1;
         vd->var_ref_idx = s->var_ref_count++;
     }
