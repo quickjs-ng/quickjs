@@ -27325,6 +27325,10 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
         if (s->token.val == '(') {
             if (!s->cur_func->super_call_allowed)
                 return js_parse_error(s, "super() is only valid in a derived class constructor");
+            // `new super()`: the operand of `new` is parsed without the
+            // call, so nothing would be pushed for it
+            if (!accept_lparen)
+                return js_parse_error(s, "'super' keyword unexpected here");
             call_type = FUNC_CALL_SUPER_CTOR;
         } else if (s->token.val == '.' || s->token.val == '[') {
             if (!s->cur_func->super_allowed)
