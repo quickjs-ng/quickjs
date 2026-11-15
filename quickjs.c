@@ -22325,6 +22325,11 @@ typedef struct JSFunctionDef {
     bool need_home_object : 1;
     bool use_short_opcodes : 1; /* true if short opcodes are used in byte_code */
     bool has_await : 1; /* true if await is used (used in module eval) */
+    // set when a variable, argument or closure variable could not be
+    // added (limit reached or out of memory). The exception is pending.
+    // Most callers in the variable resolver cannot report a failure, so
+    // js_create_function() checks this instead.
+    bool has_compile_error : 1;
 
     JSFunctionKindEnum func_kind : 8;
     JSParseFunctionEnum func_type : 7;
@@ -24462,18 +24467,21 @@ static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
         // XXX: add_var() should take JSParseState *s and use js_parse_error
         JS_ThrowSyntaxError(ctx, "too many variables declared (only %d allowed)",
                             JS_MAX_LOCAL_VARS - 1);
-        return -1;
+        goto fail;
     }
     if (js_resize_array(ctx, (void **)&fd->vars, sizeof(fd->vars[0]),
                         &fd->var_size, fd->var_count + 1))
-        return -1;
+        goto fail;
     vd = &fd->vars[fd->var_count++];
     memset(vd, 0, sizeof(*vd));
     vd->var_name = JS_DupAtom(ctx, name);
     vd->func_pool_idx = -1;
     if (update_var_htab(ctx, fd))
-        return -1;
+        goto fail;
     return fd->var_count - 1;
+ fail:
+    fd->has_compile_error = true;
+    return -1;
 }
 
 static int add_scope_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name,
@@ -24546,16 +24554,19 @@ static int add_arg(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
         // XXX: add_arg() should take JSParseState *s and use js_parse_error
         JS_ThrowSyntaxError(ctx, "too many parameters in function definition (only %d allowed)",
                             JS_MAX_LOCAL_VARS - 1);
-        return -1;
+        goto fail;
     }
     if (js_resize_array(ctx, (void **)&fd->args, sizeof(fd->args[0]),
                         &fd->arg_size, fd->arg_count + 1))
-        return -1;
+        goto fail;
     vd = &fd->args[fd->arg_count++];
     memset(vd, 0, sizeof(*vd));
     vd->var_name = JS_DupAtom(ctx, name);
     vd->func_pool_idx = -1;
     return fd->arg_count - 1;
+ fail:
+    fd->has_compile_error = true;
+    return -1;
 }
 
 /* add a global variable definition */
@@ -33699,13 +33710,13 @@ static int add_closure_var(JSContext *ctx, JSFunctionDef *s,
         // XXX: add_closure_var() should take JSParseState *s and use js_parse_error
         JS_ThrowSyntaxError(ctx, "too many closure variables used (only %d allowed)",
                             JS_MAX_LOCAL_VARS - 1);
-        return -1;
+        goto fail;
     }
 
     if (js_resize_array(ctx, (void **)&s->closure_var,
                         sizeof(s->closure_var[0]),
                         &s->closure_var_size, s->closure_var_count + 1))
-        return -1;
+        goto fail;
     cv = &s->closure_var[s->closure_var_count++];
     cv->closure_type = closure_type;
     cv->is_const = is_const;
@@ -33714,6 +33725,9 @@ static int add_closure_var(JSContext *ctx, JSFunctionDef *s,
     cv->var_idx = var_idx;
     cv->var_name = JS_DupAtom(ctx, var_name);
     return s->closure_var_count - 1;
+ fail:
+    s->has_compile_error = true;
+    return -1;
 }
 
 static int find_closure_var(JSContext *ctx, JSFunctionDef *s,
@@ -33742,8 +33756,10 @@ static int get_closure_var(JSContext *ctx, JSFunctionDef *s,
         var_idx = get_closure_var(ctx, s->parent, fd, closure_type,
                                   var_idx, var_name,
                                   is_const, is_lexical, var_kind);
-        if (var_idx < 0)
+        if (var_idx < 0) {
+            s->has_compile_error = true;
             return -1;
+        }
         if (closure_type != JS_CLOSURE_GLOBAL_REF)
             closure_type = JS_CLOSURE_REF;
     }
@@ -37113,6 +37129,8 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 
     if (resolve_variables(ctx, fd))
         goto fail;
+    if (fd->has_compile_error)
+        goto fail;
 
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_PASS2
     if (check_dump_flag(ctx->rt, JS_DUMP_BYTECODE_PASS2)) {
@@ -37127,6 +37145,8 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 #endif
 
     if (resolve_labels(ctx, fd))
+        goto fail;
+    if (fd->has_compile_error)
         goto fail;
 
     if (compute_stack_size(ctx, fd, &stack_size) < 0)
@@ -37689,6 +37709,8 @@ static __exception int js_parse_function_decl2(JSParseState *s,
                 } else {
                     /* unnamed arg for destructuring */
                     idx = add_arg(ctx, fd, JS_ATOM_NULL);
+                    if (idx < 0)
+                        goto fail;
                     emit_op(s, OP_get_arg);
                     emit_u16(s, idx);
                 }
