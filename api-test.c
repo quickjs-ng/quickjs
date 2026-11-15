@@ -386,6 +386,50 @@ static JSModuleDef *loader(JSContext *ctx, const char *name, void *opaque)
     return m;
 }
 
+// A module value can outlive the module list of its context: the reactions
+// attached to the evaluation promise of a module with a pending top-level
+// await hold one, and are only freed with the runtime.
+static void module_pending_await(void)
+{
+    static const char code[] =
+        "globalThis.p = new Promise(() => {});\n"
+        "await globalThis.p;\n";
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue ret = JS_Eval(ctx, code, strlen(code), "pending",
+                          JS_EVAL_TYPE_MODULE);
+    assert(JS_IsPromise(ret));
+    assert(JS_PROMISE_PENDING == JS_PromiseState(ctx, ret));
+    JS_FreeValue(ctx, ret);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+// A module value read back from bytecode is owned like any other value.
+static void module_value_ownership(void)
+{
+    static const char code[] = "export const x = 1;";
+    JSRuntime *rt = new_runtime();
+    JSContext *ctx = JS_NewContext(rt);
+    JSValue mod = JS_Eval(ctx, code, strlen(code), "m",
+                          JS_EVAL_TYPE_MODULE|JS_EVAL_FLAG_COMPILE_ONLY);
+    assert(JS_IsModule(mod));
+    size_t len = 0;
+    uint8_t *buf = JS_WriteObject(ctx, &len, mod, JS_WRITE_OBJ_BYTECODE);
+    assert(buf);
+    JS_FreeValue(ctx, mod);
+    JS_FreeContext(ctx);
+    // read it in a second context and drop it without evaluating it
+    ctx = JS_NewContext(rt);
+    mod = JS_ReadObject(ctx, buf, len, JS_READ_OBJ_BYTECODE);
+    js_free_rt(rt, buf);
+    assert(JS_IsModule(mod));
+    // the value outlives its context
+    JS_FreeContext(ctx);
+    JS_FreeValueRT(rt, mod);
+    JS_FreeRuntime(rt);
+}
+
 static void module_serde(void)
 {
     JSRuntime *rt = new_runtime();
@@ -418,7 +462,7 @@ static void module_serde(void)
     assert(JS_IsUndefined(result));
     JS_FreeValue(ctx, result);
     JS_FreeValue(ctx, ret);
-    JS_FreeValue(ctx, mod);
+    // JS_EvalFunction() took ownership of |mod|
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
@@ -2481,6 +2525,8 @@ int main(void)
     raw_context_global_var();
     is_array();
     module_serde();
+    module_pending_await();
+    module_value_ownership();
     module_unhandled_rejection();
     dynamic_import_sync_ok();
     dynamic_import_sync_missing();
