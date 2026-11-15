@@ -63388,18 +63388,31 @@ static JSValue js_finrec_unregister(JSContext *ctx, JSValueConst this_val, int a
         return JS_ThrowTypeError(ctx, "invalid unregister token");
 
     struct list_head *el, *el1;
-    bool removed = false;
+    struct list_head removed;
+    bool found;
+
+    // First pass: unlink the matching entries and drop their weak
+    // references. Freeing a held value can free the target of another
+    // entry of this registry, which would otherwise unlink and free that
+    // entry while we iterate.
+    init_list_head(&removed);
     list_for_each_safe(el, el1, &frd->entries) {
         JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
         if (js_same_value(ctx, fre->token, token)) {
             list_del(&fre->link);
             delete_finrec_weakref(ctx->rt, fre);
-            js_finrec_free(ctx->rt, fre);
-            removed = true;
+            list_add_tail(&fre->link, &removed);
         }
     }
+    found = !list_empty(&removed);
+    // Second pass: free them. Nothing else can reach 'removed'.
+    list_for_each_safe(el, el1, &removed) {
+        JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
+        list_del(&fre->link);
+        js_finrec_free(ctx->rt, fre);
+    }
 
-    return js_bool(removed);
+    return js_bool(found);
 }
 
 static const JSCFunctionListEntry js_finrec_proto_funcs[] = {
