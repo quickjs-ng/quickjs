@@ -1487,6 +1487,7 @@ static JSValue JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
                                const char *input, size_t input_len,
                                const char *filename, int line, int flags, int scope_idx);
 static void js_free_module_def(JSContext *ctx, JSModuleDef *m);
+static void js_unresolve_modules(JSContext *ctx, JSModuleDef *failed);
 static int js_module_attributes_equal(JSContext *ctx, JSValueConst attr1,
                                       JSValueConst attr2);
 static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
@@ -2977,6 +2978,10 @@ typedef enum JSFreeModuleEnum {
 static void js_free_modules(JSContext *ctx, JSFreeModuleEnum flag)
 {
     struct list_head *el, *el1;
+    // a module that requests an unresolved module is not resolved either
+    // and must go with it: it holds a pointer to it
+    if (flag == JS_FREE_MODULE_NOT_RESOLVED)
+        js_unresolve_modules(ctx, NULL);
     list_for_each_safe(el, el1, &ctx->loaded_modules) {
         JSModuleDef *m = list_entry(el, JSModuleDef, link);
         if (flag == JS_FREE_MODULE_ALL ||
@@ -31444,14 +31449,61 @@ static int js_resolve_module(JSContext *ctx, JSModuleDef *m)
                                                   rme->module_name,
                                                   rme->attributes);
         if (!m1)
-            return -1;
+            goto fail;
         rme->module = m1;
         /* already done in js_host_resolve_imported_module() except if
            the module was loaded with JS_EvalBinary() */
         if (js_resolve_module(ctx, m1) < 0)
-            return -1;
+            goto fail;
     }
     return 0;
+ fail:
+    // the flag was set early to stop at import cycles
+    m->resolved = false;
+    return -1;
+}
+
+// Modules are marked as resolved before their requested modules are, so
+// that import cycles terminate. When resolution then fails, a module in
+// such a cycle is left marked as resolved although it requests, directly
+// or not, a module that is not: reset those.
+//
+// 'failed', if not NULL, is a module about to be freed: also remove the
+// pointers that other modules recorded to it. They are resolved again
+// when they are next needed.
+static void js_unresolve_modules(JSContext *ctx, JSModuleDef *failed)
+{
+    struct list_head *el;
+    bool changed;
+    int i;
+
+    if (failed)
+        failed->resolved = false;
+    do {
+        changed = false;
+        list_for_each(el, &ctx->loaded_modules) {
+            JSModuleDef *m = list_entry(el, JSModuleDef, link);
+            if (!m->resolved)
+                continue;
+            for(i = 0; i < m->req_module_entries_count; i++) {
+                JSModuleDef *m1 = m->req_module_entries[i].module;
+                if (m1 && !m1->resolved) {
+                    m->resolved = false;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    } while (changed);
+    if (failed) {
+        list_for_each(el, &ctx->loaded_modules) {
+            JSModuleDef *m = list_entry(el, JSModuleDef, link);
+            for(i = 0; i < m->req_module_entries_count; i++) {
+                if (m->req_module_entries[i].module == failed)
+                    m->req_module_entries[i].module = NULL;
+            }
+        }
+    }
 }
 
 static JSVarRef *js_create_module_var(JSContext *ctx, bool is_lexical)
@@ -38460,9 +38512,12 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
     }
     return ret_val;
  fail1:
-    /* XXX: should free all the unresolved dependencies */
-    if (m)
+    if (m) {
+        // modules that were resolved while this one was being resolved
+        // (import cycles) may point to it
+        js_unresolve_modules(ctx, m);
         js_free_module_def(ctx, m);
+    }
     return JS_EXCEPTION;
 }
 
