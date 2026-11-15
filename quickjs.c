@@ -487,13 +487,13 @@ typedef struct JSVarRef {
        is itself a GC object, so the cycle collector can see the closure ->
        var_ref -> coroutine edge and keep the suspended coroutine (hence the
        captured variable it points into) alive. The coroutine is recovered
-       as stack_frame->cur_gc_obj (valid while open). This is a *snapshot* of
-       cur_gc_obj != NULL taken at creation, NOT rederived at read time:
-       cur_gc_obj transitions NULL -> owner (it is set only after a
-       generator's initial resume), so var_refs created during the prologue
-       (e.g. mapped `arguments`) must stay non-coro even though cur_gc_obj is
-       later set. Cleared when the var_ref is detached; the ref is released on
-       detach/free. */
+       as stack_frame->cur_gc_obj (valid while open). The flag says whether
+       this var_ref holds that reference; it is NOT rederived from
+       cur_gc_obj at read time. For a generator, cur_gc_obj is only set
+       after the initial resume: the var_refs created before that (mapped
+       `arguments`, closures in parameter initialisers) are adopted by
+       async_func_set_gc_obj(). Cleared when the var_ref is detached; the
+       ref is released on detach/free. */
     uint8_t is_coro;
     JSValue *pvalue; /* pointer to the value, either on the stack or
                         to 'value' */
@@ -21227,6 +21227,31 @@ static __exception int async_func_init(JSContext *ctx, JSAsyncFunctionState *s,
     return 0;
 }
 
+// Set the GC object that owns the frame of a generator, once it exists.
+// The generator object is created after the function prologue has run
+// (up to OP_initial_yield), and the prologue can already create open
+// var_refs: it builds the mapped arguments object and evaluates the
+// parameter initialisers, which may create closures. Those var_refs were
+// created without an owner. Make them hold a reference to the generator
+// like the ones created later, otherwise nothing keeps the frame they
+// point into alive.
+static void async_func_set_gc_obj(JSRuntime *rt, JSAsyncFunctionState *s,
+                                  JSGCObjectHeader *gc_obj)
+{
+    JSStackFrame *sf = &s->frame;
+    int i;
+
+    sf->cur_gc_obj = gc_obj;
+    for(i = 0; i < sf->var_ref_count; i++) {
+        JSVarRef *var_ref = sf->var_refs[i];
+        if (var_ref && !var_ref->is_coro) {
+            var_ref->is_coro = true;
+            JS_REF_COUNT(gc_obj)++;
+            add_gc_object(rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
+        }
+    }
+}
+
 static void async_func_mark(JSRuntime *rt, JSAsyncFunctionState *s,
                             JS_MarkFunc *mark_func)
 {
@@ -21452,10 +21477,10 @@ static JSValue js_call_generator_function(JSContext *ctx, JSValueConst func_obj,
     if (JS_IsException(obj))
         goto fail;
     JS_SetOpaqueInternal(obj, s);
-    /* the body only starts running on the first next(); root captured
-       locals against the generator object from now on (the initial resume
-       above only reaches OP_initial_yield, before any user code) */
-    s->func_state.frame.cur_gc_obj = &JS_VALUE_GET_OBJ(obj)->header;
+    // root captured locals against the generator object from now on,
+    // including those captured while the prologue ran
+    async_func_set_gc_obj(ctx->rt, &s->func_state,
+                          &JS_VALUE_GET_OBJ(obj)->header);
     return obj;
  fail:
     free_generator_stack_rt(ctx->rt, s);
@@ -22108,9 +22133,9 @@ static JSValue js_async_generator_function_call(JSContext *ctx,
     if (JS_IsException(obj))
         goto fail;
     s->generator = JS_VALUE_GET_OBJ(obj);
-    /* root captured locals against the async generator object (the initial
-       resume above only reaches OP_initial_yield, before any user code) */
-    s->func_state.frame.cur_gc_obj = &s->generator->header;
+    // root captured locals against the async generator object from now
+    // on, including those captured while the prologue ran
+    async_func_set_gc_obj(ctx->rt, &s->func_state, &s->generator->header);
     JS_SetOpaqueInternal(obj, s);
     return obj;
  fail:
