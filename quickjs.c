@@ -788,6 +788,12 @@ typedef struct JSClosureVar {
 #define ARG_SCOPE_INDEX 1
 #define ARG_SCOPE_END (-2)
 
+// decode the scope operand of OP_eval and OP_apply_eval
+static inline int eval_scope_operand_decode(int operand)
+{
+    return operand == 0xFFFF ? ARG_SCOPE_END : operand - 1;
+}
+
 typedef struct JSVarScope {
     int parent;  /* index into fd->scopes of the enclosing scope */
     int first;   /* index into fd->vars of the last variable in this scope */
@@ -18741,7 +18747,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSValue obj;
                 int scope_idx;
                 call_argc = get_u16(pc);
-                scope_idx = get_u16(pc + 2) - 1;
+                scope_idx = eval_scope_operand_decode(get_u16(pc + 2));
                 pc += 4;
                 call_argv = sp - call_argc;
                 sf->cur_pc = pc;
@@ -18773,7 +18779,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSValue *tab;
                 JSValue obj;
 
-                scope_idx = get_u16(pc) - 1;
+                scope_idx = eval_scope_operand_decode(get_u16(pc));
                 pc += 2;
                 sf->cur_pc = pc;
                 tab = build_arg_list(ctx, &len, sp[-1]);
@@ -35226,6 +35232,25 @@ static int get_label_pos(JSFunctionDef *s, int label)
 
 /* convert global variable accesses to local variables or closure
    variables when necessary */
+// The scope operand of OP_eval and OP_apply_eval is the index of the first
+// variable of the scope, stored on 16 bits as index + 1 so that -1 (no
+// variable) fits. 0xFFFF stands for ARG_SCOPE_END, the end of an argument
+// scope that has no variable of its own; see eval_scope_operand_decode().
+// Return -1 if the index cannot be encoded.
+#define EVAL_SCOPE_ARG_END 0xFFFF
+
+static int eval_scope_operand(JSContext *ctx, int first)
+{
+    if (first == ARG_SCOPE_END)
+        return EVAL_SCOPE_ARG_END;
+    if (first + 1 >= EVAL_SCOPE_ARG_END) {
+        JS_ThrowSyntaxError(ctx, "too many variables declared (only %d allowed)",
+                            JS_MAX_LOCAL_VARS - 1);
+        return -1;
+    }
+    return first + 1;
+}
+
 static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
 {
     int pos, pos_next, bc_len, op, len, i, idx, line_num, col_num;
@@ -35294,18 +35319,28 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
         case OP_eval: /* convert scope index to adjusted variable index */
             {
                 int call_argc = get_u16(bc_buf + pos + 1);
+                int operand;
                 scope = get_u16(bc_buf + pos + 1 + 2);
                 mark_eval_captured_variables(ctx, s, scope);
+                operand = eval_scope_operand(ctx, s->scopes[scope].first);
+                if (operand < 0)
+                    goto fail;
                 dbuf_putc(&bc_out, op);
                 dbuf_put_u16(&bc_out, call_argc);
-                dbuf_put_u16(&bc_out, s->scopes[scope].first + 1);
+                dbuf_put_u16(&bc_out, operand);
             }
             break;
         case OP_apply_eval: /* convert scope index to adjusted variable index */
-            scope = get_u16(bc_buf + pos + 1);
-            mark_eval_captured_variables(ctx, s, scope);
-            dbuf_putc(&bc_out, op);
-            dbuf_put_u16(&bc_out, s->scopes[scope].first + 1);
+            {
+                int operand;
+                scope = get_u16(bc_buf + pos + 1);
+                mark_eval_captured_variables(ctx, s, scope);
+                operand = eval_scope_operand(ctx, s->scopes[scope].first);
+                if (operand < 0)
+                    goto fail;
+                dbuf_putc(&bc_out, op);
+                dbuf_put_u16(&bc_out, operand);
+            }
             break;
         case OP_scope_get_var_undef:
         case OP_scope_get_var:
