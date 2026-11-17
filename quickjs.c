@@ -359,6 +359,7 @@ struct JSRuntime {
     JSClassID js_class_id_alloc; /* counter for user defined classes */
     int class_count;    /* size of class_array */
     uint32_t hash_seed; // of Map and Set; they can be used from any context
+    uint64_t hash_key[WYHASH_KEY_WORDS]; // of the string hash
     JSClass *class_array;
 
     struct list_head context_list; /* list of JSContext.link */
@@ -2394,6 +2395,8 @@ JSRuntime *JS_NewRuntime3(const JSRuntimeOptions *options)
     rt->random_opaque = random_opaque;
     if (js_random_bytes(rt, &rt->hash_seed, sizeof(rt->hash_seed)))
         goto fail;
+    if (js_random_bytes(rt, rt->hash_key, sizeof(rt->hash_key)))
+        goto fail;
 
     if (JS_InitAtoms(rt))
         goto fail;
@@ -3279,43 +3282,73 @@ static inline bool is_num_string(uint32_t *pval, JSString *p)
     }
 }
 
-/* XXX: could use faster version ? */
-static inline uint32_t hash_string8(const uint8_t *str, size_t len, uint32_t h)
-{
-    size_t i;
+// in the seed of the hash of a string that has a character above 255
+#define JS_HASH_SEED_WIDE 0x100
 
-    for(i = 0; i < len; i++)
-        h = h * 263 + str[i];
-    return h ^ hash32(len);
+// The string hash is keyed, so that a script cannot compute strings that
+// end up in the same bucket of a hash table. |h| keeps apart the hashes of
+// equal strings of different kinds.
+static inline uint32_t hash_string8(JSRuntime *rt, const uint8_t *str,
+                                    size_t len, uint32_t h)
+{
+    return wyhash(rt->hash_key, h, str, len);
 }
 
-static inline uint32_t hash_string16(const uint16_t *str,
+// hashes |len| characters that all fit in 8 bits as hash_string8() would
+static void hash_string16_narrow(WyHash *s, const uint16_t *str, size_t len)
+{
+    uint8_t buf[64];
+    size_t i, n;
+
+    while (len > 0) {
+        n = len < sizeof(buf) ? len : sizeof(buf);
+        for (i = 0; i < n; i++)
+            buf[i] = str[i];
+        wyhash_update(s, buf, n);
+        str += n;
+        len -= n;
+    }
+}
+
+// equal strings must have equal hashes, whether they are stored with 8 or
+// with 16 bits per character
+static inline uint32_t hash_string16(JSRuntime *rt, const uint16_t *str,
                                      size_t len, uint32_t h)
 {
+    uint32_t c;
+    WyHash s;
     size_t i;
 
-    for(i = 0; i < len; i++)
-        h = h * 263 + str[i];
-    return h ^ hash32(len);
+    c = 0;
+    for (i = 0; i < len; i++)
+        c |= str[i];
+    if (c > 0xFF) {
+        // no 8-bit string is equal to this one
+        return wyhash(rt->hash_key, h | JS_HASH_SEED_WIDE,
+                      str, len * sizeof(*str));
+    }
+    wyhash_init(&s, rt->hash_key, h, len);
+    hash_string16_narrow(&s, str, len);
+    return wyhash_fini(&s);
 }
 
-static uint32_t hash_string(JSString *str, uint32_t h)
+static uint32_t hash_string(JSRuntime *rt, JSString *str, uint32_t h)
 {
     if (str->is_wide_char)
-        h = hash_string16(str16(str), str->len, h);
+        h = hash_string16(rt, str16(str), str->len, h);
     else
-        h = hash_string8(str8(str), str->len, h);
+        h = hash_string8(rt, str8(str), str->len, h);
     return h;
 }
 
-static uint32_t hash_string_rope(JSValueConst val, uint32_t h)
+static uint32_t hash_string_rope(JSRuntime *rt, JSValueConst val, uint32_t h)
 {
     if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
-        return hash_string(JS_VALUE_GET_STRING(val), h);
+        return hash_string(rt, JS_VALUE_GET_STRING(val), h);
     } else {
         JSStringRope *r = JS_VALUE_GET_STRING_ROPE(val);
-        h = hash_string_rope(r->left, h);
-        return hash_string_rope(r->right, h);
+        h = hash_string_rope(rt, r->left, h);
+        return hash_string_rope(rt, r->right, h);
     }
 }
 
@@ -3534,7 +3567,7 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
         }
         /* try and locate an already registered atom */
         len = str->len;
-        h = hash_string(str, atom_type);
+        h = hash_string(rt, str, atom_type);
         h &= JS_ATOM_HASH_MASK;
         h1 = h & (rt->atom_hash_size - 1);
         i = rt->atom_hash[h1];
@@ -3697,7 +3730,7 @@ static JSAtom __JS_FindAtom(JSRuntime *rt, const char *str, size_t len,
     uint32_t h, h1, i;
     JSAtomStruct *p;
 
-    h = hash_string8((const uint8_t *)str, len, JS_ATOM_TYPE_STRING);
+    h = hash_string8(rt, (const uint8_t *)str, len, JS_ATOM_TYPE_STRING);
     h &= JS_ATOM_HASH_MASK;
     h1 = h & (rt->atom_hash_size - 1);
     i = rt->atom_hash[h1];
@@ -53715,10 +53748,10 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         h = JS_VALUE_GET_INT(key);
         break;
     case JS_TAG_STRING:
-        h = hash_string(JS_VALUE_GET_STRING(key), 0);
+        h = hash_string(ctx->rt, JS_VALUE_GET_STRING(key), 0);
         break;
     case JS_TAG_STRING_ROPE:
-        h = hash_string_rope(key, 0);
+        h = hash_string_rope(ctx->rt, key, 0);
         break;
     case JS_TAG_OBJECT:
     case JS_TAG_SYMBOL:
@@ -53732,7 +53765,8 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         goto hash_float64;
     case JS_TAG_BIG_INT:
         r = JS_VALUE_GET_PTR(key);
-        h = hash_string8((void *)r->tab, r->len * sizeof(*r->tab), 0);
+        h = hash_string8(ctx->rt, (void *)r->tab,
+                         r->len * sizeof(*r->tab), 0);
         break;
     case JS_TAG_FLOAT64:
         d = JS_VALUE_GET_FLOAT64(key);
