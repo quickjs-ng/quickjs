@@ -360,6 +360,7 @@ struct JSRuntime {
     int class_count;    /* size of class_array */
     // of strings, Map and Set; used from any context
     uint64_t hash_key[WYHASH_KEY_WORDS];
+    uint64_t shape_hash_mul[2]; // odd numbers, as secret as hash_key
     JSClass *class_array;
 
     struct list_head context_list; /* list of JSContext.link */
@@ -2345,6 +2346,7 @@ JSRuntime *JS_NewRuntime3(const JSRuntimeOptions *options)
     const JSMallocFunctions *mf;
     JSRandomBytesFunc *random_bytes;
     void *opaque, *random_opaque;
+    uint64_t random[2 + WYHASH_KEY_WORDS];
     JSRuntime *rt;
     JSMallocState ms;
 
@@ -2393,8 +2395,12 @@ JSRuntime *JS_NewRuntime3(const JSRuntimeOptions *options)
 
     rt->random_bytes = random_bytes;
     rt->random_opaque = random_opaque;
-    if (js_random_bytes(rt, rt->hash_key, sizeof(rt->hash_key)))
+    if (js_random_bytes(rt, random, sizeof(random)))
         goto fail;
+    // the constants make for good multipliers when the bytes are not random
+    rt->shape_hash_mul[0] = (random[0] ^ 0x9E3779B97F4A7C15) | 1;
+    rt->shape_hash_mul[1] = (random[1] ^ 0xC2B2AE3D27D4EB4F) | 1;
+    memcpy(rt->hash_key, &random[2], sizeof(rt->hash_key));
 
     if (JS_InitAtoms(rt))
         goto fail;
@@ -5719,9 +5725,22 @@ static uintptr_t hash_atom(JSAtom atom, uintptr_t mask)
     return hash_uintptr(atom) >> shift;
 }
 
-static uint32_t shape_hash(uint32_t h, uint32_t val)
+// The hash of a shape is the hash of its prototype followed by one step
+// per property. Scripts choose the properties, so the step multiplies by
+// numbers that they do not know: they cannot compute properties that end
+// up in the same bucket, or a property that undoes what an earlier one
+// did to the hash.
+static uint32_t shape_hash(JSRuntime *rt, uint32_t h, JSAtom atom,
+                           int prop_flags)
 {
-    return hash32(h + val);
+    uint64_t x;
+
+    x = atom | (uint64_t)h << 32;
+    x *= rt->shape_hash_mul[0];
+    x ^= x >> 32;
+    x += prop_flags;
+    x *= rt->shape_hash_mul[1];
+    return x >> 32;
 }
 
 /* truncate the shape hash to 'hash_bits' bits */
@@ -5733,9 +5752,9 @@ static uint32_t get_shape_hash(uint32_t h, int hash_bits)
 static uint32_t shape_initial_hash(JSObject *proto)
 {
     uint32_t h;
-    h = shape_hash(1, (uintptr_t)proto);
+    h = hash32(1 + (uintptr_t)proto);
     if (sizeof(proto) > 4)
-        h = shape_hash(h, (uint64_t)(uintptr_t)proto >> 32);
+        h = hash32(h + ((uint64_t)(uintptr_t)proto >> 32));
     return h;
 }
 
@@ -6110,7 +6129,7 @@ static int add_shape_property(JSContext *ctx, JSShape **psh,
     /* update the shape hash */
     if (sh->is_hashed) {
         js_shape_hash_unlink(rt, sh);
-        new_shape_hash = shape_hash(shape_hash(sh->hash, atom), prop_flags);
+        new_shape_hash = shape_hash(rt, sh->hash, atom, prop_flags);
     }
 
     if (unlikely(sh->prop_count >= sh->prop_size)) {
@@ -6168,9 +6187,7 @@ static JSShape *find_hashed_shape_prop(JSRuntime *rt, JSShape *sh,
     JSShape *sh1;
     uint32_t h, h1, i, n;
 
-    h = sh->hash;
-    h = shape_hash(h, atom);
-    h = shape_hash(h, prop_flags);
+    h = shape_hash(rt, sh->hash, atom, prop_flags);
     h1 = get_shape_hash(h, rt->shape_hash_bits);
     for(sh1 = rt->shape_hash[h1]; sh1 != NULL; sh1 = sh1->shape_hash_next) {
         /* we test the hash first so that the rest is done only if the
