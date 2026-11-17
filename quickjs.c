@@ -51403,7 +51403,7 @@ static int json_parse_record_resize_hash(JSContext *ctx, JSONParseRecordObject *
     }
     for(i = 0; i < po->count; i++) {
         e = &po->entries[i];
-        h = e->atom & (po->hash_size - 1);
+        h = hash_atom(e->atom, po->hash_size - 1, ctx->rt->prop_hash_seed);
         e->hash_next = po->hash_table[h];
         po->hash_table[h] = i;
     }
@@ -51433,14 +51433,14 @@ static JSONParseRecord *json_parse_record_add(JSContext *ctx, JSONParseRecord *p
     pr1 = &e->parse_record;
     pr1->value = JS_UNDEFINED;
     if (po->hash_size != 0) {
-        h = key & (po->hash_size - 1);
+        h = hash_atom(key, po->hash_size - 1, ctx->rt->prop_hash_seed);
         e->hash_next = po->hash_table[h];
         po->hash_table[h] = po->count - 1;
     }
     return pr1;
 }
 
-static JSONParseRecord *json_parse_record_find(JSONParseRecord *pr, JSAtom key)
+static JSONParseRecord *json_parse_record_find(JSContext *ctx, JSONParseRecord *pr, JSAtom key)
 {
     JSONParseRecordObject *po = &pr->u.obj;
     JSONParseRecordEntry *e;
@@ -51452,7 +51452,7 @@ static JSONParseRecord *json_parse_record_find(JSONParseRecord *pr, JSAtom key)
                 return &po->entries[i].parse_record;
         }
     } else {
-        h = key & (po->hash_size - 1);
+        h = hash_atom(key, po->hash_size - 1, ctx->rt->prop_hash_seed);
         i = po->hash_table[h];
         while (i != -1) {
             e = &po->entries[i];
@@ -51739,7 +51739,7 @@ static JSValue internalize_json_property(JSContext *ctx, JSValueConst holder,
                 }
             }
         } else {
-            pr = json_parse_record_find(pr, name);
+            pr = json_parse_record_find(ctx, pr, name);
         }
         if (pr && !js_same_value(ctx, pr->value, val)) {
             pr = NULL;
