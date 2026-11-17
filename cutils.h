@@ -66,8 +66,22 @@ extern "C" {
 #include <pthread.h>
 #endif
 #if !defined(_WIN32)
+#include <fcntl.h>
 #include <limits.h>
 #include <unistd.h>
+#endif
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
+// msan does not see what a system call made with syscall() writes
+#if defined(__has_feature)
+#if __has_feature(memory_sanitizer)
+#include <sanitizer/msan_interface.h>
+#define js__msan_unpoison(p, n) __msan_unpoison(p, n)
+#endif
+#endif
+#if !defined(js__msan_unpoison)
+#define js__msan_unpoison(p, n)
 #endif
 
 #if defined(__sun)
@@ -1631,6 +1645,92 @@ static inline int64_t js__gettimeofday_us(void) {
     gettimeofday(&tv, NULL);
 #endif
     return ((int64_t)tv.tv_sec * 1000000) + tv.tv_usec;
+}
+
+// Fills |buf| with |len| bytes from the entropy source of the operating
+// system. Returns 0 on success, -1 on failure.
+static inline int js__random_bytes(void *buf, size_t len) {
+    uint8_t *p = buf;
+#if defined(_WIN32)
+    // RtlGenRandom(), exported by advapi32.dll under this name; looked up
+    // at run time so that programs need not link against advapi32
+    typedef BOOLEAN NTAPI rtl_gen_random(PVOID buf, ULONG len);
+    rtl_gen_random *fn;
+    HMODULE h;
+
+    h = LoadLibraryA("advapi32.dll");
+    if (!h)
+        return -1;
+    fn = (rtl_gen_random *)(void *)GetProcAddress(h, "SystemFunction036");
+    while (fn && len > 0) {
+        ULONG n = len > 0x40000000 ? 0x40000000 : (ULONG)len;
+        if (!fn(p, n))
+            break;
+        p += n;
+        len -= n;
+    }
+    FreeLibrary(h);
+    return len == 0 ? 0 : -1;
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+      defined(__NetBSD__) || defined(__DragonFly__)
+    arc4random_buf(p, len);
+    return 0;
+#elif defined(__wasi__) || defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
+    while (len > 0) {
+        size_t n = len > 256 ? 256 : len; // the most getentropy() gives
+        if (getentropy(p, n))
+            return -1;
+        p += n;
+        len -= n;
+    }
+    return 0;
+#elif defined(__DJGPP)
+    // no entropy source, the clock has to do
+    uint64_t x = js__gettimeofday_us() | 1;
+    while (len > 0) {
+        // xorshift64*
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        *p++ = (x * 0x2545F4914F6CDD1D) >> 56;
+        len--;
+    }
+    return 0;
+#else
+    ssize_t n;
+    int fd;
+#if defined(__linux__) && defined(SYS_getrandom)
+    // by system call number because older libcs lack the wrapper
+    while (len > 0) {
+        n = syscall(SYS_getrandom, p, len, 0);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            break; // old kernel or seccomp filter, try /dev/urandom
+        js__msan_unpoison(p, n);
+        p += n;
+        len -= n;
+    }
+    if (len == 0)
+        return 0;
+#endif
+    do
+        fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    while (fd < 0 && errno == EINTR);
+    if (fd < 0)
+        return -1;
+    while (len > 0) {
+        n = read(fd, p, len);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            break;
+        p += n;
+        len -= n;
+    }
+    close(fd);
+    return len == 0 ? 0 : -1;
+#endif
 }
 
 #if defined(_WIN32)

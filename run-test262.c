@@ -589,6 +589,23 @@ typedef struct {
     char *str;
 } AgentReport;
 
+// the same bytes every time, a test must not pass in one run and fail
+// in the next
+static int fixed_random_bytes(void *opaque, uint8_t *buf, size_t len)
+{
+    memset(buf, 42, len);
+    return 0;
+}
+
+static JSRuntime *new_runtime(void)
+{
+    JSRuntimeOptions options = {
+        .version = JS_RUNTIME_OPTIONS_VERSION,
+        .random_bytes = fixed_random_bytes,
+    };
+    return JS_NewRuntime3(&options);
+}
+
 static JSValue add_helpers1(JSContext *ctx);
 static void add_helpers(JSContext *ctx);
 
@@ -603,7 +620,7 @@ static void agent_start(void *arg)
 
     agent = arg;
     tls = agent->tls; // shares thread-local storage with parent thread
-    rt = JS_NewRuntime();
+    rt = new_runtime();
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }
@@ -1744,7 +1761,7 @@ int run_test_buf(ThreadLocalStorage *tls, const char *filename, char *harness,
     JSRuntime *rt;
     JSContext *ctx;
 
-    rt = JS_NewRuntime();
+    rt = new_runtime();
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }
@@ -2009,7 +2026,7 @@ int run_test262_harness_test(ThreadLocalStorage *tls, const char *filename,
 
     outfile = stdout; /* for js_print_262 */
 
-    rt = JS_NewRuntime();
+    rt = new_runtime();
     if (rt == NULL) {
         fatal(1, "JS_NewRuntime failure");
     }

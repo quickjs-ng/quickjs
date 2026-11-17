@@ -391,6 +391,9 @@ struct JSRuntime {
     JSInterruptHandler *interrupt_handler;
     void *interrupt_opaque;
 
+    JSRandomBytesFunc *random_bytes; // NULL: ask the operating system
+    void *random_opaque;
+
     JSPromiseHook *promise_hook;
     void *promise_hook_opaque;
     // for smuggling the parent promise from js_promise_then
@@ -2325,10 +2328,38 @@ static inline bool js_check_stack_overflow(JSRuntime *rt, size_t alloca_size)
     return unlikely(sp < rt->stack_limit);
 }
 
-JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
+static int js_random_bytes(JSRuntime *rt, void *buf, size_t len)
 {
+    if (!rt->random_bytes)
+        return js__random_bytes(buf, len);
+    if (rt->random_bytes(rt->random_opaque, buf, len))
+        return -1;
+    return 0;
+}
+
+static const JSMallocFunctions def_malloc_funcs;
+
+JSRuntime *JS_NewRuntime3(const JSRuntimeOptions *options)
+{
+    const JSMallocFunctions *mf;
+    JSRandomBytesFunc *random_bytes;
+    void *opaque, *random_opaque;
     JSRuntime *rt;
     JSMallocState ms;
+
+    mf = &def_malloc_funcs;
+    opaque = NULL;
+    random_bytes = NULL;
+    random_opaque = NULL;
+    if (options) {
+        if (options->version != JS_RUNTIME_OPTIONS_VERSION)
+            return NULL;
+        if (options->malloc_functions)
+            mf = options->malloc_functions;
+        opaque = options->malloc_opaque;
+        random_bytes = options->random_bytes;
+        random_opaque = options->random_opaque;
+    }
 
     memset(&ms, 0, sizeof(ms));
     ms.opaque = opaque;
@@ -2358,7 +2389,11 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     init_list_head(&rt->string_list);
 #endif
     init_list_head(&rt->job_list);
-    rt->hash_seed = hash64(js__gettimeofday_us()) >> 32;
+
+    rt->random_bytes = random_bytes;
+    rt->random_opaque = random_opaque;
+    if (js_random_bytes(rt, &rt->hash_seed, sizeof(rt->hash_seed)))
+        goto fail;
 
     if (JS_InitAtoms(rt))
         goto fail;
@@ -2447,7 +2482,17 @@ static const JSMallocFunctions def_malloc_funcs = {
 
 JSRuntime *JS_NewRuntime(void)
 {
-    return JS_NewRuntime2(&def_malloc_funcs, NULL);
+    return JS_NewRuntime3(NULL);
+}
+
+JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
+{
+    JSRuntimeOptions options = {
+        .version = JS_RUNTIME_OPTIONS_VERSION,
+        .malloc_functions = mf,
+        .malloc_opaque = opaque,
+    };
+    return JS_NewRuntime3(&options);
 }
 
 void JS_SetMemoryLimit(JSRuntime *rt, size_t limit)
@@ -2893,8 +2938,10 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->error_prepare_stack = JS_UNDEFINED;
     ctx->error_stack_trace_limit = js_int32(10);
     init_list_head(&ctx->loaded_modules);
-    // TODO(bnoordhuis) use getrandom() etc.
-    ctx->random_state = js__gettimeofday_us();
+    if (js_random_bytes(rt, &ctx->random_state, sizeof(ctx->random_state))) {
+        JS_FreeContext(ctx);
+        return NULL;
+    }
     // the state must be non zero
     if (ctx->random_state == 0)
         ctx->random_state = 1;

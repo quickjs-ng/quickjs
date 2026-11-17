@@ -477,6 +477,22 @@ typedef struct JSMallocFunctions {
     size_t (*js_malloc_usable_size)(const void *ptr);
 } JSMallocFunctions;
 
+// Fills |buf| with |len| random bytes. Returns zero on success, non-zero
+// on failure. The bytes seed hash tables and Math.random(); they should
+// be unpredictable unless reproducible runs are wanted.
+typedef int JSRandomBytesFunc(void *opaque, uint8_t *buf, size_t len);
+
+#define JS_RUNTIME_OPTIONS_VERSION 1
+
+typedef struct JSRuntimeOptions {
+    int version;
+    const JSMallocFunctions *malloc_functions;  // NULL == default allocator
+    void *malloc_opaque;
+    JSRandomBytesFunc *random_bytes;            // NULL == OS entropy source
+    void *random_opaque;
+    // can add new fields in ABI-compatible manner by incrementing JS_RUNTIME_OPTIONS_VERSION
+} JSRuntimeOptions;
+
 // Debug trace system: the debug output will be produced to the dump stream (currently
 // stdout) if dumps are enabled and JS_SetDumpFlags is invoked with the corresponding
 // bit set.
@@ -523,6 +539,9 @@ JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
    used to check stack overflow. */
 JS_EXTERN void JS_UpdateStackTop(JSRuntime *rt);
 JS_EXTERN JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque);
+// |options| can be NULL. Returns NULL when the version of |options| is not
+// JS_RUNTIME_OPTIONS_VERSION, and when no random bytes can be obtained.
+JS_EXTERN JSRuntime *JS_NewRuntime3(const JSRuntimeOptions *options);
 JS_EXTERN void JS_FreeRuntime(JSRuntime *rt);
 JS_EXTERN void *JS_GetRuntimeOpaque(JSRuntime *rt);
 JS_EXTERN void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);

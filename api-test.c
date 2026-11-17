@@ -2549,6 +2549,110 @@ static void map_across_contexts(void)
     JS_FreeRuntime(rt);
 }
 
+struct random_bytes_state {
+    int calls;
+    int fail_at; // the call that fails, counting from one
+};
+
+static int random_bytes_func(void *opaque, uint8_t *buf, size_t len)
+{
+    struct random_bytes_state *state = opaque;
+
+    if (++state->calls == state->fail_at)
+        return -1;
+    memset(buf, 42, len);
+    return 0;
+}
+
+static double math_random(JSContext *ctx)
+{
+    JSValue ret;
+    double d;
+
+    ret = eval(ctx, "Math.random()");
+    assert(0 == JS_ToFloat64(ctx, &d, ret));
+    JS_FreeValue(ctx, ret);
+    return d;
+}
+
+static void random_bytes(void)
+{
+    struct random_bytes_state state;
+    JSRuntimeOptions options;
+    JSContext *ctx1, *ctx2;
+    JSRuntime *rt;
+    double d;
+
+    // the operating system is the default source
+    {
+        rt = JS_NewRuntime3(NULL);
+        assert(rt);
+        ctx1 = JS_NewContext(rt);
+        ctx2 = JS_NewContext(rt);
+        assert(math_random(ctx1) != math_random(ctx2));
+        JS_FreeContext(ctx2);
+        JS_FreeContext(ctx1);
+        JS_FreeRuntime(rt);
+    }
+    // the embedder's callback replaces it; the same bytes give the same
+    // sequence in every context
+    {
+        memset(&state, 0, sizeof(state));
+        memset(&options, 0, sizeof(options));
+        options.version = JS_RUNTIME_OPTIONS_VERSION;
+        options.random_bytes = random_bytes_func;
+        options.random_opaque = &state;
+        rt = JS_NewRuntime3(&options);
+        assert(rt);
+        assert(1 == state.calls);
+        ctx1 = JS_NewContext(rt);
+        assert(2 == state.calls);
+        ctx2 = JS_NewContextRaw(rt);
+        assert(3 == state.calls);
+        JS_FreeContext(ctx2);
+        ctx2 = JS_NewContext(rt);
+        d = math_random(ctx1);
+        assert(d == math_random(ctx2));
+        assert(d != math_random(ctx2));
+        JS_FreeContext(ctx2);
+        JS_FreeContext(ctx1);
+        JS_FreeRuntime(rt);
+    }
+    // no runtime without random bytes
+    {
+        memset(&state, 0, sizeof(state));
+        state.fail_at = 1;
+        rt = JS_NewRuntime3(&options);
+        assert(!rt);
+        assert(1 == state.calls);
+    }
+    // and no context
+    {
+        memset(&state, 0, sizeof(state));
+        state.fail_at = 2;
+        rt = JS_NewRuntime3(&options);
+        assert(rt);
+        JS_SetDumpFlags(rt, JS_ABORT_ON_LEAKS);
+        ctx1 = JS_NewContext(rt);
+        assert(!ctx1);
+        assert(2 == state.calls);
+        state.fail_at = 3;
+        ctx1 = JS_NewContextRaw(rt);
+        assert(!ctx1);
+        ctx1 = JS_NewContext(rt);
+        assert(ctx1);
+        JS_FreeContext(ctx1);
+        JS_FreeRuntime(rt);
+    }
+    // options of another version are refused
+    {
+        memset(&options, 0, sizeof(options));
+        options.version = JS_RUNTIME_OPTIONS_VERSION + 1;
+        rt = JS_NewRuntime3(&options);
+        assert(!rt);
+    }
+}
+
 int main(void)
 {
     cfunctions();
@@ -2600,5 +2704,6 @@ int main(void)
     new_context_low_memory();
     json_stringify_oom();
     map_across_contexts();
+    random_bytes();
     return 0;
 }
