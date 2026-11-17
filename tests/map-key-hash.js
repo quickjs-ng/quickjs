@@ -108,3 +108,54 @@ import {assert} from "./assert.js"
         assert(s.has(objs[i]), i % 2 === 1)
     assert(s.size, 7500)
 })()
+
+// a rope, which is what the concatenation of long strings gives, and the
+// string that it stands for
+;(function() {
+    const flat = (s) => JSON.parse(JSON.stringify(s))
+    const a = "x".repeat(5000), b = "y".repeat(5001)
+    const c = "\u4E00".repeat(3000), d = "\xE9".repeat(3003)
+    // every line is one string, put together in different ways
+    const strings = [
+        [() => a + b,
+         () => a + b.slice(0, 2500) + b.slice(2500),
+         () => a.slice(0, 1234) + (a.slice(1234) + b)],
+        [() => a + c, () => a.slice(0, 2501) + (a.slice(2501) + c)],
+        [() => c + a + c, () => c + (a + c)],
+        [() => d + a,
+         () => d.slice(0, 1500) + d.slice(1500) + a,
+         () => (c + d).slice(3000) + a],
+        [() => a + b + c + d + a + b + c + d,
+         () => (a + b + c + d) + (a + b + c + d)],
+    ]
+    const s = new Set, m = new Map
+    for (let i = 0; i < 1000; i++) {
+        s.add("filler" + i)
+        m.set("filler" + i, i)
+    }
+    strings.forEach((ropes, i) => {
+        const str = flat(ropes[0]())
+        // rope in the table
+        s.add(ropes[0]())
+        assert(s.size, 1001 + i)
+        // string in the table
+        m.set(str, i)
+        assert(m.size, 1001 + i)
+        for (const rope of ropes) {
+            assert(rope() === str, true)
+            assert(s.has(rope()), true)
+            assert(s.has(str), true)
+            assert(s.has(rope() + "!"), false)
+            s.add(str)
+            s.add(rope())
+            assert(s.size, 1001 + i)
+            assert(m.get(rope()), i)
+            m.set(rope(), i)
+            assert(m.size, 1001 + i)
+        }
+        assert(m.delete(ropes[0]()), true)
+        assert(m.has(str), false)
+        m.set(ropes[0](), i)
+        assert(m.get(str), i)
+    })
+})()
