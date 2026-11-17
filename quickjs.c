@@ -1127,6 +1127,9 @@ typedef struct JSShapeProperty {
     JSAtom atom; /* JS_ATOM_NULL = free property entry */
 } JSShapeProperty;
 
+// JSShapeProperty.hash_next is the index of a property plus one
+#define JS_PROP_COUNT_MAX ((1 << 26) - 1)
+
 struct JSShape {
     /* hash table of size hash_mask + 1 before the start of the
        structure (see prop_hash_end()). */
@@ -6134,6 +6137,11 @@ static int add_shape_property(JSContext *ctx, JSShape **psh,
     uint32_t hash_mask, new_shape_hash = 0;
     intptr_t h;
 
+    if (unlikely(sh->prop_count >= JS_PROP_COUNT_MAX)) {
+        JS_ThrowRangeError(ctx, "too many properties (only %d allowed)",
+                           JS_PROP_COUNT_MAX);
+        return -1;
+    }
     /* update the shape hash */
     if (sh->is_hashed) {
         js_shape_hash_unlink(rt, sh);
