@@ -37871,7 +37871,8 @@ static __exception int js_parse_function_decl2(JSParseState *s,
                 has_initializer = js_parse_destructuring_element(s, fd->has_parameter_expressions ? TOK_LET : TOK_VAR, true, true, -1, true, false);
                 if (has_initializer < 0)
                     goto fail;
-                if (has_initializer)
+                /* a rest parameter is not counted in the length, whatever its binding */
+                if (has_initializer || rest)
                     has_opt_arg = true;
                 if (!has_opt_arg)
                     fd->defined_arg_count++;
