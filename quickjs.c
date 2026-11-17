@@ -34126,6 +34126,13 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
            variables are visible */
         if (!is_arg_scope) {
             var_idx = find_var(ctx, s, var_name);
+            if (s->has_parameter_expressions && var_idx >= 0  &&
+                (var_idx & ARGUMENT_VAR_OFFSET)) {
+                    int param_idx = find_var_in_scope(ctx, s, var_name, ARG_SCOPE_INDEX);
+                    if (param_idx >= 0)
+                        var_idx = param_idx;
+
+            }
         }
 
         if (var_idx < 0 && is_pseudo_var)
@@ -34294,6 +34301,12 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
 
         if (!is_arg_scope) {
             var_idx = find_var(ctx, fd, var_name);
+            if (fd->has_parameter_expressions && var_idx >= 0 &&
+                (var_idx & ARGUMENT_VAR_OFFSET)) {
+                    int param_idx = find_var_in_scope(ctx, fd, var_name, ARG_SCOPE_INDEX);
+                    if (param_idx >= 0)
+                        var_idx = param_idx;
+            }
             if (var_idx >= 0)
                 break;
         }
@@ -37995,10 +38008,6 @@ static __exception int js_parse_function_decl2(JSParseState *s,
             }
             idx = vd->scope_next;
         }
-
-        /* the argument scope has no parent, hence we don't use pop_scope(s) */
-        emit_op(s, OP_leave_scope);
-        emit_u16(s, fd->scope_level);
 
         /* set the variable scope as the current scope */
         fd->scope_level = 0;
