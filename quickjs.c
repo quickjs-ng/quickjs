@@ -358,6 +358,7 @@ struct JSRuntime {
 
     JSClassID js_class_id_alloc; /* counter for user defined classes */
     int class_count;    /* size of class_array */
+    uint32_t hash_seed; // of Map and Set; they can be used from any context
     JSClass *class_array;
 
     struct list_head context_list; /* list of JSContext.link */
@@ -612,7 +613,6 @@ struct JSContext {
     double time_origin;
 
     uint64_t random_state;
-    uint32_t hash_seed;
 
     /* when the counter reaches zero, JSRutime.interrupt_handler is called */
     int interrupt_counter;
@@ -2358,6 +2358,7 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     init_list_head(&rt->string_list);
 #endif
     init_list_head(&rt->job_list);
+    rt->hash_seed = hash64(js__gettimeofday_us()) >> 32;
 
     if (JS_InitAtoms(rt))
         goto fail;
@@ -2897,7 +2898,6 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     // the state must be non zero
     if (ctx->random_state == 0)
         ctx->random_state = 1;
-    ctx->hash_seed = xorshift64star(&ctx->random_state);
 
     if (JS_AddIntrinsicBasicObjects(ctx)) {
         JS_FreeContext(ctx);
@@ -53701,7 +53701,7 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         h = 0;
         break;
     }
-    return h ^ ctx->hash_seed ^ hash32(tag);
+    return h ^ ctx->rt->hash_seed ^ hash32(tag);
 }
 
 static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,

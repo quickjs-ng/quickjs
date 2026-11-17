@@ -2516,6 +2516,39 @@ static void dynamic_import_deferred_reject(void)
     JS_FreeRuntime(rt);
 }
 
+// a Map or Set must find its keys no matter what context it is used from
+static void map_across_contexts(void)
+{
+    static const char make[] =
+        "var m = new Map;"
+        "for (var i = 0; i < 100; i++) m.set('k' + i, i);"
+        "m";
+    static const char use[] =
+        "var n = 0;"
+        "for (var i = 0; i < 100; i++) n += Map.prototype.has.call(m, 'k' + i);"
+        "n";
+    JSValue map, global, ret;
+    JSContext *ctx1, *ctx2;
+    JSRuntime *rt;
+    int32_t n;
+
+    rt = new_runtime();
+    ctx1 = JS_NewContext(rt);
+    ctx2 = JS_NewContext(rt);
+    map = eval(ctx1, make);
+    assert(JS_IsObject(map));
+    global = JS_GetGlobalObject(ctx2);
+    assert(1 == JS_SetPropertyStr(ctx2, global, "m", map));
+    JS_FreeValue(ctx2, global);
+    ret = eval(ctx2, use);
+    assert(0 == JS_ToInt32(ctx2, &n, ret));
+    assert(100 == n);
+    JS_FreeValue(ctx2, ret);
+    JS_FreeContext(ctx2);
+    JS_FreeContext(ctx1);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2566,5 +2599,6 @@ int main(void)
     private_symbols();
     new_context_low_memory();
     json_stringify_oom();
+    map_across_contexts();
     return 0;
 }
