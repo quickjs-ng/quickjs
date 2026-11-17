@@ -358,8 +358,8 @@ struct JSRuntime {
 
     JSClassID js_class_id_alloc; /* counter for user defined classes */
     int class_count;    /* size of class_array */
-    uint32_t hash_seed; // of Map and Set; they can be used from any context
-    uint64_t hash_key[WYHASH_KEY_WORDS]; // of the string hash
+    // of strings, Map and Set; used from any context
+    uint64_t hash_key[WYHASH_KEY_WORDS];
     JSClass *class_array;
 
     struct list_head context_list; /* list of JSContext.link */
@@ -2393,8 +2393,6 @@ JSRuntime *JS_NewRuntime3(const JSRuntimeOptions *options)
 
     rt->random_bytes = random_bytes;
     rt->random_opaque = random_opaque;
-    if (js_random_bytes(rt, &rt->hash_seed, sizeof(rt->hash_seed)))
-        goto fail;
     if (js_random_bytes(rt, rt->hash_key, sizeof(rt->hash_key)))
         goto fail;
 
@@ -53740,55 +53738,50 @@ static JSValueConst map_normalize_key_const(JSContext *ctx, JSValueConst key)
     return safe_const(map_normalize_key(ctx, unsafe_unconst(key)));
 }
 
-/* XXX: better hash ? */
+// Scripts choose the keys, so the hash must not let them choose the bucket:
+// every kind of key goes through the keyed hash.
 static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
 {
     uint32_t tag = JS_VALUE_GET_NORM_TAG(key);
-    uint32_t h;
-    double d;
+    JSRuntime *rt = ctx->rt;
     JSFloat64Union u;
     JSBigInt *r;
 
     switch(tag) {
-    case JS_TAG_BOOL:
-        h = JS_VALUE_GET_INT(key);
-        break;
     case JS_TAG_STRING:
-        h = hash_string(ctx->rt, JS_VALUE_GET_STRING(key), 0);
-        break;
+        return hash_string(rt, JS_VALUE_GET_STRING(key), tag);
     case JS_TAG_STRING_ROPE:
-        h = hash_string_rope(ctx->rt, key, 0);
-        break;
-    case JS_TAG_OBJECT:
-    case JS_TAG_SYMBOL:
-        h = (uintptr_t)JS_VALUE_GET_PTR(key) * 3163;
-        break;
-    case JS_TAG_INT:
-        d = JS_VALUE_GET_INT(key);
-        goto hash_float64;
-    case JS_TAG_SHORT_BIG_INT:
-        d = JS_VALUE_GET_SHORT_BIG_INT(key);
-        goto hash_float64;
+        return hash_string_rope(rt, key, tag);
     case JS_TAG_BIG_INT:
         r = JS_VALUE_GET_PTR(key);
-        h = hash_string8(ctx->rt, (void *)r->tab,
-                         r->len * sizeof(*r->tab), 0);
+        return hash_string8(rt, (void *)r->tab,
+                            r->len * sizeof(*r->tab), tag);
+    case JS_TAG_OBJECT:
+    case JS_TAG_SYMBOL:
+        u.u64 = (uintptr_t)JS_VALUE_GET_PTR(key);
         break;
-    case JS_TAG_FLOAT64:
-        d = JS_VALUE_GET_FLOAT64(key);
-        /* normalize the NaN */
-        if (isnan(d))
-            d = NAN;
-    hash_float64:
-        u.d = d;
-        h = (u.u32[0] ^ u.u32[1]) * 3163;
+    case JS_TAG_BOOL:
+        u.u64 = JS_VALUE_GET_INT(key);
+        break;
+    case JS_TAG_SHORT_BIG_INT:
+        u.u64 = (uint32_t)JS_VALUE_GET_SHORT_BIG_INT(key);
+        break;
+    case JS_TAG_INT:
+        // same hash as the float64 that is equal to it
+        u.d = JS_VALUE_GET_INT(key);
         tag = JS_TAG_FLOAT64;
         break;
+    case JS_TAG_FLOAT64:
+        u.d = JS_VALUE_GET_FLOAT64(key);
+        /* normalize the NaN */
+        if (isnan(u.d))
+            u.d = NAN;
+        break;
     default:
-        h = 0;
+        u.u64 = 0;
         break;
     }
-    return h ^ ctx->rt->hash_seed ^ hash32(tag);
+    return wyhash_u64(rt->hash_key, tag, u.u64);
 }
 
 static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,

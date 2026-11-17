@@ -2713,7 +2713,6 @@ static void random_bytes(void)
     JSContext *ctx1, *ctx2;
     JSRuntime *rt;
     double d;
-    int i;
 
     // the operating system is the default source
     {
@@ -2736,11 +2735,11 @@ static void random_bytes(void)
         options.random_opaque = &state;
         rt = JS_NewRuntime3(&options);
         assert(rt);
-        assert(2 == state.calls);
+        assert(1 == state.calls);
         ctx1 = JS_NewContext(rt);
-        assert(3 == state.calls);
+        assert(2 == state.calls);
         ctx2 = JS_NewContextRaw(rt);
-        assert(4 == state.calls);
+        assert(3 == state.calls);
         JS_FreeContext(ctx2);
         ctx2 = JS_NewContext(rt);
         d = math_random(ctx1);
@@ -2751,24 +2750,24 @@ static void random_bytes(void)
         JS_FreeRuntime(rt);
     }
     // no runtime without random bytes
-    for (i = 1; i <= 2; i++) {
+    {
         memset(&state, 0, sizeof(state));
-        state.fail_at = i;
+        state.fail_at = 1;
         rt = JS_NewRuntime3(&options);
         assert(!rt);
-        assert(i == state.calls);
+        assert(1 == state.calls);
     }
     // and no context
     {
         memset(&state, 0, sizeof(state));
-        state.fail_at = 3;
+        state.fail_at = 2;
         rt = JS_NewRuntime3(&options);
         assert(rt);
         JS_SetDumpFlags(rt, JS_ABORT_ON_LEAKS);
         ctx1 = JS_NewContext(rt);
         assert(!ctx1);
-        assert(3 == state.calls);
-        state.fail_at = 4;
+        assert(2 == state.calls);
+        state.fail_at = 3;
         ctx1 = JS_NewContextRaw(rt);
         assert(!ctx1);
         ctx1 = JS_NewContext(rt);
