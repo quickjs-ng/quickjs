@@ -3352,15 +3352,79 @@ static uint32_t hash_string(JSRuntime *rt, JSString *str, uint32_t h)
     return h;
 }
 
+// true if a character of |val| does not fit in 8 bits
+static bool string_rope_is_wide(JSValueConst val)
+{
+    JSStringRope *r;
+    JSString *p;
+    uint32_t i;
+
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
+        p = JS_VALUE_GET_STRING(val);
+        if (p->is_wide_char) {
+            for (i = 0; i < p->len; i++) {
+                if (str16(p)[i] > 0xFF)
+                    return true;
+            }
+        }
+        return false;
+    }
+    r = JS_VALUE_GET_STRING_ROPE(val);
+    if (!r->is_wide_char)
+        return false;
+    return string_rope_is_wide(r->left) || string_rope_is_wide(r->right);
+}
+
+typedef struct {
+    WyHash s;
+    bool is_wide;
+} JSRopeHash;
+
+static void hash_rope_update(JSRopeHash *t, JSValueConst val)
+{
+    uint16_t buf[32];
+    JSStringRope *r;
+    JSString *p;
+    uint32_t i, j, n;
+
+    if (JS_VALUE_GET_TAG(val) != JS_TAG_STRING) {
+        r = JS_VALUE_GET_STRING_ROPE(val);
+        hash_rope_update(t, r->left);
+        hash_rope_update(t, r->right);
+        return;
+    }
+    p = JS_VALUE_GET_STRING(val);
+    if (p->is_wide_char == t->is_wide) {
+        // as the characters are in memory, like hash_string() has them
+        wyhash_update(&t->s, strv(p), (size_t)p->len << p->is_wide_char);
+    } else if (p->is_wide_char) {
+        hash_string16_narrow(&t->s, str16(p), p->len);
+    } else {
+        for (i = 0; i < p->len; i += n) {
+            n = min_uint32(p->len - i, countof(buf));
+            for (j = 0; j < n; j++)
+                buf[j] = str8(p)[i + j];
+            wyhash_update(&t->s, buf, n * sizeof(buf[0]));
+        }
+    }
+}
+
+// same as hash_string() of the string that the rope stands for
 static uint32_t hash_string_rope(JSRuntime *rt, JSValueConst val, uint32_t h)
 {
-    if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
-        return hash_string(rt, JS_VALUE_GET_STRING(val), h);
-    } else {
-        JSStringRope *r = JS_VALUE_GET_STRING_ROPE(val);
-        h = hash_string_rope(rt, r->left, h);
-        return hash_string_rope(rt, r->right, h);
-    }
+    JSRopeHash t;
+    size_t len;
+
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING)
+        len = JS_VALUE_GET_STRING(val)->len;
+    else
+        len = JS_VALUE_GET_STRING_ROPE(val)->len;
+    t.is_wide = string_rope_is_wide(val);
+    if (t.is_wide)
+        h |= JS_HASH_SEED_WIDE;
+    wyhash_init(&t.s, rt->hash_key, h, len << t.is_wide);
+    hash_rope_update(&t, val);
+    return wyhash_fini(&t.s);
 }
 
 static __maybe_unused void JS_DumpString(JSRuntime *rt, JSString *p)
@@ -53784,7 +53848,8 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     case JS_TAG_STRING:
         return hash_string(rt, JS_VALUE_GET_STRING(key), tag);
     case JS_TAG_STRING_ROPE:
-        return hash_string_rope(rt, key, tag);
+        // a rope is the same key as the string that it stands for
+        return hash_string_rope(rt, key, JS_TAG_STRING);
     case JS_TAG_BIG_INT:
         r = JS_VALUE_GET_PTR(key);
         return hash_string8(rt, (void *)r->tab,
