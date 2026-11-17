@@ -38835,9 +38835,11 @@ static void js_object_list_init(JSObjectList *s)
     memset(s, 0, sizeof(*s));
 }
 
+// hash_size is a power of two, 4 or more. Pointers are aligned, so their
+// low bits, and those of a multiple, are the same for all objects.
 static uint32_t js_object_list_get_hash(JSObject *p, uint32_t hash_size)
 {
-    return ((uintptr_t)p * 3163) & (hash_size - 1);
+    return hash_uintptr((uintptr_t)p) >> (1 + clz_uintptr(hash_size));
 }
 
 static int js_object_list_resize_hash(JSContext *ctx, JSObjectList *s,
