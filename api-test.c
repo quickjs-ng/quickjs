@@ -2785,6 +2785,58 @@ static void random_bytes(void)
     }
 }
 
+static int fill_random_bytes(void *opaque, uint8_t *buf, size_t len)
+{
+    memset(buf, *(uint8_t *)opaque, len);
+    return 0;
+}
+
+// The strings of a character class are kept in a hash table with a random
+// key. The byte code of the regexp must not depend on the key: the output
+// of qjsc is expected to be the same every time.
+static void regexp_class_strings_bytecode(void)
+{
+    static const char code[] =
+        "/[\\q{abc|abd|abe|abf|bcd|bce|bcf|cde|cdf|def|xyz|xyw|xyv|uvw}]/v;"
+        "/[[\\q{abc|abd|abe|abf|bcd|bce}\\q{bcf|cde|cdf|def|xyz|xyw|xyv}]"
+        "--\\q{abe|cde}]/v;"
+        "/[\\q{abc|abd|abe|abf|bcd|bce|bcf|cde|cdf|def}&&\\q{abd|bcf|def}]/v;"
+        "/[\\q{Abc|aBd|abE|ABf|bCD|BcE|bcf|cde|CDF|dEf|xYz|XYW|xyV|uvw}]/vi";
+    JSRuntimeOptions options;
+    JSContext *ctx[2];
+    JSRuntime *rt[2];
+    uint8_t *buf[2];
+    size_t len[2];
+    uint8_t fill;
+    JSValue val;
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        fill = 1 + i;
+        memset(&options, 0, sizeof(options));
+        options.version = JS_RUNTIME_OPTIONS_VERSION;
+        options.random_bytes = fill_random_bytes;
+        options.random_opaque = &fill;
+        rt[i] = JS_NewRuntime3(&options);
+        assert(rt[i]);
+        ctx[i] = JS_NewContext(rt[i]);
+        assert(ctx[i]);
+        val = JS_Eval(ctx[i], code, strlen(code), "<input>",
+                      JS_EVAL_FLAG_COMPILE_ONLY);
+        assert(!JS_IsException(val));
+        buf[i] = JS_WriteObject(ctx[i], &len[i], val, JS_WRITE_OBJ_BYTECODE);
+        assert(buf[i]);
+        JS_FreeValue(ctx[i], val);
+    }
+    assert(len[0] == len[1]);
+    assert(0 == memcmp(buf[0], buf[1], len[0]));
+    for (i = 0; i < 2; i++) {
+        js_free(ctx[i], buf[i]);
+        JS_FreeContext(ctx[i]);
+        JS_FreeRuntime(rt[i]);
+    }
+}
+
 int main(void)
 {
     cfunctions();
@@ -2839,5 +2891,6 @@ int main(void)
     wyhash_vectors();
     string_hash_8_and_16_bits();
     random_bytes();
+    regexp_class_strings_bytecode();
     return 0;
 }
