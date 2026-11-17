@@ -22,6 +22,12 @@ int lre_check_timeout(void *opaque)
     return 0;
 }
 
+const uint64_t *lre_hash_key(void *opaque)
+{
+    static const uint64_t key[4];
+    return key;
+}
+
 void *lre_realloc(void *opaque, void *ptr, size_t size)
 {
     if (size == 0) {
