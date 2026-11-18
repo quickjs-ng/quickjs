@@ -304,3 +304,51 @@ import {assert} from "./assert.js"
     assert(u.get("x".repeat(3000) + "y".repeat(3000)), 6000)
     assert(u.size, 3)
 })()
+
+// A string that is not an atom remembers its hash. It forgets it when
+// another string is appended to it in place, which happens to the left
+// operand of a concatenation that has no other reference.
+;(function() {
+    const m = new Map, o = {}
+    for (let n = 1; n <= 40; n++) {
+        const word = "c".repeat(n)
+        m.set(word, n)
+        m.set(word + "!", -n)
+        o[word] = n
+        o[word + "!"] = -n
+    }
+    // the only reference to a string that was a key in a lookup
+    const hashedByMap = (n) => {
+        const t = ["c", "c".repeat(n - 1)].join("")
+        assert(m.get(t), n)
+        return t
+    }
+    // same; |o| has a property of that name, so |t| is not made an atom
+    const hashedByAtomTable = (n) => {
+        const t = ["c", "c".repeat(n - 1)].join("")
+        assert(o[t], n)
+        return t
+    }
+    for (let n = 1; n <= 40; n++) {
+        const t = hashedByMap(n) + "!"
+        assert(m.get(t), -n)
+        assert(o[t], -n)
+        const u = hashedByAtomTable(n) + "!"
+        assert(o[u], -n)
+        assert(m.get(u), -n)
+        const w = hashedByMap(n) + "一"
+        assert(m.has(w), false)
+        m.set(w, n)
+        assert(m.get("c".repeat(n) + "一"), n)
+    }
+    // the string of a symbol has no room for its hash
+    const d = ["de", "sc"].join("")
+    m.set("desc", 5)
+    assert(m.get(d), 5)
+    const sym = Symbol(d)
+    assert(m.get(d), 5)
+    assert(sym.description, "desc")
+    m.set(sym.description, 6)
+    assert(m.get("desc"), 6)
+    assert(m.get(["d", "esc"].join("")), 6)
+})()

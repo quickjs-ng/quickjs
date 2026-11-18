@@ -3353,6 +3353,30 @@ static uint32_t hash_string(JSRuntime *rt, JSString *str, uint32_t h)
     return h;
 }
 
+static no_inline uint32_t js_string_hash_slow(JSRuntime *rt, JSString *p)
+{
+    uint32_t h;
+
+    if (p->atom_type == JS_ATOM_TYPE_STRING)
+        return p->hash; // an atom whose hash is zero
+    h = hash_string(rt, p, JS_ATOM_TYPE_STRING) & JS_ATOM_HASH_MASK;
+    // the string of a symbol has no room for the hash in its header
+    if (p->atom_type == 0)
+        p->hash = h;
+    return h;
+}
+
+// The hash that a string has in the atom table, also if it is not in it.
+// A string that is not an atom keeps the hash in its header, where zero
+// means that it is not known yet; an atom has it there anyway. The string
+// must not change afterwards, see JS_ConcatString2().
+static inline uint32_t js_string_hash(JSRuntime *rt, JSString *p)
+{
+    if (likely(p->atom_type <= JS_ATOM_TYPE_STRING && p->hash != 0))
+        return p->hash;
+    return js_string_hash_slow(rt, p);
+}
+
 // true if a character of |val| does not fit in 8 bits
 static bool string_rope_is_wide(JSValueConst val)
 {
@@ -3643,8 +3667,12 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
         }
         /* try and locate an already registered atom */
         len = str->len;
-        h = hash_string(rt, str, atom_type);
-        h &= JS_ATOM_HASH_MASK;
+        if (atom_type == JS_ATOM_TYPE_STRING) {
+            h = js_string_hash(rt, str);
+        } else {
+            h = hash_string(rt, str, atom_type);
+            h &= JS_ATOM_HASH_MASK;
+        }
         h1 = h & (rt->atom_hash_size - 1);
         i = rt->atom_hash[h1];
         while (i != 0) {
@@ -5652,6 +5680,7 @@ static JSValue JS_ConcatString2(JSContext *ctx, JSValue op1, JSValue op2)
     &&  p1->is_wide_char == p2->is_wide_char
     &&  js_malloc_usable_size(ctx, p1) >= sizeof(*p1) + ((p1->len + p2->len) << p2->is_wide_char) + 1 - p1->is_wide_char) {
         /* Concatenate in place in available space at the end of p1 */
+        p1->hash = 0; // see js_string_hash()
         if (p1->is_wide_char) {
             memcpy(str16(p1) + p1->len, str16(p2), p2->len << 1);
             p1->len += p2->len;
@@ -53845,18 +53874,14 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     uint32_t tag = JS_VALUE_GET_NORM_TAG(key);
     JSRuntime *rt = ctx->rt;
     JSFloat64Union u;
-    JSString *p;
     JSBigInt *r;
 
     switch(tag) {
     case JS_TAG_STRING:
         // A string has the hash that it has in the atom table. Literals
-        // and property names are atoms and carry their hash; they are not
-        // hashed again.
-        p = JS_VALUE_GET_STRING(key);
-        if (p->atom_type == JS_ATOM_TYPE_STRING)
-            return p->hash;
-        return hash_string(rt, p, JS_ATOM_TYPE_STRING) & JS_ATOM_HASH_MASK;
+        // and property names are atoms and carry their hash, other
+        // strings remember it; they are not hashed again.
+        return js_string_hash(rt, JS_VALUE_GET_STRING(key));
     case JS_TAG_STRING_ROPE:
         // a rope is the same key as the string that it stands for
         return hash_string_rope(rt, key, JS_ATOM_TYPE_STRING) &
