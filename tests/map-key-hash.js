@@ -255,3 +255,52 @@ import {assert} from "./assert.js"
         assert(wm.delete(kept[i]), true)
     kept.forEach((k, i) => assert(wm.has(k), i % 2 === 1))
 })()
+
+// A string has the same hash whether or not it is an atom, also when it
+// becomes one while it is a key.
+;(function() {
+    const fresh = (i) => ["at", "om", i].join("") // not an atom
+    const m = new Map, s = new Set
+    for (let i = 0; i < 500; i++) {
+        m.set(fresh(i), i)
+        s.add(fresh(i))
+    }
+    // property names are atoms: every other key of |m| becomes one
+    const o = {}
+    for (const k of m.keys()) {
+        if (m.get(k) % 2)
+            o[k] = true
+    }
+    const names = Object.keys(o)
+    assert(names.length, 250)
+    for (let i = 0; i < 500; i++) {
+        assert(m.get(fresh(i)), i)
+        assert(s.has(fresh(i)), true)
+    }
+    for (const k of names) {
+        assert(m.get(k) % 2, 1)
+        assert(s.has(k), true)
+    }
+    assert(m.get("atom7"), 7)
+    assert(m.get("atom8"), 8)
+    assert(s.has("atom499"), true)
+    assert(s.has("atom500"), false)
+    // atoms in the table, other strings to look them up
+    const t = new Set(names)
+    t.add("literal")
+    for (let i = 1; i < 500; i += 2)
+        assert(t.has(fresh(i)), true)
+    assert(t.has(fresh(2)), false)
+    assert(t.has(["lite", "ral"].join("")), true)
+    assert(t.size, 251)
+    // 16 bit strings and ropes
+    const wide = {"一tom": 1, "\xE9tom": 2}
+    const long = {["x".repeat(3000) + "y".repeat(3000)]: 3}
+    const u = new Map
+    for (const k of [...Object.keys(wide), ...Object.keys(long)])
+        u.set(k, k.length)
+    assert(u.get(["一", "tom"].join("")), 4)
+    assert(u.get(("一" + "\xE9tom").slice(1)), 4)
+    assert(u.get("x".repeat(3000) + "y".repeat(3000)), 6000)
+    assert(u.size, 3)
+})()
