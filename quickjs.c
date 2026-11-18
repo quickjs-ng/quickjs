@@ -658,8 +658,9 @@ typedef struct JSWeakRefRecord {
 } JSWeakRefRecord;
 
 typedef struct JSMapRecord {
-    int ref_count; /* used during enumeration to avoid freeing the record */
-    bool empty; /* true if the record is deleted */
+    uint32_t ref_count : 31; /* used during enumeration to avoid freeing the record */
+    uint32_t empty : 1; /* true if the record is deleted */
+    uint32_t hash; // of the key, see map_hash_key()
     struct JSMapState *map;
     struct list_head link;
     struct list_head hash_link;
@@ -53884,19 +53885,37 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     return wyhash_u64(rt->hash_key, tag, u.u64);
 }
 
-static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,
-                                    JSValueConst key)
+// |h| is the hash of |key|. A record keeps the hash of its key, so that it
+// is computed once when a lookup is followed by an insertion, and not at
+// all when the table grows.
+static JSMapRecord *map_find_record_hash(JSContext *ctx, JSMapState *s,
+                                         JSValueConst key, uint32_t h)
 {
     struct list_head *el;
     JSMapRecord *mr;
-    uint32_t h;
-    h = map_hash_key(ctx, key) & (s->hash_size - 1);
-    list_for_each(el, &s->hash_table[h]) {
+    bool by_content;
+    uint32_t tag;
+
+    // Comparing strings or big integers means reading them: skip the
+    // records with another hash. Not for keys that are compared by value
+    // or by address: the check made lookups in big tables slower.
+    tag = JS_VALUE_GET_TAG(key);
+    by_content = (tag == JS_TAG_STRING || tag == JS_TAG_STRING_ROPE ||
+                  tag == JS_TAG_BIG_INT);
+    list_for_each(el, &s->hash_table[h & (s->hash_size - 1)]) {
         mr = list_entry(el, JSMapRecord, hash_link);
+        if (by_content && mr->hash != h)
+            continue;
         if (js_same_value_zero(ctx, mr->key, key))
             return mr;
     }
     return NULL;
+}
+
+static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,
+                                    JSValueConst key)
+{
+    return map_find_record_hash(ctx, s, key, map_hash_key(ctx, key));
 }
 
 static void map_hash_resize(JSContext *ctx, JSMapState *s)
@@ -53921,7 +53940,7 @@ static void map_hash_resize(JSContext *ctx, JSMapState *s)
     list_for_each(el, &s->records) {
         mr = list_entry(el, JSMapRecord, link);
         if (!mr->empty) {
-            h = map_hash_key(ctx, mr->key) & (new_hash_size - 1);
+            h = mr->hash & (new_hash_size - 1);
             list_add_tail(&mr->hash_link, &new_hash_table[h]);
         }
     }
@@ -53951,10 +53970,10 @@ static JSWeakRefRecord **get_first_weak_ref(JSValueConst key)
         return NULL; // pacify compiler
 }
 
+// |h| is the hash of |key|
 static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
-                                   JSValueConst key)
+                                   JSValueConst key, uint32_t h)
 {
-    uint32_t h;
     JSMapRecord *mr;
 
     mr = js_malloc(ctx, sizeof(*mr));
@@ -53963,6 +53982,7 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
     mr->ref_count = 1;
     mr->map = s;
     mr->empty = false;
+    mr->hash = h;
     if (s->is_weak) {
         JSWeakRefRecord *wr = js_malloc(ctx, sizeof(*wr));
         if (!wr) {
@@ -53976,8 +53996,7 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
     } else {
         mr->key = js_dup(key);
     }
-    h = map_hash_key(ctx, key) & (s->hash_size - 1);
-    list_add_tail(&mr->hash_link, &s->hash_table[h]);
+    list_add_tail(&mr->hash_link, &s->hash_table[h & (s->hash_size - 1)]);
     list_add_tail(&mr->link, &s->records);
     s->record_count++;
     if (s->record_count >= s->record_count_threshold) {
@@ -54045,6 +54064,7 @@ static JSValue js_map_set(JSContext *ctx, JSValueConst this_val,
     JSMapState *s = JS_GetOpaque2(ctx, this_val, JS_CLASS_MAP + magic);
     JSMapRecord *mr;
     JSValueConst key, value;
+    uint32_t h;
     int is_set;
 
     if (!s)
@@ -54057,11 +54077,12 @@ static JSValue js_map_set(JSContext *ctx, JSValueConst this_val,
         value = JS_UNDEFINED;
     else
         value = argv[1];
-    mr = map_find_record(ctx, s, key);
+    h = map_hash_key(ctx, key);
+    mr = map_find_record_hash(ctx, s, key, h);
     if (mr) {
         JS_FreeValue(ctx, mr->value);
     } else {
-        mr = map_add_record(ctx, s, key);
+        mr = map_add_record(ctx, s, key, h);
         if (!mr)
             return JS_EXCEPTION;
     }
@@ -54095,6 +54116,7 @@ static JSValue js_map_getOrInsert(JSContext *ctx, JSValueConst this_val,
     JSMapRecord *mr;
     JSValueConst key;
     JSValue value;
+    uint32_t h;
 
     if (!s)
         return JS_EXCEPTION;
@@ -54103,19 +54125,20 @@ static JSValue js_map_getOrInsert(JSContext *ctx, JSValueConst this_val,
     key = map_normalize_key_const(ctx, argv[0]);
     if (s->is_weak && !is_valid_weakref_target(key))
         return JS_ThrowTypeError(ctx, "invalid value used as WeakMap key");
-    mr = map_find_record(ctx, s, key);
+    h = map_hash_key(ctx, key);
+    mr = map_find_record_hash(ctx, s, key, h);
     if (!mr) {
         if (computed) {
             value = JS_Call(ctx, argv[1], JS_UNDEFINED, 1, &key);
             if (JS_IsException(value))
                 return JS_EXCEPTION;
-            mr = map_find_record(ctx, s, key);
+            mr = map_find_record_hash(ctx, s, key, h);
             if (mr)
                 map_delete_record(ctx->rt, s, mr);
         } else {
             value = js_dup(argv[1]);
         }
-        mr = map_add_record(ctx, s, key);
+        mr = map_add_record(ctx, s, key, h);
         if (!mr) {
             JS_FreeValue(ctx, value);
             return JS_EXCEPTION;
@@ -54835,6 +54858,7 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
     JSMapState *s, *t;
     JSMapRecord *mr;
     uint64_t size;
+    uint32_t h;
     int done, ok;
 
     s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
@@ -54864,11 +54888,12 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
             if (done) // item is JS_UNDEFINED
                 break;
             item = map_normalize_key(ctx, item);
-            if (!map_find_record(ctx, s, item)) {
+            h = map_hash_key(ctx, item);
+            if (!map_find_record_hash(ctx, s, item, h)) {
                 JS_FreeValue(ctx, item);
-            } else if (map_find_record(ctx, t, item)) {
+            } else if (map_find_record_hash(ctx, t, item, h)) {
                 JS_FreeValue(ctx, item); // no duplicates
-            } else if ((mr = map_add_record(ctx, t, item))) {
+            } else if ((mr = map_add_record(ctx, t, item, h))) {
                 JS_FreeValue(ctx, item);
                 mr->value = JS_UNDEFINED;
             } else {
@@ -54894,9 +54919,10 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
             ok = JS_ToBoolFree(ctx, rv); // returns -1 if rv is JS_EXCEPTION
             if (ok > 0) {
                 item = map_normalize_key(ctx, item);
-                if (map_find_record(ctx, t, item)) {
+                h = map_hash_key(ctx, item);
+                if (map_find_record_hash(ctx, t, item, h)) {
                     JS_FreeValue(ctx, item); // no duplicates
-                } else if ((mr = map_add_record(ctx, t, item))) {
+                } else if ((mr = map_add_record(ctx, t, item, h))) {
                     JS_FreeValue(ctx, item);
                     mr->value = JS_UNDEFINED;
                 } else {
@@ -54930,6 +54956,7 @@ static JSValue js_set_difference(JSContext *ctx, JSValueConst this_val,
     JSMapState *s, *t;
     JSMapRecord *mr;
     uint64_t size;
+    uint32_t h;
     int done;
     int ok;
 
@@ -54983,9 +55010,10 @@ static JSValue js_set_difference(JSContext *ctx, JSValueConst this_val,
             ok = JS_ToBoolFree(ctx, rv); // returns -1 if rv is JS_EXCEPTION
             if (ok == 0) {
                 item = map_normalize_key(ctx, item);
-                if (map_find_record(ctx, t, item)) {
+                h = map_hash_key(ctx, item);
+                if (map_find_record_hash(ctx, t, item, h)) {
                     JS_FreeValue(ctx, item); // no duplicates
-                } else if ((mr = map_add_record(ctx, t, item))) {
+                } else if ((mr = map_add_record(ctx, t, item, h))) {
                     JS_FreeValue(ctx, item);
                     mr->value = JS_UNDEFINED;
                 } else {
@@ -55020,6 +55048,7 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
     JSMapState *s, *t;
     JSMapRecord *mr;
     uint64_t size;
+    uint32_t h;
     int done;
     bool present;
 
@@ -55042,7 +55071,7 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
         mr = list_entry(el, JSMapRecord, link);
         if (mr->empty)
             continue;
-        mr = map_add_record(ctx, t, mr->key);
+        mr = map_add_record(ctx, t, mr->key, mr->hash);
         if (!mr)
             goto exception;
         mr->value = JS_UNDEFINED;
@@ -55068,8 +55097,9 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
         // - if item exists in |new| but misses in |this|, *don't* add it,
         //   mutating iterator erased it
         item = map_normalize_key(ctx, item);
-        present = (NULL != map_find_record(ctx, s, item));
-        mr = map_find_record(ctx, t, item);
+        h = map_hash_key(ctx, item);
+        present = (NULL != map_find_record_hash(ctx, s, item, h));
+        mr = map_find_record_hash(ctx, t, item, h);
         if (present) {
             if (mr)
                 map_delete_record(ctx->rt, t, mr);
@@ -55077,7 +55107,7 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
         } else if (mr) {
             JS_FreeValue(ctx, item);
         } else {
-            mr = map_add_record(ctx, t, item);
+            mr = map_add_record(ctx, t, item, h);
             JS_FreeValue(ctx, item);
             if (!mr)
                 goto exception;
@@ -55124,7 +55154,7 @@ static JSValue js_set_union(JSContext *ctx, JSValueConst this_val,
         mr = list_entry(el, JSMapRecord, link);
         if (mr->empty)
             continue;
-        mr = map_add_record(ctx, t, mr->key);
+        mr = map_add_record(ctx, t, mr->key, mr->hash);
         if (!mr)
             goto exception;
         mr->value = JS_UNDEFINED;

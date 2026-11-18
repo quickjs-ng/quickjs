@@ -159,3 +159,66 @@ import {assert} from "./assert.js"
         assert(m.get(str), i)
     })
 })()
+
+// A record keeps the hash of its key. The table uses it when it grows,
+// and Set methods use it when they copy records to a new Set.
+;(function() {
+    const obj = {}, sym = Symbol()
+    const rope = "x".repeat(3000) + "y".repeat(3000)
+    const keys = [0, 1, -1, 0.5, NaN, 2 ** 40, "", "a", "一", rope,
+                  10n, 1n << 70n, true, null, undefined, obj, sym]
+    const check = (t) => {
+        for (const k of keys)
+            assert(t.has(k), true)
+    }
+    const s = new Set(keys)
+    // grows the table several times
+    for (let i = 0; i < 5000; i++)
+        s.add("filler" + i)
+    assert(s.size, 5000 + keys.length)
+    check(s)
+    const fillers = new Set
+    for (let i = 0; i < 6000; i++)
+        fillers.add("filler" + i)
+    const small = new Set(keys)
+    const sets = [
+        [s.union(new Set(["a", obj, "new"])), s.size + 1],
+        [s.symmetricDifference(new Set(["new"])), s.size + 1],
+        [s.intersection(small), keys.length],
+        [small.intersection(s), keys.length],
+        [s.difference(new Set(["filler0"])), s.size - 1],
+        [small.difference(fillers), keys.length],
+    ]
+    for (const [t, size] of sets) {
+        assert(t.size, size)
+        check(t)
+        // the copies are found again after the new table has grown
+        for (let i = 0; i < 20000; i++)
+            t.add(i + 0.25)
+        assert(t.size, size + 20000)
+        check(t)
+    }
+    assert(s.difference(fillers).size, keys.length)
+    assert(small.symmetricDifference(small).size, 0)
+    // an iterator holds on to a deleted record while the table grows
+    const m = new Map([[1, "a"], [2, "b"]])
+    const it = m.keys()
+    assert(it.next().value, 1)
+    m.delete(1)
+    for (let i = 10; i < 1000; i++)
+        m.set(i, i)
+    assert(m.has(1), false)
+    assert(it.next().value, 2)
+    m.set(1, "c")
+    assert(m.get(1), "c")
+    // the callback grows the table between the lookup and the insertion
+    const g = new Map
+    const v = g.getOrInsertComputed("k", () => {
+        for (let i = 0; i < 1000; i++)
+            g.set(i, i)
+        return 42
+    })
+    assert(v, 42)
+    assert(g.get("k"), 42)
+    assert(g.size, 1001)
+})()
