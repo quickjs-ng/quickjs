@@ -53845,14 +53845,22 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
     uint32_t tag = JS_VALUE_GET_NORM_TAG(key);
     JSRuntime *rt = ctx->rt;
     JSFloat64Union u;
+    JSString *p;
     JSBigInt *r;
 
     switch(tag) {
     case JS_TAG_STRING:
-        return hash_string(rt, JS_VALUE_GET_STRING(key), tag);
+        // A string has the hash that it has in the atom table. Literals
+        // and property names are atoms and carry their hash; they are not
+        // hashed again.
+        p = JS_VALUE_GET_STRING(key);
+        if (p->atom_type == JS_ATOM_TYPE_STRING)
+            return p->hash;
+        return hash_string(rt, p, JS_ATOM_TYPE_STRING) & JS_ATOM_HASH_MASK;
     case JS_TAG_STRING_ROPE:
         // a rope is the same key as the string that it stands for
-        return hash_string_rope(rt, key, JS_TAG_STRING);
+        return hash_string_rope(rt, key, JS_ATOM_TYPE_STRING) &
+            JS_ATOM_HASH_MASK;
     case JS_TAG_BIG_INT:
         r = JS_VALUE_GET_PTR(key);
         return hash_string8(rt, (void *)r->tab,
