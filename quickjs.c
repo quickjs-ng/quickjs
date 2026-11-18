@@ -5491,7 +5491,9 @@ static JSValue JS_ConcatString2(JSContext *ctx, JSValue op1, JSValue op2)
     if (p2->len == 0) {
         goto ret_op1;
     }
-    if (JS_REF_COUNT(p1) == 1 && p1->is_wide_char == p2->is_wide_char
+    // not if p1 is an atom: the atom table finds it by its characters
+    if (JS_REF_COUNT(p1) == 1 && p1->atom_type == 0
+    &&  p1->is_wide_char == p2->is_wide_char
     &&  js_malloc_usable_size(ctx, p1) >= sizeof(*p1) + ((p1->len + p2->len) << p2->is_wide_char) + 1 - p1->is_wide_char) {
         /* Concatenate in place in available space at the end of p1 */
         if (p1->is_wide_char) {
