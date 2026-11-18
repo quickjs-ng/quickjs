@@ -222,3 +222,36 @@ import {assert} from "./assert.js"
     assert(g.get("k"), 42)
     assert(g.size, 1001)
 })()
+
+// records leave their bucket one by one, in any order, also when the
+// garbage collector removes them from a WeakMap
+;(function() {
+    const m = new Map
+    for (let i = 0; i < 3000; i++)
+        m.set("k" + i, i)
+    for (let i = 0; i < 3000; i += 3)
+        assert(m.delete("k" + i), true)
+    assert(m.size, 2000)
+    for (let i = 0; i < 3000; i++)
+        assert(m.get("k" + i), i % 3 ? i : undefined)
+    for (let i = 2999; i >= 0; i -= 3)
+        assert(m.delete("k" + i), true)
+    for (let i = 0; i < 3000; i += 3)
+        m.set("k" + i, -i)
+    assert(m.size, 2000)
+    for (let i = 0; i < 3000; i++)
+        assert(m.get("k" + i), [-i, i, undefined][i % 3])
+    const wm = new WeakMap
+    let keys = []
+    for (let i = 0; i < 3000; i++) {
+        keys.push({})
+        wm.set(keys[i], i)
+    }
+    const kept = keys.filter((k, i) => i % 3 === 0)
+    keys = null
+    gc()
+    kept.forEach((k, i) => assert(wm.get(k), 3 * i))
+    for (let i = 0; i < 1000; i += 2)
+        assert(wm.delete(kept[i]), true)
+    kept.forEach((k, i) => assert(wm.has(k), i % 2 === 1))
+})()

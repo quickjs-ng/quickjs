@@ -663,7 +663,7 @@ typedef struct JSMapRecord {
     uint32_t hash; // of the key, see map_hash_key()
     struct JSMapState *map;
     struct list_head link;
-    struct list_head hash_link;
+    struct JSMapRecord *hash_next; // in the bucket of the hash table
     JSValue key;
     JSValue value;
 } JSMapRecord;
@@ -672,7 +672,7 @@ typedef struct JSMapState {
     bool is_weak; /* true if WeakSet/WeakMap */
     struct list_head records; /* list of JSMapRecord.link */
     uint32_t record_count;
-    struct list_head *hash_table;
+    JSMapRecord **hash_table;
     uint32_t hash_size; /* must be a power of two */
     uint32_t record_count_threshold; /* count at which a hash table
                                         resize is needed */
@@ -53737,8 +53737,8 @@ static JSValue js_map_constructor(JSContext *ctx, JSValueConst new_target,
     s->hash_table = js_malloc(ctx, sizeof(s->hash_table[0]) * s->hash_size);
     if (!s->hash_table)
         goto fail;
-    init_list_head(&s->hash_table[0]);
-    s->record_count_threshold = 4;
+    s->hash_table[0] = NULL;
+    s->record_count_threshold = 2;
 
     arr = JS_UNDEFINED;
     if (argc > 0)
@@ -53891,7 +53891,6 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
 static JSMapRecord *map_find_record_hash(JSContext *ctx, JSMapState *s,
                                          JSValueConst key, uint32_t h)
 {
-    struct list_head *el;
     JSMapRecord *mr;
     bool by_content;
     uint32_t tag;
@@ -53902,8 +53901,8 @@ static JSMapRecord *map_find_record_hash(JSContext *ctx, JSMapState *s,
     tag = JS_VALUE_GET_TAG(key);
     by_content = (tag == JS_TAG_STRING || tag == JS_TAG_STRING_ROPE ||
                   tag == JS_TAG_BIG_INT);
-    list_for_each(el, &s->hash_table[h & (s->hash_size - 1)]) {
-        mr = list_entry(el, JSMapRecord, hash_link);
+    mr = s->hash_table[h & (s->hash_size - 1)];
+    for(; mr != NULL; mr = mr->hash_next) {
         if (by_content && mr->hash != h)
             continue;
         if (js_same_value_zero(ctx, mr->key, key))
@@ -53918,11 +53917,13 @@ static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,
     return map_find_record_hash(ctx, s, key, map_hash_key(ctx, key));
 }
 
+// The table has at least as many buckets as there are records, so that a
+// bucket holds one record on average and often none.
 static void map_hash_resize(JSContext *ctx, JSMapState *s)
 {
-    uint32_t new_hash_size, i, h;
-    struct list_head *new_hash_table, *el;
-    JSMapRecord *mr;
+    uint32_t new_hash_size, h;
+    JSMapRecord **new_hash_table, *mr;
+    struct list_head *el;
 
     /* XXX: no reporting of memory allocation failure */
     if (s->hash_size == 1)
@@ -53934,19 +53935,30 @@ static void map_hash_resize(JSContext *ctx, JSMapState *s)
     if (!new_hash_table)
         return;
 
-    for(i = 0; i < new_hash_size; i++)
-        init_list_head(&new_hash_table[i]);
+    memset(new_hash_table, 0, sizeof(new_hash_table[0]) * new_hash_size);
 
     list_for_each(el, &s->records) {
         mr = list_entry(el, JSMapRecord, link);
         if (!mr->empty) {
             h = mr->hash & (new_hash_size - 1);
-            list_add_tail(&mr->hash_link, &new_hash_table[h]);
+            mr->hash_next = new_hash_table[h];
+            new_hash_table[h] = mr;
         }
     }
     s->hash_table = new_hash_table;
     s->hash_size = new_hash_size;
-    s->record_count_threshold = new_hash_size * 2;
+    s->record_count_threshold = new_hash_size;
+}
+
+// take |mr| out of its bucket
+static void map_unlink_record(JSMapState *s, JSMapRecord *mr)
+{
+    JSMapRecord **pmr;
+
+    pmr = &s->hash_table[mr->hash & (s->hash_size - 1)];
+    while (*pmr != mr)
+        pmr = &(*pmr)->hash_next;
+    *pmr = mr->hash_next;
 }
 
 static JSWeakRefRecord **get_first_weak_ref(JSValueConst key)
@@ -53996,7 +54008,9 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
     } else {
         mr->key = js_dup(key);
     }
-    list_add_tail(&mr->hash_link, &s->hash_table[h & (s->hash_size - 1)]);
+    h &= s->hash_size - 1;
+    mr->hash_next = s->hash_table[h];
+    s->hash_table[h] = mr;
     list_add_tail(&mr->link, &s->records);
     s->record_count++;
     if (s->record_count >= s->record_count_threshold) {
@@ -54029,7 +54043,7 @@ static void map_delete_record(JSRuntime *rt, JSMapState *s, JSMapRecord *mr)
 {
     if (mr->empty)
         return;
-    list_del(&mr->hash_link);
+    map_unlink_record(s, mr);
     if (s->is_weak) {
         delete_map_weak_ref(rt, mr);
     } else {
@@ -63894,7 +63908,7 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             s = mr->map;
             assert(s->is_weak);
             assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
-            list_del(&mr->hash_link);
+            map_unlink_record(s, mr);
             list_del(&mr->link);
             s->record_count--;
             break;
