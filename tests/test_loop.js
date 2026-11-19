@@ -347,11 +347,141 @@ function test_try_catch8()
     assert(s === "xafyaf");
 }
 
+function test_for_let_continue()
+{
+    /* 'continue' must not skip the per-iteration copy of the
+       lexical loop variables */
+    var fs, log;
+    function run(fs) {
+        return fs.map(function (f) { return f(); }).join();
+    }
+
+    fs = [];
+    for (let i = 0; i < 3; i++) {
+        fs.push(() => i);
+        continue;
+    }
+    assert(run(fs), "0,1,2", "continue");
+
+    fs = [];
+    for (let i = 0; i < 4; i++) {
+        fs.push(() => i);
+        if (i & 1)
+            continue;
+    }
+    assert(run(fs), "0,1,2,3", "conditional continue");
+
+    fs = [];
+    for (let i = 0; i < 3;) {
+        fs.push(() => i);
+        i++;
+        continue;
+    }
+    assert(run(fs), "1,2,3", "no increment");
+
+    fs = [];
+    for (let i = 0;; i++) {
+        if (i == 3)
+            break;
+        fs.push(() => i);
+        continue;
+    }
+    assert(run(fs), "0,1,2", "no test");
+
+    fs = [];
+    for (let i = 0, j = 10; i < 3; i++, j--) {
+        let k = i * 2;
+        fs.push(() => i + ":" + j + ":" + k);
+        continue;
+    }
+    assert(run(fs), "0:10:0,1:9:2,2:8:4", "two variables and body let");
+
+    fs = [];
+    L1: for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            if (j > i)
+                continue L1;
+            fs.push(() => i + ":" + j);
+        }
+    }
+    assert(run(fs), "0:0,1:0,1:1,2:0,2:1,2:2", "labelled continue from for");
+
+    fs = [];
+    L2: for (let i = 0; i < 3; i++) {
+        fs.push(() => i);
+        for (var x of [1, 2]) {
+            continue L2;
+        }
+    }
+    assert(run(fs), "0,1,2", "labelled continue from for-of");
+
+    fs = [];
+    for (let i = 0; i < 3; i++) {
+        try {
+            fs.push(() => i);
+            continue;
+        } finally {
+            fs.push(() => "f" + i);
+        }
+    }
+    assert(run(fs), "0,f0,1,f1,2,f2", "continue in try/finally");
+
+    fs = [];
+    for (let i = 0; i < 3; i++) {
+        switch (i) {
+        case 1:
+            fs.push(() => "s" + i);
+            continue;
+        default:
+            fs.push(() => i);
+        }
+    }
+    assert(run(fs), "0,s1,2", "continue in switch");
+
+    fs = [];
+    for (let i = 0; i < 3; fs.push(() => "u" + i), i++) {
+        fs.push(() => i);
+        continue;
+    }
+    assert(run(fs), "0,u1,1,u2,2,u3", "closure in increment");
+
+    fs = [];
+    for (let i = 0; i < 3; i++) {
+        fs.push(() => i);
+        if (i == 1) {
+            i = 5;
+            continue;
+        }
+    }
+    assert(run(fs), "0,5", "assignment before continue");
+
+    fs = [];
+    function *g() {
+        for (let i = 0; i < 3; i++) {
+            fs.push(() => i);
+            yield i;
+            continue;
+        }
+    }
+    for (var v of g());
+    assert(run(fs), "0,1,2", "generator");
+
+    log = [];
+    fs = [];
+    for (using r = { [Symbol.dispose]() { log.push("d"); } }; fs.length < 3;) {
+        let k = fs.length;
+        fs.push(() => k);
+        continue;
+    }
+    assert(run(fs) + ";" + log.join(), "0,1,2;d", "using in head");
+}
+
 test_while();
 test_while_break();
 test_do_while();
 test_for();
 test_for_break();
+test_for_let_continue();
 test_switch1();
 test_switch2();
 test_for_in();
