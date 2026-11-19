@@ -456,6 +456,32 @@ function test_object_literal()
     assert(JSON.stringify(a), '{"x":0,"get":1,"set":2,"async":3}');
 }
 
+function test_array_literal()
+{
+    var a;
+
+    /* holes and more than 32 elements are not parsed by the same code
+       as small arrays */
+    a = [, 1, 2];
+    assert(a.length, 3);
+    assert(a.toString(), ",1,2");
+    a = [1, , 2, 3, ];
+    assert(a.length, 4);
+    a = [1, , ];
+    assert(a.length, 2);
+    a = eval("[" + "0, ".repeat(33) + "]");
+    assert(a.length, 33);
+    a = eval("[" + "0, ".repeat(33) + ", ]");
+    assert(a.length, 34);
+
+    assert_throws(SyntaxError, "[1 2]");
+    assert_throws(SyntaxError, "[, 1 2]");
+    assert_throws(SyntaxError, "[1, , 2 3]");
+    assert_throws(SyntaxError, "[, 1 ...[2]]");
+    assert_throws(SyntaxError, "[" + "0, ".repeat(32) + "1 2]");
+    assert_throws(SyntaxError, "[" + "0, ".repeat(32) + "1 ...[2]]");
+}
+
 function test_regexp_skip()
 {
     var a, b;
@@ -1134,6 +1160,7 @@ test_template();
 test_template_skip();
 test_template_tostring_order();
 test_object_literal();
+test_array_literal();
 test_regexp_skip();
 test_labels();
 test_destructuring();
