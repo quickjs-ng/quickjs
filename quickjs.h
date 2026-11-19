@@ -1182,6 +1182,21 @@ typedef void JSPromiseHook(JSContext *ctx, JSPromiseHookType type,
 JS_EXTERN void JS_SetPromiseHook(JSRuntime *rt, JSPromiseHook promise_hook,
                                  void *opaque);
 
+// A value that follows the asynchronous flow of the code. Every job and every
+// promise reaction (then, catch, finally, await) runs with the value that was
+// current when it was queued or registered, and the previous value is restored
+// when it ends. FinalizationRegistry callbacks run with undefined. An embedder
+// can build things like AsyncLocalStorage on it.
+// Callbacks that come from the embedder (timers, I/O, the module body that a
+// deferred JS_LoadModule evaluates) are not tracked: get the value before they
+// are scheduled and set it around the call that resumes the script.
+// A value set outside a job stays until it is set again. JS_FreeRuntime
+// releases it.
+// JS_GetContinuationData returns a new reference. JS_SetContinuationData does
+// not take ownership of val, it keeps its own reference.
+JS_EXTERN JSValue JS_GetContinuationData(JSRuntime *rt);
+JS_EXTERN void JS_SetContinuationData(JSRuntime *rt, JSValueConst val);
+
 /* is_handled = true means that the rejection is handled */
 typedef void JSHostPromiseRejectionTracker(JSContext *ctx, JSValueConst promise,
                                            JSValueConst reason,
