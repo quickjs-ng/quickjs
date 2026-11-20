@@ -2516,6 +2516,53 @@ static void dynamic_import_deferred_reject(void)
     JS_FreeRuntime(rt);
 }
 
+// a GC threshold above the memory limit must not keep collectable cycles
+// from being collected before the limit is hit
+static void gc_threshold_above_memory_limit(void)
+{
+    static const char setup_code[] =
+        "globalThis.keep = new Uint8Array(6 << 20);";
+    static const char garbage_code[] =
+        "for (let i = 0; i < 200000; i++) { const a = {}; a.self = a; }";
+    const size_t limit = 8 << 20;
+    JSRuntime *rt;
+    JSContext *ctx;
+    JSValue ret;
+
+    rt = new_runtime();
+    JS_SetMemoryLimit(rt, limit);
+    ctx = JS_NewContext(rt);
+
+    // the threshold a collection sets, 1.5x the live heap, is above the limit
+    ret = eval(ctx, setup_code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    ret = eval(ctx, garbage_code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    assert(JS_GetGCThreshold(rt) > limit);
+
+    ret = eval(ctx, "delete globalThis.keep");
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JS_RunGC(rt);
+
+    // so is one set by the embedder
+    JS_SetGCThreshold(rt, 2 * limit);
+    ret = eval(ctx, garbage_code);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+
+    // -1 still disables automatic GC
+    JS_SetGCThreshold(rt, -1);
+    ret = eval(ctx, garbage_code);
+    assert(JS_IsException(ret));
+    JS_FreeValue(ctx, JS_GetException(ctx));
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 int main(void)
 {
     cfunctions();
@@ -2566,5 +2613,6 @@ int main(void)
     private_symbols();
     new_context_low_memory();
     json_stringify_oom();
+    gc_threshold_above_memory_limit();
     return 0;
 }
