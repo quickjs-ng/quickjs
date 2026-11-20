@@ -2516,6 +2516,326 @@ static void dynamic_import_deferred_reject(void)
     JS_FreeRuntime(rt);
 }
 
+// a Map or Set must find its keys no matter what context it is used from
+static void map_across_contexts(void)
+{
+    static const char make[] =
+        "var m = new Map;"
+        "for (var i = 0; i < 100; i++) m.set('k' + i, i);"
+        "m";
+    static const char use[] =
+        "var n = 0;"
+        "for (var i = 0; i < 100; i++) n += Map.prototype.has.call(m, 'k' + i);"
+        "n";
+    JSValue map, global, ret;
+    JSContext *ctx1, *ctx2;
+    JSRuntime *rt;
+    int32_t n;
+
+    rt = new_runtime();
+    ctx1 = JS_NewContext(rt);
+    ctx2 = JS_NewContext(rt);
+    map = eval(ctx1, make);
+    assert(JS_IsObject(map));
+    global = JS_GetGlobalObject(ctx2);
+    assert(1 == JS_SetPropertyStr(ctx2, global, "m", map));
+    JS_FreeValue(ctx2, global);
+    ret = eval(ctx2, use);
+    assert(0 == JS_ToInt32(ctx2, &n, ret));
+    assert(100 == n);
+    JS_FreeValue(ctx2, ret);
+    JS_FreeContext(ctx2);
+    JS_FreeContext(ctx1);
+    JS_FreeRuntime(rt);
+}
+
+static void wyhash_vectors(void)
+{
+    // the hashes of the first |len| of the bytes 0, 1, 2, ...
+    static const struct {
+        size_t len;
+        uint32_t hash[2]; // on 64-bit and on 32-bit targets
+    } vectors[] = {
+        {0, {0x03020100, 0x61004162}},
+        {3, {0xC3832169, 0xB080CFBC}},
+        {7, {0x8E2C96D8, 0x125C16F6}},
+        {8, {0x15F4CBDA, 0xCC74E9F6}},
+        {16, {0xFFF88E0C, 0x906E64AB}},
+        {17, {0x29640C12, 0x27DD09C5}},
+        {48, {0x6BDDD223, 0x7BACB1CC}},
+        {49, {0x2EBD5EA4, 0x93410B7B}},
+        {100, {0xD973FB05, 0x3F4CE947}},
+    };
+    // the key is the bytes 0, 1, ..., 31
+    static const uint64_t key[WYHASH_KEY_WORDS] = {
+        0x0706050403020100, 0x0F0E0D0C0B0A0908,
+        0x1716151413121110, 0x1F1E1D1C1B1A1918,
+    };
+    static const size_t pieces[] = {1, 3, 8, 16, 17, 48, 49, 200};
+    size_t i, j, n, len;
+    uint8_t buf[200];
+    uint64_t x;
+    uint32_t h;
+    WyHash s;
+
+    for (i = 0; i < countof(buf); i++)
+        buf[i] = i;
+    if (!is_be()) {
+        for (i = 0; i < countof(vectors); i++) {
+            h = vectors[i].hash[sizeof(void *) < 8];
+            assert(h == wyhash(key, 0, buf, vectors[i].len));
+        }
+    }
+    // the seed gives another function
+    assert(wyhash(key, 0, buf, 8) != wyhash(key, 1, buf, 8));
+    memcpy(&x, buf, sizeof(x));
+    assert(wyhash(key, 1, buf, 8) == wyhash_u64(key, 1, x));
+    // an input that is hashed in pieces has the hash of the whole
+    for (len = 0; len <= countof(buf); len++) {
+        h = wyhash(key, 1, buf, len);
+        for (i = 0; i < countof(pieces); i++) {
+            wyhash_init(&s, key, 1, len);
+            for (j = 0; j < len; j += n) {
+                n = len - j < pieces[i] ? len - j : pieces[i];
+                wyhash_update(&s, buf + j, n);
+            }
+            assert(h == wyhash_fini(&s));
+        }
+    }
+}
+
+// equal strings must hash alike, whether they are stored with 8 or with
+// 16 bits per character
+static void string_hash_8_and_16_bits(void)
+{
+    static const char fill[] =
+        "var s = 'abcdefghijklmnopqrstuvwxyz'.repeat(4);"
+        "var m8 = new Map, m16 = new Map, o8 = {}, o16 = {}, n = 0;"
+        "for (var i = 1; i <= 104; i++) {"
+        "    m8.set(s.slice(0, i), i);"
+        "    o8[s.slice(0, i)] = i;"
+        "}";
+    static const char check[] =
+        "for (var i = 1; i <= 104; i++) {"
+        "    n += (i === m16.get(s.slice(0, i)));"
+        "    n += (i === o16[s.slice(0, i)]);"
+        "}"
+        "n";
+    JSValue global, m8, m16, o8, o16, key, val, ret;
+    JSValueConst args[2];
+    uint16_t buf[104]; // more than the hash takes in one piece
+    JSContext *ctx;
+    JSRuntime *rt;
+    JSAtom atom;
+    int32_t n;
+    int i;
+
+    rt = new_runtime();
+    ctx = JS_NewContext(rt);
+    ret = eval(ctx, fill);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    global = JS_GetGlobalObject(ctx);
+    m8 = JS_GetPropertyStr(ctx, global, "m8");
+    m16 = JS_GetPropertyStr(ctx, global, "m16");
+    o8 = JS_GetPropertyStr(ctx, global, "o8");
+    o16 = JS_GetPropertyStr(ctx, global, "o16");
+    for (i = 0; i < countof(buf); i++)
+        buf[i] = 'a' + i % 26;
+    for (i = 1; i <= (int)countof(buf); i++) {
+        key = JS_NewStringUTF16(ctx, buf, i);
+        val = JS_NewInt32(ctx, i);
+        args[0] = key;
+        args[1] = val;
+        // 8 bits in the table, 16 bits in the lookup
+        atom = JS_NewAtom(ctx, "get");
+        ret = JS_Invoke(ctx, m8, atom, 1, args);
+        JS_FreeAtom(ctx, atom);
+        assert(0 == JS_ToInt32(ctx, &n, ret));
+        assert(i == n);
+        atom = JS_ValueToAtom(ctx, key);
+        assert(JS_ATOM_NULL != atom);
+        ret = JS_GetProperty(ctx, o8, atom);
+        assert(0 == JS_ToInt32(ctx, &n, ret));
+        assert(i == n);
+        // and the other way around
+        assert(1 == JS_SetProperty(ctx, o16, atom, JS_DupValue(ctx, val)));
+        JS_FreeAtom(ctx, atom);
+        atom = JS_NewAtom(ctx, "set");
+        ret = JS_Invoke(ctx, m16, atom, 2, args);
+        JS_FreeAtom(ctx, atom);
+        assert(!JS_IsException(ret));
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, key);
+    }
+    ret = eval(ctx, check);
+    assert(0 == JS_ToInt32(ctx, &n, ret));
+    assert(2 * (int)countof(buf) == n);
+    JS_FreeValue(ctx, o16);
+    JS_FreeValue(ctx, o8);
+    JS_FreeValue(ctx, m16);
+    JS_FreeValue(ctx, m8);
+    JS_FreeValue(ctx, global);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+struct random_bytes_state {
+    int calls;
+    int fail_at; // the call that fails, counting from one
+};
+
+static int random_bytes_func(void *opaque, uint8_t *buf, size_t len)
+{
+    struct random_bytes_state *state = opaque;
+
+    if (++state->calls == state->fail_at)
+        return -1;
+    memset(buf, 42, len);
+    return 0;
+}
+
+static double math_random(JSContext *ctx)
+{
+    JSValue ret;
+    double d;
+
+    ret = eval(ctx, "Math.random()");
+    assert(0 == JS_ToFloat64(ctx, &d, ret));
+    JS_FreeValue(ctx, ret);
+    return d;
+}
+
+static void random_bytes(void)
+{
+    struct random_bytes_state state;
+    JSRuntimeOptions options;
+    JSContext *ctx1, *ctx2;
+    JSRuntime *rt;
+    double d;
+
+    // the operating system is the default source
+    {
+        rt = JS_NewRuntime3(NULL);
+        assert(rt);
+        ctx1 = JS_NewContext(rt);
+        ctx2 = JS_NewContext(rt);
+        assert(math_random(ctx1) != math_random(ctx2));
+        JS_FreeContext(ctx2);
+        JS_FreeContext(ctx1);
+        JS_FreeRuntime(rt);
+    }
+    // the embedder's callback replaces it; the same bytes give the same
+    // sequence in every context
+    {
+        memset(&state, 0, sizeof(state));
+        memset(&options, 0, sizeof(options));
+        options.version = JS_RUNTIME_OPTIONS_VERSION;
+        options.random_bytes = random_bytes_func;
+        options.random_opaque = &state;
+        rt = JS_NewRuntime3(&options);
+        assert(rt);
+        assert(1 == state.calls);
+        ctx1 = JS_NewContext(rt);
+        assert(2 == state.calls);
+        ctx2 = JS_NewContextRaw(rt);
+        assert(3 == state.calls);
+        JS_FreeContext(ctx2);
+        ctx2 = JS_NewContext(rt);
+        d = math_random(ctx1);
+        assert(d == math_random(ctx2));
+        assert(d != math_random(ctx2));
+        JS_FreeContext(ctx2);
+        JS_FreeContext(ctx1);
+        JS_FreeRuntime(rt);
+    }
+    // no runtime without random bytes
+    {
+        memset(&state, 0, sizeof(state));
+        state.fail_at = 1;
+        rt = JS_NewRuntime3(&options);
+        assert(!rt);
+        assert(1 == state.calls);
+    }
+    // and no context
+    {
+        memset(&state, 0, sizeof(state));
+        state.fail_at = 2;
+        rt = JS_NewRuntime3(&options);
+        assert(rt);
+        JS_SetDumpFlags(rt, JS_ABORT_ON_LEAKS);
+        ctx1 = JS_NewContext(rt);
+        assert(!ctx1);
+        assert(2 == state.calls);
+        state.fail_at = 3;
+        ctx1 = JS_NewContextRaw(rt);
+        assert(!ctx1);
+        ctx1 = JS_NewContext(rt);
+        assert(ctx1);
+        JS_FreeContext(ctx1);
+        JS_FreeRuntime(rt);
+    }
+    // options of another version are refused
+    {
+        memset(&options, 0, sizeof(options));
+        options.version = JS_RUNTIME_OPTIONS_VERSION + 1;
+        rt = JS_NewRuntime3(&options);
+        assert(!rt);
+    }
+}
+
+static int fill_random_bytes(void *opaque, uint8_t *buf, size_t len)
+{
+    memset(buf, *(uint8_t *)opaque, len);
+    return 0;
+}
+
+// The strings of a character class are kept in a hash table with a random
+// key. The byte code of the regexp must not depend on the key: the output
+// of qjsc is expected to be the same every time.
+static void regexp_class_strings_bytecode(void)
+{
+    static const char code[] =
+        "/[\\q{abc|abd|abe|abf|bcd|bce|bcf|cde|cdf|def|xyz|xyw|xyv|uvw}]/v;"
+        "/[[\\q{abc|abd|abe|abf|bcd|bce}\\q{bcf|cde|cdf|def|xyz|xyw|xyv}]"
+        "--\\q{abe|cde}]/v;"
+        "/[\\q{abc|abd|abe|abf|bcd|bce|bcf|cde|cdf|def}&&\\q{abd|bcf|def}]/v;"
+        "/[\\q{Abc|aBd|abE|ABf|bCD|BcE|bcf|cde|CDF|dEf|xYz|XYW|xyV|uvw}]/vi";
+    JSRuntimeOptions options;
+    JSContext *ctx[2];
+    JSRuntime *rt[2];
+    uint8_t *buf[2];
+    size_t len[2];
+    uint8_t fill;
+    JSValue val;
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        fill = 1 + i;
+        memset(&options, 0, sizeof(options));
+        options.version = JS_RUNTIME_OPTIONS_VERSION;
+        options.random_bytes = fill_random_bytes;
+        options.random_opaque = &fill;
+        rt[i] = JS_NewRuntime3(&options);
+        assert(rt[i]);
+        ctx[i] = JS_NewContext(rt[i]);
+        assert(ctx[i]);
+        val = JS_Eval(ctx[i], code, strlen(code), "<input>",
+                      JS_EVAL_FLAG_COMPILE_ONLY);
+        assert(!JS_IsException(val));
+        buf[i] = JS_WriteObject(ctx[i], &len[i], val, JS_WRITE_OBJ_BYTECODE);
+        assert(buf[i]);
+        JS_FreeValue(ctx[i], val);
+    }
+    assert(len[0] == len[1]);
+    assert(0 == memcmp(buf[0], buf[1], len[0]));
+    for (i = 0; i < 2; i++) {
+        js_free(ctx[i], buf[i]);
+        JS_FreeContext(ctx[i]);
+        JS_FreeRuntime(rt[i]);
+    }
+}
+
 int main(void)
 {
     cfunctions();
@@ -2566,5 +2886,10 @@ int main(void)
     private_symbols();
     new_context_low_memory();
     json_stringify_oom();
+    map_across_contexts();
+    wyhash_vectors();
+    string_hash_8_and_16_bits();
+    random_bytes();
+    regexp_class_strings_bytecode();
     return 0;
 }

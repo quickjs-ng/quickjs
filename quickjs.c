@@ -358,6 +358,10 @@ struct JSRuntime {
 
     JSClassID js_class_id_alloc; /* counter for user defined classes */
     int class_count;    /* size of class_array */
+    uint32_t prop_hash_seed; // of the property tables of shapes; 31 bits
+    // of strings, Map and Set; used from any context
+    uint64_t hash_key[WYHASH_KEY_WORDS];
+    uint64_t shape_hash_mul[2]; // odd numbers, as secret as hash_key
     JSClass *class_array;
 
     struct list_head context_list; /* list of JSContext.link */
@@ -389,6 +393,9 @@ struct JSRuntime {
 
     JSInterruptHandler *interrupt_handler;
     void *interrupt_opaque;
+
+    JSRandomBytesFunc *random_bytes; // NULL: ask the operating system
+    void *random_opaque;
 
     JSPromiseHook *promise_hook;
     void *promise_hook_opaque;
@@ -612,7 +619,6 @@ struct JSContext {
     double time_origin;
 
     uint64_t random_state;
-    uint32_t hash_seed;
 
     /* when the counter reaches zero, JSRutime.interrupt_handler is called */
     int interrupt_counter;
@@ -652,11 +658,12 @@ typedef struct JSWeakRefRecord {
 } JSWeakRefRecord;
 
 typedef struct JSMapRecord {
-    int ref_count; /* used during enumeration to avoid freeing the record */
-    bool empty; /* true if the record is deleted */
+    uint32_t ref_count : 31; /* used during enumeration to avoid freeing the record */
+    uint32_t empty : 1; /* true if the record is deleted */
+    uint32_t hash; // of the key, see map_hash_key()
     struct JSMapState *map;
     struct list_head link;
-    struct list_head hash_link;
+    struct JSMapRecord *hash_next; // in the bucket of the hash table
     JSValue key;
     JSValue value;
 } JSMapRecord;
@@ -665,7 +672,7 @@ typedef struct JSMapState {
     bool is_weak; /* true if WeakSet/WeakMap */
     struct list_head records; /* list of JSMapRecord.link */
     uint32_t record_count;
-    struct list_head *hash_table;
+    JSMapRecord **hash_table;
     uint32_t hash_size; /* must be a power of two */
     uint32_t record_count_threshold; /* count at which a hash table
                                         resize is needed */
@@ -1121,13 +1128,18 @@ typedef struct JSShapeProperty {
     JSAtom atom; /* JS_ATOM_NULL = free property entry */
 } JSShapeProperty;
 
+// JSShapeProperty.hash_next is the index of a property plus one
+#define JS_PROP_COUNT_MAX ((1 << 26) - 1)
+
 struct JSShape {
     /* hash table of size hash_mask + 1 before the start of the
        structure (see prop_hash_end()). */
     JSGCObjectHeader header;
     /* true if the shape is inserted in the shape hash table. If not,
        JSShape.hash is not valid */
-    uint8_t is_hashed;
+    uint32_t is_hashed : 1;
+    // copy of JSRuntime.prop_hash_seed; a lookup has no runtime at hand
+    uint32_t prop_hash_seed : 31;
     uint32_t hash; /* current hash value */
     uint32_t prop_hash_mask;
     int prop_size; /* allocated properties */
@@ -2325,10 +2337,39 @@ static inline bool js_check_stack_overflow(JSRuntime *rt, size_t alloca_size)
     return unlikely(sp < rt->stack_limit);
 }
 
-JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
+static int js_random_bytes(JSRuntime *rt, void *buf, size_t len)
 {
+    if (!rt->random_bytes)
+        return js__random_bytes(buf, len);
+    if (rt->random_bytes(rt->random_opaque, buf, len))
+        return -1;
+    return 0;
+}
+
+static const JSMallocFunctions def_malloc_funcs;
+
+JSRuntime *JS_NewRuntime3(const JSRuntimeOptions *options)
+{
+    const JSMallocFunctions *mf;
+    JSRandomBytesFunc *random_bytes;
+    void *opaque, *random_opaque;
+    uint64_t random[3 + WYHASH_KEY_WORDS];
     JSRuntime *rt;
     JSMallocState ms;
+
+    mf = &def_malloc_funcs;
+    opaque = NULL;
+    random_bytes = NULL;
+    random_opaque = NULL;
+    if (options) {
+        if (options->version != JS_RUNTIME_OPTIONS_VERSION)
+            return NULL;
+        if (options->malloc_functions)
+            mf = options->malloc_functions;
+        opaque = options->malloc_opaque;
+        random_bytes = options->random_bytes;
+        random_opaque = options->random_opaque;
+    }
 
     memset(&ms, 0, sizeof(ms));
     ms.opaque = opaque;
@@ -2358,6 +2399,16 @@ JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
     init_list_head(&rt->string_list);
 #endif
     init_list_head(&rt->job_list);
+
+    rt->random_bytes = random_bytes;
+    rt->random_opaque = random_opaque;
+    if (js_random_bytes(rt, random, sizeof(random)))
+        goto fail;
+    // the constants make for good multipliers when the bytes are not random
+    rt->shape_hash_mul[0] = (random[0] ^ 0x9E3779B97F4A7C15) | 1;
+    rt->shape_hash_mul[1] = (random[1] ^ 0xC2B2AE3D27D4EB4F) | 1;
+    rt->prop_hash_seed = random[2] & 0x7FFFFFFF;
+    memcpy(rt->hash_key, &random[3], sizeof(rt->hash_key));
 
     if (JS_InitAtoms(rt))
         goto fail;
@@ -2446,7 +2497,17 @@ static const JSMallocFunctions def_malloc_funcs = {
 
 JSRuntime *JS_NewRuntime(void)
 {
-    return JS_NewRuntime2(&def_malloc_funcs, NULL);
+    return JS_NewRuntime3(NULL);
+}
+
+JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque)
+{
+    JSRuntimeOptions options = {
+        .version = JS_RUNTIME_OPTIONS_VERSION,
+        .malloc_functions = mf,
+        .malloc_opaque = opaque,
+    };
+    return JS_NewRuntime3(&options);
 }
 
 void JS_SetMemoryLimit(JSRuntime *rt, size_t limit)
@@ -2892,12 +2953,13 @@ JSContext *JS_NewContextRaw(JSRuntime *rt)
     ctx->error_prepare_stack = JS_UNDEFINED;
     ctx->error_stack_trace_limit = js_int32(10);
     init_list_head(&ctx->loaded_modules);
-    // TODO(bnoordhuis) use getrandom() etc.
-    ctx->random_state = js__gettimeofday_us();
+    if (js_random_bytes(rt, &ctx->random_state, sizeof(ctx->random_state))) {
+        JS_FreeContext(ctx);
+        return NULL;
+    }
     // the state must be non zero
     if (ctx->random_state == 0)
         ctx->random_state = 1;
-    ctx->hash_seed = xorshift64star(&ctx->random_state);
 
     if (JS_AddIntrinsicBasicObjects(ctx)) {
         JS_FreeContext(ctx);
@@ -3232,44 +3294,162 @@ static inline bool is_num_string(uint32_t *pval, JSString *p)
     }
 }
 
-/* XXX: could use faster version ? */
-static inline uint32_t hash_string8(const uint8_t *str, size_t len, uint32_t h)
-{
-    size_t i;
+// in the seed of the hash of a string that has a character above 255
+#define JS_HASH_SEED_WIDE 0x100
 
-    for(i = 0; i < len; i++)
-        h = h * 263 + str[i];
-    return h ^ hash32(len);
+// The string hash is keyed, so that a script cannot compute strings that
+// end up in the same bucket of a hash table. |h| keeps apart the hashes of
+// equal strings of different kinds.
+static inline uint32_t hash_string8(JSRuntime *rt, const uint8_t *str,
+                                    size_t len, uint32_t h)
+{
+    return wyhash(rt->hash_key, h, str, len);
 }
 
-static inline uint32_t hash_string16(const uint16_t *str,
+// hashes |len| characters that all fit in 8 bits as hash_string8() would
+static void hash_string16_narrow(WyHash *s, const uint16_t *str, size_t len)
+{
+    uint8_t buf[64];
+    size_t i, n;
+
+    while (len > 0) {
+        n = len < sizeof(buf) ? len : sizeof(buf);
+        for (i = 0; i < n; i++)
+            buf[i] = str[i];
+        wyhash_update(s, buf, n);
+        str += n;
+        len -= n;
+    }
+}
+
+// equal strings must have equal hashes, whether they are stored with 8 or
+// with 16 bits per character
+static inline uint32_t hash_string16(JSRuntime *rt, const uint16_t *str,
                                      size_t len, uint32_t h)
 {
+    uint32_t c;
+    WyHash s;
     size_t i;
 
-    for(i = 0; i < len; i++)
-        h = h * 263 + str[i];
-    return h ^ hash32(len);
+    c = 0;
+    for (i = 0; i < len; i++)
+        c |= str[i];
+    if (c > 0xFF) {
+        // no 8-bit string is equal to this one
+        return wyhash(rt->hash_key, h | JS_HASH_SEED_WIDE,
+                      str, len * sizeof(*str));
+    }
+    wyhash_init(&s, rt->hash_key, h, len);
+    hash_string16_narrow(&s, str, len);
+    return wyhash_fini(&s);
 }
 
-static uint32_t hash_string(JSString *str, uint32_t h)
+static uint32_t hash_string(JSRuntime *rt, JSString *str, uint32_t h)
 {
     if (str->is_wide_char)
-        h = hash_string16(str16(str), str->len, h);
+        h = hash_string16(rt, str16(str), str->len, h);
     else
-        h = hash_string8(str8(str), str->len, h);
+        h = hash_string8(rt, str8(str), str->len, h);
     return h;
 }
 
-static uint32_t hash_string_rope(JSValueConst val, uint32_t h)
+static no_inline uint32_t js_string_hash_slow(JSRuntime *rt, JSString *p)
 {
+    uint32_t h;
+
+    if (p->atom_type == JS_ATOM_TYPE_STRING)
+        return p->hash; // an atom whose hash is zero
+    h = hash_string(rt, p, JS_ATOM_TYPE_STRING) & JS_ATOM_HASH_MASK;
+    // the string of a symbol has no room for the hash in its header
+    if (p->atom_type == 0)
+        p->hash = h;
+    return h;
+}
+
+// The hash that a string has in the atom table, also if it is not in it.
+// A string that is not an atom keeps the hash in its header, where zero
+// means that it is not known yet; an atom has it there anyway. The string
+// must not change afterwards, see JS_ConcatString2().
+static inline uint32_t js_string_hash(JSRuntime *rt, JSString *p)
+{
+    if (likely(p->atom_type <= JS_ATOM_TYPE_STRING && p->hash != 0))
+        return p->hash;
+    return js_string_hash_slow(rt, p);
+}
+
+// true if a character of |val| does not fit in 8 bits
+static bool string_rope_is_wide(JSValueConst val)
+{
+    JSStringRope *r;
+    JSString *p;
+    uint32_t i;
+
     if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING) {
-        return hash_string(JS_VALUE_GET_STRING(val), h);
-    } else {
-        JSStringRope *r = JS_VALUE_GET_STRING_ROPE(val);
-        h = hash_string_rope(r->left, h);
-        return hash_string_rope(r->right, h);
+        p = JS_VALUE_GET_STRING(val);
+        if (p->is_wide_char) {
+            for (i = 0; i < p->len; i++) {
+                if (str16(p)[i] > 0xFF)
+                    return true;
+            }
+        }
+        return false;
     }
+    r = JS_VALUE_GET_STRING_ROPE(val);
+    if (!r->is_wide_char)
+        return false;
+    return string_rope_is_wide(r->left) || string_rope_is_wide(r->right);
+}
+
+typedef struct {
+    WyHash s;
+    bool is_wide;
+} JSRopeHash;
+
+static void hash_rope_update(JSRopeHash *t, JSValueConst val)
+{
+    uint16_t buf[32];
+    JSStringRope *r;
+    JSString *p;
+    uint32_t i, j, n;
+
+    if (JS_VALUE_GET_TAG(val) != JS_TAG_STRING) {
+        r = JS_VALUE_GET_STRING_ROPE(val);
+        hash_rope_update(t, r->left);
+        hash_rope_update(t, r->right);
+        return;
+    }
+    p = JS_VALUE_GET_STRING(val);
+    if (p->is_wide_char == t->is_wide) {
+        // as the characters are in memory, like hash_string() has them
+        wyhash_update(&t->s, strv(p), (size_t)p->len << p->is_wide_char);
+    } else if (p->is_wide_char) {
+        hash_string16_narrow(&t->s, str16(p), p->len);
+    } else {
+        for (i = 0; i < p->len; i += n) {
+            n = min_uint32(p->len - i, countof(buf));
+            for (j = 0; j < n; j++)
+                buf[j] = str8(p)[i + j];
+            wyhash_update(&t->s, buf, n * sizeof(buf[0]));
+        }
+    }
+}
+
+// same as hash_string() of the string that the rope stands for
+static uint32_t hash_string_rope(JSRuntime *rt, JSValueConst val, uint32_t h)
+{
+    JSRopeHash t;
+    size_t len;
+
+    if (JS_VALUE_GET_TAG(val) == JS_TAG_STRING)
+        len = JS_VALUE_GET_STRING(val)->len;
+    else
+        len = JS_VALUE_GET_STRING_ROPE(val)->len;
+    t.is_wide = string_rope_is_wide(val);
+    if (t.is_wide)
+        h |= JS_HASH_SEED_WIDE;
+    wyhash_init(&t.s, rt->hash_key, h, len << t.is_wide);
+    hash_rope_update(&t, val);
+    return wyhash_fini(&t.s);
 }
 
 static __maybe_unused void JS_DumpString(JSRuntime *rt, JSString *p)
@@ -3487,8 +3667,12 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
         }
         /* try and locate an already registered atom */
         len = str->len;
-        h = hash_string(str, atom_type);
-        h &= JS_ATOM_HASH_MASK;
+        if (atom_type == JS_ATOM_TYPE_STRING) {
+            h = js_string_hash(rt, str);
+        } else {
+            h = hash_string(rt, str, atom_type);
+            h &= JS_ATOM_HASH_MASK;
+        }
         h1 = h & (rt->atom_hash_size - 1);
         i = rt->atom_hash[h1];
         while (i != 0) {
@@ -3650,7 +3834,7 @@ static JSAtom __JS_FindAtom(JSRuntime *rt, const char *str, size_t len,
     uint32_t h, h1, i;
     JSAtomStruct *p;
 
-    h = hash_string8((const uint8_t *)str, len, JS_ATOM_TYPE_STRING);
+    h = hash_string8(rt, (const uint8_t *)str, len, JS_ATOM_TYPE_STRING);
     h &= JS_ATOM_HASH_MASK;
     h1 = h & (rt->atom_hash_size - 1);
     i = rt->atom_hash[h1];
@@ -5496,6 +5680,7 @@ static JSValue JS_ConcatString2(JSContext *ctx, JSValue op1, JSValue op2)
     &&  p1->is_wide_char == p2->is_wide_char
     &&  js_malloc_usable_size(ctx, p1) >= sizeof(*p1) + ((p1->len + p2->len) << p2->is_wide_char) + 1 - p1->is_wide_char) {
         /* Concatenate in place in available space at the end of p1 */
+        p1->hash = 0; // see js_string_hash()
         if (p1->is_wide_char) {
             memcpy(str16(p1) + p1->len, str16(p2), p2->len << 1);
             p1->len += p2->len;
@@ -5635,15 +5820,31 @@ static int init_shape_hash(JSRuntime *rt)
     return 0;
 }
 
-static uintptr_t hash_atom(JSAtom atom, uintptr_t mask)
+// Scripts choose the atoms: integers below 2**31 are atoms as they are.
+// Without |seed|, the integers that share a bucket in a table of a given
+// size can be computed ahead of time.
+static uintptr_t hash_atom(JSAtom atom, uintptr_t mask, uint32_t seed)
 {
     int shift = 1 + clz_uintptr(mask+1);
-    return hash_uintptr(atom) >> shift;
+    return hash_uintptr(atom ^ seed) >> shift;
 }
 
-static uint32_t shape_hash(uint32_t h, uint32_t val)
+// The hash of a shape is the hash of its prototype followed by one step
+// per property. Scripts choose the properties, so the step multiplies by
+// numbers that they do not know: they cannot compute properties that end
+// up in the same bucket, or a property that undoes what an earlier one
+// did to the hash.
+static uint32_t shape_hash(JSRuntime *rt, uint32_t h, JSAtom atom,
+                           int prop_flags)
 {
-    return hash32(h + val);
+    uint64_t x;
+
+    x = atom | (uint64_t)h << 32;
+    x *= rt->shape_hash_mul[0];
+    x ^= x >> 32;
+    x += prop_flags;
+    x *= rt->shape_hash_mul[1];
+    return x >> 32;
 }
 
 /* truncate the shape hash to 'hash_bits' bits */
@@ -5655,9 +5856,9 @@ static uint32_t get_shape_hash(uint32_t h, int hash_bits)
 static uint32_t shape_initial_hash(JSObject *proto)
 {
     uint32_t h;
-    h = shape_hash(1, (uintptr_t)proto);
+    h = hash32(1 + (uintptr_t)proto);
     if (sizeof(proto) > 4)
-        h = shape_hash(h, (uint64_t)(uintptr_t)proto >> 32);
+        h = hash32(h + ((uint64_t)(uintptr_t)proto >> 32));
     return h;
 }
 
@@ -5735,6 +5936,7 @@ static inline JSShape *js_new_shape_nohash(JSContext *ctx, JSObject *proto,
     sh->prop_count = 0;
     sh->deleted_prop_count = 0;
     sh->is_hashed = false;
+    sh->prop_hash_seed = rt->prop_hash_seed;
     return sh;
 }
 
@@ -5920,7 +6122,7 @@ static no_inline int resize_properties(JSContext *ctx, JSShape **psh,
                sizeof(prop_hash_end(sh)[0]) * new_hash_size);
         for(i = 0, pr = get_shape_prop(sh); i < sh->prop_count; i++, pr++) {
             if (pr->atom != JS_ATOM_NULL) {
-                h = hash_atom(pr->atom, new_hash_mask);
+                h = hash_atom(pr->atom, new_hash_mask, sh->prop_hash_seed);
                 pr->hash_next = prop_hash_end(sh)[-h - 1];
                 prop_hash_end(sh)[-h - 1] = i + 1;
             }
@@ -5995,7 +6197,7 @@ static int compact_properties(JSContext *ctx, JSObject *p)
         if (old_pr->atom != JS_ATOM_NULL) {
             pr->atom = old_pr->atom;
             pr->flags = old_pr->flags;
-            h = hash_atom(old_pr->atom, new_hash_mask);
+            h = hash_atom(old_pr->atom, new_hash_mask, sh->prop_hash_seed);
             pr->hash_next = prop_hash_end(sh)[-h - 1];
             prop_hash_end(sh)[-h - 1] = j + 1;
             prop[j] = prop[i];
@@ -6029,10 +6231,15 @@ static int add_shape_property(JSContext *ctx, JSShape **psh,
     uint32_t hash_mask, new_shape_hash = 0;
     intptr_t h;
 
+    if (unlikely(sh->prop_count >= JS_PROP_COUNT_MAX)) {
+        JS_ThrowRangeError(ctx, "too many properties (only %d allowed)",
+                           JS_PROP_COUNT_MAX);
+        return -1;
+    }
     /* update the shape hash */
     if (sh->is_hashed) {
         js_shape_hash_unlink(rt, sh);
-        new_shape_hash = shape_hash(shape_hash(sh->hash, atom), prop_flags);
+        new_shape_hash = shape_hash(rt, sh->hash, atom, prop_flags);
     }
 
     if (unlikely(sh->prop_count >= sh->prop_size)) {
@@ -6057,7 +6264,7 @@ static int add_shape_property(JSContext *ctx, JSShape **psh,
     pr->flags = prop_flags;
     /* add in hash table */
     hash_mask = sh->prop_hash_mask;
-    h = hash_atom(atom, hash_mask);
+    h = hash_atom(atom, hash_mask, sh->prop_hash_seed);
     pr->hash_next = prop_hash_end(sh)[-h - 1];
     prop_hash_end(sh)[-h - 1] = sh->prop_count;
     return 0;
@@ -6090,9 +6297,7 @@ static JSShape *find_hashed_shape_prop(JSRuntime *rt, JSShape *sh,
     JSShape *sh1;
     uint32_t h, h1, i, n;
 
-    h = sh->hash;
-    h = shape_hash(h, atom);
-    h = shape_hash(h, prop_flags);
+    h = shape_hash(rt, sh->hash, atom, prop_flags);
     h1 = get_shape_hash(h, rt->shape_hash_bits);
     for(sh1 = rt->shape_hash[h1]; sh1 != NULL; sh1 = sh1->shape_hash_next) {
         /* we test the hash first so that the rest is done only if the
@@ -6849,7 +7054,7 @@ static inline JSShapeProperty *find_own_property1(JSObject *p, JSAtom atom)
     JSShapeProperty *pr, *prop;
     intptr_t h;
     sh = p->shape;
-    h = hash_atom(atom, sh->prop_hash_mask);
+    h = hash_atom(atom, sh->prop_hash_mask, sh->prop_hash_seed);
     h = prop_hash_end(sh)[-h - 1];
     prop = get_shape_prop(sh);
     while (h) {
@@ -6870,7 +7075,7 @@ static inline JSShapeProperty *find_own_property(JSProperty **ppr,
     JSShapeProperty *pr, *prop;
     intptr_t h;
     sh = p->shape;
-    h = hash_atom(atom, sh->prop_hash_mask);
+    h = hash_atom(atom, sh->prop_hash_mask, sh->prop_hash_seed);
     h = prop_hash_end(sh)[-h - 1];
     prop = get_shape_prop(sh);
     while (h) {
@@ -10298,7 +10503,7 @@ static int delete_property(JSContext *ctx, JSObject *p, JSAtom atom)
 
  redo:
     sh = p->shape;
-    h1 = hash_atom(atom, sh->prop_hash_mask);
+    h1 = hash_atom(atom, sh->prop_hash_mask, sh->prop_hash_seed);
     h = prop_hash_end(sh)[-h1 - 1];
     prop = get_shape_prop(sh);
     lpr = NULL;
@@ -38660,9 +38865,11 @@ static void js_object_list_init(JSObjectList *s)
     memset(s, 0, sizeof(*s));
 }
 
+// hash_size is a power of two, 4 or more. Pointers are aligned, so their
+// low bits, and those of a multiple, are the same for all objects.
 static uint32_t js_object_list_get_hash(JSObject *p, uint32_t hash_size)
 {
-    return ((uintptr_t)p * 3163) & (hash_size - 1);
+    return hash_uintptr((uintptr_t)p) >> (1 + clz_uintptr(hash_size));
 }
 
 static int js_object_list_resize_hash(JSContext *ctx, JSObjectList *s,
@@ -49937,6 +50144,12 @@ void *lre_realloc(void *opaque, void *ptr, size_t size)
     return js_realloc_rt(ctx->rt, ptr, size);
 }
 
+const uint64_t *lre_hash_key(void *opaque)
+{
+    JSContext *ctx = opaque;
+    return ctx->rt->hash_key;
+}
+
 static JSValue js_regexp_escape(JSContext *ctx, JSValueConst this_val,
                                 int argc, JSValueConst *argv)
 {
@@ -51222,7 +51435,7 @@ static int json_parse_record_resize_hash(JSContext *ctx, JSONParseRecordObject *
     }
     for(i = 0; i < po->count; i++) {
         e = &po->entries[i];
-        h = e->atom & (po->hash_size - 1);
+        h = hash_atom(e->atom, po->hash_size - 1, ctx->rt->prop_hash_seed);
         e->hash_next = po->hash_table[h];
         po->hash_table[h] = i;
     }
@@ -51252,14 +51465,14 @@ static JSONParseRecord *json_parse_record_add(JSContext *ctx, JSONParseRecord *p
     pr1 = &e->parse_record;
     pr1->value = JS_UNDEFINED;
     if (po->hash_size != 0) {
-        h = key & (po->hash_size - 1);
+        h = hash_atom(key, po->hash_size - 1, ctx->rt->prop_hash_seed);
         e->hash_next = po->hash_table[h];
         po->hash_table[h] = po->count - 1;
     }
     return pr1;
 }
 
-static JSONParseRecord *json_parse_record_find(JSONParseRecord *pr, JSAtom key)
+static JSONParseRecord *json_parse_record_find(JSContext *ctx, JSONParseRecord *pr, JSAtom key)
 {
     JSONParseRecordObject *po = &pr->u.obj;
     JSONParseRecordEntry *e;
@@ -51271,7 +51484,7 @@ static JSONParseRecord *json_parse_record_find(JSONParseRecord *pr, JSAtom key)
                 return &po->entries[i].parse_record;
         }
     } else {
-        h = key & (po->hash_size - 1);
+        h = hash_atom(key, po->hash_size - 1, ctx->rt->prop_hash_seed);
         i = po->hash_table[h];
         while (i != -1) {
             e = &po->entries[i];
@@ -51558,7 +51771,7 @@ static JSValue internalize_json_property(JSContext *ctx, JSValueConst holder,
                 }
             }
         } else {
-            pr = json_parse_record_find(pr, name);
+            pr = json_parse_record_find(ctx, pr, name);
         }
         if (pr && !js_same_value(ctx, pr->value, val)) {
             pr = NULL;
@@ -53553,8 +53766,8 @@ static JSValue js_map_constructor(JSContext *ctx, JSValueConst new_target,
     s->hash_table = js_malloc(ctx, sizeof(s->hash_table[0]) * s->hash_size);
     if (!s->hash_table)
         goto fail;
-    init_list_head(&s->hash_table[0]);
-    s->record_count_threshold = 4;
+    s->hash_table[0] = NULL;
+    s->record_count_threshold = 2;
 
     arr = JS_UNDEFINED;
     if (argc > 0)
@@ -53654,76 +53867,96 @@ static JSValueConst map_normalize_key_const(JSContext *ctx, JSValueConst key)
     return safe_const(map_normalize_key(ctx, unsafe_unconst(key)));
 }
 
-/* XXX: better hash ? */
+// Scripts choose the keys, so the hash must not let them choose the bucket:
+// every kind of key goes through the keyed hash.
 static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
 {
     uint32_t tag = JS_VALUE_GET_NORM_TAG(key);
-    uint32_t h;
-    double d;
+    JSRuntime *rt = ctx->rt;
     JSFloat64Union u;
     JSBigInt *r;
 
     switch(tag) {
-    case JS_TAG_BOOL:
-        h = JS_VALUE_GET_INT(key);
-        break;
     case JS_TAG_STRING:
-        h = hash_string(JS_VALUE_GET_STRING(key), 0);
-        break;
+        // A string has the hash that it has in the atom table. Literals
+        // and property names are atoms and carry their hash, other
+        // strings remember it; they are not hashed again.
+        return js_string_hash(rt, JS_VALUE_GET_STRING(key));
     case JS_TAG_STRING_ROPE:
-        h = hash_string_rope(key, 0);
-        break;
-    case JS_TAG_OBJECT:
-    case JS_TAG_SYMBOL:
-        h = (uintptr_t)JS_VALUE_GET_PTR(key) * 3163;
-        break;
-    case JS_TAG_INT:
-        d = JS_VALUE_GET_INT(key);
-        goto hash_float64;
-    case JS_TAG_SHORT_BIG_INT:
-        d = JS_VALUE_GET_SHORT_BIG_INT(key);
-        goto hash_float64;
+        // a rope is the same key as the string that it stands for
+        return hash_string_rope(rt, key, JS_ATOM_TYPE_STRING) &
+            JS_ATOM_HASH_MASK;
     case JS_TAG_BIG_INT:
         r = JS_VALUE_GET_PTR(key);
-        h = hash_string8((void *)r->tab, r->len * sizeof(*r->tab), 0);
+        return hash_string8(rt, (void *)r->tab,
+                            r->len * sizeof(*r->tab), tag);
+    case JS_TAG_OBJECT:
+    case JS_TAG_SYMBOL:
+        u.u64 = (uintptr_t)JS_VALUE_GET_PTR(key);
         break;
-    case JS_TAG_FLOAT64:
-        d = JS_VALUE_GET_FLOAT64(key);
-        /* normalize the NaN */
-        if (isnan(d))
-            d = NAN;
-    hash_float64:
-        u.d = d;
-        h = (u.u32[0] ^ u.u32[1]) * 3163;
+    case JS_TAG_BOOL:
+        u.u64 = JS_VALUE_GET_INT(key);
+        break;
+    case JS_TAG_SHORT_BIG_INT:
+        u.u64 = (uint32_t)JS_VALUE_GET_SHORT_BIG_INT(key);
+        break;
+    case JS_TAG_INT:
+        // same hash as the float64 that is equal to it
+        u.d = JS_VALUE_GET_INT(key);
         tag = JS_TAG_FLOAT64;
         break;
+    case JS_TAG_FLOAT64:
+        u.d = JS_VALUE_GET_FLOAT64(key);
+        /* normalize the NaN */
+        if (isnan(u.d))
+            u.d = NAN;
+        break;
     default:
-        h = 0;
+        u.u64 = 0;
         break;
     }
-    return h ^ ctx->hash_seed ^ hash32(tag);
+    return wyhash_u64(rt->hash_key, tag, u.u64);
 }
 
-static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,
-                                    JSValueConst key)
+// |h| is the hash of |key|. A record keeps the hash of its key, so that it
+// is computed once when a lookup is followed by an insertion, and not at
+// all when the table grows.
+static JSMapRecord *map_find_record_hash(JSContext *ctx, JSMapState *s,
+                                         JSValueConst key, uint32_t h)
 {
-    struct list_head *el;
     JSMapRecord *mr;
-    uint32_t h;
-    h = map_hash_key(ctx, key) & (s->hash_size - 1);
-    list_for_each(el, &s->hash_table[h]) {
-        mr = list_entry(el, JSMapRecord, hash_link);
+    bool by_content;
+    uint32_t tag;
+
+    // Comparing strings or big integers means reading them: skip the
+    // records with another hash. Not for keys that are compared by value
+    // or by address: the check made lookups in big tables slower.
+    tag = JS_VALUE_GET_TAG(key);
+    by_content = (tag == JS_TAG_STRING || tag == JS_TAG_STRING_ROPE ||
+                  tag == JS_TAG_BIG_INT);
+    mr = s->hash_table[h & (s->hash_size - 1)];
+    for(; mr != NULL; mr = mr->hash_next) {
+        if (by_content && mr->hash != h)
+            continue;
         if (js_same_value_zero(ctx, mr->key, key))
             return mr;
     }
     return NULL;
 }
 
+static JSMapRecord *map_find_record(JSContext *ctx, JSMapState *s,
+                                    JSValueConst key)
+{
+    return map_find_record_hash(ctx, s, key, map_hash_key(ctx, key));
+}
+
+// The table has at least as many buckets as there are records, so that a
+// bucket holds one record on average and often none.
 static void map_hash_resize(JSContext *ctx, JSMapState *s)
 {
-    uint32_t new_hash_size, i, h;
-    struct list_head *new_hash_table, *el;
-    JSMapRecord *mr;
+    uint32_t new_hash_size, h;
+    JSMapRecord **new_hash_table, *mr;
+    struct list_head *el;
 
     /* XXX: no reporting of memory allocation failure */
     if (s->hash_size == 1)
@@ -53735,19 +53968,30 @@ static void map_hash_resize(JSContext *ctx, JSMapState *s)
     if (!new_hash_table)
         return;
 
-    for(i = 0; i < new_hash_size; i++)
-        init_list_head(&new_hash_table[i]);
+    memset(new_hash_table, 0, sizeof(new_hash_table[0]) * new_hash_size);
 
     list_for_each(el, &s->records) {
         mr = list_entry(el, JSMapRecord, link);
         if (!mr->empty) {
-            h = map_hash_key(ctx, mr->key) & (new_hash_size - 1);
-            list_add_tail(&mr->hash_link, &new_hash_table[h]);
+            h = mr->hash & (new_hash_size - 1);
+            mr->hash_next = new_hash_table[h];
+            new_hash_table[h] = mr;
         }
     }
     s->hash_table = new_hash_table;
     s->hash_size = new_hash_size;
-    s->record_count_threshold = new_hash_size * 2;
+    s->record_count_threshold = new_hash_size;
+}
+
+// take |mr| out of its bucket
+static void map_unlink_record(JSMapState *s, JSMapRecord *mr)
+{
+    JSMapRecord **pmr;
+
+    pmr = &s->hash_table[mr->hash & (s->hash_size - 1)];
+    while (*pmr != mr)
+        pmr = &(*pmr)->hash_next;
+    *pmr = mr->hash_next;
 }
 
 static JSWeakRefRecord **get_first_weak_ref(JSValueConst key)
@@ -53771,10 +54015,10 @@ static JSWeakRefRecord **get_first_weak_ref(JSValueConst key)
         return NULL; // pacify compiler
 }
 
+// |h| is the hash of |key|
 static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
-                                   JSValueConst key)
+                                   JSValueConst key, uint32_t h)
 {
-    uint32_t h;
     JSMapRecord *mr;
 
     mr = js_malloc(ctx, sizeof(*mr));
@@ -53783,6 +54027,7 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
     mr->ref_count = 1;
     mr->map = s;
     mr->empty = false;
+    mr->hash = h;
     if (s->is_weak) {
         JSWeakRefRecord *wr = js_malloc(ctx, sizeof(*wr));
         if (!wr) {
@@ -53796,8 +54041,9 @@ static JSMapRecord *map_add_record(JSContext *ctx, JSMapState *s,
     } else {
         mr->key = js_dup(key);
     }
-    h = map_hash_key(ctx, key) & (s->hash_size - 1);
-    list_add_tail(&mr->hash_link, &s->hash_table[h]);
+    h &= s->hash_size - 1;
+    mr->hash_next = s->hash_table[h];
+    s->hash_table[h] = mr;
     list_add_tail(&mr->link, &s->records);
     s->record_count++;
     if (s->record_count >= s->record_count_threshold) {
@@ -53830,7 +54076,7 @@ static void map_delete_record(JSRuntime *rt, JSMapState *s, JSMapRecord *mr)
 {
     if (mr->empty)
         return;
-    list_del(&mr->hash_link);
+    map_unlink_record(s, mr);
     if (s->is_weak) {
         delete_map_weak_ref(rt, mr);
     } else {
@@ -53865,6 +54111,7 @@ static JSValue js_map_set(JSContext *ctx, JSValueConst this_val,
     JSMapState *s = JS_GetOpaque2(ctx, this_val, JS_CLASS_MAP + magic);
     JSMapRecord *mr;
     JSValueConst key, value;
+    uint32_t h;
     int is_set;
 
     if (!s)
@@ -53877,11 +54124,12 @@ static JSValue js_map_set(JSContext *ctx, JSValueConst this_val,
         value = JS_UNDEFINED;
     else
         value = argv[1];
-    mr = map_find_record(ctx, s, key);
+    h = map_hash_key(ctx, key);
+    mr = map_find_record_hash(ctx, s, key, h);
     if (mr) {
         JS_FreeValue(ctx, mr->value);
     } else {
-        mr = map_add_record(ctx, s, key);
+        mr = map_add_record(ctx, s, key, h);
         if (!mr)
             return JS_EXCEPTION;
     }
@@ -53915,6 +54163,7 @@ static JSValue js_map_getOrInsert(JSContext *ctx, JSValueConst this_val,
     JSMapRecord *mr;
     JSValueConst key;
     JSValue value;
+    uint32_t h;
 
     if (!s)
         return JS_EXCEPTION;
@@ -53923,19 +54172,20 @@ static JSValue js_map_getOrInsert(JSContext *ctx, JSValueConst this_val,
     key = map_normalize_key_const(ctx, argv[0]);
     if (s->is_weak && !is_valid_weakref_target(key))
         return JS_ThrowTypeError(ctx, "invalid value used as WeakMap key");
-    mr = map_find_record(ctx, s, key);
+    h = map_hash_key(ctx, key);
+    mr = map_find_record_hash(ctx, s, key, h);
     if (!mr) {
         if (computed) {
             value = JS_Call(ctx, argv[1], JS_UNDEFINED, 1, &key);
             if (JS_IsException(value))
                 return JS_EXCEPTION;
-            mr = map_find_record(ctx, s, key);
+            mr = map_find_record_hash(ctx, s, key, h);
             if (mr)
                 map_delete_record(ctx->rt, s, mr);
         } else {
             value = js_dup(argv[1]);
         }
-        mr = map_add_record(ctx, s, key);
+        mr = map_add_record(ctx, s, key, h);
         if (!mr) {
             JS_FreeValue(ctx, value);
             return JS_EXCEPTION;
@@ -54655,6 +54905,7 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
     JSMapState *s, *t;
     JSMapRecord *mr;
     uint64_t size;
+    uint32_t h;
     int done, ok;
 
     s = JS_GetOpaque2(ctx, this_val, JS_CLASS_SET);
@@ -54684,11 +54935,12 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
             if (done) // item is JS_UNDEFINED
                 break;
             item = map_normalize_key(ctx, item);
-            if (!map_find_record(ctx, s, item)) {
+            h = map_hash_key(ctx, item);
+            if (!map_find_record_hash(ctx, s, item, h)) {
                 JS_FreeValue(ctx, item);
-            } else if (map_find_record(ctx, t, item)) {
+            } else if (map_find_record_hash(ctx, t, item, h)) {
                 JS_FreeValue(ctx, item); // no duplicates
-            } else if ((mr = map_add_record(ctx, t, item))) {
+            } else if ((mr = map_add_record(ctx, t, item, h))) {
                 JS_FreeValue(ctx, item);
                 mr->value = JS_UNDEFINED;
             } else {
@@ -54714,9 +54966,10 @@ static JSValue js_set_intersection(JSContext *ctx, JSValueConst this_val,
             ok = JS_ToBoolFree(ctx, rv); // returns -1 if rv is JS_EXCEPTION
             if (ok > 0) {
                 item = map_normalize_key(ctx, item);
-                if (map_find_record(ctx, t, item)) {
+                h = map_hash_key(ctx, item);
+                if (map_find_record_hash(ctx, t, item, h)) {
                     JS_FreeValue(ctx, item); // no duplicates
-                } else if ((mr = map_add_record(ctx, t, item))) {
+                } else if ((mr = map_add_record(ctx, t, item, h))) {
                     JS_FreeValue(ctx, item);
                     mr->value = JS_UNDEFINED;
                 } else {
@@ -54750,6 +55003,7 @@ static JSValue js_set_difference(JSContext *ctx, JSValueConst this_val,
     JSMapState *s, *t;
     JSMapRecord *mr;
     uint64_t size;
+    uint32_t h;
     int done;
     int ok;
 
@@ -54803,9 +55057,10 @@ static JSValue js_set_difference(JSContext *ctx, JSValueConst this_val,
             ok = JS_ToBoolFree(ctx, rv); // returns -1 if rv is JS_EXCEPTION
             if (ok == 0) {
                 item = map_normalize_key(ctx, item);
-                if (map_find_record(ctx, t, item)) {
+                h = map_hash_key(ctx, item);
+                if (map_find_record_hash(ctx, t, item, h)) {
                     JS_FreeValue(ctx, item); // no duplicates
-                } else if ((mr = map_add_record(ctx, t, item))) {
+                } else if ((mr = map_add_record(ctx, t, item, h))) {
                     JS_FreeValue(ctx, item);
                     mr->value = JS_UNDEFINED;
                 } else {
@@ -54840,6 +55095,7 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
     JSMapState *s, *t;
     JSMapRecord *mr;
     uint64_t size;
+    uint32_t h;
     int done;
     bool present;
 
@@ -54862,7 +55118,7 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
         mr = list_entry(el, JSMapRecord, link);
         if (mr->empty)
             continue;
-        mr = map_add_record(ctx, t, mr->key);
+        mr = map_add_record(ctx, t, mr->key, mr->hash);
         if (!mr)
             goto exception;
         mr->value = JS_UNDEFINED;
@@ -54888,8 +55144,9 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
         // - if item exists in |new| but misses in |this|, *don't* add it,
         //   mutating iterator erased it
         item = map_normalize_key(ctx, item);
-        present = (NULL != map_find_record(ctx, s, item));
-        mr = map_find_record(ctx, t, item);
+        h = map_hash_key(ctx, item);
+        present = (NULL != map_find_record_hash(ctx, s, item, h));
+        mr = map_find_record_hash(ctx, t, item, h);
         if (present) {
             if (mr)
                 map_delete_record(ctx->rt, t, mr);
@@ -54897,7 +55154,7 @@ static JSValue js_set_symmetricDifference(JSContext *ctx, JSValueConst this_val,
         } else if (mr) {
             JS_FreeValue(ctx, item);
         } else {
-            mr = map_add_record(ctx, t, item);
+            mr = map_add_record(ctx, t, item, h);
             JS_FreeValue(ctx, item);
             if (!mr)
                 goto exception;
@@ -54944,7 +55201,7 @@ static JSValue js_set_union(JSContext *ctx, JSValueConst this_val,
         mr = list_entry(el, JSMapRecord, link);
         if (mr->empty)
             continue;
-        mr = map_add_record(ctx, t, mr->key);
+        mr = map_add_record(ctx, t, mr->key, mr->hash);
         if (!mr)
             goto exception;
         mr->value = JS_UNDEFINED;
@@ -63684,7 +63941,7 @@ static void reset_weak_ref(JSRuntime *rt, JSWeakRefRecord **first_weak_ref)
             s = mr->map;
             assert(s->is_weak);
             assert(!mr->empty); /* no iterator on WeakMap/WeakSet */
-            list_del(&mr->hash_link);
+            map_unlink_record(s, mr);
             list_del(&mr->link);
             s->record_count--;
             break;

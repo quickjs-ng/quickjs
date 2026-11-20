@@ -143,7 +143,8 @@ static int dbuf_insert(DynBuf *s, int pos, int len)
 }
 
 typedef struct REString {
-    struct REString *next;
+    struct REString *next; // in the bucket of the hash table
+    struct REString *order_next; // in order of insertion
     uint32_t hash;
     uint32_t len;
     uint32_t buf[];
@@ -158,16 +159,16 @@ typedef struct {
     uint32_t hash_size;
     int hash_bits;
     REString **hash_table;
+    // The strings in order of insertion. The hash table is only good for
+    // lookups: its order depends on the hash key, which is random, and the
+    // byte code of a regexp must not depend on it.
+    REString *first, *last;
 } REStringList;
 
-static uint32_t re_string_hash(int len, const uint32_t *buf)
+static uint32_t re_string_hash(REStringList *s, int len, const uint32_t *buf)
 {
-    int i;
-    uint32_t h;
-    h = 1;
-    for(i = 0; i < len; i++)
-        h = h * 263 + buf[i];
-    return hash32(h);
+    return wyhash(lre_hash_key(s->cr.mem_opaque), 0, buf,
+                  len * sizeof(buf[0]));
 }
 
 static void re_string_list_init(REParseState *s1, REStringList *s)
@@ -177,17 +178,16 @@ static void re_string_list_init(REParseState *s1, REStringList *s)
     s->hash_size = 0;
     s->hash_bits = 0;
     s->hash_table = NULL;
+    s->first = NULL;
+    s->last = NULL;
 }
 
 static void re_string_list_free(REStringList *s)
 {
     REString *p, *p_next;
-    int i;
-    for(i = 0; i < s->hash_size; i++) {
-        for(p = s->hash_table[i]; p != NULL; p = p_next) {
-            p_next = p->next;
-            lre_realloc(s->cr.mem_opaque, p, 0);
-        }
+    for(p = s->first; p != NULL; p = p_next) {
+        p_next = p->order_next;
+        lre_realloc(s->cr.mem_opaque, p, 0);
     }
     lre_realloc(s->cr.mem_opaque, s->hash_table, 0);
 
@@ -226,15 +226,13 @@ static __maybe_unused void re_string_list_dump(const char *str, const REStringLi
     printf("]\n");
     
     j = 0;
-    for(i = 0; i < s->hash_size; i++) {
-        for(p = s->hash_table[i]; p != NULL; p = p->next) {
-            printf("  %d/%d: '", j, s->n_strings);
-            for(k = 0; k < p->len; k++) {
-                lre_print_char(p->buf[k], false);
-            }
-            printf("'\n");
-            j++;
+    for(p = s->first; p != NULL; p = p->order_next) {
+        printf("  %d/%d: '", j, s->n_strings);
+        for(k = 0; k < p->len; k++) {
+            lre_print_char(p->buf[k], false);
         }
+        printf("'\n");
+        j++;
     }
 }
 #endif /* DUMP_REOP */
@@ -261,8 +259,8 @@ static int re_string_find2(REStringList *s, int len, const uint32_t *buf,
         return 0;
     /* increase the size of the hash table if needed */
     if (unlikely((s->n_strings + 1) > s->hash_size)) {
-        REString **new_hash_table, *p_next;
-        int new_hash_bits, i;
+        REString **new_hash_table;
+        int new_hash_bits;
         uint32_t new_hash_size;
         new_hash_bits = max_int(s->hash_bits + 1, 4);
         new_hash_size = 1 << new_hash_bits;
@@ -271,13 +269,10 @@ static int re_string_find2(REStringList *s, int len, const uint32_t *buf,
         if (!new_hash_table)
             return -1;
         memset(new_hash_table, 0, sizeof(new_hash_table[0]) * new_hash_size);
-        for(i = 0; i < s->hash_size; i++) {
-            for(p = s->hash_table[i]; p != NULL; p = p_next) {
-                p_next = p->next;
-                h = p->hash >> (32 - new_hash_bits);
-                p->next = new_hash_table[h];
-                new_hash_table[h] = p;
-            }
+        for(p = s->first; p != NULL; p = p->order_next) {
+            h = p->hash >> (32 - new_hash_bits);
+            p->next = new_hash_table[h];
+            new_hash_table[h] = p;
         }
         lre_realloc(s->cr.mem_opaque, s->hash_table, 0);
         s->hash_bits = new_hash_bits;
@@ -291,6 +286,12 @@ static int re_string_find2(REStringList *s, int len, const uint32_t *buf,
         return -1;
     p->next = s->hash_table[h];
     s->hash_table[h] = p;
+    p->order_next = NULL;
+    if (s->last)
+        s->last->order_next = p;
+    else
+        s->first = p;
+    s->last = p;
     s->n_strings++;
     p->hash = h0;
     p->len = len;
@@ -303,7 +304,7 @@ static int re_string_find(REStringList *s, int len, const uint32_t *buf,
                           bool add_flag)
 {
     uint32_t h0;
-    h0 = re_string_hash(len, buf);
+    h0 = re_string_hash(s, len, buf);
     return re_string_find2(s, len, buf, h0, add_flag);
 }
 
@@ -321,45 +322,46 @@ static int re_string_add(REStringList *s, int len, const uint32_t *buf)
 /* a = a op b */
 static int re_string_list_op(REStringList *a, REStringList *b, int op)
 {
-    int i, ret;
-    REString *p, **pp;
+    int ret;
+    REString *p, **pp, **pb, *last;
 
     if (cr_op1(&a->cr, b->cr.points, b->cr.len, op))
         return -1;
 
     switch(op) {
     case CR_OP_UNION:
-        if (b->n_strings != 0) {
-            for(i = 0; i < b->hash_size; i++) {
-                for(p = b->hash_table[i]; p != NULL; p = p->next) {
-                    if (re_string_find2(a, p->len, p->buf, p->hash, true) < 0)
-                        return -1;
-                }
-            }
+        for(p = b->first; p != NULL; p = p->order_next) {
+            if (re_string_find2(a, p->len, p->buf, p->hash, true) < 0)
+                return -1;
         }
         break;
     case CR_OP_INTER:
     case CR_OP_SUB:
-        for(i = 0; i < a->hash_size; i++) {
-            pp = &a->hash_table[i];
-            for(;;) {
-                p = *pp;
-                if (p == NULL)
-                    break;
-                ret = re_string_find2(b, p->len, p->buf, p->hash, false);
-                if (op == CR_OP_SUB)
-                    ret = !ret;
-                if (!ret) {
-                    /* remove it */
-                    *pp = p->next;
-                    a->n_strings--;
-                    lre_realloc(a->cr.mem_opaque, p, 0);
-                } else {
-                    /* keep it */
-                    pp = &p->next;
-                }
+        last = NULL;
+        pp = &a->first;
+        for(;;) {
+            p = *pp;
+            if (p == NULL)
+                break;
+            ret = re_string_find2(b, p->len, p->buf, p->hash, false);
+            if (op == CR_OP_SUB)
+                ret = !ret;
+            if (!ret) {
+                /* remove it */
+                pb = &a->hash_table[p->hash >> (32 - a->hash_bits)];
+                while (*pb != p)
+                    pb = &(*pb)->next;
+                *pb = p->next;
+                *pp = p->order_next;
+                a->n_strings--;
+                lre_realloc(a->cr.mem_opaque, p, 0);
+            } else {
+                /* keep it */
+                last = p;
+                pp = &p->order_next;
             }
         }
+        a->last = last;
         break;
     default:
         abort();
@@ -374,7 +376,7 @@ static int re_string_list_canonicalize(REParseState *s1,
         return -1;
     if (s->n_strings != 0) {
         REStringList a_s, *a = &a_s;
-        int i, j;
+        int j;
         REString *p;
         
         /* XXX: simplify */
@@ -384,21 +386,23 @@ static int re_string_list_canonicalize(REParseState *s1,
         a->hash_size = s->hash_size;
         a->hash_bits = s->hash_bits;
         a->hash_table = s->hash_table;
+        a->first = s->first;
+        a->last = s->last;
         
         s->n_strings = 0;
         s->hash_size = 0;
         s->hash_bits = 0;
         s->hash_table = NULL;
+        s->first = NULL;
+        s->last = NULL;
 
-        for(i = 0; i < a->hash_size; i++) {
-            for(p = a->hash_table[i]; p != NULL; p = p->next) {
-                for(j = 0; j < p->len; j++) {
-                    p->buf[j] = lre_canonicalize(p->buf[j], is_unicode);
-                }
-                if (re_string_add(s, p->len, p->buf)) {
-                    re_string_list_free(a);
-                    return -1;
-                }
+        for(p = a->first; p != NULL; p = p->order_next) {
+            for(j = 0; j < p->len; j++) {
+                p->buf[j] = lre_canonicalize(p->buf[j], is_unicode);
+            }
+            if (re_string_add(s, p->len, p->buf)) {
+                re_string_list_free(a);
+                return -1;
             }
         }
         re_string_list_free(a);
@@ -1326,13 +1330,11 @@ static int re_emit_string_list(REParseState *s, const REStringList *sl)
         }
         has_empty_string = false;
         n = 0;
-        for(i = 0; i < sl->hash_size; i++) {
-            for(p = sl->hash_table[i]; p != NULL; p = p->next) {
-                if (p->len == 0) {
-                    has_empty_string = true;
-                } else {
-                    tab[n++] = p;
-                }
+        for(p = sl->first; p != NULL; p = p->order_next) {
+            if (p->len == 0) {
+                has_empty_string = true;
+            } else {
+                tab[n++] = p;
             }
         }
         assert(n <= sl->n_strings);
@@ -3474,6 +3476,12 @@ bool lre_check_stack_overflow(void *opaque, size_t alloca_size)
 void *lre_realloc(void *opaque, void *ptr, size_t size)
 {
     return realloc(ptr, size);
+}
+
+const uint64_t *lre_hash_key(void *opaque)
+{
+    static const uint64_t key[WYHASH_KEY_WORDS];
+    return key;
 }
 
 int main(int argc, char **argv)
