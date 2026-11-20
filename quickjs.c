@@ -62168,10 +62168,14 @@ static JSValue js_typed_array_constructor(JSContext *ctx,
             abuf = p->u.array_buffer;
             if (JS_ToIndex(ctx, &offset, argv[1]))
                 return JS_EXCEPTION;
+            if ((offset & ((1 << size_log2) - 1)) != 0)
+                return JS_ThrowRangeError(ctx, "invalid offset");
+            if (!JS_IsUndefined(argv[2]))
+                if (JS_ToIndex(ctx, &len, argv[2]))
+                    return JS_EXCEPTION;
             if (abuf->detached)
                 return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
-            if ((offset & ((1 << size_log2) - 1)) != 0 ||
-                offset > abuf->byte_length)
+            if (offset > abuf->byte_length)
                 return JS_ThrowRangeError(ctx, "invalid offset");
             if (JS_IsUndefined(argv[2])) {
                 track_rab = array_buffer_is_resizable(abuf);
@@ -62180,10 +62184,6 @@ static JSValue js_typed_array_constructor(JSContext *ctx,
                         goto invalid_length;
                 len = (abuf->byte_length - offset) >> size_log2;
             } else {
-                if (JS_ToIndex(ctx, &len, argv[2]))
-                    return JS_EXCEPTION;
-                if (abuf->detached)
-                    return JS_ThrowTypeErrorDetachedArrayBuffer(ctx);
                 if ((offset + (len << size_log2)) > abuf->byte_length) {
                 invalid_length:
                     return JS_ThrowRangeError(ctx, "invalid length");
