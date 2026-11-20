@@ -1693,14 +1693,22 @@ JSValue JS_DupValueRT(JSRuntime *rt, JSValueConst v)
     return js_dup(v);
 }
 
+#define GC_LIMIT_RESERVE 4096
+
 static void js_trigger_gc(JSRuntime *rt, size_t size)
 {
     bool force_gc;
 #ifdef FORCE_GC_AT_MALLOC
     force_gc = true;
 #else
-    force_gc = ((rt->malloc_state.malloc_size + size) >
-                rt->malloc_gc_threshold);
+    size_t threshold = rt->malloc_gc_threshold;
+    size_t limit = rt->malloc_state.malloc_limit;
+    /* Collect before the memory limit is reached, unless automatic GC is
+       disabled. The allocator charges more than `size`, hence the reserve. */
+    if (limit > GC_LIMIT_RESERVE && threshold != (size_t)-1 &&
+        threshold > limit - GC_LIMIT_RESERVE)
+        threshold = limit - GC_LIMIT_RESERVE;
+    force_gc = ((rt->malloc_state.malloc_size + size) > threshold);
 #endif
     if (force_gc) {
 #ifdef ENABLE_DUMPS // JS_DUMP_GC
