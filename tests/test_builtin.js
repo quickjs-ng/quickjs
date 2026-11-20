@@ -269,6 +269,15 @@ function test_array()
         err = true;
     }
     assert(err && a.toString() === "1,2,3,4");
+
+    /* a rejected index definition must not change the length */
+    a = [1, , 3];
+    Object.preventExtensions(a);
+    assert(Reflect.defineProperty(a, 7, { value: 1 }), false);
+    assert(a.length, 3);
+    assertThrows(TypeError, () => Object.defineProperty(a, 9, { value: 1 }));
+    assert(a.length, 3);
+    assert(Object.getOwnPropertyNames(a).join(), "0,2,length");
 }
 
 function test_string()
