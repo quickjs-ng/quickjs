@@ -2345,6 +2345,47 @@ static void json_stringify_oom(void)
     JS_FreeRuntime(rt);
 }
 
+// running out of memory while setting up a lazy property on the prototype
+// must not leak the value being written (#1852)
+static void set_property_autoinit_proto_oom(void)
+{
+    JSValue global_object, json, obj, val;
+    JSMemoryUsage stats;
+    uint32_t headroom;
+    JSRuntime *rt;
+    JSContext *ctx;
+    int failed;
+    bool done;
+
+    failed = 0;
+    done = false;
+    for (headroom = 0; !done && headroom < 64 * 1024; headroom += 8) {
+        rt = new_runtime();
+        ctx = JS_NewContext(rt);
+        global_object = JS_GetGlobalObject(ctx);
+        json = JS_GetPropertyStr(ctx, global_object, "JSON");
+        obj = JS_NewObjectProto(ctx, json);
+        val = JS_NewObject(ctx);
+        assert(JS_IsObject(obj) && JS_IsObject(val));
+        JS_ComputeMemoryUsage(rt, &stats);
+        JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + headroom);
+        // JSON.stringify is set up here, on first access; takes ownership of val
+        if (JS_SetPropertyStr(ctx, obj, "stringify", val) < 0)
+            failed++;
+        else
+            done = true;
+        JS_SetMemoryLimit(rt, 0);
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        JS_FreeValue(ctx, obj);
+        JS_FreeValue(ctx, json);
+        JS_FreeValue(ctx, global_object);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt); // asserts nothing leaked
+    }
+    assert(done);
+    assert(failed > 0);
+}
+
 struct dynamic_import_state {
     int import_calls;
     int attribute_calls;
@@ -2563,6 +2604,7 @@ int main(void)
     add_intrinsic_bigint();
     new_typed_array();
     std_eval_interrupt_handler();
+    set_property_autoinit_proto_oom();
     private_symbols();
     new_context_low_memory();
     json_stringify_oom();
