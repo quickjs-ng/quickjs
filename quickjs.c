@@ -40575,6 +40575,49 @@ static JSValue JS_ReadRegExp(BCReaderState *s)
         return JS_ThrowInternalError(ctx, "bad regexp bytecode");
     }
 
+    /* The serialized bytecode is executed as trusted compiled code by
+       lre_exec(), so it may only be used when the caller allows bytecode.
+       Otherwise only the flags are taken from its header and the pattern is
+       compiled again. */
+    if (!s->allow_bytecode) {
+        static const char flag_chars[] = "dgimsuvy";
+        static const uint16_t flag_masks[] = {
+            LRE_FLAG_INDICES, LRE_FLAG_GLOBAL, LRE_FLAG_IGNORECASE,
+            LRE_FLAG_MULTILINE, LRE_FLAG_DOTALL, LRE_FLAG_UNICODE,
+            LRE_FLAG_UNICODE_SETS, LRE_FLAG_STICKY,
+        };
+        char flags_buf[countof(flag_masks)];
+        JSValue flags, new_bc;
+        int re_flags, i, n;
+
+        re_flags = lre_get_flags(str8(bc)) & ~LRE_FLAG_NAMED_GROUPS;
+        js_free_string(ctx->rt, bc);
+        n = 0;
+        for (i = 0; i < countof(flag_masks); i++) {
+            if (re_flags & flag_masks[i]) {
+                flags_buf[n++] = flag_chars[i];
+                re_flags &= ~flag_masks[i];
+            }
+        }
+        if (re_flags != 0) {
+            js_free_string(ctx->rt, pattern);
+            return JS_ThrowSyntaxError(ctx, "invalid regular expression flags");
+        }
+        flags = js_new_string8_len(ctx, flags_buf, n);
+        if (JS_IsException(flags)) {
+            js_free_string(ctx->rt, pattern);
+            return JS_EXCEPTION;
+        }
+        new_bc = js_compile_regexp(ctx, JS_MKPTR(JS_TAG_STRING, pattern),
+                                   flags);
+        JS_FreeValue(ctx, flags);
+        if (JS_IsException(new_bc)) {
+            js_free_string(ctx->rt, pattern);
+            return JS_EXCEPTION;
+        }
+        bc = JS_VALUE_GET_STRING(new_bc);
+    }
+
     obj = js_regexp_constructor_internal(ctx, JS_UNDEFINED,
                                          JS_MKPTR(JS_TAG_STRING, pattern),
                                          JS_MKPTR(JS_TAG_STRING, bc));

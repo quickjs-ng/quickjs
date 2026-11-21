@@ -161,6 +161,59 @@ function bjson_test_regexp()
     assert("sup dog".match(r).groups["𝓓𝓸𝓰"], "dog");
 }
 
+function bjson_test_regexp_untrusted_bytecode()
+{
+    var buf, u8, i, p, r;
+
+    /* The serialized RegExp carries its compiled bytecode. Without
+       READ_OBJ_BYTECODE that bytecode must not be trusted: the reader
+       recompiles the pattern, so tampering with the bytecode has no effect.
+       Here the 'a' in the bytecode body is changed to 'x' while the pattern
+       string "ab" itself is left alone. */
+    buf = bjson.write(/ab/g);
+    u8 = new Uint8Array(buf);
+    /* the pattern string: length 2 (encoded as 2 << 1), then "ab" */
+    for (p = 0; p + 2 < u8.length; p++) {
+        if (u8[p] == 0x04 && u8[p + 1] == 0x61 && u8[p + 2] == 0x62)
+            break;
+    }
+    assert(p + 2 < u8.length);
+    /* skip the pattern, the bytecode string length and the 8-byte
+       regexp header, then patch the 'a' operand of the first char op */
+    for (i = p + 3 + 1 + 8; i < u8.length; i++) {
+        if (u8[i] == 0x61) {
+            u8[i] = 0x78;
+            break;
+        }
+    }
+    assert(i < u8.length);
+    /* UINT32_MAX disables the checksum check */
+    u8.fill(0xff, 1, 5);
+
+    r = bjson.read(buf, 0, buf.byteLength);
+    assert(r.source, "ab");
+    assert(r.flags, "g");
+    assert(/ab/g.test("ab"), true);
+    assert(r.test("ab"), true);
+    r.lastIndex = 0;
+    assert(r.test("xb"), false);
+
+    /* with READ_OBJ_BYTECODE the serialized bytecode is used as is */
+    r = bjson.read(buf, 0, buf.byteLength, bjson.READ_OBJ_BYTECODE);
+    assert(r.source, "ab");
+    assert(r.test("ab"), false);
+    r.lastIndex = 0;
+    assert(r.test("xb"), true);
+
+    /* all flags survive the recompilation */
+    for (var f of ["", "d", "g", "i", "m", "s", "u", "v", "y", "dgimsuy"]) {
+        buf = bjson.write(new RegExp("a.b", f));
+        r = bjson.read(buf, 0, buf.byteLength);
+        assert(r.flags, f);
+        assert(r.source, "a.b");
+    }
+}
+
 function bjson_test_regexp_reference()
 {
     var buf, r, o, o1, o2, o3, re;
@@ -352,6 +405,7 @@ function bjson_test_all()
     bjson_test_arraybuffer();
     bjson_test_reference();
     bjson_test_regexp();
+    bjson_test_regexp_untrusted_bytecode();
     bjson_test_regexp_reference();
     bjson_test_map();
     bjson_test_set();
