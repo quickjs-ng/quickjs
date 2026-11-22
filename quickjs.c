@@ -269,6 +269,14 @@ typedef struct JSMallocState {
 #define JS_ARENA_MAX_SMALL_SIZE    512
 #define JS_ARENA_FREE_NIL          0xffff
 
+// gcc defines __SANITIZE_ADDRESS__ under -fsanitize=address, clang only
+// answers __has_feature(address_sanitizer)
+#if !defined(__SANITIZE_ADDRESS__) && defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define __SANITIZE_ADDRESS__ 1
+#endif
+#endif
+
 #if defined(__SANITIZE_ADDRESS__) || defined(FORCE_GC_AT_MALLOC)
 /* Route every allocation through the backing malloc so each block is seen
    individually: ASan can then poison a freed block, and a GC-stress build
@@ -479,13 +487,13 @@ typedef struct JSVarRef {
        is itself a GC object, so the cycle collector can see the closure ->
        var_ref -> coroutine edge and keep the suspended coroutine (hence the
        captured variable it points into) alive. The coroutine is recovered
-       as stack_frame->cur_gc_obj (valid while open). This is a *snapshot* of
-       cur_gc_obj != NULL taken at creation, NOT rederived at read time:
-       cur_gc_obj transitions NULL -> owner (it is set only after a
-       generator's initial resume), so var_refs created during the prologue
-       (e.g. mapped `arguments`) must stay non-coro even though cur_gc_obj is
-       later set. Cleared when the var_ref is detached; the ref is released on
-       detach/free. */
+       as stack_frame->cur_gc_obj (valid while open). The flag says whether
+       this var_ref holds that reference; it is NOT rederived from
+       cur_gc_obj at read time. For a generator, cur_gc_obj is only set
+       after the initial resume: the var_refs created before that (mapped
+       `arguments`, closures in parameter initialisers) are adopted by
+       async_func_set_gc_obj(). Cleared when the var_ref is detached; the
+       ref is released on detach/free. */
     uint8_t is_coro;
     JSValue *pvalue; /* pointer to the value, either on the stack or
                         to 'value' */
@@ -779,6 +787,12 @@ typedef struct JSClosureVar {
 
 #define ARG_SCOPE_INDEX 1
 #define ARG_SCOPE_END (-2)
+
+// decode the scope operand of OP_eval and OP_apply_eval
+static inline int eval_scope_operand_decode(int operand)
+{
+    return operand == 0xFFFF ? ARG_SCOPE_END : operand - 1;
+}
 
 typedef struct JSVarScope {
     int parent;  /* index into fd->scopes of the enclosing scope */
@@ -1473,6 +1487,7 @@ static JSValue JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
                                const char *input, size_t input_len,
                                const char *filename, int line, int flags, int scope_idx);
 static void js_free_module_def(JSContext *ctx, JSModuleDef *m);
+static void js_unresolve_modules(JSContext *ctx, JSModuleDef *failed);
 static int js_module_attributes_equal(JSContext *ctx, JSValueConst attr1,
                                       JSValueConst attr2);
 static void js_mark_module_def(JSRuntime *rt, JSModuleDef *m,
@@ -2963,6 +2978,10 @@ typedef enum JSFreeModuleEnum {
 static void js_free_modules(JSContext *ctx, JSFreeModuleEnum flag)
 {
     struct list_head *el, *el1;
+    // a module that requests an unresolved module is not resolved either
+    // and must go with it: it holds a pointer to it
+    if (flag == JS_FREE_MODULE_NOT_RESOLVED)
+        js_unresolve_modules(ctx, NULL);
     list_for_each_safe(el, el1, &ctx->loaded_modules) {
         JSModuleDef *m = list_entry(el, JSModuleDef, link);
         if (flag == JS_FREE_MODULE_ALL ||
@@ -3541,12 +3560,16 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
     }
 
     if (str) {
-        if (str->atom_type == 0) {
+        if (str->atom_type == 0 && str->kind == JS_STRING_KIND_NORMAL) {
             p = str;
             p->atom_type = atom_type;
         } else {
-            p = js_malloc_rt(rt, sizeof(JSString) +
-                             (str->len << str->is_wide_char) +
+            // 'str' is already an atom of another type, or it is a slice
+            // of another string. Make a flat copy: an atom owns its
+            // characters, and JS_FreeAtomStruct() would not release the
+            // parent of a slice.
+            size_t size = (size_t)str->len << str->is_wide_char;
+            p = js_malloc_rt(rt, sizeof(JSString) + size +
                              1 - str->is_wide_char);
             if (unlikely(!p))
                 goto fail;
@@ -3557,8 +3580,10 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
 #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
             list_add_tail(&p->link, &rt->string_list);
 #endif
-            memcpy(str8(p), str8(str), (str->len << str->is_wide_char) +
-                   1 - str->is_wide_char);
+            memcpy(str8(p), str8(str), size);
+            // the characters of a slice are not followed by a null byte
+            if (!str->is_wide_char)
+                str8(p)[size] = '\0';
             js_free_string(rt, str);
         }
     } else {
@@ -5466,7 +5491,9 @@ static JSValue JS_ConcatString2(JSContext *ctx, JSValue op1, JSValue op2)
     if (p2->len == 0) {
         goto ret_op1;
     }
-    if (JS_REF_COUNT(p1) == 1 && p1->is_wide_char == p2->is_wide_char
+    // not if p1 is an atom: the atom table finds it by its characters
+    if (JS_REF_COUNT(p1) == 1 && p1->atom_type == 0
+    &&  p1->is_wide_char == p2->is_wide_char
     &&  js_malloc_usable_size(ctx, p1) >= sizeof(*p1) + ((p1->len + p2->len) << p2->is_wide_char) + 1 - p1->is_wide_char) {
         /* Concatenate in place in available space at the end of p1 */
         if (p1->is_wide_char) {
@@ -7174,7 +7201,15 @@ static void js_free_value_rt(JSRuntime *rt, JSValue v)
         }
         break;
     case JS_TAG_MODULE:
-        abort(); /* never freed here */
+        {
+            // The module list of the context holds a reference, so the
+            // last one can only go away after js_free_module_def() has
+            // released the contents and unlinked the definition.
+            JSModuleDef *m = JS_VALUE_GET_PTR(v);
+            if (m->link.next != NULL)
+                abort();
+            js_free_rt(rt, m);
+        }
         break;
     case JS_TAG_BIG_INT:
         {
@@ -17039,9 +17074,12 @@ static JSValue JS_IteratorNext2(JSContext *ctx, JSValueConst enum_obj,
     return JS_EXCEPTION;
 }
 
-static JSValue JS_IteratorNext(JSContext *ctx, JSValueConst enum_obj,
-                               JSValueConst method,
-                               int argc, JSValueConst *argv, int *pdone)
+enum { JS_ITERATOR_NEXT_DROP_VALUE = 1 };
+
+static JSValue JS_IteratorNext1(JSContext *ctx, JSValueConst enum_obj,
+                                JSValueConst method,
+                                int argc, JSValueConst *argv,
+                                int *pdone, int flags)
 {
     JSValue obj, value, done_val;
     int done;
@@ -17062,7 +17100,7 @@ static JSValue JS_IteratorNext(JSContext *ctx, JSValueConst enum_obj,
             goto fail;
         *pdone = JS_ToBoolFree(ctx, done_val);
         value = JS_UNDEFINED;
-        if (!*pdone) {
+        if (!*pdone && !(flags & JS_ITERATOR_NEXT_DROP_VALUE)) {
             value = JS_GetProperty(ctx, obj, JS_ATOM_value);
         }
         JS_FreeValue(ctx, obj);
@@ -17072,6 +17110,13 @@ static JSValue JS_IteratorNext(JSContext *ctx, JSValueConst enum_obj,
     JS_FreeValue(ctx, obj);
     *pdone = false;
     return JS_EXCEPTION;
+}
+
+static JSValue JS_IteratorNext(JSContext *ctx, JSValueConst enum_obj,
+                               JSValueConst method,
+                               int argc, JSValueConst *argv, int *pdone)
+{
+    return JS_IteratorNext1(ctx, enum_obj, method, argc, argv, pdone, 0);
 }
 
 /* return < 0 in case of exception */
@@ -18733,7 +18778,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSValue obj;
                 int scope_idx;
                 call_argc = get_u16(pc);
-                scope_idx = get_u16(pc + 2) - 1;
+                scope_idx = eval_scope_operand_decode(get_u16(pc + 2));
                 pc += 4;
                 call_argv = sp - call_argc;
                 sf->cur_pc = pc;
@@ -18765,7 +18810,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 JSValue *tab;
                 JSValue obj;
 
-                scope_idx = get_u16(pc) - 1;
+                scope_idx = eval_scope_operand_decode(get_u16(pc));
                 pc += 2;
                 sf->cur_pc = pc;
                 tab = build_arg_list(ctx, &len, sp[-1]);
@@ -21207,6 +21252,31 @@ static __exception int async_func_init(JSContext *ctx, JSAsyncFunctionState *s,
     return 0;
 }
 
+// Set the GC object that owns the frame of a generator, once it exists.
+// The generator object is created after the function prologue has run
+// (up to OP_initial_yield), and the prologue can already create open
+// var_refs: it builds the mapped arguments object and evaluates the
+// parameter initialisers, which may create closures. Those var_refs were
+// created without an owner. Make them hold a reference to the generator
+// like the ones created later, otherwise nothing keeps the frame they
+// point into alive.
+static void async_func_set_gc_obj(JSRuntime *rt, JSAsyncFunctionState *s,
+                                  JSGCObjectHeader *gc_obj)
+{
+    JSStackFrame *sf = &s->frame;
+    int i;
+
+    sf->cur_gc_obj = gc_obj;
+    for(i = 0; i < sf->var_ref_count; i++) {
+        JSVarRef *var_ref = sf->var_refs[i];
+        if (var_ref && !var_ref->is_coro) {
+            var_ref->is_coro = true;
+            JS_REF_COUNT(gc_obj)++;
+            add_gc_object(rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
+        }
+    }
+}
+
 static void async_func_mark(JSRuntime *rt, JSAsyncFunctionState *s,
                             JS_MarkFunc *mark_func)
 {
@@ -21432,10 +21502,10 @@ static JSValue js_call_generator_function(JSContext *ctx, JSValueConst func_obj,
     if (JS_IsException(obj))
         goto fail;
     JS_SetOpaqueInternal(obj, s);
-    /* the body only starts running on the first next(); root captured
-       locals against the generator object from now on (the initial resume
-       above only reaches OP_initial_yield, before any user code) */
-    s->func_state.frame.cur_gc_obj = &JS_VALUE_GET_OBJ(obj)->header;
+    // root captured locals against the generator object from now on,
+    // including those captured while the prologue ran
+    async_func_set_gc_obj(ctx->rt, &s->func_state,
+                          &JS_VALUE_GET_OBJ(obj)->header);
     return obj;
  fail:
     free_generator_stack_rt(ctx->rt, s);
@@ -22088,9 +22158,9 @@ static JSValue js_async_generator_function_call(JSContext *ctx,
     if (JS_IsException(obj))
         goto fail;
     s->generator = JS_VALUE_GET_OBJ(obj);
-    /* root captured locals against the async generator object (the initial
-       resume above only reaches OP_initial_yield, before any user code) */
-    s->func_state.frame.cur_gc_obj = &s->generator->header;
+    // root captured locals against the async generator object from now
+    // on, including those captured while the prologue ran
+    async_func_set_gc_obj(ctx->rt, &s->func_state, &s->generator->header);
     JS_SetOpaqueInternal(obj, s);
     return obj;
  fail:
@@ -22317,6 +22387,11 @@ typedef struct JSFunctionDef {
     bool need_home_object : 1;
     bool use_short_opcodes : 1; /* true if short opcodes are used in byte_code */
     bool has_await : 1; /* true if await is used (used in module eval) */
+    // set when a variable, argument or closure variable could not be
+    // added (limit reached or out of memory). The exception is pending.
+    // Most callers in the variable resolver cannot report a failure, so
+    // js_create_function() checks this instead.
+    bool has_compile_error : 1;
 
     JSFunctionKindEnum func_kind : 8;
     JSParseFunctionEnum func_type : 7;
@@ -24454,18 +24529,21 @@ static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
         // XXX: add_var() should take JSParseState *s and use js_parse_error
         JS_ThrowSyntaxError(ctx, "too many variables declared (only %d allowed)",
                             JS_MAX_LOCAL_VARS - 1);
-        return -1;
+        goto fail;
     }
     if (js_resize_array(ctx, (void **)&fd->vars, sizeof(fd->vars[0]),
                         &fd->var_size, fd->var_count + 1))
-        return -1;
+        goto fail;
     vd = &fd->vars[fd->var_count++];
     memset(vd, 0, sizeof(*vd));
     vd->var_name = JS_DupAtom(ctx, name);
     vd->func_pool_idx = -1;
     if (update_var_htab(ctx, fd))
-        return -1;
+        goto fail;
     return fd->var_count - 1;
+ fail:
+    fd->has_compile_error = true;
+    return -1;
 }
 
 static int add_scope_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name,
@@ -24538,16 +24616,19 @@ static int add_arg(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
         // XXX: add_arg() should take JSParseState *s and use js_parse_error
         JS_ThrowSyntaxError(ctx, "too many parameters in function definition (only %d allowed)",
                             JS_MAX_LOCAL_VARS - 1);
-        return -1;
+        goto fail;
     }
     if (js_resize_array(ctx, (void **)&fd->args, sizeof(fd->args[0]),
                         &fd->arg_size, fd->arg_count + 1))
-        return -1;
+        goto fail;
     vd = &fd->args[fd->arg_count++];
     memset(vd, 0, sizeof(*vd));
     vd->var_name = JS_DupAtom(ctx, name);
     vd->func_pool_idx = -1;
     return fd->arg_count - 1;
+ fail:
+    fd->has_compile_error = true;
+    return -1;
 }
 
 /* add a global variable definition */
@@ -27317,6 +27398,10 @@ static __exception int js_parse_postfix_expr(JSParseState *s, int parse_flags)
         if (s->token.val == '(') {
             if (!s->cur_func->super_call_allowed)
                 return js_parse_error(s, "super() is only valid in a derived class constructor");
+            // `new super()`: the operand of `new` is parsed without the
+            // call, so nothing would be pushed for it
+            if (!accept_lparen)
+                return js_parse_error(s, "'super' keyword unexpected here");
             call_type = FUNC_CALL_SUPER_CTOR;
         } else if (s->token.val == '.' || s->token.val == '[') {
             if (!s->cur_func->super_allowed)
@@ -29096,6 +29181,10 @@ static __exception int js_parse_for_in_of(JSParseState *s, int label_name,
     bool is_await_using = false;
     if (tok == TOK_AWAIT) {
         int u;
+        // 'await' is also a token in the plain functions of a module and
+        // in class static blocks, where there is nothing to await in
+        if (!(s->cur_func->func_kind & JS_FUNC_ASYNC))
+            return js_parse_error(s, "unexpected 'await' keyword");
         if (next_token(s))
             return -1;
         u = is_using(s, false);
@@ -30381,7 +30470,15 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
     JS_FreeValue(ctx, m->private_value);
     JS_FreeValue(ctx, m->attributes);
     list_del(&m->link);
-    js_free(ctx, m);
+    // JS_TAG_MODULE values hold references to the definition and can
+    // outlive it: the reactions attached to the evaluation promise of a
+    // module with a pending top-level await are only freed with the
+    // runtime, after the context and its module list. Drop the reference
+    // of the list; the memory goes with the last one. Until then leave
+    // nothing dangling behind.
+    memset(m, 0, sizeof(*m));
+    if (--JS_REF_COUNT(m) == 0)
+        js_free(ctx, m);
 }
 
 #ifndef QJS_DISABLE_PARSER
@@ -31364,14 +31461,61 @@ static int js_resolve_module(JSContext *ctx, JSModuleDef *m)
                                                   rme->module_name,
                                                   rme->attributes);
         if (!m1)
-            return -1;
+            goto fail;
         rme->module = m1;
         /* already done in js_host_resolve_imported_module() except if
            the module was loaded with JS_EvalBinary() */
         if (js_resolve_module(ctx, m1) < 0)
-            return -1;
+            goto fail;
     }
     return 0;
+ fail:
+    // the flag was set early to stop at import cycles
+    m->resolved = false;
+    return -1;
+}
+
+// Modules are marked as resolved before their requested modules are, so
+// that import cycles terminate. When resolution then fails, a module in
+// such a cycle is left marked as resolved although it requests, directly
+// or not, a module that is not: reset those.
+//
+// 'failed', if not NULL, is a module about to be freed: also remove the
+// pointers that other modules recorded to it. They are resolved again
+// when they are next needed.
+static void js_unresolve_modules(JSContext *ctx, JSModuleDef *failed)
+{
+    struct list_head *el;
+    bool changed;
+    int i;
+
+    if (failed)
+        failed->resolved = false;
+    do {
+        changed = false;
+        list_for_each(el, &ctx->loaded_modules) {
+            JSModuleDef *m = list_entry(el, JSModuleDef, link);
+            if (!m->resolved)
+                continue;
+            for(i = 0; i < m->req_module_entries_count; i++) {
+                JSModuleDef *m1 = m->req_module_entries[i].module;
+                if (m1 && !m1->resolved) {
+                    m->resolved = false;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    } while (changed);
+    if (failed) {
+        list_for_each(el, &ctx->loaded_modules) {
+            JSModuleDef *m = list_entry(el, JSModuleDef, link);
+            for(i = 0; i < m->req_module_entries_count; i++) {
+                if (m->req_module_entries[i].module == failed)
+                    m->req_module_entries[i].module = NULL;
+            }
+        }
+    }
 }
 
 static JSVarRef *js_create_module_var(JSContext *ctx, bool is_lexical)
@@ -32277,7 +32421,7 @@ static int js_execute_async_module(JSContext *ctx, JSModuleDef *m)
         return -1;
     m_obj = JS_NewModuleValue(ctx, m);
     resolve_funcs[0] = JS_NewCFunctionData(ctx, js_async_module_execution_fulfilled, 0, 0, 1, vc(&m_obj));
-    resolve_funcs[1] = JS_NewCFunctionData(ctx, js_async_module_execution_rejected, 0, 0, 1, vc(&m_obj));
+    resolve_funcs[1] = JS_NewCFunctionData(ctx, js_async_module_execution_rejected, 1, 0, 1, vc(&m_obj));
     ret_val = js_promise_then(ctx, promise, 2, vc(resolve_funcs));
     JS_FreeValue(ctx, ret_val);
     JS_FreeValue(ctx, m_obj);
@@ -33683,13 +33827,13 @@ static int add_closure_var(JSContext *ctx, JSFunctionDef *s,
         // XXX: add_closure_var() should take JSParseState *s and use js_parse_error
         JS_ThrowSyntaxError(ctx, "too many closure variables used (only %d allowed)",
                             JS_MAX_LOCAL_VARS - 1);
-        return -1;
+        goto fail;
     }
 
     if (js_resize_array(ctx, (void **)&s->closure_var,
                         sizeof(s->closure_var[0]),
                         &s->closure_var_size, s->closure_var_count + 1))
-        return -1;
+        goto fail;
     cv = &s->closure_var[s->closure_var_count++];
     cv->closure_type = closure_type;
     cv->is_const = is_const;
@@ -33698,6 +33842,9 @@ static int add_closure_var(JSContext *ctx, JSFunctionDef *s,
     cv->var_idx = var_idx;
     cv->var_name = JS_DupAtom(ctx, var_name);
     return s->closure_var_count - 1;
+ fail:
+    s->has_compile_error = true;
+    return -1;
 }
 
 static int find_closure_var(JSContext *ctx, JSFunctionDef *s,
@@ -33726,8 +33873,10 @@ static int get_closure_var(JSContext *ctx, JSFunctionDef *s,
         var_idx = get_closure_var(ctx, s->parent, fd, closure_type,
                                   var_idx, var_name,
                                   is_const, is_lexical, var_kind);
-        if (var_idx < 0)
+        if (var_idx < 0) {
+            s->has_compile_error = true;
             return -1;
+        }
         if (closure_type != JS_CLOSURE_GLOBAL_REF)
             closure_type = JS_CLOSURE_REF;
     }
@@ -33923,6 +34072,17 @@ static void var_object_test(JSContext *ctx, JSFunctionDef *s,
 static inline void capture_var(JSFunctionDef *s, JSVarDef *vd)
 {
     if (!vd->is_captured) {
+        // the variable reference indexes and their count are stored on
+        // 16 bits. Arguments and variables are limited separately, so
+        // together they can exceed that.
+        if (s->var_ref_count >= JS_MAX_LOCAL_VARS) {
+            if (!s->has_compile_error) {
+                JS_ThrowSyntaxError(s->ctx, "too many captured variables (only %d allowed)",
+                                    JS_MAX_LOCAL_VARS);
+                s->has_compile_error = true;
+            }
+            return;
+        }
         vd->is_captured = 1;
         vd->var_ref_idx = s->var_ref_count++;
     }
@@ -34818,6 +34978,15 @@ static __exception int add_closure_variables(JSContext *ctx, JSFunctionDef *s,
         cv->var_idx = i;
         cv->var_name = JS_DupAtom(ctx, cv0->var_name);
     }
+    // same limit as add_closure_var(): the indexes and the count are
+    // stored on 16 bits. The arguments, variables and closure variables
+    // of the calling function are limited separately, so their sum can
+    // exceed it.
+    if (s->closure_var_count > JS_MAX_LOCAL_VARS) {
+        JS_ThrowSyntaxError(ctx, "too many closure variables used (only %d allowed)",
+                            JS_MAX_LOCAL_VARS - 1);
+        return -1;
+    }
     return 0;
 }
 
@@ -35174,6 +35343,25 @@ static int get_label_pos(JSFunctionDef *s, int label)
 
 /* convert global variable accesses to local variables or closure
    variables when necessary */
+// The scope operand of OP_eval and OP_apply_eval is the index of the first
+// variable of the scope, stored on 16 bits as index + 1 so that -1 (no
+// variable) fits. 0xFFFF stands for ARG_SCOPE_END, the end of an argument
+// scope that has no variable of its own; see eval_scope_operand_decode().
+// Return -1 if the index cannot be encoded.
+#define EVAL_SCOPE_ARG_END 0xFFFF
+
+static int eval_scope_operand(JSContext *ctx, int first)
+{
+    if (first == ARG_SCOPE_END)
+        return EVAL_SCOPE_ARG_END;
+    if (first + 1 >= EVAL_SCOPE_ARG_END) {
+        JS_ThrowSyntaxError(ctx, "too many variables declared (only %d allowed)",
+                            JS_MAX_LOCAL_VARS - 1);
+        return -1;
+    }
+    return first + 1;
+}
+
 static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
 {
     int pos, pos_next, bc_len, op, len, i, idx, line_num, col_num;
@@ -35242,18 +35430,28 @@ static __exception int resolve_variables(JSContext *ctx, JSFunctionDef *s)
         case OP_eval: /* convert scope index to adjusted variable index */
             {
                 int call_argc = get_u16(bc_buf + pos + 1);
+                int operand;
                 scope = get_u16(bc_buf + pos + 1 + 2);
                 mark_eval_captured_variables(ctx, s, scope);
+                operand = eval_scope_operand(ctx, s->scopes[scope].first);
+                if (operand < 0)
+                    goto fail;
                 dbuf_putc(&bc_out, op);
                 dbuf_put_u16(&bc_out, call_argc);
-                dbuf_put_u16(&bc_out, s->scopes[scope].first + 1);
+                dbuf_put_u16(&bc_out, operand);
             }
             break;
         case OP_apply_eval: /* convert scope index to adjusted variable index */
-            scope = get_u16(bc_buf + pos + 1);
-            mark_eval_captured_variables(ctx, s, scope);
-            dbuf_putc(&bc_out, op);
-            dbuf_put_u16(&bc_out, s->scopes[scope].first + 1);
+            {
+                int operand;
+                scope = get_u16(bc_buf + pos + 1);
+                mark_eval_captured_variables(ctx, s, scope);
+                operand = eval_scope_operand(ctx, s->scopes[scope].first);
+                if (operand < 0)
+                    goto fail;
+                dbuf_putc(&bc_out, op);
+                dbuf_put_u16(&bc_out, operand);
+            }
             break;
         case OP_scope_get_var_undef:
         case OP_scope_get_var:
@@ -37097,6 +37295,8 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 
     if (resolve_variables(ctx, fd))
         goto fail;
+    if (fd->has_compile_error)
+        goto fail;
 
 #ifdef ENABLE_DUMPS // JS_DUMP_BYTECODE_PASS2
     if (check_dump_flag(ctx->rt, JS_DUMP_BYTECODE_PASS2)) {
@@ -37111,6 +37311,8 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
 #endif
 
     if (resolve_labels(ctx, fd))
+        goto fail;
+    if (fd->has_compile_error)
         goto fail;
 
     if (compute_stack_size(ctx, fd, &stack_size) < 0)
@@ -37673,6 +37875,8 @@ static __exception int js_parse_function_decl2(JSParseState *s,
                 } else {
                     /* unnamed arg for destructuring */
                     idx = add_arg(ctx, fd, JS_ATOM_NULL);
+                    if (idx < 0)
+                        goto fail;
                     emit_op(s, OP_get_arg);
                     emit_u16(s, idx);
                 }
@@ -38320,9 +38524,12 @@ static JSValue __JS_EvalInternal(JSContext *ctx, JSValueConst this_obj,
     }
     return ret_val;
  fail1:
-    /* XXX: should free all the unresolved dependencies */
-    if (m)
+    if (m) {
+        // modules that were resolved while this one was being resolved
+        // (import cycles) may point to it
+        js_unresolve_modules(ctx, m);
         js_free_module_def(ctx, m);
+    }
     return JS_EXCEPTION;
 }
 
@@ -40026,10 +40233,9 @@ static JSValue JS_ReadModule(BCReaderState *s)
     m = js_new_module_def(ctx, module_name);
     if (!m)
         goto fail;
-    obj = js_dup(JS_MKPTR(JS_TAG_MODULE, m));
+    obj = JS_NewModuleValue(ctx, m);
     if (bc_get_leb128_int(s, &m->req_module_entries_count))
         goto fail;
-    obj = JS_NewModuleValue(ctx, m);
     if (m->req_module_entries_count != 0) {
         m->req_module_entries_size = m->req_module_entries_count;
         m->req_module_entries = js_mallocz(ctx, sizeof(m->req_module_entries[0]) * m->req_module_entries_size);
@@ -40126,6 +40332,7 @@ static JSValue JS_ReadModule(BCReaderState *s)
  fail:
     if (m) {
         js_free_module_def(ctx, m);
+        JS_FreeValue(ctx, obj);
     }
     return JS_EXCEPTION;
 }
@@ -46248,16 +46455,15 @@ static JSValue js_iterator_helper_next(JSContext *ctx, JSValueConst this_val,
                 goto close;
             while (it->count > 0) {
                 it->count--;
-                item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
+                item = JS_IteratorNext1(ctx, it->obj, it->next, 0, NULL, pdone,
+                                        JS_ITERATOR_NEXT_DROP_VALUE);
                 if (JS_IsException(item))
                     goto step_fail;
-                JS_FreeValue(ctx, item);
                 if (*pdone) {
                     ret = JS_UNDEFINED;
                     goto done;
                 }
             }
-
             item = JS_IteratorNext(ctx, it->obj, it->next, 0, NULL, pdone);
             if (JS_IsException(item))
                 goto step_fail;
@@ -47330,6 +47536,8 @@ slow_path:
 static int string_cmp(JSString *p1, JSString *p2, int x1, int x2, int len)
 {
     int i, c1, c2;
+    if (!p1->is_wide_char && !p2->is_wide_char)
+        return memcmp(str8(p1) + x1, str8(p2) + x2, len);
     for (i = 0; i < len; i++) {
         if ((c1 = string_get(p1, x1 + i)) != (c2 = string_get(p2, x2 + i)))
             return c1 - c2;
@@ -47347,11 +47555,10 @@ static int string_indexof_char(JSString *p, int c, int from)
                 return i;
         }
     } else {
-        if ((c & ~0xff) == 0) {
-            for (i = from; i < len; i++) {
-                if (str8(p)[i] == (uint8_t)c)
-                    return i;
-            }
+        if ((c & ~0xff) == 0 && from < len) {
+            const uint8_t *q = memchr(str8(p) + from, c, len - from);
+            if (q)
+                return q - str8(p);
         }
     }
     return -1;
@@ -47505,7 +47712,10 @@ static JSValue js_string_indexOf(JSContext *ctx, JSValueConst this_val,
         inc = 1;
     }
     ret = -1;
-    if (len >= v_len && inc * (stop - start) >= 0) {
+    if (inc > 0) {
+        if (len >= v_len && start <= stop)
+            ret = string_indexof(p, p1, start);
+    } else if (len >= v_len && inc * (stop - start) >= 0) {
         for (i = start;; i += inc) {
             if (!string_cmp(p, p1, i, 0, v_len)) {
                 ret = i;
@@ -47532,7 +47742,7 @@ static JSValue js_string_includes(JSContext *ctx, JSValueConst this_val,
                                   int argc, JSValueConst *argv, int magic)
 {
     JSValue str, v = JS_UNDEFINED;
-    int i, len, v_len, pos, start, stop, ret;
+    int len, v_len, pos, start, stop, ret;
     JSString *p;
     JSString *p1;
 
@@ -47572,14 +47782,10 @@ static JSValue js_string_includes(JSContext *ctx, JSValueConst this_val,
         start = stop = pos;
     }
     if (start >= 0 && start <= stop) {
-        for (i = start;; i++) {
-            if (!string_cmp(p, p1, i, 0, v_len)) {
-                ret = 1;
-                break;
-            }
-            if (i == stop)
-                break;
-        }
+        if (magic == 0)
+            ret = string_indexof(p, p1, start) >= 0;
+        else
+            ret = !string_cmp(p, p1, start, 0, v_len);
     }
  done:
     JS_FreeValue(ctx, str);
@@ -48327,8 +48533,7 @@ static JSValue js_string_localeCompare(JSContext *ctx, JSValueConst this_val,
         goto exception;
 
     if (pa->is_wide_char) {
-        an = unicode_normalize(&ts, as, an, UNICODE_NFC, ctx,
-                               (DynBufReallocFunc *)js_realloc);
+        an = unicode_normalize(&ts, as, an, UNICODE_NFC, ctx, js_dbuf_realloc);
         if (an == -1)
             goto exception;
         js_free(ctx, as);
@@ -48336,8 +48541,7 @@ static JSValue js_string_localeCompare(JSContext *ctx, JSValueConst this_val,
     }
 
     if (pb->is_wide_char) {
-        bn = unicode_normalize(&ts, bs, bn, UNICODE_NFC, ctx,
-                               (DynBufReallocFunc *)js_realloc);
+        bn = unicode_normalize(&ts, bs, bn, UNICODE_NFC, ctx, js_dbuf_realloc);
         if (bn == -1)
             goto exception;
         js_free(ctx, bs);
@@ -48495,7 +48699,7 @@ static JSValue js_string_normalize(JSContext *ctx, JSValueConst this_val,
         return JS_EXCEPTION;
 
     out_len = unicode_normalize(&out_buf, buf, buf_len, n_type,
-                                ctx->rt, (DynBufReallocFunc *)js_realloc_rt);
+                                ctx, js_dbuf_realloc);
     js_free(ctx, buf);
     if (out_len < 0)
         return JS_EXCEPTION;
@@ -53803,14 +54007,21 @@ static JSValue js_map_clear(JSContext *ctx, JSValueConst this_val,
                             int argc, JSValueConst *argv, int magic)
 {
     JSMapState *s = JS_GetOpaque2(ctx, this_val, JS_CLASS_MAP + magic);
-    struct list_head *el, *el1;
+    struct list_head *el;
     JSMapRecord *mr;
 
     if (!s)
         return JS_EXCEPTION;
-    list_for_each_safe(el, el1, &s->records) {
+    el = s->records.next;
+    while (el != &s->records) {
         mr = list_entry(el, JSMapRecord, link);
+        // Freeing the key or the value can free other records: a map
+        // iterator may be the last holder of an already deleted record.
+        // Keep 'mr' alive and read its successor only afterwards.
+        mr->ref_count++;
         map_delete_record(ctx->rt, s, mr);
+        el = el->next;
+        map_decref_record(ctx->rt, mr);
     }
     return JS_UNDEFINED;
 }
@@ -57626,7 +57837,7 @@ static JSValue set_date_field(JSContext *ctx, JSValueConst this_val,
 {
     // _field(obj, first_field, end_field, args, is_local)
     double fields[9];
-    int res, first_field, end_field, is_local, i, n;
+    int res, res1, first_field, end_field, is_local, i, n;
     double d, a;
 
     d = NAN;
@@ -57637,6 +57848,7 @@ static JSValue set_date_field(JSContext *ctx, JSValueConst this_val,
     res = get_date_fields(ctx, this_val, fields, is_local, first_field == 0);
     if (res < 0)
         return JS_EXCEPTION;
+    res1 = res;
 
     // Argument coercion is observable and must be done unconditionally.
     n = min_int(argc, end_field - first_field);
@@ -57648,10 +57860,11 @@ static JSValue set_date_field(JSContext *ctx, JSValueConst this_val,
         fields[first_field + i] = trunc(a);
     }
 
-    if (!res)
-        return JS_NAN;
+    if (!res1)
+        return JS_NAN; /* thisTimeValue is NaN: leave it */
 
-    if (argc > 0)
+    /* a non-finite argument makes the new time value NaN */
+    if (res && argc > 0)
         d = set_date_fields(fields, is_local);
 
     return JS_SetThisTimeValue(ctx, this_val, d);
@@ -60087,7 +60300,7 @@ JSValue JS_GetTypedArrayBuffer(JSContext *ctx, JSValueConst obj,
     if (pbyte_offset)
         *pbyte_offset = ta->offset;
     if (pbyte_length)
-        *pbyte_length = ta->length;
+        *pbyte_length = (size_t)p->u.array.count << typed_array_size_log2(p->class_id);
     if (pbytes_per_element) {
         *pbytes_per_element = 1 << typed_array_size_log2(p->class_id);
     }
@@ -60115,7 +60328,7 @@ uint8_t *JS_GetUint8Array(JSContext *ctx, size_t *psize, JSValueConst obj)
     ta = p->u.typed_array;
     abuf = ta->buffer->u.array_buffer;
 
-    *psize = ta->length;
+    *psize = p->u.array.count;
     return abuf->data + ta->offset;
  fail:
     *psize = 0;
@@ -63400,18 +63613,31 @@ static JSValue js_finrec_unregister(JSContext *ctx, JSValueConst this_val, int a
         return JS_ThrowTypeError(ctx, "invalid unregister token");
 
     struct list_head *el, *el1;
-    bool removed = false;
+    struct list_head removed;
+    bool found;
+
+    // First pass: unlink the matching entries and drop their weak
+    // references. Freeing a held value can free the target of another
+    // entry of this registry, which would otherwise unlink and free that
+    // entry while we iterate.
+    init_list_head(&removed);
     list_for_each_safe(el, el1, &frd->entries) {
         JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
         if (js_same_value(ctx, fre->token, token)) {
             list_del(&fre->link);
             delete_finrec_weakref(ctx->rt, fre);
-            js_finrec_free(ctx->rt, fre);
-            removed = true;
+            list_add_tail(&fre->link, &removed);
         }
     }
+    found = !list_empty(&removed);
+    // Second pass: free them. Nothing else can reach 'removed'.
+    list_for_each_safe(el, el1, &removed) {
+        JSFinRecEntry *fre = list_entry(el, JSFinRecEntry, link);
+        list_del(&fre->link);
+        js_finrec_free(ctx->rt, fre);
+    }
 
-    return js_bool(removed);
+    return js_bool(found);
 }
 
 static const JSCFunctionListEntry js_finrec_proto_funcs[] = {
@@ -63636,7 +63862,19 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
     JSObject *p;
 
     csd->constructor = sf->is_constructor;
-    csd->func = js_dup(sf->cur_func);
+    p = JS_VALUE_GET_OBJ(sf->cur_func);
+    // Do not hand out functions that script cannot obtain otherwise and
+    // that are not meant to be called by it: the engine's own closures
+    // (promise reactions, async generator continuations, ...) and the
+    // body of a module, which is async bytecode in a plain function
+    // object and only runs correctly through js_async_function_call().
+    if (p->class_id == JS_CLASS_C_FUNCTION_DATA ||
+        (p->class_id == JS_CLASS_BYTECODE_FUNCTION &&
+         p->u.func.function_bytecode->func_kind != JS_FUNC_NORMAL)) {
+        csd->func = JS_UNDEFINED;
+    } else {
+        csd->func = js_dup(sf->cur_func);
+    }
     /* func_name_str is UTF-8 encoded if needed */
     func_name_str = get_func_name(ctx, sf->cur_func);
     if (!func_name_str || func_name_str[0] == '\0')
@@ -63647,7 +63885,6 @@ static void js_new_callsite_data(JSContext *ctx, JSCallSiteData *csd, JSStackFra
     if (JS_IsException(csd->func_name))
         csd->func_name = JS_NULL;
 
-    p = JS_VALUE_GET_OBJ(sf->cur_func);
     if (js_class_has_bytecode(p->class_id)) {
         JSFunctionBytecode *b = p->u.func.function_bytecode;
         int line_num1, col_num1;
