@@ -1892,25 +1892,38 @@ static inline int64_t js__gettimeofday_us(void) {
 static inline int js__random_bytes(void *buf, size_t len) {
     uint8_t *p = buf;
 #if defined(_WIN32)
-    // RtlGenRandom(), exported by advapi32.dll under this name; looked up
-    // at run time so that programs need not link against advapi32
     typedef BOOLEAN NTAPI rtl_gen_random(PVOID buf, ULONG len);
+    static void *volatile cached_fp;
     rtl_gen_random *fn;
+    void *fp;
     HMODULE h;
+    ULONG n;
 
+    // not using locks to avoid deadlocking; DllMain() and LoadLibraryA()
+    // both take out the global loader lock
+    fp = InterlockedCompareExchangePointer(&cached_fp, NULL, NULL);
+    if (fp)
+        goto gen;
     h = LoadLibraryA("advapi32.dll");
     if (!h)
         return -1;
-    fn = (rtl_gen_random *)(void *)GetProcAddress(h, "SystemFunction036");
-    while (fn && len > 0) {
-        ULONG n = len > 0x40000000 ? 0x40000000 : (ULONG)len;
+    fp = (void *)GetProcAddress(h, "SystemFunction036"); // RtlGenRandom
+    if (!fp) {
+        FreeLibrary(h);
+        return -1;
+    }
+    if (InterlockedCompareExchangePointer(&cached_fp, fp, NULL))
+        FreeLibrary(h); // lost a benign race with another thread
+gen:
+    fn = (rtl_gen_random *)fp;
+    while (len > 0) {
+        n = len > 0x40000000 ? 0x40000000 : (ULONG)len;
         if (!fn(p, n))
-            break;
+            return -1;
         p += n;
         len -= n;
     }
-    FreeLibrary(h);
-    return len == 0 ? 0 : -1;
+    return 0;
 #elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
       defined(__NetBSD__) || defined(__DragonFly__)
     arc4random_buf(p, len);
