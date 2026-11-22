@@ -5,6 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <windows.h>
+#endif
 #include "quickjs.h"
 #include "quickjs-libc.h"
 #include "cutils.h"
@@ -2516,6 +2521,131 @@ static void dynamic_import_deferred_reject(void)
     JS_FreeRuntime(rt);
 }
 
+#ifdef _WIN32
+static JSModuleDef *win32_poll_worker_loader(JSContext *ctx,
+                                             const char *module_name,
+                                             void *opaque)
+{
+    static const char worker_code[] =
+        "import * as os from 'qjs:os';\n"
+        "os.setTimeout(() => {\n"
+        "    os.Worker.parent.postMessage('ok');\n"
+        "}, 20);\n";
+    JSValue func_val = JS_Eval(ctx, worker_code, strlen(worker_code),
+                               module_name,
+                               JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    if (JS_IsException(func_val))
+        return NULL;
+    JSModuleDef *m = JS_VALUE_GET_PTR(func_val);
+    JS_FreeValue(ctx, func_val);
+    return m;
+}
+
+static JSContext *win32_poll_worker_new_context(JSRuntime *rt)
+{
+    JSContext *ctx = JS_NewContext(rt);
+    if (!ctx)
+        return NULL;
+    js_init_module_os(ctx, "qjs:os");
+    JS_SetModuleLoaderFunc(rt, NULL, win32_poll_worker_loader, NULL);
+    return ctx;
+}
+
+static void win32_poll_worker_with_stdin_handler(void)
+{
+    bool allocated_console = false;
+    HANDLE hConIn = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                NULL, OPEN_EXISTING, 0, NULL);
+    if (hConIn == INVALID_HANDLE_VALUE) {
+        if (!AllocConsole())
+            return;
+        allocated_console = true;
+        hConIn = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE,
+                             FILE_SHARE_READ | FILE_SHARE_WRITE,
+                             NULL, OPEN_EXISTING, 0, NULL);
+        if (hConIn == INVALID_HANDLE_VALUE) {
+            FreeConsole();
+            return;
+        }
+    }
+
+    FlushConsoleInputBuffer(hConIn);
+    if (WaitForSingleObject(hConIn, 0) != WAIT_TIMEOUT) {
+        CloseHandle(hConIn);
+        if (allocated_console)
+            FreeConsole();
+        return;
+    }
+
+    int saved_stdin = _dup(0);
+    assert(saved_stdin >= 0);
+    int conin_fd = _open_osfhandle((intptr_t)hConIn, _O_RDONLY);
+    assert(conin_fd >= 0);
+    assert(_dup2(conin_fd, 0) == 0);
+    _close(conin_fd);
+
+    static const char code[] =
+        "import * as os from 'qjs:os';\n"
+        "globalThis.stdinCalls = 0;\n"
+        "globalThis.workerMsgs = 0;\n"
+        "const w = new os.Worker('./worker.js');\n"
+        "w.onmessage = (e) => {\n"
+        "    if (e.data === 'ok')\n"
+        "        globalThis.workerMsgs++;\n"
+        "    w.onmessage = null;\n"
+        "    os.setReadHandler(0, null);\n"
+        "    os.clearTimeout(timer);\n"
+        "};\n"
+        "os.setReadHandler(0, () => {\n"
+        "    globalThis.stdinCalls++;\n"
+        "    if (globalThis.stdinCalls >= 3) {\n"
+        "        os.setReadHandler(0, null);\n"
+        "        w.onmessage = null;\n"
+        "        os.clearTimeout(timer);\n"
+        "    }\n"
+        "});\n"
+        "const timer = os.setTimeout(() => {\n"
+        "    os.setReadHandler(0, null);\n"
+        "    w.onmessage = null;\n"
+        "}, 2000);\n";
+
+    JSRuntime *rt = new_runtime();
+    js_std_set_worker_new_context_func(win32_poll_worker_new_context);
+    js_std_init_handlers(rt);
+    JSContext *ctx = win32_poll_worker_new_context(rt);
+    JSValue ret = JS_Eval(ctx, code, strlen(code), "<input>", JS_EVAL_TYPE_MODULE);
+    ret = js_std_await(ctx, ret);
+    assert(!JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+
+    assert(js_std_loop(ctx) == 0);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue v_stdin = JS_GetPropertyStr(ctx, global, "stdinCalls");
+    JSValue v_worker = JS_GetPropertyStr(ctx, global, "workerMsgs");
+    int32_t stdin_calls = -1, worker_msgs = -1;
+    assert(JS_ToInt32(ctx, &stdin_calls, v_stdin) == 0);
+    assert(JS_ToInt32(ctx, &worker_msgs, v_worker) == 0);
+    JS_FreeValue(ctx, v_stdin);
+    JS_FreeValue(ctx, v_worker);
+    JS_FreeValue(ctx, global);
+
+    js_std_free_handlers(rt);
+    js_std_set_worker_new_context_func(NULL);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    assert(_dup2(saved_stdin, 0) == 0);
+    _close(saved_stdin);
+    if (allocated_console)
+        FreeConsole();
+
+    assert(stdin_calls == 0);
+    assert(worker_msgs == 1);
+}
+#endif
+
 int main(void)
 {
     cfunctions();
@@ -2566,5 +2696,8 @@ int main(void)
     private_symbols();
     new_context_low_memory();
     json_stringify_oom();
+#ifdef _WIN32
+    win32_poll_worker_with_stdin_handler();
+#endif
     return 0;
 }

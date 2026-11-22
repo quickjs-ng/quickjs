@@ -2812,7 +2812,8 @@ static int js_os_poll_internal(JSContext *ctx, int timeout_ms, int flags)
         if (ret < (DWORD)count) {
             list_for_each(el, &ts->os_rw_handlers) {
                 rh = list_entry(el, JSOSRWHandler, link);
-                if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0])) {
+                if (rh->fd == 0 && !JS_IsNull(rh->rw_func[0]) &&
+                    (HANDLE)_get_osfhandle(rh->fd) == handles[ret]) {
                     return call_handler(ctx, rh->rw_func[0]);
                     /* must stop because the list may have been modified */
                 }
