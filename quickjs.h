@@ -550,6 +550,7 @@ JS_EXTERN int JS_AddRuntimeFinalizer(JSRuntime *rt,
 typedef void JS_MarkFunc(JSRuntime *rt, JSGCObjectHeader *gp);
 JS_EXTERN void JS_MarkValue(JSRuntime *rt, JSValueConst val,
                             JS_MarkFunc *mark_func);
+// not re-entrant, don't call from class finalizers
 JS_EXTERN void JS_RunGC(JSRuntime *rt);
 JS_EXTERN bool JS_IsLiveObject(JSRuntime *rt, JSValueConst obj);
 
