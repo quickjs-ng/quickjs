@@ -383,6 +383,15 @@ function test_class()
         f() { return (this.#x / 2); }
     }
     assert(new Q().f(), 5);
+
+    /* same after a template literal in arrow function parameters */
+    var f = (a = `8` / 2) => a;
+    assert(f(), 4);
+    f = (a = `x${2}y` / 2, b = `${/\)/.source}`) => a + "," + b;
+    assert(f(), "NaN,\\)");
+    f = (a = `${`in${/x/g.flags}`}` / 1) => a;
+    assert(f(), NaN);
+    assert((`t` / 2), NaN);
 };
 
 function test_template()
