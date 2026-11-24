@@ -27,9 +27,11 @@ Direct `eval` in strict mode is optimized.
 Strings are stored either as an 8 bit or a 16 bit array of
 characters. Hence random access to characters is always fast.
 
-The C API provides functions to convert JavaScript Strings to C UTF-8 encoded
-strings. The most common case where the JavaScript string contains
-only ASCII characters involves no copying.
+The C API provides functions to convert JavaScript Strings to CESU-8, WTF-8,
+or UTF-16 encoded strings. UTF-16 strings can have unmatched surrogates.
+
+The most common case where the JavaScript string contains only ASCII
+characters involves no copying.
 
 ### Objects
 
