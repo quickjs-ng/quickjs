@@ -26926,7 +26926,12 @@ static int js_parse_destructuring_element(JSParseState *s, int tok,
     }
 
     label_parse = new_label(s);
+    if (label_parse < 0)
+        return -1;
+
     label_assign = new_label(s);
+    if (label_assign < 0)
+        return -1;
 
     start_addr = s->cur_func->byte_code.size;
     if (hasval) {
@@ -30209,6 +30214,9 @@ static __exception int js_parse_statement_or_decl(JSParseState *s,
                     if (label_case < 0) {
                         /* falling thru direct from switch expression */
                         label_case = emit_goto(s, OP_goto, -1);
+                        /* live code here: only fails on out of memory */
+                        if (label_case < 0)
+                            goto fail;
                     }
                     /* Emit a dummy label opcode. Label will be patched after
                        the end of the switch body. Do not use emit_label(s, 0)
@@ -33485,7 +33493,17 @@ static void js_free_function_def(JSContext *ctx, JSFunctionDef *fd)
                         fd->use_short_opcodes);
     dbuf_free(&fd->byte_code);
     js_free(ctx, fd->jump_slots);
-    js_free(ctx, fd->label_slots);
+    if (fd->label_slots) {
+        /* relocations left by a failed resolve_labels() */
+        for(i = 0; i < fd->label_count; i++) {
+            RelocEntry *re, *re_next;
+            for(re = fd->label_slots[i].first_reloc; re != NULL; re = re_next) {
+                re_next = re->next;
+                js_free(ctx, re);
+            }
+        }
+        js_free(ctx, fd->label_slots);
+    }
     js_free(ctx, fd->source_loc_slots);
 
     for(i = 0; i < fd->cpool_count; i++) {
@@ -37429,6 +37447,12 @@ static JSValue js_create_function(JSContext *ctx, JSFunctionDef *fd)
     int stack_size, scope, idx;
     int function_size, byte_code_offset, cpool_offset;
     int closure_var_offset, vardefs_offset;
+
+    /* the parser does not stop when emitting bytecode runs out of memory:
+       the exception is pending and the bytecode may be truncated in the
+       middle of an instruction, it must not be resolved */
+    if (dbuf_error(&fd->byte_code))
+        goto fail;
 
     /* recompute scope linkage */
     for (scope = 0; scope < fd->scope_count; scope++) {
