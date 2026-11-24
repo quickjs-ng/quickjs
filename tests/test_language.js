@@ -475,6 +475,20 @@ function test_labels()
         x: { break x; }
     with ({}) x: { break x; };
     while (0) x: { break x; };
+
+    /* 'continue' to any label of the label set of a loop */
+    var i, j, k, n = 0, r = [];
+    a: b: for (i = 0; i < 2; i++) { n++; continue a; }
+    assert(n, 2);
+    x: y: z: for (k of [1, 2]) { r.push(k); continue x; }
+    p: q: do { r.push("d"); continue p; } while (false);
+    o: m: for (j = 0; j < 2; j++) { for (;;) { r.push("j" + j); continue o; } }
+    w: v: while (r.length < 9) { r.push("w"); try { continue w; } finally { r.push("f"); } }
+    assert(r.join(), "1,2,d,j0,j1,w,f,w,f");
+    /* the outer label does not label the loop here */
+    assert_throws(SyntaxError, "a: { b: for (;;) continue a; }");
+    assert_throws(SyntaxError, "a: b: if (1) for (;;) continue a;");
+    assert_throws(SyntaxError, "a: b: { for (;;) continue a; }");
 }
 
 function test_destructuring()
