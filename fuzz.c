@@ -10,6 +10,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+// the same bytes every time, a crash must reproduce from its input alone
+static int fixed_random_bytes(void *opaque, uint8_t *buf, size_t len)
+{
+    memset(buf, 42, len);
+    return 0;
+}
+
 // note: LLVM output does not contain checksum, needs to be added
 // manually (4 byte field at position 1) when adding to the corpus
 //
@@ -18,7 +25,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len)
 {
     if (!len)
         return 0;
-    JSRuntime *rt = JS_NewRuntime();
+    JSRuntimeOptions options = {
+        .version = JS_RUNTIME_OPTIONS_VERSION,
+        .random_bytes = fixed_random_bytes,
+    };
+    JSRuntime *rt = JS_NewRuntime3(&options);
     if (!rt)
         exit(1);
     JSContext *ctx = JS_NewContext(rt);
