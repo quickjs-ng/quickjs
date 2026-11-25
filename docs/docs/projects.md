@@ -114,3 +114,7 @@ JSI runtime for React Native using QuickJS-NG. Replaces Hermes / JSC.
 ## [DuckDB QuickJS Extension](https://query.farm/products/extensions/quickjs/)
 
 DuckDB extension by Query.Farm that embeds QuickJS-NG, allowing JavaScript to be executed directly inside SQL queries as scalar and table functions.
+
+## [quickjs-wasi](https://github.com/vercel-labs/quickjs-wasi)
+
+Snapshotable JavaScript runtime that runs QuickJS-NG compiled to WebAssembly (WASI). Can snapshot the entire VM state, including pending promises, and restore it in a fresh WASM instance. Works in Node.js, browsers, and other WebAssembly hosts.

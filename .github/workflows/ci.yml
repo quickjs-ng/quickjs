@@ -897,8 +897,24 @@ jobs:
             $runtimeDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
             $libs = "clang_rt.asan_dynamic-x86_64.lib clang_rt.asan_dynamic_runtime_thunk-x86_64.lib"
             $extraArgs = @("-Dc_link_args=$libs", "-Dcpp_link_args=$libs")
+            # The Visual Studio environment that meson activates puts the MSVC
+            # bin directory ahead of the directory added above on PATH, and MSVC
+            # ships its own build of clang_rt.asan_dynamic-x86_64.dll in there.
+            # It is not interchangeable with the LLVM one the import library we
+            # link against belongs to: when the two drift apart the binaries
+            # fail to start with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139).
+            # Copy LLVM's DLL next to the executables below, the application
+            # directory is searched before anything else.
+            $resourceDir = (clang -print-resource-dir).Trim()
+            $asanDll = Get-ChildItem -Path $resourceDir -Recurse -Filter clang_rt.asan_dynamic-x86_64.dll | Select-Object -First 1
+            if (-not $asanDll) { throw "clang_rt.asan_dynamic-x86_64.dll not found in $resourceDir" }
           }
           meson setup build-${{ matrix.flavor }} --buildtype=${{ matrix.flavor }} ${{ matrix.mode.args }} ${{ matrix.features.args }} --vsenv @extraArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($asanDll) {
+            Write-Host "Using ASan runtime $($asanDll.FullName)"
+            Copy-Item -LiteralPath $asanDll.FullName -Destination build-${{ matrix.flavor }}
+          }
       - name: Configuring
         if: ${{ matrix.platform != 'windows-latest' }}
         env: ${{ matrix.mode.extra_envs }}

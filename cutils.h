@@ -46,6 +46,7 @@ extern "C" {
 #endif
 
 #if defined(_MSC_VER)
+#include <intrin.h> // _umul128, __umulh
 #include <malloc.h>
 #define alloca _alloca
 #define ssize_t ptrdiff_t
@@ -66,8 +67,22 @@ extern "C" {
 #include <pthread.h>
 #endif
 #if !defined(_WIN32)
+#include <fcntl.h>
 #include <limits.h>
 #include <unistd.h>
+#endif
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
+// msan does not see what a system call made with syscall() writes
+#if defined(__has_feature)
+#if __has_feature(memory_sanitizer)
+#include <sanitizer/msan_interface.h>
+#define js__msan_unpoison(p, n) __msan_unpoison(p, n)
+#endif
+#endif
+#if !defined(js__msan_unpoison)
+#define js__msan_unpoison(p, n)
 #endif
 
 #if defined(__sun)
@@ -384,6 +399,245 @@ static inline uint64_t bswap64(uint64_t v)
         ((v & ((uint64_t)0xff << (0 * 8))) << (7 * 8));
 }
 #endif
+
+// A keyed hash function for hash tables that hold untrusted input: without
+// the key, inputs that collide cannot be computed ahead of time. It is the
+// hash that the Go runtime uses for its maps on CPUs without AES
+// instructions, memHashFallback() in runtime_hash64.go and runtime_hash32.go
+// of go1.27, which is derived from wyhash. The key is WYHASH_KEY_WORDS
+// random numbers; 32-bit targets use the low half of the first three.
+// |seed| keeps apart the hashes of inputs of different kinds that are
+// hashed with the same key.
+#define WYHASH_KEY_WORDS 4
+
+#if INTPTR_MAX >= INT64_MAX
+
+#define WYHASH_BLOCK 48
+#define WYHASH_BACK 16 // wyhash_finish() reads this far before its input
+
+typedef struct {
+    uint64_t seed, seed1, seed2;
+} WyHashState;
+
+// The 128-bit product of |a| and |b|, folded to 64 bits. Go leaves out
+// |a| and |b|; with them, as in wyhash's "protected" mode, a zero operand
+// does not make the result zero no matter what the other one is.
+static inline uint64_t wyhash_mix(uint64_t a, uint64_t b)
+{
+    uint64_t hi, lo;
+#if defined(__SIZEOF_INT128__)
+    __uint128_t t = (__uint128_t)a * b;
+    hi = t >> 64;
+    lo = t;
+#elif defined(_MSC_VER) && defined(_M_X64)
+    lo = _umul128(a, b, &hi);
+#elif defined(_MSC_VER) && defined(_M_ARM64)
+    hi = __umulh(a, b);
+    lo = a * b;
+#else
+    uint64_t ll = (uint64_t)(uint32_t)a * (uint32_t)b;
+    uint64_t lh = (uint64_t)(uint32_t)a * (b >> 32);
+    uint64_t hl = (a >> 32) * (uint32_t)b;
+    uint64_t hh = (a >> 32) * (b >> 32);
+    uint64_t mid = (ll >> 32) + (uint32_t)lh + (uint32_t)hl;
+    hi = hh + (lh >> 32) + (hl >> 32) + (mid >> 32);
+    lo = (uint32_t)ll | (mid << 32);
+#endif
+    return a ^ b ^ hi ^ lo;
+}
+
+static inline void wyhash_start(WyHashState *s, const uint64_t *key,
+                                uint32_t seed, size_t len)
+{
+    s->seed = seed ^ key[0];
+    s->seed1 = s->seed;
+    s->seed2 = s->seed;
+}
+
+// |p| is the next WYHASH_BLOCK bytes of the input, with more to follow
+static inline void wyhash_block(WyHashState *s, const uint64_t *key,
+                                const uint8_t *p)
+{
+    s->seed = wyhash_mix(get_u64(p) ^ key[1], get_u64(p + 8) ^ s->seed);
+    s->seed1 = wyhash_mix(get_u64(p + 16) ^ key[2],
+                          get_u64(p + 24) ^ s->seed1);
+    s->seed2 = wyhash_mix(get_u64(p + 32) ^ key[3],
+                          get_u64(p + 40) ^ s->seed2);
+}
+
+// |p| is the last |l| bytes of an input of |len| bytes: all of it if it is
+// no longer than WYHASH_BLOCK, else what the blocks left over, at least one
+// byte. In that case the WYHASH_BACK bytes before |p| are read again.
+static inline uint32_t wyhash_finish(WyHashState *s, const uint64_t *key,
+                                     const uint8_t *p, size_t l, size_t len)
+{
+    uint64_t a, b, seed;
+
+    seed = s->seed;
+    if (len == 0) {
+        return seed;
+    } else if (len < 4) {
+        a = p[0] | ((uint64_t)p[len >> 1] << 8) | ((uint64_t)p[len - 1] << 16);
+        b = 0;
+    } else if (len < 8) {
+        a = get_u32(p);
+        b = get_u32(p + len - 4);
+    } else if (len <= 16) {
+        a = get_u64(p);
+        b = get_u64(p + len - 8);
+    } else {
+        if (len > WYHASH_BLOCK)
+            seed ^= s->seed1 ^ s->seed2;
+        for (; l > 16; l -= 16) {
+            seed = wyhash_mix(get_u64(p) ^ key[1], get_u64(p + 8) ^ seed);
+            p += 16;
+        }
+        a = get_u64(p + l - 16);
+        b = get_u64(p + l - 8);
+    }
+    return wyhash_mix(0x1D8E4E27C47D124F ^ len,
+                      wyhash_mix(a ^ key[1], b ^ seed));
+}
+
+// same as wyhash() of the eight bytes of |x|
+static inline uint32_t wyhash_u64(const uint64_t *key, uint32_t seed,
+                                  uint64_t x)
+{
+    return wyhash_mix(0x1D8E4E27C47D124F ^ 8,
+                      wyhash_mix(x ^ key[1], x ^ seed ^ key[0]));
+}
+
+#else // 32-bit targets
+
+#define WYHASH_BLOCK 8
+#define WYHASH_BACK 0
+
+typedef struct {
+    uint32_t a, b;
+} WyHashState;
+
+static inline void wyhash_mix(WyHashState *s, const uint64_t *key)
+{
+    uint64_t c;
+
+    c = (uint64_t)(s->a ^ (uint32_t)key[1]) * (s->b ^ (uint32_t)key[2]);
+    s->a = c;
+    s->b = c >> 32;
+}
+
+static inline void wyhash_start(WyHashState *s, const uint64_t *key,
+                                uint32_t seed, size_t len)
+{
+    s->a = seed;
+    s->b = (uint32_t)len ^ (uint32_t)key[0];
+    wyhash_mix(s, key);
+}
+
+// |p| is the next WYHASH_BLOCK bytes of the input, with more to follow
+static inline void wyhash_block(WyHashState *s, const uint64_t *key,
+                                const uint8_t *p)
+{
+    s->a ^= get_u32(p);
+    s->b ^= get_u32(p + 4);
+    wyhash_mix(s, key);
+}
+
+// |p| is the last |l| bytes of an input of |len| bytes: all of it if it is
+// no longer than WYHASH_BLOCK, else what the blocks left over, at least one
+// byte
+static inline uint32_t wyhash_finish(WyHashState *s, const uint64_t *key,
+                                     const uint8_t *p, size_t l, size_t len)
+{
+    if (l >= 4) {
+        s->a ^= get_u32(p);
+        s->b ^= get_u32(p + l - 4);
+    } else if (l > 0) {
+        s->b ^= p[0] | ((uint32_t)p[l >> 1] << 8) | ((uint32_t)p[l - 1] << 16);
+    } else {
+        return s->a ^ s->b;
+    }
+    wyhash_mix(s, key);
+    wyhash_mix(s, key);
+    return s->a ^ s->b;
+}
+
+// same as wyhash() of the eight bytes of |x| when the low half comes first
+static inline uint32_t wyhash_u64(const uint64_t *key, uint32_t seed,
+                                  uint64_t x)
+{
+    WyHashState s;
+
+    wyhash_start(&s, key, seed, 8);
+    s.a ^= (uint32_t)x;
+    s.b ^= (uint32_t)(x >> 32);
+    wyhash_mix(&s, key);
+    wyhash_mix(&s, key);
+    return s.a ^ s.b;
+}
+
+#endif
+
+static inline uint32_t wyhash(const uint64_t *key, uint32_t seed,
+                              const void *buf, size_t len)
+{
+    const uint8_t *p = buf;
+    WyHashState s;
+    size_t l;
+
+    wyhash_start(&s, key, seed, len);
+    for (l = len; l > WYHASH_BLOCK; l -= WYHASH_BLOCK) {
+        wyhash_block(&s, key, p);
+        p += WYHASH_BLOCK;
+    }
+    return wyhash_finish(&s, key, p, l, len);
+}
+
+// To hash an input that is not in one piece. The result is that of
+// wyhash() of the whole input.
+typedef struct {
+    WyHashState s;
+    const uint64_t *key;
+    size_t len; // of the whole input
+    size_t n; // bytes at the end of |buf| that are not hashed yet
+    uint8_t buf[WYHASH_BACK + WYHASH_BLOCK];
+} WyHash;
+
+// |len| is the number of bytes that wyhash_update() is going to get
+static inline void wyhash_init(WyHash *h, const uint64_t *key, uint32_t seed,
+                               size_t len)
+{
+    wyhash_start(&h->s, key, seed, len);
+    h->key = key;
+    h->len = len;
+    h->n = 0;
+}
+
+static inline void wyhash_update(WyHash *h, const void *buf, size_t len)
+{
+    const uint8_t *p = buf;
+    size_t n;
+
+    while (len > 0) {
+        if (h->n == WYHASH_BLOCK) {
+            wyhash_block(&h->s, h->key, h->buf + WYHASH_BACK);
+            // keep the bytes that wyhash_finish() reads again
+            memcpy(h->buf, h->buf + WYHASH_BLOCK, WYHASH_BACK);
+            h->n = 0;
+        }
+        n = WYHASH_BLOCK - h->n;
+        if (n > len)
+            n = len;
+        memcpy(h->buf + WYHASH_BACK + h->n, p, n);
+        h->n += n;
+        p += n;
+        len -= n;
+    }
+}
+
+static inline uint32_t wyhash_fini(WyHash *h)
+{
+    return wyhash_finish(&h->s, h->key, h->buf + WYHASH_BACK, h->n, h->len);
+}
 
 static inline double fromfp16(uint16_t v) {
     double d, s;
@@ -1631,6 +1885,105 @@ static inline int64_t js__gettimeofday_us(void) {
     gettimeofday(&tv, NULL);
 #endif
     return ((int64_t)tv.tv_sec * 1000000) + tv.tv_usec;
+}
+
+// Fills |buf| with |len| bytes from the entropy source of the operating
+// system. Returns 0 on success, -1 on failure.
+static inline int js__random_bytes(void *buf, size_t len) {
+    uint8_t *p = buf;
+#if defined(_WIN32)
+    typedef BOOLEAN NTAPI rtl_gen_random(PVOID buf, ULONG len);
+    static void *volatile cached_fp;
+    rtl_gen_random *fn;
+    void *fp;
+    HMODULE h;
+    ULONG n;
+
+    // not using locks to avoid deadlocking; DllMain() and LoadLibraryA()
+    // both take out the global loader lock
+    fp = InterlockedCompareExchangePointer(&cached_fp, NULL, NULL);
+    if (fp)
+        goto gen;
+    h = LoadLibraryA("advapi32.dll");
+    if (!h)
+        return -1;
+    fp = (void *)GetProcAddress(h, "SystemFunction036"); // RtlGenRandom
+    if (!fp) {
+        FreeLibrary(h);
+        return -1;
+    }
+    if (InterlockedCompareExchangePointer(&cached_fp, fp, NULL))
+        FreeLibrary(h); // lost a benign race with another thread
+gen:
+    fn = (rtl_gen_random *)fp;
+    while (len > 0) {
+        n = len > 0x40000000 ? 0x40000000 : (ULONG)len;
+        if (!fn(p, n))
+            return -1;
+        p += n;
+        len -= n;
+    }
+    return 0;
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+      defined(__NetBSD__) || defined(__DragonFly__)
+    arc4random_buf(p, len);
+    return 0;
+#elif defined(__wasi__) || defined(EMSCRIPTEN) || defined(__EMSCRIPTEN__)
+    while (len > 0) {
+        size_t n = len > 256 ? 256 : len; // the most getentropy() gives
+        if (getentropy(p, n))
+            return -1;
+        p += n;
+        len -= n;
+    }
+    return 0;
+#elif defined(__DJGPP)
+    // no entropy source, the clock has to do
+    uint64_t x = js__gettimeofday_us() | 1;
+    while (len > 0) {
+        // xorshift64*
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        *p++ = (x * 0x2545F4914F6CDD1D) >> 56;
+        len--;
+    }
+    return 0;
+#else
+    ssize_t n;
+    int fd;
+#if defined(__linux__) && defined(SYS_getrandom)
+    // by system call number because older libcs lack the wrapper
+    while (len > 0) {
+        n = syscall(SYS_getrandom, p, len, 0);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            break; // old kernel or seccomp filter, try /dev/urandom
+        js__msan_unpoison(p, n);
+        p += n;
+        len -= n;
+    }
+    if (len == 0)
+        return 0;
+#endif
+    do
+        fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    while (fd < 0 && errno == EINTR);
+    if (fd < 0)
+        return -1;
+    while (len > 0) {
+        n = read(fd, p, len);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            break;
+        p += n;
+        len -= n;
+    }
+    close(fd);
+    return len == 0 ? 0 : -1;
+#endif
 }
 
 #if defined(_WIN32)
