@@ -477,6 +477,22 @@ typedef struct JSMallocFunctions {
     size_t (*js_malloc_usable_size)(const void *ptr);
 } JSMallocFunctions;
 
+// Fills |buf| with |len| random bytes. Returns zero on success, non-zero
+// on failure. The bytes seed hash tables and Math.random(); they should
+// be unpredictable unless reproducible runs are wanted.
+typedef int JSRandomBytesFunc(void *opaque, uint8_t *buf, size_t len);
+
+#define JS_RUNTIME_OPTIONS_VERSION 1
+
+typedef struct JSRuntimeOptions {
+    int version;
+    const JSMallocFunctions *malloc_functions;  // NULL == default allocator
+    void *malloc_opaque;
+    JSRandomBytesFunc *random_bytes;            // NULL == OS entropy source
+    void *random_opaque;
+    // can add new fields in ABI-compatible manner by incrementing JS_RUNTIME_OPTIONS_VERSION
+} JSRuntimeOptions;
+
 // Debug trace system: the debug output will be produced to the dump stream (currently
 // stdout) if dumps are enabled and JS_SetDumpFlags is invoked with the corresponding
 // bit set.
@@ -523,6 +539,9 @@ JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
    used to check stack overflow. */
 JS_EXTERN void JS_UpdateStackTop(JSRuntime *rt);
 JS_EXTERN JSRuntime *JS_NewRuntime2(const JSMallocFunctions *mf, void *opaque);
+// |options| can be NULL. Returns NULL when the version of |options| is not
+// JS_RUNTIME_OPTIONS_VERSION, and when no random bytes can be obtained.
+JS_EXTERN JSRuntime *JS_NewRuntime3(const JSRuntimeOptions *options);
 JS_EXTERN void JS_FreeRuntime(JSRuntime *rt);
 JS_EXTERN void *JS_GetRuntimeOpaque(JSRuntime *rt);
 JS_EXTERN void JS_SetRuntimeOpaque(JSRuntime *rt, void *opaque);
@@ -531,6 +550,7 @@ JS_EXTERN int JS_AddRuntimeFinalizer(JSRuntime *rt,
 typedef void JS_MarkFunc(JSRuntime *rt, JSGCObjectHeader *gp);
 JS_EXTERN void JS_MarkValue(JSRuntime *rt, JSValueConst val,
                             JS_MarkFunc *mark_func);
+// not re-entrant, don't call from class finalizers
 JS_EXTERN void JS_RunGC(JSRuntime *rt);
 JS_EXTERN bool JS_IsLiveObject(JSRuntime *rt, JSValueConst obj);
 
@@ -1310,16 +1330,11 @@ JS_EXTERN uint8_t *JS_WriteObject(JSContext *ctx, size_t *psize, JSValueConst ob
 JS_EXTERN uint8_t *JS_WriteObject2(JSContext *ctx, size_t *psize, JSValueConst obj,
                                    int flags, JSSABTab *psab_tab);
 
-/* WARNING: only enable JS_READ_OBJ_BYTECODE on input from a trusted
-   writer. The bytecode format is not designed to resist a hostile
-   producer; loading adversarial bytecode can lead to memory corruption. */
 #define JS_READ_OBJ_BYTECODE  (1 << 0) /* allow function/module */
 #define JS_READ_OBJ_ROM_DATA  (0)      /* avoid duplicating 'buf' data (obsolete, broken by ICs) */
-/* WARNING: serialized SharedArrayBuffers carry a literal host pointer in
-   the blob; only enable JS_READ_OBJ_SAB on input produced by a trusted
-   writer in the same process (e.g. another Worker on the same runtime). */
 #define JS_READ_OBJ_SAB       (1 << 2) /* allow SharedArrayBuffer */
 #define JS_READ_OBJ_REFERENCE (1 << 3) /* allow object references */
+// IMPORTANT: don't pass untrusted input to JS_ReadObject or JS_ReadObject2
 JS_EXTERN JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len, int flags);
 JS_EXTERN JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
                                  int flags, JSSABTab *psab_tab);

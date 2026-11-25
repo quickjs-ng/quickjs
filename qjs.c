@@ -163,28 +163,69 @@ static void js_dynamic_import(JSContext *ctx, const char *basename,
         js_std_dump_error(ctx);
 }
 
+static void *slurp(JSContext *ctx, const char *filename, FILE *stream,
+                   size_t *plen)
+{
+    size_t n, len;
+    char *p, *buf, tmp[8192];
+
+    buf = NULL;
+    len = 0;
+    do {
+        n = fread(tmp, 1, sizeof(tmp), stream);
+        if (ferror(stream)) {
+            perror(filename);
+            goto fail;
+        }
+        p = js_realloc(ctx, buf, len + n + 1);
+        if (!p) {
+            js_std_dump_error(ctx);
+            goto fail;
+        }
+        memcpy(&p[len], tmp, n);
+        buf = p;
+        len += n;
+        buf[len] = '\0';
+    } while (n == sizeof(tmp));
+    *plen = len;
+    return buf;
+fail:
+    js_free(ctx, buf);
+    return NULL;
+}
+
+static int eval_stream(JSContext *ctx, const char *filename, FILE *stream,
+                       int module)
+{
+    int ret, eval_flags;
+    size_t len;
+    char *buf;
+
+    buf = slurp(ctx, filename, stream, &len);
+    if (!buf)
+        return -1;
+    if (module < 0)
+        module = js__has_suffix(filename, ".mjs") || JS_DetectModule(buf, len);
+    eval_flags = JS_EVAL_TYPE_GLOBAL;
+    if (module)
+        eval_flags = JS_EVAL_TYPE_MODULE;
+    ret = eval_buf(ctx, buf, len, filename, eval_flags);
+    js_free(ctx, buf);
+    return ret;
+}
+
 static int eval_file(JSContext *ctx, const char *filename, int module)
 {
-    uint8_t *buf;
-    int ret, eval_flags;
-    size_t buf_len;
+    FILE *stream;
+    int ret;
 
-    buf = js_load_file(ctx, &buf_len, filename);
-    if (!buf) {
+    stream = fopen(filename, "rb");
+    if (!stream) {
         perror(filename);
         exit(1);
     }
-
-    if (module < 0) {
-        module = (js__has_suffix(filename, ".mjs") ||
-                  JS_DetectModule((const char *)buf, buf_len));
-    }
-    if (module)
-        eval_flags = JS_EVAL_TYPE_MODULE;
-    else
-        eval_flags = JS_EVAL_TYPE_GLOBAL;
-    ret = eval_buf(ctx, buf, buf_len, filename, eval_flags);
-    js_free(ctx, buf);
+    ret = eval_stream(ctx, filename, stream, module);
+    fclose(stream);
     return ret;
 }
 
@@ -396,7 +437,7 @@ static const JSMallocFunctions mi_mf = {
 void help(int exit_status)
 {
     printf("QuickJS-ng version %s\n"
-           "usage: " PROG_NAME " [options] [file [args]]\n"
+           "usage: " PROG_NAME " [options] [file | - [args]]\n"
            "-h  --help         list options\n"
            "-v  --version      print version string and then exit\n"
            "-e  --eval EXPR    evaluate EXPR\n"
@@ -710,10 +751,14 @@ start:
             /* interactive mode */
             interactive = 1;
         } else {
-            const char *filename;
-            filename = argv[optind];
-            if (eval_file(ctx, filename, module))
-                goto fail;
+            const char *filename = argv[optind];
+            if (!strcmp(filename, "-")) {
+                if (eval_stream(ctx, "<stdin>", stdin, module))
+                    goto fail;
+            } else {
+                if (eval_file(ctx, filename, module))
+                    goto fail;
+            }
         }
         if (interactive) {
             JS_SetHostPromiseRejectionTracker(rt, NULL, NULL);

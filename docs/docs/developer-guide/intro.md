@@ -99,6 +99,14 @@ to a given `JSRuntime`.
 
 Custom memory allocation functions can be provided with `JS_NewRuntime2()`.
 
+## Random numbers
+
+The engine seeds its hash tables and `Math.random()` with random bytes
+from the operating system. `JS_NewRuntime3()` takes a `JSRuntimeOptions`
+with a `random_bytes` callback to supply them from elsewhere, for
+example to make runs reproducible. Creating a runtime or a context
+fails when no random bytes can be obtained.
+
 The maximum system stack size can be set with `JS_SetMaxStackSize()`.
 
 ## Execution timeout and interrupts

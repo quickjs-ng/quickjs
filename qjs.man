@@ -1,4 +1,4 @@
-.TH QJS 1 "2026-07-22"
+.TH QJS 1 "2026-11-23"
 .SH NAME
 qjs - QuickJS-NG JavaScript interpreter
 
@@ -14,6 +14,8 @@ It aims to support the latest ECMAScript specification.
 .PP
 The \fBqjs\fR executable runs the JavaScript interpreter.
 It includes a simple standard library and REPL.
+.PP
+When \fIFILE\fR is \-, read source from standard input.
 
 .SH OPTIONS
 .TP
