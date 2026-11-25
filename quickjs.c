@@ -42751,9 +42751,9 @@ static JSValue js_function_toString(JSContext *ctx, JSValueConst this_val,
             break;
         }
         suff = "() {\n    [native code]\n}";
-        /* A proxy is callable even after it is revoked, so don't read
-           "name" through it: that throws for a revoked proxy and calls
-           the get trap otherwise. */
+        // A proxy is callable even after it is revoked, so don't read
+        // "name" through it: that throws for a revoked proxy and calls
+        // the get trap otherwise.
         name = JS_UNDEFINED;
         if (p->class_id != JS_CLASS_PROXY)
             name = JS_GetProperty(ctx, this_val, JS_ATOM_name);
