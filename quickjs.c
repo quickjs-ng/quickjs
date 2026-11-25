@@ -24473,6 +24473,11 @@ static __exception int emit_push_const(JSParseState *s, JSValue val,
     return 0;
 }
 
+static uint32_t hash_var(JSAtom name, int scope_level)
+{
+    return hash32(name ^ hash32(scope_level));
+}
+
 // caveat emptor: the table size must be a power of two in order for
 // masking to work, and the load factor constant must be an odd number (5)
 //
@@ -24502,7 +24507,7 @@ static int update_var_htab(JSContext *ctx, JSFunctionDef *fd)
 insert:
     m = UINT32_MAX >> clz32(m);
     do {
-        i = hash32(fd->vars[k].var_name);
+        i = hash_var(fd->vars[k].var_name, fd->vars[k].scope_level);
         j = 1;
         for (;;) {
             p = &fd->vars_htab[i & m];
@@ -24520,7 +24525,7 @@ static int find_var_htab(JSFunctionDef *fd, JSAtom var_name)
 {
     uint32_t i, j, m, *p;
 
-    i = hash32(var_name);
+    i = hash_var(var_name, 0);
     j = 1;
     m = fd->var_count + fd->var_count/5;
     m = UINT32_MAX >> clz32(m);
@@ -24528,7 +24533,7 @@ static int find_var_htab(JSFunctionDef *fd, JSAtom var_name)
         p = &fd->vars_htab[i & m];
         if (*p == UINT32_MAX)
             return -1;
-        if (fd->vars[*p].var_name == var_name)
+        if (fd->vars[*p].var_name == var_name && fd->vars[*p].scope_level == 0)
             return *p;
         i += j;
         j += 1; // quadratic probing
@@ -24555,19 +24560,15 @@ static int find_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
 
     if (fd->vars_htab) {
         i = find_var_htab(fd, name);
-        if (i == -1)
-            goto not_found;
-        vd = &fd->vars[i];
-        if (vd->scope_level == 0)
+        if (i >= 0)
             return i;
-    }
-    for(i = fd->var_count; i-- > 0;) {
-        vd = &fd->vars[i];
-        if (vd->var_name == name)
-            if (vd->scope_level == 0)
+    } else {
+        for (i = fd->var_count; i-- > 0;) {
+            vd = &fd->vars[i];
+            if (vd->var_name == name && vd->scope_level == 0)
                 return i;
+        }
     }
-not_found:
     return find_arg(ctx, fd, name);
 }
 
@@ -24605,7 +24606,7 @@ static int find_var_in_child_scope(JSContext *ctx, JSFunctionDef *fd,
 {
     int i;
     if (fd->vars_htab) {
-        uint32_t hash = hash32(name);
+        uint32_t hash = hash_var(name, 0);
         uint32_t step = 1;
         uint32_t mask = fd->var_count + fd->var_count / 5;
         mask = UINT32_MAX >> clz32(mask);
@@ -24664,7 +24665,12 @@ static int find_scoped_var_htab(JSFunctionDef *fd, JSAtom name,
     uint32_t mask = fd->var_count + fd->var_count/5;
     mask = UINT32_MAX >> clz32(mask);
     for (; scope >= 0; scope = fd->scopes[scope].parent) {
-        uint32_t hash = hash32(name);
+        int first = fd->scopes[scope].first;
+        if (first < 0)
+            break;
+        /* Empty scopes inherit the head of the enclosing variable chain. */
+        scope = fd->vars[first].scope_level;
+        uint32_t hash = hash_var(name, scope);
         uint32_t step = 1;
         int found = -1;
         for (;;) {
@@ -24778,7 +24784,7 @@ static void close_scopes(JSParseState *s, int scope, int scope_stop)
 }
 
 /* return the variable index or -1 if error */
-static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
+static int add_scoped_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name, int scope)
 {
     JSVarDef *vd;
 
@@ -24795,6 +24801,7 @@ static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
     vd = &fd->vars[fd->var_count++];
     memset(vd, 0, sizeof(*vd));
     vd->var_name = JS_DupAtom(ctx, name);
+    vd->scope_level = scope;
     vd->func_pool_idx = -1;
     if (update_var_htab(ctx, fd))
         goto fail;
@@ -24804,14 +24811,18 @@ static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
     return -1;
 }
 
+static int add_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name)
+{
+    return add_scoped_var(ctx, fd, name, 0);
+}
+
 static int add_scope_var(JSContext *ctx, JSFunctionDef *fd, JSAtom name,
                          JSVarKindEnum var_kind)
 {
-    int idx = add_var(ctx, fd, name);
+    int idx = add_scoped_var(ctx, fd, name, fd->scope_level);
     if (idx >= 0) {
         JSVarDef *vd = &fd->vars[idx];
         vd->var_kind = var_kind;
-        vd->scope_level = fd->scope_level;
         vd->scope_next = fd->scope_first;
         fd->scopes[fd->scope_level].first = idx;
         fd->scope_first = idx;
@@ -24851,12 +24862,11 @@ static int add_arguments_arg(JSContext *ctx, JSFunctionDef *fd)
             /* XXX: the scope links are not fully updated. May be an
                issue if there are child scopes of the argument
                scope */
-            idx = add_var(ctx, fd, JS_ATOM_arguments);
+            idx = add_scoped_var(ctx, fd, JS_ATOM_arguments, ARG_SCOPE_INDEX);
             if (idx < 0)
                 return -1;
             fd->vars[idx].scope_next = fd->scopes[ARG_SCOPE_INDEX].first;
             fd->scopes[ARG_SCOPE_INDEX].first = idx;
-            fd->vars[idx].scope_level = ARG_SCOPE_INDEX;
             fd->vars[idx].is_lexical = true;
 
             fd->arguments_arg_idx = idx;
