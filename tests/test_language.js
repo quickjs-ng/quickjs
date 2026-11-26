@@ -492,6 +492,14 @@ function test_spread()
 
     x = [ ...[ , ] ];
     assert(Object.getOwnPropertyNames(x).toString(), "0,length");
+
+    // object spread applies ToObject to primitives
+    x = { ..."ab" };
+    assert(JSON.stringify(x), '{"0":"a","1":"b"}');
+    x = { a: 1, ..."c", b: 2 };
+    assert(JSON.stringify(x), '{"0":"c","a":1,"b":2}');
+    x = { ...1, ...true, ...Symbol(), ...null, ...undefined };
+    assert(JSON.stringify(x), '{}');
 }
 
 function test_function_length()
