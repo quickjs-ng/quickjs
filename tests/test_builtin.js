@@ -725,6 +725,13 @@ function test_typed_array()
     assert(ex instanceof TypeError);
     assert("ArrayBuffer is detached", ex.message);
 
+    // https://github.com/quickjs-ng/quickjs/issues/1729
+    var buffer = new ArrayBuffer(8, {maxByteLength: 16});
+    assertThrows(RangeError, () => buffer.transfer(17));
+    assertThrows(RangeError, () => buffer.transfer(Number.MAX_SAFE_INTEGER));
+    assert(buffer.detached, false);
+    assert(buffer.byteLength, 8);
+
     var buffer = new ArrayBuffer(2);
     var ta = new Uint16Array(buffer);
     var desc = Object.getOwnPropertyDescriptor(ta, "0");
