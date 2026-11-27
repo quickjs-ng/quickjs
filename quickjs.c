@@ -525,12 +525,7 @@ static inline JSMallocBlockHeader *js_rc(const void *p) {
 #define JS_GC_TYPE(p)   (js_rc(p)->gc_obj_type)
 #define JS_GC_MARK(p)   (js_rc(p)->mark)
 
-/* Increment/decrement a reference count; both yield the new value and may
-   evaluate p twice. With QJS_ENABLE_REF_COUNT_SATURATION, a count that
-   reaches INT_MAX is pinned: it no longer moves in either direction, so the
-   object is leaked instead of the count overflowing. The cycle collector
-   uses the same macros, so a pinned object is never seen with a zero count
-   and is never collected. */
+// With QJS_ENABLE_REF_COUNT_SATURATION, counts that reach INT_MAX stay there.
 #ifdef QJS_ENABLE_REF_COUNT_SATURATION
 #define JS_REF_COUNT_INC(p) (JS_REF_COUNT(p) += (JS_REF_COUNT(p) != INT_MAX))
 #define JS_REF_COUNT_DEC(p) (JS_REF_COUNT(p) -= (JS_REF_COUNT(p) != INT_MAX))
