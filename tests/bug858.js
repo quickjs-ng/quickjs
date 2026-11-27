@@ -24,3 +24,7 @@ try {
 } catch (e) {
   assert(e.message.includes("fail"));
 }
+
+Error.stackTraceLimit = { valueOf() { Error.stackTraceLimit = 10; return 10 } };
+assert(new Error("error").stack.includes("bug858.js"));
+assert(Error.stackTraceLimit === 10);
