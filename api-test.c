@@ -2345,6 +2345,58 @@ static void json_stringify_oom(void)
     JS_FreeRuntime(rt);
 }
 
+// running out of memory while compiling must fail cleanly: the parser used
+// to access label_slots[-1] when new_label() failed in a destructuring
+// pattern without initializer or before a leading `default:` clause, to
+// resolve the bytecode it had truncated when emitting it failed, and a
+// failed resolve_labels() leaked its pending relocations
+static void parse_oom(void)
+{
+    static const char *const scripts[] = {
+        // the labels of `??` make the label array grow by more than what
+        // the declaration allocates before the end of the inner pattern
+        "x ?? x; x ?? x; x ?? x; x ?? x; let [[a]] = o;",
+        "x ?? x; x ?? x; x ?? x; x ?? x; x ?? x; x ?? x; let [[a]] = o;",
+        "function f({a}, [b]) {}",
+        "var {a: {b}, c: [d]} = {a: {}, c: []};",
+        "switch (0) { default: }",
+    };
+    JSMemoryUsage stats;
+    size_t i, headroom;
+    JSRuntime *rt;
+    JSContext *ctx;
+    JSValue ret;
+    int ok;
+
+    for (i = 0; i < countof(scripts); i++) {
+        // a fresh runtime for each script: what a sweep leaves behind
+        // would shift the allocations of the next one
+        rt = new_runtime();
+        // XXX: atom references still leak when resolve_variables() or
+        // resolve_labels() fail to copy an instruction: no abort on atom leaks
+        JS_SetDumpFlags(rt, JS_ABORT_ON_LEAKS & ~JS_DUMP_ATOM_LEAKS);
+        ctx = JS_NewContext(rt);
+        ok = 0;
+        // byte steps move the first failing allocation through the
+        // compiler, until the script compiles a few times
+        for (headroom = 0; ok < 4 && headroom < 1024 * 1024; headroom++) {
+            JS_ComputeMemoryUsage(rt, &stats);
+            JS_SetMemoryLimit(rt, (size_t)stats.malloc_size + headroom);
+            ret = JS_Eval(ctx, scripts[i], strlen(scripts[i]), "<input>",
+                          JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
+            JS_SetMemoryLimit(rt, 0);
+            if (JS_IsException(ret))
+                JS_FreeValue(ctx, JS_GetException(ctx));
+            else
+                ok++;
+            JS_FreeValue(ctx, ret);
+        }
+        assert(ok == 4);
+        JS_FreeContext(ctx);
+        JS_FreeRuntime(rt);
+    }
+}
+
 struct dynamic_import_state {
     int import_calls;
     int attribute_calls;
@@ -2886,6 +2938,7 @@ int main(void)
     private_symbols();
     new_context_low_memory();
     json_stringify_oom();
+    parse_oom();
     map_across_contexts();
     wyhash_vectors();
     string_hash_8_and_16_bits();
