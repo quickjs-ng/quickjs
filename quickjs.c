@@ -43432,6 +43432,7 @@ static JSValue js_error_set_stackTraceLimit(JSContext *ctx, JSValueConst this_va
 {
     if (JS_IsUndefined(this_val) || JS_IsNull(this_val))
         return JS_ThrowTypeErrorNotAnObject(ctx);
+    JS_FreeValue(ctx, ctx->error_stack_trace_limit);
     ctx->error_stack_trace_limit = js_dup(value);
     return JS_UNDEFINED;
 }
