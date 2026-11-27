@@ -525,6 +525,15 @@ static inline JSMallocBlockHeader *js_rc(const void *p) {
 #define JS_GC_TYPE(p)   (js_rc(p)->gc_obj_type)
 #define JS_GC_MARK(p)   (js_rc(p)->mark)
 
+// With QJS_ENABLE_REF_COUNT_SATURATION, counts that reach INT_MAX stay there.
+#ifdef QJS_ENABLE_REF_COUNT_SATURATION
+#define JS_REF_COUNT_INC(p) (JS_REF_COUNT(p) += (JS_REF_COUNT(p) != INT_MAX))
+#define JS_REF_COUNT_DEC(p) (JS_REF_COUNT(p) -= (JS_REF_COUNT(p) != INT_MAX))
+#else
+#define JS_REF_COUNT_INC(p) (++JS_REF_COUNT(p))
+#define JS_REF_COUNT_DEC(p) (--JS_REF_COUNT(p))
+#endif
+
 /* bigint */
 typedef int32_t js_slimb_t;
 typedef uint32_t js_limb_t;
@@ -1690,7 +1699,7 @@ static JSValue js_dup(JSValueConst v)
 {
     if (JS_VALUE_HAS_REF_COUNT(v)) {
         void *p = JS_VALUE_GET_PTR(v);
-        JS_REF_COUNT(p)++;
+        JS_REF_COUNT_INC(p);
     }
     return unsafe_unconst(v);
 }
@@ -2680,7 +2689,7 @@ static inline void js_free_string0(JSRuntime *rt, JSString *str);
 /* same as JS_FreeValueRT() but faster */
 static inline void js_free_string(JSRuntime *rt, JSString *str)
 {
-    if (--JS_REF_COUNT(str) <= 0)
+    if (JS_REF_COUNT_DEC(str) <= 0)
         js_free_string0(rt, str);
 }
 
@@ -3055,7 +3064,7 @@ static void js_free_modules(JSContext *ctx, JSFreeModuleEnum flag)
 
 JSContext *JS_DupContext(JSContext *ctx)
 {
-    JS_REF_COUNT(ctx)++;
+    JS_REF_COUNT_INC(ctx);
     return ctx;
 }
 
@@ -3120,7 +3129,7 @@ void JS_FreeContext(JSContext *ctx)
     JSRuntime *rt = ctx->rt;
     int i;
 
-    if (--JS_REF_COUNT(ctx) > 0)
+    if (JS_REF_COUNT_DEC(ctx) > 0)
         return;
     assert(JS_REF_COUNT(ctx) == 0);
 
@@ -3583,7 +3592,7 @@ JSAtom JS_DupAtomRT(JSRuntime *rt, JSAtom v)
 
     if (!__JS_AtomIsConst(v)) {
         p = rt->atom_array[v];
-        JS_REF_COUNT(p)++;
+        JS_REF_COUNT_INC(p);
     }
     return v;
 }
@@ -3596,7 +3605,7 @@ JSAtom JS_DupAtom(JSContext *ctx, JSAtom v)
     if (!__JS_AtomIsConst(v)) {
         rt = ctx->rt;
         p = rt->atom_array[v];
-        JS_REF_COUNT(p)++;
+        JS_REF_COUNT_INC(p);
     }
     return v;
 }
@@ -3662,7 +3671,7 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
             i = js_get_atom_index(rt, str);
             /* reduce string refcount and increase atom's unless constant */
             if (__JS_AtomIsConst(i))
-                JS_REF_COUNT(str)--;
+                JS_REF_COUNT_DEC(str);
             return i;
         }
         /* try and locate an already registered atom */
@@ -3682,7 +3691,7 @@ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
                 p->len == len &&
                 js_string_memcmp(p, str, len) == 0) {
                 if (!__JS_AtomIsConst(i))
-                    JS_REF_COUNT(p)++;
+                    JS_REF_COUNT_INC(p);
                 goto done;
             }
             i = p->hash_next;
@@ -3846,7 +3855,7 @@ static JSAtom __JS_FindAtom(JSRuntime *rt, const char *str, size_t len,
             p->is_wide_char == 0 &&
             memcmp(str8(p), str, len) == 0) {
             if (!__JS_AtomIsConst(i))
-                JS_REF_COUNT(p)++;
+                JS_REF_COUNT_INC(p);
             return i;
         }
         i = p->hash_next;
@@ -3899,7 +3908,7 @@ static void __JS_FreeAtom(JSRuntime *rt, uint32_t i)
     JSAtomStruct *p;
 
     p = rt->atom_array[i];
-    if (--JS_REF_COUNT(p) > 0)
+    if (JS_REF_COUNT_DEC(p) > 0)
         return;
     JS_FreeAtomStruct(rt, p);
 }
@@ -4546,7 +4555,7 @@ static JSValue js_sub_string(JSContext *ctx, JSString *p, int start, int end)
         slice = (void *)&q[1];
         slice->parent = p;
         slice->start = start << p->is_wide_char; // chars -> bytes
-        JS_REF_COUNT(p)++;
+        JS_REF_COUNT_INC(p);
         return JS_MKPTR(JS_TAG_STRING, q);
     }
     if (p->is_wide_char) {
@@ -6035,7 +6044,7 @@ static JSShape *js_clone_shape(JSContext *ctx, JSShape *sh1)
 
 static JSShape *js_dup_shape(JSShape *sh)
 {
-    JS_REF_COUNT(sh)++;
+    JS_REF_COUNT_INC(sh);
     return sh;
 }
 
@@ -6061,7 +6070,7 @@ static void js_free_shape0(JSRuntime *rt, JSShape *sh)
 
 static void js_free_shape(JSRuntime *rt, JSShape *sh)
 {
-    if (unlikely(--JS_REF_COUNT(sh) <= 0)) {
+    if (unlikely(JS_REF_COUNT_DEC(sh) <= 0)) {
         js_free_shape0(rt, sh);
     }
 }
@@ -7112,7 +7121,7 @@ static void free_var_ref(JSRuntime *rt, JSVarRef *var_ref)
 {
     if (var_ref) {
         assert(JS_REF_COUNT(var_ref) > 0);
-        if (--JS_REF_COUNT(var_ref) == 0) {
+        if (JS_REF_COUNT_DEC(var_ref) == 0) {
             if (var_ref->is_detached) {
                 JS_FreeValueRT(rt, var_ref->value);
                 remove_gc_object(&var_ref->header);
@@ -7438,7 +7447,7 @@ void JS_FreeValueRT(JSRuntime *rt, JSValue v)
 {
     if (JS_VALUE_HAS_REF_COUNT(v)) {
         void *p = JS_VALUE_GET_PTR(v);
-        if (--JS_REF_COUNT(p) <= 0) {
+        if (JS_REF_COUNT_DEC(p) <= 0) {
             js_free_value_rt(rt, v);
         }
     }
@@ -7605,7 +7614,7 @@ static void mark_children(JSRuntime *rt, JSGCObjectHeader *gp,
 static void gc_decref_child(JSRuntime *rt, JSGCObjectHeader *p)
 {
     assert(JS_REF_COUNT(p) > 0);
-    JS_REF_COUNT(p)--;
+    JS_REF_COUNT_DEC(p);
     if (JS_REF_COUNT(p) == 0 && JS_GC_MARK(p) == 1) {
         list_del(&p->link);
         list_add_tail(&p->link, &rt->tmp_obj_list);
@@ -7636,7 +7645,7 @@ static void gc_decref(JSRuntime *rt)
 
 static void gc_scan_incref_child(JSRuntime *rt, JSGCObjectHeader *p)
 {
-    JS_REF_COUNT(p)++;
+    JS_REF_COUNT_INC(p);
     if (JS_REF_COUNT(p) == 1) {
         /* ref_count was 0: remove from tmp_obj_list and add at the
            end of gc_obj_list */
@@ -7648,7 +7657,7 @@ static void gc_scan_incref_child(JSRuntime *rt, JSGCObjectHeader *p)
 
 static void gc_scan_incref_child2(JSRuntime *rt, JSGCObjectHeader *p)
 {
-    JS_REF_COUNT(p)++;
+    JS_REF_COUNT_INC(p);
 }
 
 static void gc_scan(JSRuntime *rt)
@@ -17783,7 +17792,7 @@ static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf, int var_idx,
         var_ref = sf->var_refs[var_ref_idx];
         if (var_ref) {
             /* reference to the already created local variable */
-            JS_REF_COUNT(var_ref)++;
+            JS_REF_COUNT_INC(var_ref);
             return var_ref;
         }
 
@@ -17809,7 +17818,7 @@ static JSVarRef *get_var_ref(JSContext *ctx, JSStackFrame *sf, int var_idx,
            the coroutine itself is recovered via stack_frame->cur_gc_obj. */
         var_ref->is_coro = (sf->cur_gc_obj != NULL);
         if (sf->cur_gc_obj) {
-            JS_REF_COUNT(sf->cur_gc_obj)++;
+            JS_REF_COUNT_INC(sf->cur_gc_obj);
             add_gc_object(ctx->rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
         }
         return var_ref;
@@ -17862,7 +17871,7 @@ static JSValue js_closure2(JSContext *ctx, JSValue func_obj,
             case JS_CLOSURE_REF:
             case JS_CLOSURE_GLOBAL_REF:
                 var_ref = cur_var_refs[cv->var_idx];
-                JS_REF_COUNT(var_ref)++;
+                JS_REF_COUNT_INC(var_ref);
                 break;
             default:
                 abort();
@@ -19390,7 +19399,7 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                     goto exception;
                 if (opcode == OP_make_var_ref_ref) {
                     var_ref = var_refs[idx];
-                    JS_REF_COUNT(var_ref)++;
+                    JS_REF_COUNT_INC(var_ref);
                 } else {
                     var_ref = get_var_ref(ctx, sf, idx, opcode == OP_make_arg_ref);
                     if (!var_ref)
@@ -21476,7 +21485,7 @@ static void async_func_set_gc_obj(JSRuntime *rt, JSAsyncFunctionState *s,
         JSVarRef *var_ref = sf->var_refs[i];
         if (var_ref && !var_ref->is_coro) {
             var_ref->is_coro = true;
-            JS_REF_COUNT(gc_obj)++;
+            JS_REF_COUNT_INC(gc_obj);
             add_gc_object(rt, &var_ref->header, JS_GC_OBJ_TYPE_VAR_REF);
         }
     }
@@ -21739,7 +21748,7 @@ static void js_async_function_free0(JSRuntime *rt, JSAsyncFunctionData *s)
 
 static void js_async_function_free(JSRuntime *rt, JSAsyncFunctionData *s)
 {
-    if (--JS_REF_COUNT(s) == 0) {
+    if (JS_REF_COUNT_DEC(s) == 0) {
         js_async_function_free0(rt, s);
     }
 }
@@ -21783,7 +21792,7 @@ static int js_async_function_resolve_create(JSContext *ctx,
             return -1;
         }
         p = JS_VALUE_GET_OBJ(resolving_funcs[i]);
-        JS_REF_COUNT(s)++;
+        JS_REF_COUNT_INC(s);
         p->u.async_function_data = s;
     }
     return 0;
@@ -30682,7 +30691,7 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
     // of the list; the memory goes with the last one. Until then leave
     // nothing dangling behind.
     memset(m, 0, sizeof(*m));
-    if (--JS_REF_COUNT(m) == 0)
+    if (JS_REF_COUNT_DEC(m) == 0)
         js_free(ctx, m);
 }
 
@@ -31591,7 +31600,7 @@ static JSValue js_build_module_ns(JSContext *ctx, JSModuleDef *m)
                                   JS_PROP_VARREF);
                 if (!pr)
                     goto fail;
-                JS_REF_COUNT(var_ref)++;
+                JS_REF_COUNT_INC(var_ref);
                 pr->u.var_ref = var_ref;
             }
             break;
@@ -31760,7 +31769,7 @@ static int js_create_module_bytecode_function(JSContext *ctx, JSModuleDef *m)
 
     p = JS_VALUE_GET_OBJ(func_obj);
     p->u.func.function_bytecode = b;
-    JS_REF_COUNT(b)++;
+    JS_REF_COUNT_INC(b);
     p->u.func.home_object = NULL;
     p->u.func.var_refs = NULL;
     if (b->closure_var_count) {
@@ -31996,7 +32005,7 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
                             JS_AtomGetStr(ctx, buf3, sizeof(buf3), res_m->module_name));
                         goto fail;
                     }
-                    JS_REF_COUNT(var_ref)++;
+                    JS_REF_COUNT_INC(var_ref);
                     var_refs[mi->var_idx] = var_ref;
 
                     module_trace(ctx, "local export (var_ref=%p)\n", (void *)var_ref);
@@ -32011,7 +32020,7 @@ static int js_inner_module_linking(JSContext *ctx, JSModuleDef *m,
             JSExportEntry *me = &m->export_entries[i];
             if (me->export_type == JS_EXPORT_TYPE_LOCAL) {
                 var_ref = var_refs[me->u.local.var_idx];
-                JS_REF_COUNT(var_ref)++;
+                JS_REF_COUNT_INC(var_ref);
                 me->u.local.var_ref = var_ref;
             }
         }

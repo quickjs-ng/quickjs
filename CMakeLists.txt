@@ -41,6 +41,7 @@ xoption(QJS_ENABLE_MSAN "Enable MemorySanitizer (MSan)" OFF)
 xoption(QJS_ENABLE_TSAN "Enable ThreadSanitizer (TSan)" OFF)
 xoption(QJS_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UBSan)" OFF)
 xoption(QJS_ENABLE_GC_STRESS "Force a full GC before every allocation (GC stress test)" OFF)
+xoption(QJS_ENABLE_REF_COUNT_SATURATION "Pin reference counts at INT_MAX instead of overflowing (leaks the object)" OFF)
 
 # Used to properly define JS_LIBC_EXTERN.
 add_compile_definitions(QUICKJS_NG_BUILD)
