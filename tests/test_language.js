@@ -482,6 +482,30 @@ function test_destructuring()
     function * g () { return 0; };
     var [x] = g();
     assert(x, void 0);
+
+    /* a property name that is not a shorthand must be followed by ':' */
+    var a, o = { k: 1, 2: 3, if: 4 };
+    ({ "k": a } = o);
+    assert(a, 1);
+    ({ 2: a } = o);
+    assert(a, 3);
+    ({ if: a } = o);
+    assert(a, 4);
+    ({ ["k"]: a } = o);
+    assert(a, 1);
+    assert_throws(SyntaxError, '({ "k", a } = {})');
+    assert_throws(SyntaxError, '({ "k" = a } = {})');
+    assert_throws(SyntaxError, '({ 2, a } = {})');
+    assert_throws(SyntaxError, '({ if, a } = {})');
+    assert_throws(SyntaxError, '({ ["k"], a } = {})');
+    assert_throws(SyntaxError, '({ "k", [a] } = {})');
+    assert_throws(SyntaxError, '[{ "k", a }] = [{}]');
+    assert_throws(SyntaxError, 'for ({ "k", a } of []);');
+    assert_throws(SyntaxError, 'var { "k", a } = {}');
+    assert_throws(SyntaxError, 'let { "k", a } = {}');
+    assert_throws(SyntaxError, '(function({ "k", a }) {})');
+    assert_throws(SyntaxError, '(({ "k", a }) => a)');
+    assert_throws(SyntaxError, 'try {} catch ({ "k", a }) {}');
 }
 
 function test_spread()
