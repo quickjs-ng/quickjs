@@ -42176,9 +42176,16 @@ static JSValue js_object_groupBy(JSContext *ctx, JSValueConst this_val,
 
         args[0] = v;
         args[1] = js_int64(idx);
-        k = JS_Call(ctx, cb, ctx->global_obj, 2, args);
+        k = JS_Call(ctx, cb, JS_UNDEFINED, 2, args);
         if (JS_IsException(k))
-            goto exception;
+            goto exception_close;
+
+        prop = JS_ToPropertyKey(ctx, k);
+        JS_FreeValue(ctx, k);
+        k = prop;
+        prop = JS_UNDEFINED;
+        if (JS_IsException(k))
+            goto exception_close;
 
         k = js_dup(k);
         prop = JS_GetPropertyValue(ctx, groups, k);
@@ -42214,6 +42221,8 @@ static JSValue js_object_groupBy(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, next);
     return groups;
 
+exception_close:
+    JS_IteratorClose(ctx, iter, true);
 exception:
     JS_FreeValue(ctx, prop);
     JS_FreeValue(ctx, k);
@@ -54350,9 +54359,9 @@ static JSValue js_map_groupBy(JSContext *ctx, JSValueConst this_val,
 
         args[0] = v;
         args[1] = js_int64(idx);
-        k = JS_Call(ctx, cb, ctx->global_obj, 2, args);
+        k = JS_Call(ctx, cb, JS_UNDEFINED, 2, args);
         if (JS_IsException(k))
-            goto exception;
+            goto exception_close;
 
         prop = js_map_get(ctx, groups, 1, vc(&k), 0);
         if (JS_IsException(prop))
@@ -54387,6 +54396,8 @@ static JSValue js_map_groupBy(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, next);
     return groups;
 
+exception_close:
+    JS_IteratorClose(ctx, iter, true);
 exception:
     JS_FreeValue(ctx, prop);
     JS_FreeValue(ctx, k);
