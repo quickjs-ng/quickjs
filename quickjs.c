@@ -45559,32 +45559,47 @@ static void js_iterator_wrap_mark(JSRuntime *rt, JSValueConst val,
     }
 }
 
-static JSValue js_iterator_wrap_next(JSContext *ctx, JSValueConst this_val,
-                                     int argc, JSValueConst *argv,
-                                     int *pdone, int magic)
+static JSValue js_iterator_wrap_proto_next(JSContext *ctx, JSValueConst this_val,
+                                           int argc, JSValueConst *argv,
+                                           int magic)
 {
     JSIteratorWrapData *it;
-    JSValue method, ret;
+
     it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_WRAP);
     if (!it)
         return JS_EXCEPTION;
-    if (magic == GEN_MAGIC_NEXT)
-        return JS_IteratorNext(ctx, it->wrapped_iter, it->wrapped_next, argc, argv, pdone);
+    return JS_Call(ctx, it->wrapped_next, it->wrapped_iter, 0, NULL);
+}
+
+static JSValue js_iterator_wrap_proto_return(JSContext *ctx, JSValueConst this_val,
+                                             int argc, JSValueConst *argv,
+                                             int magic)
+{
+    JSIteratorWrapData *it;
+    JSValue method, ret;
+
+    it = JS_GetOpaque2(ctx, this_val, JS_CLASS_ITERATOR_WRAP);
+    if (!it)
+        return JS_EXCEPTION;
     method = JS_GetProperty(ctx, it->wrapped_iter, JS_ATOM_return);
     if (JS_IsException(method))
         return JS_EXCEPTION;
     if (JS_IsNull(method) || JS_IsUndefined(method)) {
-        *pdone = true;
-        return JS_UNDEFINED;
+        JS_FreeValue(ctx, method);
+        return js_create_iterator_result(ctx, JS_UNDEFINED, true);
     }
-    ret = JS_IteratorNext2(ctx, it->wrapped_iter, method, argc, argv, pdone);
+    if (!JS_IsFunction(ctx, method)) {
+        JS_FreeValue(ctx, method);
+        return JS_ThrowTypeError(ctx, "not a function");
+    }
+    ret = JS_Call(ctx, method, it->wrapped_iter, 0, NULL);
     JS_FreeValue(ctx, method);
     return ret;
 }
 
 static const JSCFunctionListEntry js_iterator_wrap_proto_funcs[] = {
-    JS_ITERATOR_NEXT_DEF("next", 0, js_iterator_wrap_next, GEN_MAGIC_NEXT ),
-    JS_ITERATOR_NEXT_DEF("return", 0, js_iterator_wrap_next, GEN_MAGIC_RETURN ),
+    JS_CFUNC_MAGIC_DEF("next", 0, js_iterator_wrap_proto_next, 0 ),
+    JS_CFUNC_MAGIC_DEF("return", 0, js_iterator_wrap_proto_return, 0 ),
 };
 
 static int check_iterator(JSContext *ctx, JSValueConst obj);
